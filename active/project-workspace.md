@@ -77,8 +77,6 @@ Session 不得隐式删除仍被其他运行使用的 Workspace。
 Project-root 使用的 Workspace 是 Project 的 main Workspace，不创建重复的 Workspace。
 因此不会出现两个 Workspace 同时管理同一个物理目录的问题。
 
-Workspace 的 `display_name` 用于 UI 展示；本地 Git Worktree 的 branch name 由 Worktree保存。
-
 ## 4. ID 规则
 
 ### 4.1 Project main Workspace
@@ -152,7 +150,6 @@ provider 的全部细节：
 CREATE TABLE workspaces (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
-    display_name    TEXT NOT NULL,
 
     workspace_kind  TEXT NOT NULL
         CHECK (workspace_kind IN ('main', 'isolated')),
@@ -187,10 +184,6 @@ CREATE UNIQUE INDEX workspaces_active_project_main_unique
 
 创建 main Workspace 和 Project 的 repository 必须在同一个 write transaction 中校验
 “Project 存在且最多一个 active main Workspace”这一不变量。
-
-`display_name` 是 Workspace 的用户可见名称。对于 Project main Workspace，默认取
-Project name；对于本地 Git worktree（工作树任务），使用创建时用户输入的名称。它不代表 branch
-或 revision，Git 事实仍由 Worktree 保存。
 
 ## 7. Workspace Location Schema
 
@@ -587,11 +580,10 @@ Effect 后续应以 Workspace location adapter 访问目标 surface，不把 rem
 3. 所有 Workspace 使用独立的 Workspace ID。
 4. Project main Workspace 通过 `project_id + workspace_kind` 唯一定位。
 5. Project-root Session 直接使用 Project main Workspace。
-6. Workspace 的 `display_name` 是用户可见名称，不是 Git branch 或 revision 的事实。
-7. WorkflowRun 可以在任意 active Workspace 中执行，不隐式拥有 Worktree。
-8. WorkflowRun 直接保存 `workspace_id` 和 `name`。
-9. Worktree 只表示本地 Git worktree，不表示所有 Workspace。
-10. Remote location 不能伪装成本地路径。
-11. 删除 Session 或 WorkflowRun 不得隐式删除共享 Workspace。
-12. Workspace provisioning 的期望状态和实际状态必须分开保存。
-13. 远程凭据只能通过引用访问，不能进入普通业务表。
+6. WorkflowRun 可以在任意 active Workspace 中执行，不隐式拥有 Worktree。
+7. WorkflowRun 直接保存 `workspace_id` 和 `name`。
+8. Worktree 只表示本地 Git worktree，不表示所有 Workspace。
+9. Remote location 不能伪装成本地路径。
+10. 删除 Session 或 WorkflowRun 不得隐式删除共享 Workspace。
+11. Workspace provisioning 的期望状态和实际状态必须分开保存。
+12. 远程凭据只能通过引用访问，不能进入普通业务表。
