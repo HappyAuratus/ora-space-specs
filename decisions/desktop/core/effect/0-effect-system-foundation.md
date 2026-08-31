@@ -71,6 +71,10 @@ seed 所有 active/published Source，并在重新发布时把引用该 Source �
 和未终结 Operation 的历史引用仍然有效。Revision 的 definition、revision key 和 digest 发布后
 不变；availability 是独立的运行时事实，可以在不改写 Revision 内容身份的前提下变化。
 
+Skill catalog/package adapter 在调用 repository 前计算并验证 manifest digest 与完整 package
+fingerprint；repository 只原子持久化已经验证的 publication，不通过 Resource Adapter 读取 source
+目录。这样 catalog I/O 与 SQLite transaction seam 不会反向依赖物化实现。
+
 `DesiredEffectIdentity` 在参数或 Revision 更新时保持稳定。`ManagedIdentity` 是 Ora 对外部 item
 的 durable ownership 身份，不随 Revision、native name、路径或 fingerprint 改变。`Digest`
 用于证明不可变输入或规范化 projection 的内容身份，`Fingerprint` 用于证明观察到的外部状态；
@@ -102,15 +106,17 @@ Consumer declaration 是 Scope-independent 的完整快照。当前插件契约�
 
 ### Projection 与共享贡献
 
-`EffectKindPlanner` 根据完整 Desired State、精确 Consumer Revision、Target declaration、Resource
-集合和 immutable Effect Revisions，生成一个 Target 的完整确定性 `TargetProjection`。Projection
-记录 generation、Consumer Revision、适用 Desired Effects、每个 Resource 的 requirement 以及
-内容 digest；它不是 Operation plan，也不授权 mutation。
+一个静态分派的 `EffectPlanner` 同时负责完整 Target projection 与 Resource merge planning，避免调用方
+把一个 kind 的 Target planner 和另一个 materialization planner 错配。它根据完整 Desired State、精确
+Consumer Revision、Target declaration、Resource 集合和 immutable Effect Revisions，生成确定性的
+`TargetProjection`；再把绑定到同一 Resource 的所有 active 或 retiring Target contribution 合并成
+唯一 `ResourceProjection`。Projection 记录 generation、Consumer Revision、适用 Desired Effects、
+每个 Resource 的 requirement 和内容 digest；它不是 Operation plan，也不授权 mutation。
 
-`ResourcePlanner` 将绑定到同一 Resource 的所有 active 或 retiring Target contribution 合并成唯一
-`ResourceProjection`。合并会检测 native identity、format、ownership 和 materialization contract
-冲突。任何 Target 都不能把自己的 requirement 当成共享 Resource 的最终状态，也不能删除其他
-Target 仍然需要的 item。
+materialization contract 从 Consumer Resource template 原样进入 Target binding 和
+`ResourceRequirement`。Resource merge 会检测 native identity、format、ownership 和 contributor
+contract 冲突；不同 contract 不会被某个 planner 默认值覆盖，而会形成 blocking Condition。任何
+Target 都不能把自己的 requirement 当成共享 Resource 的最终状态，也不能删除其他 Target 仍然需要的 item。
 
 缺失 capability、unsupported effect、不可用 Revision、无效声明或共享贡献冲突不会被静默过滤。
 Planner 返回结构化 blocking Condition，repository 在持有 Target claim 的事务中保存该事实。
@@ -246,14 +252,16 @@ log。删除历史 Audit 不得改变系统行为。
 
 ## 扩展边界
 
-Effect Core 通过泛型和 trait 进行静态分派。新增能力的正常扩展单位是新的强类型 Effect definition
-及 planner、Consumer Adapter 或 Resource Adapter，而不是复制 Target、Status、Request、Condition、
-Attempt 和 Operation 状态机。Consumer-specific 和 Resource-specific 数据只允许出现在版本化
-definition、descriptor、materialization input、operation payload、locator 或 adapter receipt 中。
+Effect Core 通过泛型和 trait 进行静态分派，同时拥有内建实现持久化所需的封闭、强类型 wire model。
+新增内建 Effect kind 会扩展相应 definition/parameters/payload enum，并在集成 crate 提供新的 planner
+逻辑；这项显式改动优于用任意 JSON 隐藏未知业务分支。它不应复制 Target、Status、Request、
+Condition、Attempt 和 Operation 状态机。Consumer-specific 和 Resource-specific 数据只允许出现在
+版本化 definition、descriptor、materialization input、operation payload、locator 或 adapter receipt 中。
 
 当前第一条完整垂直实现是：本地 Workspace Scope、Skill Effect kind、Agent 插件 Consumer、
-filesystem directory Resource、SQLite repository 和后台 worker。该具体组合验证了抽象，但不把
-Skill、Agent、Session、filesystem path 或插件 transport 变成 Effect Core 的领域边界。
+filesystem directory Resource、SQLite repository 和后台 worker。Skill/filesystem 名称会出现在封闭
+wire payload 中，但不能进入通用 phase、claim、watermark、fencing 或 recovery 状态机；Agent、
+Session 和插件 transport 仍只存在于 adapter 实现。
 
 ## 必须保持的不变量
 
