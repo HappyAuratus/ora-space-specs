@@ -22,7 +22,7 @@ Ora 的插件目录（marketplace）由一个或多个 **Git 仓库源**分发�
 - 首次打开后端且配置为空时，种子写入默认源 `https://github.com/ora-space/marketplace` 的 `main`
   分支（[marketplace_sources.rs](crates/backend/src/marketplace_sources.rs)）。
 - 源按 `position` 形成**优先级顺序**（source precedence）。列表、README 与安装解析都按同一顺序
-  遍历，先命中者胜出，因此重复的 `namespace/name` 在任何路径上都解析到同一个条目。
+  遍历，先命中者胜出，因此重复的 `namespace/identifier` 在任何路径上都解析到同一个条目。
 - URL 必须是 HTTPS（`RepositoryUrl`），分支必须是合法的短分支名（`GitBranchName`）；两者在写入
   配置前校验，而不是等到 Git 命令失败。
 - 每个源独立携带 `use_proxy`。开启时，该源的 Git 网络操作使用代理环境变量，其条目的 `.orax`
@@ -36,7 +36,7 @@ Ora 的插件目录（marketplace）由一个或多个 **Git 仓库源**分发�
 ~/.ora/plugins/sources/github.com/ora-space/marketplace/            # 源检出
 ~/.ora/plugins/sources/github.com/ora-space/marketplace/registry/   # 被扫描的目录
 ~/.ora/plugins/cache/registry_index.json                            # 派生索引缓存
-~/.ora/plugins/installed/<namespace>/<name>/<version>/              # 安装产物
+~/.ora/plugins/installed/<namespace>/<identifier>/<version>/              # 安装产物
 ```
 
 派生规则保证不同源不会共享目录，同时与只有单一默认源时期的路径保持一致。
@@ -195,7 +195,7 @@ sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
 - 扫描不跟随符号链接，缺失目录不报错；路径先排序，保证结果与文件系统枚举顺序无关。
 - 无法读取或解析的 `orax.toml` 被跳过并记 warning，同时通过 `RegistryBuild::skipped()` 报告，
   单个坏文件永远不会让整次构建失败。
-- 条目按 `namespace/name` 排序后去重，**同 id 保留先出现者**（源顺序 → 路径顺序），因此合并
+- 条目按 `namespace/identifier` 排序后去重，**同 id 保留先出现者**（源顺序 → 路径顺序），因此合并
   列表与安装解析对同一 id 的选择完全一致。
 - `logo.svg` 经安全校验后内联进索引：≤50 KiB、良构 XML、禁止 `<script>` / `<foreignObject>`、
   事件处理属性以及指向外部网络资源的 `href`/`xlink:href`（`ora_utils::svg`）。图标缺失是常态且
@@ -213,7 +213,7 @@ sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
   "plugins": [
     {
       "id": "official/ora-space.weather",
-      "name": "ora-space.weather",
+      "identifier": "ora-space.weather",
       "title": "Weather",
       "kind": "workbench",
       "namespace": "official",
@@ -226,7 +226,7 @@ sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
 }
 ```
 
-- **`id`**：由 `namespace` + `identifier` 生成的唯一标识，序列化为 `namespace/name` 字符串。
+- **`id`**：由 `namespace` + `identifier` 生成的唯一标识，序列化为 `namespace/identifier` 字符串。
 - **`logo`**：已通过安全校验的 SVG 源文本；条目未提供时为 `null`。
 - **`release_targets`**：缓存的发布资产目标集合——`null` 表示没有可下载 release，`[]` 表示通用
   资产，非空数组表示精确 target 列表。UI 据此在下载任何资产之前就能禁用不兼容条目的安装。
