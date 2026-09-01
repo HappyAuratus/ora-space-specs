@@ -1,11 +1,11 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 来源派生 Namespace：用 Marketplace Source 身份替代清单自述的 namespace
 
 插件的 `namespace` 不再由条目清单声明，而由发布该条目的 Marketplace Source 决定：字段从清单
-schema 中移除，`<namespace>/<name>` 中的 namespace 段由宿主从**规范化后的 source URL** 派生为一个
+schema 中移除，`<namespace>/<identifier>` 中的 namespace 段由宿主从**规范化后的 source URL** 派生为一个
 定长、文件系统安全的标识，并在 source 首次绑定时持久化。同时清单解析从「拒绝未知字段」改为
 「忽略未知字段」，使清单 schema 具备向前兼容能力。
 
@@ -29,7 +29,7 @@ schema 策略相关的部分：
 | 清单声明 `namespace`，resolver 1 下封闭为 `official` | **修改**：字段移除，改由 source 派生 |
 | 条目唯一标识为 `<namespace>/<identifier>` | 继承标识形状，**修改**其中 namespace 的来源 |
 | 跨源同 id 去重，先出现的源胜出 | **修改**：不同源的同一插件天然是不同 id，不再互相遮蔽 |
-| 安装身份完全由包内清单决定 | **修改**：name/version/kind 归清单，namespace 归安装目录 |
+| 安装身份完全由包内清单决定 | **修改**：identifier/version/kind 归清单，namespace 归安装目录 |
 | 发布资产、target 选择、索引缓存、README/Logo | 继承，不变 |
 
 ## 背景
@@ -40,7 +40,7 @@ schema 策略相关的部分：
 - **枚举无法容纳用户自建源。** 新增一个 namespace 取值意味着改 Rust 封闭枚举并发版，而允许用户
   自行添加 marketplace source，恰恰要求身份空间在运行期可扩展。
 - **任何源都可以发布任何 id。** 第三方源只要写下与官方相同的 `identifier`，就产生完全相同的
-  `official/<name>`。索引合并按源顺序先到先得去重，排在前面的源可以静默遮蔽官方条目，用户在
+  `official/<identifier>`。索引合并按源顺序先到先得去重，排在前面的源可以静默遮蔽官方条目，用户在
   市场里看不出条目来自哪个仓库；安装与后续更新都会跟随遮蔽者。
 - **命名冲突没有仲裁者。** 两个互不相识的第三方源使用同一 `identifier` 时，谁先配置谁获胜，
   结果随源顺序变化而变化，不是稳定身份。
@@ -121,18 +121,22 @@ https://GitHub.com/Acme/Awesome-Plugins.git/  ⇒  awesome-plugins.3f9a1c2d
 
 派生只在一个 source **首次绑定时**发生一次，结果随 source 配置持久化，之后只读：
 
-- 规范化规则若在将来需要扩展（新的等价 URL 形态），已绑定的身份不跟着变。派生函数是契约，
-  持久化是这条契约在本机的兑现记录。
-- 删除某个 source 后再以同一 canonical URL 添加回来，命中历史绑定复用原 namespace，而不是生成
-  第二个身份。
-- 因此 namespace 的准确语义是「**首次引入该插件的来源**」，不是「该插件当前所在的 URL」。这一点
-  必须写进用户可见文案。
+  - 规范化规则若在将来需要扩展（新的等价 URL 形态），已绑定的身份不跟着变。派生函数是契约，
+    持久化是这条契约在本机的兑现记录。
+    例如，若未来把某种新的 URL 写法识别为与现有 source 等价，重新计算时也不能因此改写已有插件的
+    namespace、安装目录或关联数据；新的写法只能解析到原有绑定。
+  - 删除某个 source 后再以同一 canonical URL 添加回来，命中历史绑定复用原 namespace，而不是生成
+    第二个身份。
+  - 因此 namespace 的准确语义是「**首次引入该插件的来源**」，不是「该插件当前所在的 URL」：它表示
+    插件首次由哪个 Marketplace Source 引入并完成绑定，而不是每次根据当前 URL 重新现算的结果。即使
+    source 被删除后以等价 URL 重新添加，仍应复用原绑定；URL 的变化最多使插件暂时与市场条目脱钩，
+    不能改变已安装插件的身份。这一点必须写进用户可见文案。
 
 ### D4 保留 namespace
 
 | namespace | 绑定对象 | 理由 |
 |---|---|---|
-| `official` | 默认 marketplace，短路返回，不走派生 | 第一方来源的可读标识；绝大多数插件出自这里，`official/<name>` 比 `marketplace.a1b2c3d4/<name>` 在目录、日志与错误信息中都可读得多 |
+| `official` | 默认 marketplace，短路返回，不走派生 | 第一方来源的可读标识；绝大多数插件出自这里，`official/<identifier>` 比 `marketplace.a1b2c3d4/<identifier>` 在目录、日志与错误信息中都可读得多 |
 | `local` | 本地 `.orax` 导入 | 本地包没有 source URL，无从派生，必须有确定归属 |
 
 派生函数必须显式拒绝产出这两个值。
@@ -147,9 +151,9 @@ https://GitHub.com/Acme/Awesome-Plugins.git/  ⇒  awesome-plugins.3f9a1c2d
 
 新规则：
 
-> **name、version、kind 由包内清单决定；namespace 由安装目录决定。**
+> **identifier、version、kind 由包内清单决定；namespace 由安装目录决定。**
 
-安装路径 `installed/<namespace>/<name>/<version>/` 本来就是宿主写的，一级目录名即是权威记录，
+安装路径 `installed/<namespace>/<identifier>/<version>/` 本来就是宿主写的，一级目录名即是权威记录，
 不需要额外的来源 sidecar。这条同时保证身份一旦落盘就不再由任何可变输入决定 —— 见下文。
 
 ### D6 索引合并语义变化
@@ -170,27 +174,19 @@ https://GitHub.com/Acme/Awesome-Plugins.git/  ⇒  awesome-plugins.3f9a1c2d
 字符集、**没有长度上限**，而它是文件系统路径的一级目录名。类型化之后，长度与字母表约束有唯一
 归属，D2 的 33 字节上界由类型本身保证。
 
-### D8 安装期拒绝 name 段冲突的 agent 包
+### D8 agent 标识使用 canonical Plugin ID
 
-安装或导入 `agent` kind 的包时，若其 `identifier`（plugin id 的 name 段）与任一已安装 agent 相同，
-拒绝安装并指明冲突对象；用户需先卸载其中一个。更新同一插件不触发该检查 —— 相同 plugin id 不是
-冲突。
+`agent` kind 的运行期标识以及 `sessions.agent_cli` 字段使用完整的 canonical Plugin ID，而不是只使用
+其中的 `identifier`（历史上的 name 段）。因此，两个 source 发布相同 `identifier` 的 agent 时，仍然
+拥有不同的 agent 标识，可以同时安装、监督和绑定会话；不再因为 name 段相同而在安装期拒绝。
 
-**为什么需要这条规则。** 会话绑定的 agent 标识只取 plugin id 的 name 段，namespace 在这一步被
-丢弃；`sessions` 行与 workflow snapshot 里冻结的也是这个不含 namespace 的标识。今天两个源的同名
-agent 因 plugin id 完全相同而在安装期被直接拒绝 —— **name 段的唯一性是 plugin id 唯一性的副产品**。
-D2 让 plugin id 唯一之后，这个副产品消失了：两个包获得不同 id、不同目录，都能装上，却映射到同一个
-agent 标识。
+这项变更不承担向后兼容义务：既有只保存 name 段的 `agent_cli` 数据不在本决策范围内，实施时直接按
+canonical Plugin ID 写入和读取。相同 canonical Plugin ID 表示同一个 agent，按正常的更新语义处理；
+只有 canonical Plugin ID 不同的 agent 才是不同实例。
 
-**为什么必须在安装期。** 运行期的 agent 监督表以该标识为键，重复者被丢弃并只留一条告警，因此
-两个包中只有一个真正可用，另一个占着磁盘却是死的；用户在 agent 选择器里也只看得到一个，因为
-选择器完全由运行期监督结果派生。更糟的是胜负规则不可解释：遍历顺序是安装列表的 plugin id 序，
-即 **namespace 字母序**，后装一个字母序靠前的同名包会把已有会话的 agent 静默换给另一个包。安装期
-拒绝把这个不可见的二选一换成一次可见的、有明确操作建议的失败。
-
-**范围与代价。** 仅对 `agent` kind 生效：其余 kind 的下游身份都带 namespace，天然隔离，照常并存。
-代价是 D6「不同源的同名插件可并存」对 agent kind 不成立 —— 这是有意的取舍，换取会话绑定不产生
-歧义。彻底的解法是提高 agent 标识本身的粒度，见下文。
+这样，运行期监督表、agent 选择器和会话绑定都以完整插件身份为键，namespace 不会在身份匹配时被
+丢弃。D6 关于不同 source 的同名条目可以并存的规则也因此对 `agent` kind 成立，不需要额外的安装期
+冲突仲裁或依赖遍历顺序决定胜负。
 
 ## 为什么不是这些替代方案
 
@@ -210,16 +206,16 @@ plugin id 的一半，而 plugin id 是五处持久化状态的匹配键：
 
 | 位置 | plugin id 在其中的角色 |
 |---|---|
-| `installed/<ns>/<name>/<version>/` | 安装目录 |
-| `plugins/data/<ns>/<name>/` | 插件私有数据目录，绑定给 `ora/storage/*`；也是 MCP 与全部插件配置 `store.json` 的所在 |
-| `skills` 表 | `namespace` 列存**完整 plugin id**，行 id 为 `plugin:<plugin_id>:<name>` |
+| `installed/<ns>/<identifier>/<version>/` | 安装目录 |
+| `plugins/data/<ns>/<identifier>/` | 插件私有数据目录，绑定给 `ora/storage/*`；也是 MCP 与全部插件配置 `store.json` 的所在 |
+| `skills` 表 | `namespace` 列存**完整 canonical Plugin ID**，行 id 为 `plugin:<plugin_id>:<skill-name>` |
 | `effect_sources` 表 | `UNIQUE(effect_kind, source_kind, namespace, identifier)`，namespace 同为完整 plugin id |
 | `effect_consumers` 表 | identity_key 为完整 plugin id，storage key 为其摘要 |
 
 若某个已安装插件的 namespace 事后被改写，后果不是「多出一条无害的旧数据」：
 
-- 插件 Skill 的写入与清理**完全按 `namespace = <plugin id>` 匹配**。namespace 一变，新 id 的写入
-  和卸载都碰不到旧行，旧 skills 行与 `effect_sources` 永远保持 active，且卸载插件也清不掉。
+- 插件 Skill 的写入与清理**完全按 skills 表的 `namespace = <canonical Plugin ID>` 匹配**。namespace 一变，
+  新 id 的写入和卸载都碰不到旧行，旧 skills 行与 `effect_sources` 永远保持 active，且卸载插件也清不掉。
 - skills 的活跃唯一索引是 `(namespace, name)`，两行 namespace 不同即合法共存，不会报错，只会
   静默出现两个同名技能。
 - Skill 的 native identity 是**技能名本身，不含 namespace**。两个 Desired Effect 落到同一
@@ -229,8 +225,8 @@ plugin id 的一半，而 plugin id 是五处持久化状态的匹配键：
   丢失，恢复既有会话时按持久化的 agent session id 加载会失败；MCP 与插件配置表现为用户填写的
   内容凭空消失。
 
-`sessions`、`workflows`、`agents`、会话历史文件**不在这个清单里**：会话持久化的 `agent_cli` 是
-plugin id 的 name 段，历史路径只由 Ora 自己的 session UUID 分片，workflow 与 agent definition 的
+`sessions`、`workflows`、`agents`、会话历史文件**不在这个清单里**：会话持久化的 `agent_cli` 是完整
+canonical Plugin ID，历史路径只由 Ora 自己的 session UUID 分片，workflow 与 agent definition 的
 namespace 恒为 `local` 且插件不向这两张表贡献任何行。
 
 在 D3 + D5 之下，即便 source 配置发生变化，已安装插件的最坏后果也只是**与来源脱钩**（市场显示
@@ -241,16 +237,6 @@ namespace 恒为 `local` 且插件不向这两张表贡献任何行。
 持久化行会绕过 Effect 的 ownership 账本，留下无主的 Managed Item；且已发布的 Effect revision 是
 不可变的，其中冻结的安装路径会与改写后的 source 行互相矛盾。
 
-## 本决策未解决的问题
-
-**agent 标识的粒度仍然低于插件身份。** D8 用安装期拒绝消除了歧义，但没有提高 agent 标识本身的
-表达力：它依然只携带 name 段，因此系统无法表达「同名但来自不同来源的两个 agent」这一状态，只能
-禁止它。这在 D6 的整体方向上是一处例外。
-
-彻底的解法是把 agent 标识升级为完整 plugin id，届时同名 agent 可以并存，D8 的安装期拒绝也可以
-撤销。但该标识同时冻结在会话行与 workflow snapshot 的 graph JSON 中，改动面和迁移策略都超出本
-决策范围，应作为本目录的下一个 ADR 单独决策。
-
 ## 不变量
 
 1. namespace 由宿主生成，永远不来自任何第三方可编辑的清单内容。
@@ -259,12 +245,13 @@ namespace 恒为 `local` 且插件不向这两张表贡献任何行。
 3. source 与 namespace 的绑定一旦写入即不可变。
 4. namespace 是单个合法路径段：`[a-z0-9-.]`、非空、不超过 33 字节、不是 `.` 或 `..`。
 5. `official` 与 `local` 是保留字，派生结果永远不得等于它们。
-6. 安装包的 name/version/kind 来自包内清单，namespace 来自安装目录；两者不一致时判为损坏并上报，
+6. 安装包的 identifier/version/kind 来自包内清单，namespace 来自安装目录；两者不一致时判为损坏并上报，
    不猜测。
 7. 已安装插件的 namespace 不因任何配置变化而改变。
 8. 清单中的未知字段被忽略；必填字段缺失仍然是硬错误，断裂性 schema 变化仍由 `resolver` 版本承担。
 9. 跨源同名条目并存而不互相遮蔽；消歧发生在展示层，不发生在索引合并层。
-10. 同一 name 段的 agent 插件在任一时刻至多有一个被安装。
+10. `agent` 的运行期标识与 `sessions.agent_cli` 使用完整 canonical Plugin ID；不同 source 的同名
+    agent 可以并存，只有相同 canonical Plugin ID 才表示同一个 agent。
 
 ## 落地顺序
 
@@ -274,6 +261,6 @@ namespace 恒为 `local` 且插件不向这两张表贡献任何行。
    迁入 domain 并带上长度边界，索引构建、安装与发现改为由调用方提供 namespace —— 此步一律提供
    `official`，系统行为不变。
 2. **接入派生与持久化。** source 绑定时派生并落库，索引与安装改用绑定值，本地导入改用 `local`，
-   并加入安装期 agent name 段冲突拒绝。
+   并让 agent 标识与 `sessions.agent_cli` 使用完整 canonical Plugin ID。
 
 这样拆的目的是让派生规则本身可以被单独评审，而不必同时审身份来源的迁移。

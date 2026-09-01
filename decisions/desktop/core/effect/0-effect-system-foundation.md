@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: implemented
 ---
 
 # Effect 系统基础：以 Generic Target 组织声明式收敛
