@@ -5,7 +5,7 @@
 adapter conformance 测试。
 
 架构边界和不变量来自
-[Effect 系统基础决策](../../../../decisions/desktop/core/effect/00000000-effect-system-foundation.md)。
+[Effect 系统基础决策](../../../../decisions/desktop/core/effect/0-effect-system-foundation.md)。
 
 ## 阅读与维护规则
 
@@ -33,3 +33,4 @@ adapter conformance 测试。
 - [Unowned Observed Items Must Never Be Adopted or Mutated](ownership-and-sharing.md#unowned-observed-items-must-never-be-adopted-or-mutated)
 - [Shared Resource Contributions Must Agree on Materialization Contract](ownership-and-sharing.md#shared-resource-contributions-must-agree-on-materialization-contract)
 - [Unfinished Operations Must Enter RecoveryRequired Without Guessing](journal-and-recovery.md#unfinished-operations-must-enter-recoveryrequired-without-guessing)
+- [Plugin Skill Publication Must Converge Through Effect Ownership](skill/plugin-skill-publication.md#plugin-skill-publication-must-converge-through-effect-ownership)
