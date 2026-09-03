@@ -43,3 +43,4 @@ namespace 相关的身份、绑定与去重规则以后者为准。
 
 - [Uninstalling a Plugin Must Clear Every Ownership Row Its Full Plugin ID Wrote](ownership-continuity.md#uninstalling-a-plugin-must-clear-every-ownership-row-its-full-plugin-id-wrote)
 - [Agent Identity and Session Resolution Must Key Off the Full Canonical Plugin ID](ownership-continuity.md#agent-identity-and-session-resolution-must-key-off-the-full-canonical-plugin-id)
+- [A Session Bound to an Unavailable Agent Can Continue After Switching Agents](ownership-continuity.md#a-session-bound-to-an-unavailable-agent-can-continue-after-switching-agents)

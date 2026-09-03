@@ -103,3 +103,51 @@ Current；而如果旧行恰好不再冲突，则是另一种后果——无主�
 - 来源派生 Namespace 决策「与 approved 决策的偏离」：agent 监督不再做身份仲裁，监督集合恒等于
   已安装的 agent 集合，这一推论本身需要独立的运行期证据，不能只由标识函数的纯计算测试代替。
 - 来源派生 Namespace 决策不变量 10。
+
+## A Session Bound to an Unavailable Agent Can Continue After Switching Agents
+
+### 风险
+
+namespace 规则变化、插件卸载或本机安装集变化都可能使历史会话保存的 `sessions.agent_cli`
+找不到当前可用的 agent。若前端把这一可恢复状态表述为「必须重新安装原插件」，或者将 agent
+选择器与发送链路一起禁用，用户就无法通过切换到已可用的 agent 保留会话历史并继续对话。
+
+### 前置状态
+
+- 一个已有会话保存了无法在当前安装中解析或监督的 `agent_cli`。
+- 当前安装中至少还有一个可用 agent。
+
+### 触发
+
+用户打开该会话，在 agent 选择器中选择一个可用 agent，然后发送下一条消息。
+
+### 必须成立
+
+- 前端明确提示「当前 Agent 不可用，请切换 Agent 继续对话」，不把重新安装原插件表述为
+  继续对话的唯一途径。
+- 即使旧 agent 无法创建运行期 actor，`session.load` 仍然从 Ora 的持久化记录回放已有历史并正常完成。
+- agent 选择器仍然可用，且只提供当前可达的 agent。
+- 下一条消息按 Ora 既有会话切换顺序先执行 `session.switchAgent`，再在同一会话上执行
+  `session.prompt`；会话标识与历史不被替换。
+
+### 禁止结果
+
+- 提示用户只能重新安装原插件，或只提供前往插件市场的恢复入口。
+- `session.load` 在回放 Ora 历史前因旧 agent 未安装而返回 `agent_runtime_unavailable`。
+- 因旧 agent 不可用而禁用 agent 选择器。
+- 已选择新 agent 后仍按旧 `agent_cli` 判定发送不可用，或绕过既有 `session.switchAgent`
+  另起一段新会话。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 旧 agent 不可用时，前端展示切换 agent 的恢复提示且不再显示插件市场按钮 | `SessionAgentBanner > directs the user to switch agents when the bound package is gone` | `Covered` |
+| 旧 agent 未安装且无法恢复 actor 时，后端仍回放 Ora 持久化历史并以 `Completed` 结束 | `ora_backend::agent_runtime::unavailable_session_tests::loads_recorded_history_without_the_session_agent` | `Covered` |
+| 从不可用 agent 选择可用 agent 后，下一条消息通过既有 `switchAgent` 再 `prompt` 的链路继续同一会话 | `WorkspaceView > moves a session off an unavailable agent with the next message` | `Covered` |
+
+### 决策依据
+
+- 来源派生 Namespace 决策「namespace 一旦落盘就不可改变」：`sessions.agent_cli` 失配是可通过
+  重新选择 agent 恢复的运行期状态。
+- 来源派生 Namespace 决策 D8 与不变量 10。
