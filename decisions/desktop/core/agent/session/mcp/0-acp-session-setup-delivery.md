@@ -18,7 +18,6 @@ MCP 不发布 Effect Source、不进入 Workspace Desired State，也不创建�
 Runtime、Effect Agent adapter，以及 Agent 插件现有的透明 ACP relay 落地。本文固定 MCP 作为 Session
 Runtime Input 的系统承诺。MCP 静态包和 Settings 规则继续由
 `desktop/plugin/category/mcp/0-static-mcp-configuration.md` 定义；Skill 仍按 Effect 决策物化。
-未发布的文件物化方案没有进入正式版，因此本文不承担已发行版本的旧文件迁移义务。
 
 ## 术语与边界
 
