@@ -34,3 +34,5 @@ adapter conformance 测试。
 - [Shared Resource Contributions Must Agree on Materialization Contract](ownership-and-sharing.md#shared-resource-contributions-must-agree-on-materialization-contract)
 - [Unfinished Operations Must Enter RecoveryRequired Without Guessing](journal-and-recovery.md#unfinished-operations-must-enter-recoveryrequired-without-guessing)
 - [Plugin Skill Publication Must Converge Through Effect Ownership](skill/plugin-skill-publication.md#plugin-skill-publication-must-converge-through-effect-ownership)
+
+- [Effect 时间语义与升级](time.md)

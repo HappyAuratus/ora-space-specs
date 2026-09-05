@@ -252,6 +252,11 @@ log。删除历史 Audit 不得改变系统行为。
 
 ## 扩展边界
 
+时间语义由后续决策
+[Effect 的行审计时间由写事务拥有，业务时间独立保存](20260905-separate-audit-and-business-time.md)
+细化：行审计不再由源数据版本或 worker snapshot 决定，恢复检测时间独立持久化；原有 generation、
+fencing、ownership 和事务原子性约定保持不变。
+
 Effect Core 通过泛型和 trait 进行静态分派，同时拥有内建实现持久化所需的封闭、强类型 wire model。
 新增内建 Effect kind 会扩展相应 definition/parameters/payload enum，并在集成 crate 提供新的 planner
 逻辑；这项显式改动优于用任意 JSON 隐藏未知业务分支。它不应复制 Target、Status、Request、
