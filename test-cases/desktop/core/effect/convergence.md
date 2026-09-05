@@ -1,5 +1,23 @@
 # Effect 收敛
 
+## Older Completion Preserves Newer Target Intent
+
+- 风险：旧 snapshot 整行覆盖 Target Status，回退 desired_generation 或 status_version，并在仍有新工作时显示 Current。
+- 前置状态：worker 持有有效 claim，已规划 generation N；readiness 返回前发布更高 generation M。
+- 触发：旧 reconcile 提交无 mutation 的 projection，或完成已执行 mutation 的 finalization。
+- 必须成立：desired 保留 M，observed/applied/ready 只推进到已有证据的 N，phase 为 Pending；status_version 不丢失并发更新；request 可再次领取，下一轮可收敛到 M。
+- 禁止结果：仅保住 updated_at、用旧 snapshot 覆盖新 intent、错误报告 Current、丢失新 request，或因新 generation 拒绝已有外部副作用的正常收尾。
+- 决策依据：[Effect 系统基础](../../../../decisions/desktop/core/effect/0-effect-system-foundation.md) 中的状态水位、claim 与 journal 收尾规则。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 无 mutation 的旧 generation 0 完成后，状态保留 desired=1、ready=0、Pending，且新 request 与审计时间保留 | `ora_db::effect_repository_tests::newer_wakeup_during_projection_commit_preserves_request_timestamp` | `Covered` |
+| mutation 的旧 generation 1 完成后保留 desired=6、ready=1、Pending 与较新的状态版本；外部内容已写入且没有未完成 Operation | `ora_db::effect_repository_tests::stale_status::older_mutation_finalizes_and_newer_intent_converges_on_the_next_pass` | `Covered` |
+| 保留的 request 可再次领取，下一轮全部水位到达 6、状态 Current、请求完成，外部内容保持正确 | 同上 | `Covered` |
+| 同一状态和 Condition 重放不制造状态版本变化或破坏 observation 历史 | `ora_db::effect_repository_tests::time_queue::scheduling_and_condition_history_use_independent_time` | `Covered` |
+
 ## Replaying a Converged Generation Must Have No Side Effects
 
 ### 风险
