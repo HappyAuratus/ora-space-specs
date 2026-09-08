@@ -65,3 +65,30 @@ acme-plugins.3f9a1c2d/image-tools
 同名插件可以来自不同 source，并因此拥有不同的 canonical Plugin ID；它们不是同一个插件。一个
 source URL 的等价写法可以归一化到同一个 source 身份，但 URL 写法的变化不能改写已经落盘的
 canonical Plugin ID。
+
+## Node Worktree
+
+### Workspace
+
+`Workspace` 是一个可被 Ora 绑定、定位和使用的工作上下文，具有独立的 `WorkspaceId`、
+`WorkspaceKind`、生命周期和 `WorkspaceLocation`。同一个 Project 下，Main Workspace 与每个
+Task 的 Isolated Workspace 都是独立的 Workspace；Git worktree 是该 Workspace 在 Node 上的
+物理 checkout。当前 Main Workspace 只通过 `workspaces` 与 `workspace_locations` 表示，不在
+`worktrees` 表中建立记录；`Worktree` 记录是 Isolated Workspace 的 Git 元数据扩展，不是另一个
+领域身份。
+_Avoid_: worktree as the domain identity, checkout path as Workspace identity
+
+### Main Worktree
+
+`main worktree` 是 Project 的 Main Workspace 在目标 Node 所在环境中对应的主 Git checkout。
+Main Workspace 本身是一个独立的 Workspace，具有自己的 `WorkspaceId` 和 `WorkspaceLocation`；
+当前实现不为它建立 `worktrees` 表记录；第一版要求该 Workspace 及其 checkout 预先存在，Ora
+只以它为基准创建 task worktree。
+_Avoid_: Controller checkout, local worktree, task worktree
+
+### Task Worktree
+
+`task worktree` 是 Task 所属的 Isolated Workspace 在目标 Node 上对应的、由 Ora 创建并管理生命
+周期的隔离 Git checkout。Task Workspace 与 Main Workspace 分别拥有独立的 `WorkspaceId`、
+`WorkspaceLocation` 和生命周期；删除 task worktree 不得删除或重置 main worktree。
+_Avoid_: main worktree, workspace root, task checkout as a separate identity
