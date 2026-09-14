@@ -61,11 +61,13 @@ Host 对每个 stderr logical record 尝试解析 v1；其它内容一律以 `IN
 
 解析按字节增量进行，不能把一次 pipe read 当成一条记录。buffer 与持久化记录均有上限；超长输入拆为有标识和顺序的有界 raw 片段，保留内容而不无限增长内存。无效 UTF-8 必须使用可追溯的有界编码表达，不能在不可逆替换后声称保留了原字节。
 
-### D6：Ora 独立配置所有插件共用的日志级别，识别后再过滤
+### D6：Ora 按 Plugin ID 分别配置日志级别，识别后再过滤
 
-Ora 提供一个 Host-owned、持久化的 Plugin log level 设置，由所有插件共用，允许用户在 `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 中选择；未设置时默认 `INFO`。该设置与 Ora runtime log level 独立：改变其中一个不改变另一个。Host 先按 D5 得到每条记录的原级别，再用当前有效的 Plugin log level 作为**最低落盘级别**过滤，最后交给持久化队列。例如设为 `INFO` 时，`TRACE`、`DEBUG` 不落盘，`INFO`、`WARN`、`ERROR` 保持原级别落盘；设为 `DEBUG` 时，后四级保持原级别落盘。它不是将所有记录改写为所选级别。
+Ora 为每个 canonical `PluginId` 提供独立的 Host-owned、持久化 Plugin log level 设置，允许用户在 `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 中选择；该插件未设置时默认 `INFO`。设置不通过 `ora/storage/*` 暴露，也不接受插件自报身份或级别。不同 Plugin ID 的设置互不影响，且均与 Ora runtime log level 独立。Host 先按 D5 得到每条记录的原级别，再用该进程绑定的 Plugin ID 当前有效级别作为**最低落盘级别**过滤，最后交给持久化队列。例如设为 `INFO` 时，`TRACE`、`DEBUG` 不落盘，`INFO`、`WARN`、`ERROR` 保持原级别落盘；设为 `DEBUG` 时，后四级保持原级别落盘。它不是将所有记录改写为所选级别。
 
-Ora 设置变更成功后，新的有效阈值立即应用于所有正在运行及随后启动的插件，不要求插件重启；设置持久化失败时不得向用户报告成功，当前有效阈值与持久化值最终应保持一致。Host 是落盘过滤的权威，Plugin SDK 无须先收到级别通知才能保证落盘结果。这项设置不控制插件、依赖或原生代码向 stderr 写入的字节量；低于阈值的内容仍可能被传输和解码，只是不进入持久化队列。per-plugin 覆盖不在首版范围内。
+Ora 设置变更成功后，新的有效阈值立即应用于该 Plugin ID 正在运行及随后启动的进程代，不要求重启；其它插件的有效阈值保持不变。每条记录以 Host 做过滤决定时的阈值为准，已入队记录不因之后的设置变化被追溯删除。设置持久化失败时不得向用户报告成功，该插件的有效阈值与持久化值最终应保持一致。Host 是落盘过滤的权威，Plugin SDK 无须先收到级别通知才能保证落盘结果。这项设置不控制插件、依赖或原生代码向 stderr 写入的字节量；低于阈值的内容仍可能被传输和解码，只是不进入持久化队列。
+
+级别设置按 canonical Plugin ID 而非版本归属。插件升级与停用保留设置；卸载选择保留插件数据时保留设置，以便同一 ID 重装后继续使用；选择删除数据时清除该 ID 的设置，同一 ID 重装后恢复默认 `INFO`。删除数据的卸载若未完成，原设置仍须可恢复；设置清除失败也不能报告卸载与数据清理已全部成功。这项 Host-owned 配置的清理与日志目录的数据处置一致，但插件不能通过修改 `store.json` 或自己的 storage 改变它。
 
 raw 与无法识别的 envelope 归为 `INFO`，所以 Ora 设为 `WARN` 或 `ERROR` 时，这类内容会被策略过滤；这属于有意过滤，不记作 transport 或 sink 丢失。过滤不能提前作用于 stderr 字节，否则结构化记录中的真实 `ERROR` 又会被压成默认 `INFO`。
 
@@ -95,7 +97,8 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 | 直接把 stderr 当 `ERROR` | 无须解码级别，但 stdout 已被协议占用，正常 `INFO` 也经 stderr，因而会制造误报。 |
 | 任意 JSON stderr 直接当结构化日志 | 省去 sentinel，但第三方库输出的 JSON 会被误认为 SDK 记录；版本化 envelope 保留可解释的 raw fallback。 |
 | 要求所有 stderr 只输出结构化 envelope | 消除 raw 歧义，但第三方依赖和原生组件可能直接写 stderr，其诊断会丢失。 |
-| 直接复用 Ora runtime log level | 少一个设置入口，但用户为排查某个插件开启 `DEBUG` 会同时放大 Host 日志，反之调整 Host 日志会意外改变插件诊断的保留范围；两种 ownership domain 需要独立阈值。 |
+| 所有插件共用一个 Plugin log level | 只有一个设置入口，但为排查单个插件开启 `DEBUG` 会扩大全部插件的持久化量，也无法让高噪声插件单独使用较高阈值；按 Plugin ID 配置更符合日志文件的归属单位。 |
+| 直接复用 Ora runtime log level | 少一套设置，但用户为排查某个插件开启 `DEBUG` 会同时放大 Host 日志，反之调整 Host 日志会意外改变插件诊断的保留范围；两种 ownership domain 需要独立阈值。 |
 | 让插件自行写文件或写在 versioned 安装包中 | 插件有更直接的控制权，但需要额外文件权限、暴露路径或随升级清除文件，也无法统一 Host 的保留策略。 |
 | Host 自动记录 child-process 输出 | 不依赖插件主动转发，但插件本就收到该流，会形成双重记录，Host 也无法决定内容和级别。 |
 | 队列满时等待或无限扩大队列 | 可以保留更多日志，但分别会让 stderr pipe 阻塞插件，或让内存随不可信输入无界增长。 |
@@ -113,7 +116,7 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 4. `logs/` 对插件的 `ora/storage/*` 列表与四种操作均不可见、不可访问。
 5. Host 不覆盖来源不明的同名日志路径；此类冲突使 sink 初始化失败而不影响 stderr drain。
 6. 每个 stderr logical record 经结构化或 raw 路径处理；尾部、超长及无效编码不因解析失败静默消失。
-7. Ora 持久化一个所有插件共用、默认 `INFO` 的独立 Plugin log level，并按当前有效阈值在识别级别后过滤。
+7. Ora 按 canonical Plugin ID 持久化独立的 Plugin log level；未设置时默认 `INFO`，每条记录按该 ID 在过滤时的有效阈值处理。
 8. stderr reader 不等待日志队列或磁盘；满队列丢弃新记录并计数。
 9. 容量拒收、sink 故障及持久化结果不确定均按进程代报告，不转为插件协议错误。
 10. 删除插件数据前，该 Plugin ID 的旧进程代 stderr 已收尾且相关日志文件句柄已释放。
@@ -125,11 +128,11 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 - 插件、依赖和它启动的外部组件可能主动输出秘密。日志只存于 Host 私有数据目录；脱敏规则与用户查看/导出时的披露边界须在相应功能中另行决定。
 - 旧 SDK 的 `[plugin:<level>]` 文本按 raw `INFO` 保存；不提供旧级别的兼容解析，也不迁移此前写入 Ora runtime log 的插件诊断。
 - rotation 文件名、阈值、压缩与默认保留窗口只影响资源策略，不改变本文的身份和失败边界，留给后续 ADR；队列容量、单条最大字节数和停止 flush 超时也留给有界实现策略，但不得改变满队列与超时后的行为。
-- per-plugin level、live tail、日志查看 UI、support bundle/export、Host ↔ Plugin correlation、远端 sink 不在本次日志落盘闭环内，须分别确定权限和契约；首版的全局 Plugin log level 设置与动态生效属于 D6，不能推迟。
+- 批量修改所有插件级别、live tail、日志查看 UI、support bundle/export、Host ↔ Plugin correlation、远端 sink 不在本次日志落盘闭环内，须分别确定权限和契约；首版按 Plugin ID 的级别设置与动态生效属于 D6，不能推迟。
 
 ## 落地顺序与验收
 
 1. **建立目录所有权。** 按 Plugin ID 创建 Host 日志目录，并使 storage 的 root list 与四种操作一致地拒绝 `logs/`。可独立验收同名路径冲突不会被覆盖、sink 失败仍持续 drain，以及 symlink/reparse-point 不越过 Host 日志根；不进行旧数据迁移。
 2. **建立传输与格式。** SDK 新 logger、`console.*` 映射、增量 stderr decoder、structured/raw fallback 和 JSONL Host metadata 同时交付。可独立验收分块与换行、超长/无效编码、保留字段覆盖，以及旧前缀按 raw `INFO` 处理；stdout 协议与 child-process 输出语义保持不变。
-3. **建立持久化与故障隔离。** Ora 的全局 Plugin log level 设置、默认 `INFO` 与动态过滤、有界队列、丢弃新记录、sink 故障分类和限次 Host 告警组成闭环。可独立验收设置变更即时作用于所有运行中插件且不改变 Ora runtime log level、持久化失败不产生虚假的成功状态，以及大量 stderr、队列满或不可写目录不会阻塞插件。从此阶段起，新产生的插件诊断只进入独立 Plugin log，不再写入 Ora 主日志。
-4. **闭合生命周期。** stop、异常退出、重启与 retain/delete uninstall 在 EOF、flush、关闭句柄之后完成各自收尾；可独立验收尾部记录与 Windows 打开文件句柄导致的清理失败被如实报告且数据可回滚。只有 ADR 评审通过并标记 `approved` 后，才在镜像 `test-cases` 目录登记上述行为的核心用例与直接证据。
+3. **建立持久化与故障隔离。** Ora 按 Plugin ID 的级别设置、默认 `INFO` 与动态过滤、有界队列、丢弃新记录、sink 故障分类和限次 Host 告警组成闭环。可独立验收调整一个运行中插件的阈值不改变另一个插件或 Ora runtime log level、未设置时使用默认值、设置持久化失败不产生虚假的成功状态，以及大量 stderr、队列满或不可写目录不会阻塞插件。从此阶段起，新产生的插件诊断只进入独立 Plugin log，不再写入 Ora 主日志。
+4. **闭合生命周期。** stop、异常退出、重启与 retain/delete uninstall 在 EOF、flush、关闭句柄之后完成各自收尾；可独立验收尾部记录与 Windows 打开文件句柄导致的清理失败被如实报告且数据可回滚，插件升级和保留数据的卸载保留级别设置、删除数据的卸载清除设置。只有 ADR 评审通过并标记 `approved` 后，才在镜像 `test-cases` 目录登记上述行为的核心用例与直接证据。
