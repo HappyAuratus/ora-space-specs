@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 插件日志：由 Host 按 Plugin ID 独立持久化，而非混入 Ora runtime log
 
 Ora 将插件自身的诊断信息从 Ora runtime log 分离：插件 stdout 继续专用于 Ora Plugin Protocol，Plugin SDK 经 stderr 发送带级别的日志，Host 读取、校验并按 canonical `PluginId` 写入独立 JSONL 日志。Host 自身的插件生命周期、协议及日志设施故障仍写入 Ora runtime log。日志写入不得阻塞插件进程；容量或 I/O 故障造成的丢失必须计数并报告。
 
-本文为 `proposed`，供评审日志归属、目录布局、SDK 写入边界、传输格式、过滤和失败行为；尚未定义已批准的实现契约或核心测试用例。它涉及 `ora-plugin-runtime`、`ora-plugin-lifecycle` 的进程与卸载边界、Plugin SDK、Host 设置及日志设施。插件此前没有独立日志，本决策不迁移既有 Ora runtime log，也不保留旧 SDK stderr 前缀的级别语义。旧插件仍可运行，其 stderr 按 raw 规则处理；现有 Plugin Protocol 帧格式、插件 storage、已安装包目录和 `ora/childprocess/*` 的返回语义不变。日志读取、Host 查看 UI、导出和远端传输不由本决策交付。
+本文为 `approved`，已批准日志归属、目录布局、SDK 写入边界、传输格式、过滤和失败行为；批准不代表现有实现已满足全部约束。核心验证义务及当前证据见[插件日志核心用例](../../../../test-cases/desktop/plugin/logging/host-owned-plugin-log.md)。它涉及 `ora-plugin-runtime`、`ora-plugin-lifecycle` 的进程与卸载边界、Plugin SDK、Host 设置及日志设施。本决策不迁移既有 Ora runtime log，也不保留旧 SDK stderr 前缀的级别语义。旧插件仍可运行，其 stderr 按 raw 规则处理；现有 Plugin Protocol 帧格式、插件 storage、已安装包目录和 `ora/childprocess/*` 的返回语义不变。日志读取、Host 查看 UI、导出和远端传输不由本决策交付。
 
 ## 问题与约束
 
@@ -36,11 +36,17 @@ Ora runtime log 记录 Host 负责的发现、安装、启动、退出、协议�
 
 该布局保证的是 **storage 与日志目录在 Host API 上不可达**，不是当前所有插件进程都具备操作系统级文件隔离。Workbench 插件没有 Deno 文件权限，无法直接读取日志；Agent 插件目前拥有全局 `--allow-read` 和 `--allow-run`，因此可能绕过 Host API 读取文件或启动能访问文件的进程。只移动路径无法对 Agent 插件作出“不能直接读取”的保证；该保证需要先收紧 Agent 权限或引入进程级文件系统隔离，不在本 ADR 中伪称已经成立。
 
+新增目录不能假设磁盘路径尚未被占用。logs root 及其下各级应为普通目录，活动文件应为普通文件；类型冲突、链接或无法安全验证的路径使该插件 sink 不可用，保留原对象，不覆盖、删除或自动迁移用户文件，插件仍按 D7 运行。同一 Ora home、Plugin ID 的活动文件只允许一个 Host writer 持有写入权；此约束跨进程代，也适用于多个 Host 同时使用同一 home。未取得排他写入权时按 sink 不可用处理，不能依赖 append 模式保证整条 JSONL 不交错。
+
 ### D3：复用 JSONL event shape，但可信字段只能由 Host 填写
 
 每条持久化记录是一个 JSON object，占一行。稳定顶层字段为 `timestamp`、`level`、`target`、`message`；`method`、`context`、`error` 按需出现。Host 在接收时生成时间戳，并最后写入 `context.plugin_id`，以当前进程绑定的 canonical Plugin ID 覆盖任何同名插件输入。插件可以提供 `target`、`message`、`method`、一般 `context` 及错误详情，但不能决定可信的 Host metadata。缺少 `target` 的结构化记录使用稳定的插件默认 target；raw stderr 使用 `plugin.stderr`。
 
-`request_id`、`trace_id`、`span` 和 `generation` 不接受插件自报。前面三个字段只在未来建立 Host ↔ Plugin correlation contract 后才由 Host 填写；Host 可以附加自己掌握的进程代标识以区分同一 Plugin ID 的先后运行，插件不能伪造该身份。即使插件 payload 含这些保留键，也不能将它们提升为可信顶层字段。日志内容本身仍是不可信的插件陈述；统一 JSONL shape 只复用解析与展示约定，不把插件诊断变成 Host 事实。
+每条记录的 `timestamp` 使用 Ora 统一时钟 `ora_logging::clock::now_local`，按 RFC 3339 编码并携带本地时区偏移，表示 Host 解码得到该记录的接收时间，不是插件事件发生时间或磁盘写入时间。墙上时钟可能回拨，不能据此推断严格顺序；同代记录保持 reader 接收并成功入队的顺序。
+
+`request_id`、`trace_id`、`span`、`host_session_id` 和 `generation` 不接受插件自报。前面三个字段只在未来建立 Host ↔ Plugin correlation contract 后才由 Host 填写；每条记录必须由 Host 写入 `context.host_session_id` 与 `context.generation`。session 标识在每次 Host 启动时重新生成且不复用，generation 在该 session 内区分同一 Plugin ID 的每次启动，二者共同避免 Host 重启后复用计数器造成归属混淆。Host 清除插件提供的保留 context 键，再写入自己的身份字段；不接受额外顶层字段作为可信 metadata。
+
+日志内容本身仍是不可信的插件陈述，包括插件提供的 `level`、`target`、`method`、普通 `context` 和 `error`；统一 JSONL shape 只复用解析与展示约定，不把插件诊断变成 Host 事实。Host/UI 不得用这些字段证明调用发生、授权结果或 trace 关联；前缀也不能证明日志来自 SDK。Host 增加的编码、分片与解析失败标记同样是保留 metadata，插件同名输入不得伪造它们。
 
 Host 对单条记录及字段大小设上限，避免一个 payload 绕过 stderr buffer 上限造成内存或磁盘无限增长。日志可能包含插件主动写出的敏感内容；这项格式决策不承诺对任意第三方输出自动脱敏，未来导出必须沿用 Host 的私有日志访问边界。
 
@@ -57,7 +63,11 @@ Plugin SDK 在 SDK-owned plugin object 上提供 `plugin.logger`，支持 `TRACE
 | `console.warn` | `WARN` |
 | `console.error` | `ERROR` |
 
-`console.*` 由同一 logger 发送，使多行文本作为单条结构化消息编码。`plugin.logger.*` 是插件产生结构化日志的唯一正式 SDK 接口；它只产生诊断记录，不提供读取、列出、删除或替换日志的方法。直接 stderr 仍按 D5 作为第三方与非 SDK 诊断的 raw fallback。SDK 对标准 `console.*` 的 stdout 保护只在插件运行入口安装后生效；插件在 SDK 初始化前直接写 stdout 的既有协议风险不由日志 sink 修复。
+本文的 `console.*` 接管特指表中五个方法。SDK 在标准运行入口创建插件对象、开始协议处理及调用插件业务回调之前安装全局接管，安装成功后持续到进程退出，不因初始化失败、stop 或业务回调结束而恢复 stdout 写法。同一运行环境中第三方依赖随后调用这五个全局方法也进入同一 logger；提前缓存的原方法、独立 worker/子进程、其它 console 方法及直接 stdout 写入不在接管保证内。
+
+SDK 初始化前（包括静态 import 求值期间）的输出保持 runtime 原行为，不保证 stdout 不被污染。接管安装失败时 SDK 不进入协议运行；安装成功后的初始化错误经 stderr 报告，不回退到 stdout。其它 console 方法如需使用，由插件保证不会污染协议通道。这些边界不能被表述成整个进程自启动起的 stdout 隔离。
+
+接管方法由同一 logger 发送，使多行文本作为单条结构化消息编码。`plugin.logger.*` 是插件产生结构化日志的唯一正式 SDK 接口；它只产生诊断记录，不提供读取、列出、删除或替换日志的方法。直接 stderr 仍按 D5 作为第三方与非 SDK 诊断的 raw fallback。SDK 自己的并发写入须按完整 envelope 串行发送并处理短写；原生组件或继承 pipe 的其它进程仍可能穿插字节，Host 只对实际收到的字节流负责，不承诺恢复原本的结构化记录。
 
 ### D5：stderr 是混合字节流，按版本化 envelope 与 raw fallback 识别
 
@@ -75,11 +85,15 @@ Ora 设置变更成功后，新的有效阈值立即应用于该 Plugin ID 正�
 
 级别设置按 canonical Plugin ID 而非版本归属。插件升级与停用保留设置；卸载选择保留插件数据时保留设置，以便同一 ID 重装后继续使用；选择删除数据时清除该 ID 的设置，同一 ID 重装后恢复默认 `INFO`。删除数据的卸载若未完成，原设置仍须可恢复；设置清除失败也不能报告卸载、日志及数据清理已全部成功。这项 Host-owned 配置的清理与日志目录的数据处置一致。
 
+同一 Plugin ID 的并发设置更新与卸载必须由配置/生命周期所有者协调顺序；成功响应对应已持久化且已发布的有效值。写入失败保留此前有效值，不能让较旧请求的完成覆盖较新成功状态，也不能在删除卸载提交后由迟到更新重建该 ID 的设置。
+
 raw 与无法识别的 envelope 归为 `INFO`，所以 Ora 设为 `WARN` 或 `ERROR` 时，这类内容会被策略过滤；这属于有意过滤，不记作 transport 或 sink 丢失。过滤不能提前作用于 stderr 字节，否则结构化记录中的真实 `ERROR` 又会被压成默认 `INFO`。
 
 ### D7：队列满或 sink 故障时丢弃新记录、报告数量、继续 drain
 
 stderr reader 不能等待磁盘，也不能等待满队列腾出空间。通过过滤的记录进入容量有限的写入队列；队列满时丢弃**新到达**的记录，按 Plugin ID 与进程代累计数量，继续读取 stderr。首版不按 severity 插队，即拥塞时后来的 `ERROR` 也可能丢失。这保留先入队记录的顺序，且避免日志压力阻塞插件 pipe 或 Plugin Protocol。
+
+容量约束必须覆盖字节数，而不只是记录条数：限制解码缓冲、字段嵌套深度、JSON 转义或无效字节编码后的单条大小，以及队列总占用；可用有界条数乘以单条上限给出总界限。SDK 的主动截断或简化必须带可辨认标记，Host 不得把超限 envelope 的截断部分继续当成完整结构化事件。这里的不阻塞承诺指 Host reader 不等待 sink/队列，不保证 OS 调度停顿或任意第三方同步 stderr 写入永不阻塞。
 
 sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态，后续 stderr 仍被读取、解析和按过滤策略处理，但待写记录计入丢失；本代不无限重试或积累无界内存，下一个进程代可以重新尝试创建 sink。队列满首次发生、sink 首次故障时 Host 各记一次 `WARN`，恢复或进程代结束时报告相应丢弃数量；不得每条丢失记录都向 Ora 主日志写一次，也不得把插件原文复制过去。已经交给 sink、但 I/O 错误使持久化结果无法判定的记录应报告为结果不确定，不虚报精确的已丢失或已持久化数量。
 
@@ -89,11 +103,21 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 
 停止或替换一个插件进程代时，Host 等待进程退出，随后在**有界的整个日志收尾期限内**读取其 stderr 至 EOF，处理末尾 fragment，关闭该代入队入口，完成队列处理、flush 与文件句柄释放。此前“进程已退出”不能等同“日志已完成”；被其它进程继承的 stderr 写端也可能使 EOF 永不出现。读 EOF 或 flush 失败、超时都属于 Host 日志故障；Host 结束该代 reader 与写入入口，报告已知未提交数量及无法确定的剩余内容，不把它改判为 Plugin Protocol 失败，也不无限延长停止。
 
+reader、队列处理和 flush 共用一个截止时间，不能各自重新获得完整超时。到期即撤销该代的入队能力并终止 reader；尚未读取的 pipe 字节、未完成 fragment 及截止后旧写端产生的内容允许丢失，其数量未知，不能报告为零。已知未提交记录与已交给 I/O、结果不确定的记录分别报告，不重复计数。日志设施不以清理继承写端为由终止额外进程树。
+
+stderr 写端与 Host 文件 writer 是不同资源。取消异步等待不证明后台文件 I/O 已结束：若旧 writer 尚未释放，Host 继续持有该文件的排他写入权与清理状态，不能将其遗忘。新进程代仍可启动，但本代 sink 按不可用处理、继续 drain 并计数，不打开同一活动文件、不接收旧代队列；只有确认旧 writer 释放后，后续进程代才可重新尝试持久化。该规则接受日志损失，换取有界 stop 与确定的文件归属，不通过新旧 writer 并行写入掩盖收尾失败。
+
 卸载选择删除数据时，必须在该 Plugin ID 的日志 writer 已释放文件句柄后，将 `<home_directory>/plugins/logs/<namespace>/<name>/` 与插件 data tree 一并纳入卸载事务。若句柄无法在有界时间内释放，删除数据的卸载应报告清理失败，保留或回滚日志、数据与设置，而不能报告成功却在后台继续写入被删除或已移动的日志目录。保留数据的卸载保留现有日志并在不再写入时关闭 sink。该顺序也覆盖异常退出、启动超时和下一进程代启动，避免旧 reader 在新代开始后继续写入同一活动文件而没有归属标识。
 
 ### D9：Host-managed child process 的输出由插件选择是否记录
 
 `ora/childprocess/stdout` 和 `ora/childprocess/stderr` 继续把原始流返回给发起进程的插件；Host 不自动将这些流再存为 Plugin log。插件可选择不记录、以哪种级别记录或提取哪些结构化字段。Host 不掌握第三方 CLI 的 stderr severity，自动写入既可能重复，也可能把敏感输出持久化两遍；该选择不影响插件自己的 stderr 始终由 D5 读取。
+
+### D10：flush 不等于掉电持久化，重开文件不得拼接损坏尾部
+
+正常收尾的 flush 表示用户态缓冲已交给操作系统并释放句柄，不承诺 `fsync` 级掉电持久化；Host 崩溃、强制终止或 I/O 部分成功仍可能留下未换行尾部。取得排他写入权后，sink 在追加前检查文件是否为空或以换行结束；检查只需有界读取，不扫描整个历史文件。
+
+发现未换行尾部时，不直接追加、不截断历史内容。Host 将原活动文件在同目录以不覆盖现有文件的唯一恢复名称保留，再创建新的 `plugin.log`；恢复失败则本代 sink 不可用。恢复文件属于同一 Plugin ID 的日志目录，随 retain/delete uninstall 一并处置，Host 报告恢复事件但不复制原始内容到主日志。该机制只隔离尾部，不证明历史完整行未被篡改，也不是 rotation 或保留窗口策略。
 
 ## 为什么不是这些替代方案
 
@@ -129,6 +153,10 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 9. 容量拒收、sink 故障及持久化结果不确定均按进程代报告，不转为插件协议错误。
 10. 删除一个 Plugin ID 的日志目录前，该 ID 的旧进程代 stderr 已收尾且相关文件句柄已释放。
 11. Host-managed child process 的原始输出不由 Host 自动重复持久化。
+12. 同一活动文件至多一个 Host writer；旧 writer 未释放时，新代不能复用该文件，删除数据的卸载不能成功。
+13. 每条记录包含 Host 生成的 session/进程代归属和带本地偏移的 RFC 3339 接收时间。
+14. 收尾共用一个截止时间；超时未知剩余量与已知丢失量分开报告，不能因返回 stop 而丢失资源清理责任。
+15. 重开文件不把新记录接在未换行尾部上，恢复不得覆盖历史文件。
 
 ## 风险与本决策未解决的问题
 
@@ -137,6 +165,7 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 - Agent 插件当前拥有全局 `--allow-read` 与 `--allow-run`，可以绕过 Host API 读取日志或让子进程访问它。若系统要承诺“任何插件都不能直接读取日志文件”，必须先收紧 Agent 权限或增加进程级文件系统隔离；目录迁移本身只消除了 `ora/storage/*` 的访问路径。
 - 旧 SDK 的 `[plugin:<level>]` 文本按 raw `INFO` 保存；不提供旧级别的兼容解析，也不迁移此前写入 Ora runtime log 的插件诊断。
 - rotation 文件名、阈值、压缩与默认保留窗口只影响资源策略，不改变本文的身份和失败边界，留给后续 ADR；队列容量、单条最大字节数和停止 flush 超时也留给有界实现策略，但不得改变满队列与超时后的行为。
+  因此本决策只保证单条与内存有界，不保证日志目录的累计磁盘占用有界；磁盘耗尽按 D7 降级。D10 的恢复文件命名须唯一且不覆盖，这项正确性约束不能推迟到 rotation ADR。
 - 批量修改所有插件级别、live tail、日志查看 UI、support bundle/export、Host ↔ Plugin correlation、远端 sink 不在本次日志落盘闭环内，须分别确定权限和契约；首版按 Plugin ID 的级别设置与动态生效属于 D6，不能推迟。
 
 ## 落地顺序与验收
@@ -144,4 +173,4 @@ sink 初始化或写入失败时，当前进程代的 sink 进入不可用状态
 1. **建立独立目录所有权。** 在 `<home_directory>/plugins/logs/` 下按 Plugin ID 创建日志目录，不修改 `ora/storage/*` 的逻辑 namespace。可独立验收任意合法 storage path 均无法到达日志、SDK 不获得路径、sink 失败仍持续 drain，以及 symlink/reparse-point 不越过 canonical logs root；不进行旧数据迁移。
 2. **建立 SDK 写入与格式。** SDK logger、`console.*` 映射、增量 stderr decoder、structured/raw fallback 和 JSONL Host metadata 同时交付。可独立验收分块与换行、超长/无效编码、保留字段覆盖、旧前缀按 raw `INFO` 处理，以及 SDK 与 Plugin Protocol 均不提供日志读取方法；stdout 协议帧与 child-process 输出语义保持不变。
 3. **建立持久化与故障隔离。** Ora 按 Plugin ID 的级别设置、默认 `INFO` 与动态过滤、有界队列、丢弃新记录、sink 故障分类和限次 Host 告警组成闭环。可独立验收调整一个运行中插件的阈值不改变另一个插件或 Ora runtime log level、未设置时使用默认值、设置持久化失败不产生虚假的成功状态，以及大量 stderr、队列满或不可写目录不会阻塞插件。从此阶段起，新产生的插件诊断只进入独立 Plugin log，不再写入 Ora 主日志。
-4. **闭合生命周期。** stop、异常退出、重启与 retain/delete uninstall 在 EOF、flush、关闭句柄之后完成各自收尾；可独立验收尾部记录与 Windows 打开文件句柄导致的清理失败被如实报告，独立日志目录、data tree 与级别设置保持一致的保留或回滚结果。插件升级和保留数据的卸载保留级别设置及日志，删除数据的卸载清除两者。只有 ADR 评审通过并标记 `approved` 后，才在镜像 `test-cases` 目录登记上述行为的核心用例与直接证据。
+4. **闭合生命周期。** stop、异常退出、重启与 retain/delete uninstall 按 D8 的共同截止时间及 writer 排他权收尾；验收继承写端不关闭、旧 writer 阻塞、新代启动与删除竞争、Host 重启后的身份区分，以及 D10 的残缺尾部恢复。超时必须如实报告，日志目录、data tree 与级别设置保持一致的保留或回滚结果。插件升级和保留数据的卸载保留级别设置及日志，删除数据的卸载清除两者。核心用例已随批准建立；补齐其中缺失证据并验证实现后，才可标记 `implemented`。
