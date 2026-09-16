@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 插件集合包：Extension Pack 是安装编排条目，不是运行时插件

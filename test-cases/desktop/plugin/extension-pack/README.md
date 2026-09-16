@@ -8,14 +8,19 @@
 
 ## 当前状态
 
-根决策尚处于 `proposed`。按 ADR 生命周期，核心测试用例在该决策评审通过并标记为 `approved`
-后，依据最终同意的不变量补充；在此之前本目录不登记任何用例。
+根决策已 `approved`；安装编排（D2）、安装所有权日志（D3-A）、重启对账（D3-B）与所有权
+感知卸载（D3-C）已落地。已登记用例：
 
-预计首批核心用例将覆盖的风险面（以决策评审结论为准）：
+- 清单、索引与可见性（D1 阶段）：见 [manifest-and-visibility.md](manifest-and-visibility.md)
+- 安装编排（D2 阶段）：见 [pack-install-orchestration.md](pack-install-orchestration.md)
+- 安装所有权日志（D3-A 阶段）：见 [pack-ownership.md](pack-ownership.md)
+- 重启对账（D3-B 阶段）：见 [pack-reconciliation.md](pack-reconciliation.md)
+- 所有权感知卸载（D3-C 阶段）：见 [pack-uninstall.md](pack-uninstall.md)
 
-- preflight 未通过时不发生任何下载，`installed/` 不发生变化。
-- 成员安装失败后停止后续成员，已安装成员保留，不自动回滚。
-- 已安装成员被跳过且不算失败，其既有版本不被改动或降级。
-- `marketplace_visible = false` 的条目不进入派生索引，但仍可按 identifier 解析与安装。
-- `agents` 引用按已安装的 agent 插件过滤；引用未命中不是错误，只影响成员取舍。
-- pack 条目在旧宿主上整条消失、隐藏成员在旧宿主上仍然可见的兼容行为。
+后续阶段（D3-D 失败回滚、D4 前端呈现、D5 真实内容接入）的用例随其落地阶段登记。
+
+## 尚未登记的用例（随落地阶段补充）
+
+- pack 级卸载与所有权语义（D3）。
+- `PackInstalled` 聚合结果的前端呈现与聚合进度展示（D4）。
+- `python-extension-pack` 真实内容源下的按 agent 过滤完整安装（D5）。
