@@ -213,9 +213,9 @@ stdio 与 HTTP 使用同一健康定义：按该 transport 的 MCP 协议完成 
   凭据、argv、env、headers 或第三方响应体。
 - **AppEvent**：新增 `McpHealthChanged { plugin_id }`，对齐 `PluginStatusChanged`：只通知前端
   按身份重新查询，不携带状态本体。
-- **配对日志**：setup/refresh 发送路径增加一条可与该次 Session 关联的结构化结果事件，字段限于
-  成员身份、稳定码、耗时。它补充「Host 发出了完整列表」这一既有事实，而不是改写现有 debug 日志
-  的语义。
+- **配对日志**：在既有 INFO 事件 `sending ACP session configuration`（工作流决策 D3，证明 Host
+  发送了什么）之后，追加一条可与该次 Session 关联的结构化探测结果事件，字段限于成员身份、稳定码、
+  耗时。它不改写发送日志的语义，也不证明 Agent 已落实。
 - **原始错误文本**：OS 与第三方响应文本只进 operator 日志；UI 与公开 DTO 只携带稳定错误码与
   身份。措辞必须是 Host 视角的「当前连不上」或「工具列表失败」，不承诺「会话内已生效」。
 
