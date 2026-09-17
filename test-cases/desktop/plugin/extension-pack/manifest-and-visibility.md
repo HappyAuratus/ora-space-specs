@@ -14,16 +14,20 @@
   `url`/`sha256`/`[[targets]]` 的清单，执行同步与索引重建。
 - **必须成立**：
   - pack 条目进入派生索引，`kind` 为 `pack`，携带标题、描述与 logo/README 约定；
-  - 其 `release_targets` 为 `None`（无可下载 release），宿主兼容性投影为不可直接安装；
+  - 其 `release_targets` 为 `None`（无可下载 release）；
+  - pack 卡片始终呈现安装入口（D2 编排落地后宿主兼容性投影为可安装）；
   - 成员以裸 `identifier` 加可选 `agents` 引用编译成功，保持声明顺序。
-- **禁止结果**：pack 因"无发布资产"被跳过、被记为坏文件，或被投影为可直接安装条目。
+- **禁止结果**：pack 因"无发布资产"被跳过、被记为坏文件，或因缺少发布资产被拒绝呈现
+  安装入口。
 - **验证义务与证据**：
   | 义务 | 证据 | 状态 |
   | --- | --- | --- |
   | pack 清单解析并携带按声明顺序的成员（含裸 identifier 与两种 `agents` 拼写） | `crates/plugin-manifest/src/pack.rs` `pack::tests::compiles_members_in_declaration_order_with_both_agent_spellings` | Covered |
   | pack 进入索引、kind 为 `pack`、`release_targets` 为 `None` | `crates/plugin-registry/src/index.rs` `index::tests::indexes_a_pack_listing_without_release_targets` | Covered |
   | pack 在 marketplace 发现列表中可见（经生产 `list_available`） | `e2e/tests/plugin_marketplace.rs` `marketplace_plugin_full_lifecycle_walkthrough` | Covered |
-- **决策依据**：D1（pack 是 orchestration 条目，不携带发布资产）、不变量 1、2。
+  | pack 卡片呈现安装入口（兼容性投影为可安装） | 同上（断言 `PluginHostCompatibility::Compatible`） | Covered |
+- **决策依据**：D1（pack 是 orchestration 条目，不携带发布资产）、D7（pack 卡片永远呈现
+  安装入口）、不变量 1、2。
 
 ## Hidden listings stay out of discovery but remain resolvable by id
 
