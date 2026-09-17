@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Host 持有 MCP 运行健康：一次性握手探测，失败不改变投递语义
@@ -12,7 +12,8 @@ Ora 在安装完成、配置保存成功、会话建立三个时机，以 MCP �
 健康状态只存在内存，呈现面消费健康抽象而非探测来源；传输实现是可复用的正式 MCP 客户端，而不是
 一次性脚本。
 
-`status: proposed` 表示本文尚在评审，不构成实现契约，也不维护核心测试用例。涉及模块为
+`status: approved` 表示本文已通过评审，正文即实现契约；核心测试用例按本文登记（见文末
+「核心测试依据」）。涉及模块为
 `crates/backend` Session MCP（状态、触发、single-flight、身份）、`ora-contracts`（secret-free DTO、
 查询与 AppEvent）、`ora-utils`（不含 Ora 领域词汇的 MCP 传输客户端，必要时以 Cargo feature 门控）、
 `packages/app-shell`（插件卡片第三状态行与会话横幅）。兼容性边界：ACP 1.6.0 原生 `mcpServers`
@@ -373,6 +374,4 @@ Runtime 同量级的新受监管状态类。用当前工程量换一个上线即
 
 ## 核心测试依据
 
-`status: proposed` 阶段不编写核心测试用例。评审通过并将状态改为 `approved` 后，依据最终决策
-补充至 `specs/test-cases/desktop/core/agent/session/mcp/mcp-health-probing.md`。该路径与本 ADR
-所在领域目录镜像，当前尚未创建文档。
+见 `specs/test-cases/desktop/core/agent/session/mcp/mcp-health-probing.md`。
