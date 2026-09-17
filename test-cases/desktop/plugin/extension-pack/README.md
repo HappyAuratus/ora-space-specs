@@ -8,8 +8,11 @@
 
 ## 当前状态
 
-根决策已 `approved`；安装编排（D2）、所有权日志（D3-A）、重启对账（D3-B）、所有权感知
-卸载（D3-C）、安装事务回滚（D3-D）与前端呈现（D4）已落地。已登记用例：
+根决策已 `approved`；D0-D4 全链路能力建设已完成（安装编排、所有权日志、重启对账、
+所有权感知卸载、事务性回滚、前端呈现），并通过 release qualification 验证真实
+`python-extension-pack` 内容可完全通过现有机制表达和安装——无需任何 pack-id 特例代码。
+
+已登记用例：
 
 - 清单、索引与可见性（D1 阶段）：见 [manifest-and-visibility.md](manifest-and-visibility.md)
 - 安装编排（D2 阶段）：见 [pack-install-orchestration.md](pack-install-orchestration.md)
@@ -19,8 +22,15 @@
 - 安装事务回滚（D3-D 阶段）：见 [pack-rollback.md](pack-rollback.md)
 - 前端呈现（D4 阶段）：见 [pack-frontend-presentation.md](pack-frontend-presentation.md)
 
-后续阶段（D5 真实 `python-extension-pack` 内容接入与最终用户路径 E2E）的用例随其落地
-阶段登记。
+Release qualification（D5 阶段）：`python-extension-pack` 的真实内容已通过
+`e2e/tests/plugin_marketplace.rs` `marketplace_plugin_full_lifecycle_walkthrough` 和
+`crates/backend/src/plugin/operations/install_tests.rs` 中全部 pack 集成测试验证——
+涵盖 sync → discover → install → ownership → uninstall 完整路径，使用真实 Git 源检
+出、真实 .orax 制品、真实 SHA-256 校验与真实单插件安装链。无 pack-id 特例代码。
+
+## 尚未登记的用例
+
+- 真实 marketplace 仓库推送后在线安装（需要 `ora-space/marketplace` 仓库提交实际内容）。
 
 ## 尚未登记的用例（随落地阶段补充）
 
