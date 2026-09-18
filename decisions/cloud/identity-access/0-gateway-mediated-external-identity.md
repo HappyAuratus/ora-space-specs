@@ -9,9 +9,9 @@ Ora 的公开认证入口由独立 Gateway 承担。Gateway 通过可插拔的 A
 Cloud 不直接接入 GitHub、密码或其他身份协议，也不持有浏览器会话；它继续以 PostgreSQL 中的
 `users`、`user_identities`、membership 和资源 owner 关系作为用户与授权的唯一权威。
 
-首个落地适配器使用 GitHub OAuth Authorization Code Flow。浏览器会话由 Gateway 存入 PostgreSQL，MVP
-默认允许 `expires_at=NULL` 的服务端无自动过期会话，但会话始终可以退出或吊销。外部 provider token、
-OAuth code、PKCE verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud。
+首个落地适配器使用 GitHub OAuth Authorization Code Flow。浏览器会话由 Gateway 存入 PostgreSQL，所有
+会话都有非空的绝对过期时间；MVP 默认有效 30 天，配置值不得超过 90 天，且会话始终可以提前退出或吊销。
+外部 provider token、OAuth code、PKCE verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud。
 
 本文处于 `proposed`，用于评审认证所有权、持久化、安全与扩展边界；不表示接口、表结构或部署已经上线。
 本次决策只覆盖后端，不定义前端页面、UI 路由和交互样式，也不改变 Cloud 已发布的公开 API、用户 JIT
@@ -31,7 +31,7 @@ Cloud 的 `user_identities(source, subject)` 已经表达“外部身份映射�
 
 - GitHub OAuth 的 redirect、callback、`state`、PKCE、code exchange 和身份读取由谁负责；
 - 浏览器如何保持登录，而不延长或暴露 Cloud 的内部 JWT；
-- 会话如何在 PostgreSQL 中保存、吊销和清理，并支持服务端无自动过期；
+- 会话如何在 PostgreSQL 中保存、过期、吊销和清理，并确保 Cookie 不超过服务端绝对期限；
 - 后续增加其他 OAuth/OIDC、企业 SSO 或 passkey 时，如何避免复制会话和 Cloud 转发逻辑；
 - Gateway、Cloud、外部 provider、浏览器和 PostgreSQL 之间各自信任什么，失败时保留什么事实。
 
@@ -46,9 +46,9 @@ Cloud 的 `user_identities(source, subject)` 已经表达“外部身份映射�
 - **Browser Session**：Gateway 接受浏览器请求时使用的长期、不透明凭据。其权威状态保存在 PostgreSQL，
   与内部 JWT 的生命周期分离。
 - **Internal Credentials**：Gateway 为一次或一小段上游调用签发的 service JWT 和 user JWT。Cloud 只信任
- 经过现有密钥、issuer、audience、kind、role 和 caller 校验的内部凭据。
-- **永久会话**：`gateway_sessions.expires_at IS NULL`，仅表示 Gateway 不按服务端时间自动使其过期；它
- 仍会因退出、管理员吊销、密钥泄露处置、Cookie 丢失或浏览器策略而失效，不承诺浏览器永久保存 Cookie。
+  经过现有密钥、issuer、audience、kind、role 和 caller 校验的内部凭据。
+- **Absolute Session Lifetime**：从 session 创建到 `expires_at` 的固定期限。MVP 默认 30 天且最多 90 天，
+  请求活动不会滑动延长该时间；session 也会因提前退出、管理员吊销、Cookie 丢失或浏览器策略而失效。
 
 ## 决策
 
@@ -159,7 +159,7 @@ Gateway Session Service 使用 PostgreSQL 作为唯一权威存储，不提供�
 | `source` / `subject` | 归一后的稳定外部身份，字段长度与 Cloud identity contract 一致 |
 | `display_name` | 可空、受长度限制的非权威快照 |
 | `created_at` | PostgreSQL 权威时间 |
-| `expires_at` | `timestamptz NULL`；`NULL` 表示服务端不自动过期 |
+| `expires_at` | `timestamptz NOT NULL`；必须晚于 `created_at`，表示不可滑动延长的绝对期限 |
 | `revoked_at` / `revoked_reason` | 可空；一旦吊销不可恢复，reason 使用稳定、脱敏的有限值 |
 
 同一个 `source/subject` 可以拥有多个并发 session，以支持多设备和分别退出。Session 不外键关联 Cloud
@@ -167,15 +167,16 @@ Gateway Session Service 使用 PostgreSQL 作为唯一权威存储，不提供�
 存在、用户是否 disabled 及 membership 是否有效，仍由每次 Cloud 请求基于当前业务状态判断。
 
 Session Store 在消费边界至少提供 Create、Resolve、Revoke 和 RevokeIdentity 能力。Create 只把 raw token
-返回给调用者一次；Resolve 只有在 `revoked_at IS NULL` 且
-`expires_at IS NULL OR expires_at > clock_timestamp()` 时成功；不存在、过期和已吊销对外统一表现为未认证。
-Revoke 与 RevokeIdentity 幂等。吊销保证后续新进入 Gateway 的请求失败，不撤回已经通过 admission 并正在
-Cloud 执行的请求。
+返回给调用者一次；Resolve 只有在 `revoked_at IS NULL` 且 `expires_at > clock_timestamp()` 时成功；不存在、
+过期和已吊销对外统一表现为未认证。Revoke 与 RevokeIdentity 幂等。吊销保证后续新进入 Gateway 的请求
+失败，不撤回已经通过 admission 并正在 Cloud 执行的请求。
 
-MVP 的 session TTL 配置允许“无自动过期”，默认写入 `expires_at=NULL`。Cookie 使用 `HttpOnly`、
-`SameSite=Lax`、`Path=/`、无 `Domain`，在生产 HTTPS 下必须使用 `Secure`；它应是持久 Cookie，但浏览器
-可能限制最大保留期或由用户主动清除。退出只吊销当前 session 并清除 Cookie；“退出所有设备”和管理员
-吊销可以复用 RevokeIdentity，但其公开管理 API 不在本 ADR 范围。
+MVP 的 session TTL 是正数配置，默认 30 天，硬上限 90 天；缺失配置使用默认值，零、负数或超过上限的
+配置使 Gateway 启动失败。创建 session 时由 PostgreSQL 权威时间确定 `created_at` 与 `expires_at`，读取
+session 不进行滑动续期。Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path=/`、无 `Domain`，在生产 HTTPS 下
+必须使用 `Secure`；它应是持久 Cookie，且 `Expires`/`Max-Age` 不得晚于数据库 `expires_at`。浏览器可以
+更早清除 Cookie。退出只吊销当前 session 并清除 Cookie；“退出所有设备”和管理员吊销可以复用
+RevokeIdentity，但其公开管理 API 不在本 ADR 范围。
 
 ### D6：Gateway 与 Cloud 可共用 PostgreSQL 集群，但数据库权限和表所有权必须分离
 
@@ -188,15 +189,16 @@ forward migration 创建，并由单独授权的 `cloudctl migrate` 身份执行
 权限。Gateway 不得查询 `users`、`user_identities`、membership、tenant、project、workspace 或 operation
 表；Cloud 运行时也不依赖 Gateway session 表完成业务授权。共享集群是部署复用，不是共享数据所有权。
 
-表约束至少在数据库层保证 digest 长度、identity 字段边界、`expires_at > created_at`（非空时）、吊销 reason
-与时间的一致性，并为 token lookup、identity revoke、attempt state lookup 和有界清理建立索引。时间字段
-使用 `timestamptz`；有效性、过期和清理边界使用数据库时间，不依赖多 Gateway 实例的本地时钟。
+表约束至少在数据库层保证 digest 长度、identity 字段边界、`expires_at > created_at`、
+`expires_at <= created_at + interval '90 days'`、吊销 reason 与时间的一致性，并为 token lookup、identity
+revoke、attempt state lookup 和有界清理建立索引。时间字段使用 `timestamptz`；有效性、过期和清理边界
+使用数据库时间，不依赖多 Gateway 实例的本地时钟。
 
 过期或吊销 session 可以保留一个有限审计窗口后批量清理，已消费/过期 attempt 也必须有界清理。清理任务
-由 Gateway 生命周期拥有，可取消、限制每批行数并允许重试；不得删除 `expires_at IS NULL AND
-revoked_at IS NULL` 的活跃 session，也不得用一次无界 `DELETE` 阻塞生产表。
+由 Gateway 生命周期拥有，可取消、限制每批行数并允许重试；不得删除尚未过期且未吊销的活跃 session，
+也不得用一次无界 `DELETE` 阻塞生产表。
 
-### D7：长期浏览器会话只换取短期内部凭据，不改变 Cloud 的 JWT 安全上限
+### D7：有限期浏览器会话只换取短期内部凭据，不改变 Cloud 的 JWT 安全上限
 
 每次代理已认证请求时，Gateway 先从 PostgreSQL Resolve 当前 session，再用独立 Ed25519 私钥签发：
 
@@ -205,8 +207,8 @@ revoked_at IS NULL` 的活跃 session，也不得用一次无界 `DELETE` 阻塞
   JWT 的 `sub`。
 
 两种 JWT 的 issuer、audience、`kid`、kind、role、caller 和最长有效期继续服从 Cloud 现有验证规则，期限
-保持分钟级且不得因 session 为永久而延长。内部 JWT 只存在于 Gateway 到固定 Cloud upstream 的请求中，
-不得写入 session 表、浏览器 Cookie、重定向 URL、响应 body 或日志。
+保持分钟级且不得按 browser session 的较长期限签发。内部 JWT 只存在于 Gateway 到固定 Cloud upstream
+的请求中，不得写入 session 表、浏览器 Cookie、重定向 URL、响应 body 或日志。
 
 Gateway 的签名私钥和 PKCE 派生密钥是独立 secret，支持分别轮换，不存入 PostgreSQL。Cloud 只配置对应
 公钥及允许的用途。Gateway 多副本共享 session 数据，但每个副本使用的 service subject 和受信 key 必须
@@ -248,12 +250,12 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 | Cloud 直接实现 GitHub OAuth | 少一个部署进程和一次代理 | 把外部协议、Cookie、重定向和业务授权耦合到权威服务，后续认证方式会扩大 Cloud 攻击面并复制边界逻辑 |
 | 浏览器直接持有 GitHub token 调 Cloud | Gateway 更薄 | Cloud 将被迫信任 provider token 并联网验证；token 暴露给浏览器和业务 API，无法保持现有 service/user 双凭据边界 |
 | 把内部 user JWT 做成永久 token | 无需 session 查询 | 破坏 Cloud 的短期凭据上限，用户禁用、logout 和泄露处置无法及时生效，也会把内部凭据暴露给浏览器 |
-| 使用纯签名/加密 Cookie，不存 session | 无数据库读取，部署简单 | 无法可靠 logout、按身份全量吊销或观察泄露影响；“永久”凭据只能等待密钥全局轮换 |
+| 使用纯签名/加密 Cookie，不存 session | 无数据库读取，部署简单 | 无法可靠 logout、按身份全量吊销或观察泄露影响；长期凭据只能等待密钥全局轮换 |
 | 将 session 外键关联 `users` | 可在数据库中直接绑定 Ora user | Gateway 必须跨越业务表所有权，首次 JIT 创建前无法建 session，并把外部认证成功错误解释为 Cloud 授权成功 |
 | 用 GitHub login 或 email 作为 `subject` | 人类可读 | login 可改名，email 可缺失、变化或复用；会错误合并或分裂 durable identity |
 | 持久化 GitHub access token | 可减少下次 provider 调用 | MVP 只需要登录时读取身份；长期保存扩大泄露、加密、scope、撤销和轮换责任，且 Cloud 请求不需要它 |
 | 每种 provider 单独建 session 表和 handler | 单个适配器局部直观 | 会复制安全策略、清理、Cookie、JWT 和 proxy 行为，使不同认证方式产生不一致的权限与失败语义 |
-| 单独部署 Redis session | 低延迟、天然 TTL | 当前系统的唯一权威持久化是 PostgreSQL，MVP 不需要新增运维与恢复边界；Redis 也不能自然表达无自动过期与长期吊销审计 |
+| 单独部署 Redis session | 低延迟、天然 TTL | 当前系统的唯一权威持久化是 PostgreSQL，MVP 不需要新增运维与恢复边界；PostgreSQL 已能表达有限 TTL、即时吊销和清理审计 |
 
 ## 不变量
 
@@ -264,7 +266,7 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 5. 原始 session token、attempt secret、OAuth code、provider access token 和 PKCE verifier 不得持久化、记录或返回给 Cloud。
 6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`/PKCE，并且最多成功创建一个 session。
 7. Browser Session 的有效性只由 PostgreSQL 当前状态和权威时间决定；未知、过期和已吊销统一为未认证。
-8. `expires_at=NULL` 只关闭服务端自动过期，不关闭 logout、按身份吊销、泄露处置或浏览器清理。
+8. 每个 session 的 `expires_at` 必须非空、晚于 `created_at` 且不超过创建时间 90 天；Resolve 不得滑动延长期限。
 9. 同一 identity 可以有多个 session；session 不外键关联 Cloud user，也不证明该用户当前可访问任何资源。
 10. Gateway 运行时只访问自己拥有的认证表，不读写 Cloud 业务表，不在启动时执行 DDL。
 11. Gateway 必须移除浏览器提供的内部认证 header，只向固定 Cloud upstream 代理允许的公开 API，绝不代理内部 API。
@@ -281,8 +283,8 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
   登录失败，数据库没有第二个有效 session。
 - session 表只出现 token digest；使用数据库内容、日志或 Cloud 请求都无法还原浏览器 session token 或
   GitHub access token。
-- `expires_at=NULL` 的 session 在 Gateway 重启和多副本切换后仍可 Resolve；logout 后所有副本的后续请求
-  都拒绝该 token。
+- 未过期 session 在 Gateway 重启和多副本切换后仍可 Resolve；到达数据库 `expires_at` 或 logout 后，所有
+  副本的后续请求都拒绝该 token，访问活动不能延长绝对期限。
 - 一个 identity 的两个设备 session 可以独立使用；退出设备 A 不影响设备 B，RevokeIdentity 后两者都不能
   新进入 Cloud。
 - 浏览器伪造 `Authorization`、`X-Ora-User-Token`、upstream、caller、source 或 subject 时，Gateway 丢弃或
@@ -299,8 +301,8 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 
 - 每个已认证请求增加一次 PostgreSQL session lookup。MVP 接受这项成本以换取即时 logout 和吊销；只有在
   保持数据库为权威、证明失效上限并另行决策后才能增加缓存。
-- 无自动过期 session 增大 Cookie 被盗后的暴露窗口。HttpOnly、Secure、same-origin/CSRF、digest-only
-  存储和吊销降低但不能消除风险；正式支持高价值操作前应增加可配置绝对/空闲期限、再认证和会话管理。
+- 30 天默认绝对期限仍给 Cookie 被盗留下较长暴露窗口。HttpOnly、Secure、same-origin/CSRF、digest-only
+  存储、90 天硬上限和吊销降低但不能消除风险；正式支持高价值操作前应增加空闲期限、再认证和会话管理。
 - Gateway 成为公开可用性的关键路径，需要独立 readiness、限流、超时、日志脱敏和密钥轮换演练。共享
   PostgreSQL 集群降低运维成本，但必须通过数据库角色防止横向读取业务数据。
 - GitHub 是首个外部可用性依赖。GitHub 故障会阻止新登录，但不得使已有 session 或 Cloud 内部授权失效。
@@ -311,12 +313,12 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 - 账户主动关联/解绑、多个 external identity 合并、误绑定恢复和 identity 管理审计。
 - GitHub organization/team 准入、企业 OIDC/SAML、MFA、passkey、step-up authentication 和风险评分。
 - 管理员 session 列表与吊销 API、用户“退出所有设备”公开接口和完整安全事件审计产品。
-- session token 自动轮换、绝对/空闲过期、设备信息以及高价值操作的重新认证策略。
+- session token 自动轮换、空闲过期、续期策略、设备信息以及高价值操作的重新认证策略。
 - ingress、域名、证书和 secret manager 的具体产品选择；本文只固定公开 HTTPS 与可信配置边界。
 
 ## 落地顺序
 
-1. **冻结契约**：评审本文并确认 Gateway/Cloud 所有权、GitHub identity 映射、永久 session 语义和安全
+1. **冻结契约**：评审本文并确认 Gateway/Cloud 所有权、GitHub identity 映射、30/90 天 session 期限和安全
    不变量。状态批准后，在镜像目录补充核心测试用例与预期证据。
 2. **持久化基础**：新增 forward migration、数据库约束、最小权限角色说明和 PostgreSQL-backed Login
    Attempt/Session Store；验证 fresh database 与上一 schema 升级、并发消费、吊销和有界清理。
