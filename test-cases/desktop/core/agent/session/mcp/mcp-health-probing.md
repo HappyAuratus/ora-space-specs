@@ -2,8 +2,9 @@
 
 本文件用例依据
 [Host 持有 MCP 运行健康决策](../../../../../../decisions/desktop/core/agent/session/mcp/20260916-mcp-health-probing.md)
-登记。该 ADR 已评审通过（`approved`），实现尚未开始，全部证据暂为 `Missing`；落地 1a/1b 阶段时
-必须按证据状态回填本文件。
+登记。该 ADR 已评审通过（`approved`），实现已按 1a（传输、状态、错误码）与 1b（触发、查询、
+事件、卡片、横幅、配对日志）落地；下表证据于落地时回填，测试按「生产接口」而非内部实现选择。
+两处标为 `Partial` 的项说明见对应单元格。
 
 ## Probe Failures Must Not Change Delivery Semantics
 
@@ -40,9 +41,9 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| stdio 探测失败（spawn 失败、超时）后会话仍发送完整 `mcpServers` 且 setup 成功 | 尚无；实现未开始 | `Missing` |
-| 横幅只提示不阻塞 prompt，成员范围限于该 Session Effective MCP Set | 尚无 | `Missing` |
-| 分辨率失败仍按 D7 全量失败，探测结果不进入资格判定 | 尚无 | `Missing` |
+| stdio 探测失败（spawn 失败、超时）后会话仍发送完整 `mcpServers` 且 setup 成功 | `plugin::operations::health_tests::probe_failure_does_not_change_session_delivery`（导入不可运行的 stdio MCP，卡片已为 `mcp_spawn_failed`，`SessionSetup::resolve` 仍解析出完整成员）；`session_setup::mcp::health::tests::probe_failure_does_not_change_the_delivered_snapshot` | `Covered` |
+| 横幅只提示不阻塞 prompt，成员范围限于该 Session Effective MCP Set | `packages/app-shell` `features/chat/session-mcp-health-banner.test.tsx`（自动会话列出、未选择不出现、空显式集合无横幅、`Unknown` 不视为失败、跳转配置入口）；横幅为 `role="status"` 的纯呈现，不参与 prompt admission | `Covered` |
+| 分辨率失败仍按 D7 全量失败，探测结果不进入资格判定 | `session_setup::mcp::selection_tests::*`、`session_setup::mcp::tests::fails_closed_when_http_capability_is_missing`、`session_setup::mcp::health::tests::probe_failure_does_not_change_the_delivered_snapshot` | `Covered` |
 
 ### 决策依据
 
@@ -85,9 +86,9 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 更新、revision 变化、卸载或失去资格后旧身份结果立即失效并停止呈现 | 尚无；实现未开始 | `Missing` |
-| workspace-context 成员在卡片保持 `Unknown(context_missing)`，「重新检测」不伪造占位 `cwd` | 尚无 | `Missing` |
-| 会话探测使用真实绝对 `cwd`，结果不回写全局卡片 | 尚无 | `Missing` |
+| 更新、revision 变化、卸载或失去资格后旧身份结果立即失效并停止呈现 | `session_setup::mcp::health::tests::invalidation_clears_plugin_identities_and_publishes`、`session_setup::mcp::health::tests::stale_identity_is_not_presented_as_current`（旧 revision 的结果不再呈现，身份不匹配读作 `Unknown(not_probed)`）、`plugin::operations::health_tests::uninstall_removes_the_health_row`、`session_setup::mcp::health::tests::configuration_incomplete_member_is_not_listed_or_probed`、`plugin::operations::health_tests::incomplete_settings_are_not_probed_until_a_complete_save`（只有新 revision 被呈现）。package version 更新走同一失效+探测路径（`Plugins::update`），但无独立 marketplace 更新用例 | `Partial` |
+| workspace-context 成员在卡片保持 `Unknown(context_missing)`，「重新检测」不伪造占位 `cwd` | `session_setup::mcp::health::tests::workspace_context_member_binds_session_cwd_and_keeps_card_separate`、`plugin::operations::health_tests::workspace_context_mcp_stays_context_missing_on_the_card`（含重新检测）、`packages/app-shell` `features/settings/mcp-health-row.test.tsx`（卡片不为这类成员提供可伪造 cwd 的重新检测） | `Covered` |
+| 会话探测使用真实绝对 `cwd`，结果不回写全局卡片 | `session_setup::mcp::health::tests::workspace_context_member_binds_session_cwd_and_keeps_card_separate`（会话身份绑定绝对 cwd；会话探测后卡片身份仍为 `not_probed`） | `Covered` |
 
 ### 决策依据
 
@@ -132,10 +133,10 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| stdio/HTTP 成功与失败矩阵（spawn 失败、提前退出、握手失败、超时、`tools/list` 失败、401、5xx、非 MCP 响应）有组件级证据 | 尚无；实现未开始 | `Missing` |
-| 同一身份并发触发只执行一次探测且结果共享 | 尚无 | `Missing` |
-| 安装、保存、会话建立不被探测阻塞；「重新检测」等待 single-flight 后查询到新结果 | 尚无 | `Missing` |
-| stdio 握手或超时后探测进程被确认回收 | 尚无 | `Missing` |
+| stdio/HTTP 成功与失败矩阵（spawn 失败、提前退出、握手失败、超时、`tools/list` 失败、401、5xx、非 MCP 响应）有组件级证据 | `ora-utils` `mcp::tests::stdio_probe_succeeds_for_well_behaved_server`、`stdio_probe_maps_missing_binary_to_spawn_failed`、`stdio_probe_maps_early_exit_to_exited_prematurely`、`stdio_probe_maps_wrong_id_answer_to_handshake_failed`、`stdio_probe_maps_tools_list_error_to_tools_unavailable`、`stdio_probe_maps_hang_to_timeout_and_reaps_promptly`、`http_probe_succeeds_for_json_responses`、`http_probe_accepts_sse_framed_responses`、`http_probe_maps_unauthorized`、`http_probe_maps_forbidden_to_unauthorized`、`http_probe_maps_server_error`、`http_probe_maps_non_mcp_body_to_handshake_failed`、`http_probe_maps_tools_list_error_to_tools_unavailable`、`http_probe_maps_unreachable`、`http_probe_maps_silent_peer_to_timeout`，以及 `mcp::protocol::tests::*` | `Covered` |
+| 同一身份并发触发只执行一次探测且结果共享 | `session_setup::mcp::health::tests::concurrent_triggers_share_one_probe`（并发两次触发只产生一次连接）、`session_setup::mcp::health::tests::session_observation_reuses_a_matching_identity` | `Covered` |
+| 安装、保存、会话建立不被探测阻塞；「重新检测」等待 single-flight 后查询到新结果 | `plugin::operations::health_tests::importing_a_slow_http_member_does_not_wait_for_the_probe`（安装立即返回，卡片仍为 `Unknown(not_probed)`）、`plugin::operations::health_tests::incomplete_settings_are_not_probed_until_a_complete_save`（保存共用同一异步触发实现）、`session_setup::mcp::health::tests::session_observation_reuses_a_matching_identity`（会话补探测 fire-and-forget）、`packages/app-shell` `features/settings/mcp-health-row.test.tsx`（重新检测等待并呈现新结果） | `Covered` |
+| stdio 握手或超时后探测进程被确认回收 | `ora-utils` `mcp::tests::stdio_probe_waits_for_child_exit_after_a_handshake`（成功路径只有在子进程退出后才返回）、`mcp::tests::stdio_probe_maps_hang_to_timeout_and_reaps_promptly`（超时路径 kill + wait 有界） | `Covered` |
 
 ### 决策依据
 
@@ -177,9 +178,9 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| `mcp_http_unauthorized` 场景下查询、事件、日志与 UI 不含 Key 原值与响应体 | 尚无；实现未开始 | `Missing` |
-| 配对日志与该次 Session 发送日志可关联，字段 secret-free | 尚无 | `Missing` |
-| 健康错误码族封闭且与既有 setup 稳定码无碰撞 | 尚无 | `Missing` |
+| `mcp_http_unauthorized` 场景下查询、事件、日志与 UI 不含 Key 原值与响应体 | `plugin::operations::health_tests::http_credential_failure_reaches_the_card_without_leaking_the_key`（带 Setting 凭据的 HTTP 成员失败后，安装列表、查询响应、探测响应与日志都不含 Key、`Bearer`、header 名）；分类本身见 `ora-utils` `mcp::tests::http_probe_maps_unauthorized` / `http_probe_maps_forbidden_to_unauthorized`；呈现见 `packages/app-shell` `features/settings/mcp-health-row.test.tsx`（`mcp_http_unauthorized` 码）。测试环境无法在可信 TLS 端点后伪造真实 401 响应，故未端到端复现该码（改用快速失败的 HTTP 不可达分支） | `Partial` |
+| 配对日志与该次 Session 发送日志可关联，字段 secret-free | `session_setup::mcp::health::tests::session_observation_pairs_secret_free_results`（同一 `session_id`、身份、稳定码、耗时；无实值、凭据、header、端点）；发送边界日志沿用 `agent_runtime::start::tests`，顺序由调用点保证（`observe_session_mcp_health` 紧跟 `log_session_mcp_request`） | `Covered` |
+| 健康错误码族封闭且与既有 setup 稳定码无碰撞 | `ora-contracts` `mcp_health::tests::serializes_every_error_code_token`、`session_setup::mcp::health::tests::maps_every_probe_error_to_a_closed_product_code`；两族是两个不同的 Rust 类型（`McpHealthErrorCode` 与 `SessionMcpErrorCode`），碰撞在类型层面不可表达 | `Covered` |
 
 ### 决策依据
 
@@ -222,9 +223,9 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 卡片三个事实分离呈现，配置不完整插件不展示健康行 | 尚无；实现未开始 | `Missing` |
-| 工作流横幅只含白名单内 Unhealthy 成员；Explicit 空集合无补探测、无横幅 | 尚无 | `Missing` |
-| 新增文案无 `MCP Ready` 或「会话内已生效」表述 | 尚无 | `Missing` |
+| 卡片三个事实分离呈现，配置不完整插件不展示健康行 | `packages/app-shell` `features/settings/plugin-manager.health.test.tsx`（配置完整才有第三行；不完整只保留「需要配置」）、`features/settings/mcp-health-row.test.tsx`、`session_setup::mcp::health::tests::configuration_incomplete_member_is_not_listed_or_probed` | `Covered` |
+| 工作流横幅只含白名单内 Unhealthy 成员；Explicit 空集合无补探测、无横幅 | `packages/app-shell` `features/chat/session-mcp-health-banner.test.tsx`（未选择不出现；空显式集合无横幅）、`session_setup::mcp::health::tests::explicit_empty_selection_has_no_members_or_backfill`（空集合不发起补探测） | `Covered` |
+| 新增文案无 `MCP Ready` 或「会话内已生效」表述 | `features/chat/session-mcp-health-banner.test.tsx`、`features/settings/mcp-health-row.test.tsx`（健康文案显式声明「不代表该 MCP 已在会话内生效」）；文案源见 `features/settings/translations/plugins.ts` 与 `features/chat/translations.ts` | `Covered` |
 
 ### 决策依据
 
@@ -261,8 +262,8 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 重启后卡片与横幅不显示任何旧健康状态，全部回到 `Unknown(not_probed)` | 尚无；实现未开始 | `Missing` |
-| 会话建立复用内存中身份匹配的结果，身份不匹配视为 `Unknown(not_probed)` | 尚无 | `Missing` |
+| 重启后卡片与横幅不显示任何旧健康状态，全部回到 `Unknown(not_probed)` | `session_setup::mcp::health::tests::restart_starts_from_not_probed`（新建 store 无历史；实现不写任何持久化、无 TTL/周期复检） | `Covered` |
+| 会话建立复用内存中身份匹配的结果，身份不匹配视为 `Unknown(not_probed)` | `session_setup::mcp::health::tests::session_observation_reuses_a_matching_identity`、`session_setup::mcp::health::tests::stale_identity_is_not_presented_as_current` | `Covered` |
 
 ### 决策依据
 
