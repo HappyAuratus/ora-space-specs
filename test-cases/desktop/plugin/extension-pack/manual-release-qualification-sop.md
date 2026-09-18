@@ -32,6 +32,32 @@ contracts TS:    9 passed
 desktop TS:      42 passed
 ```
 
+### 1.1 D5-Q1 状态裁决（2026-09-17）
+
+```text
+D0–D4:                              CLOSED
+D5 Content:                         IMPLEMENTED
+D5-Q1 Evidence Repair:              CLOSED
+D5-A Release Qualification:         RELEASE QUALIFIED
+                                    — with documented inherited baseline/environment exceptions
+Manual Release Qualification:       READY
+Marketplace upstream PR:            PAUSED（等待本地手工验收完成）
+```
+
+注脚所列两项例外均不归因于 Extension Pack：app-shell Prettier 存在 1 处既有违规
+（`filter-discovered-plugins.ts`，已提交且与本轮无关）；`check:tooling` 因本机 Deno 版本与
+仓库 pin 不一致无法原样完成。D5 修改范围零新增违规，最终 release evidence 应表述为
+"D5 修改范围零新增违规，剩余两项为既有/环境例外"，而非"所有全局 gate 无条件全绿"。
+
+冻结结论：ORA Extension Pack D5-Q1 已完成发布资格证据修复，4 个核心场景（member version
+update、marketplace content update、download missing、SHA mismatch）均通过真实
+Plugins/PluginApi 生产入口验证，ownership 与历史 ledger 不变量得到机械证明，D5-A 恢复
+RELEASE QUALIFIED。
+
+可复用的测试模式：test seam 只替换 artifact transport（URL→本地制品映射），生产 manifest
+resolve、release selection、host compatibility、SHA 校验、staging、包校验、原子提交、
+ownership、rollback 全部照走；后续同类 Marketplace 功能做 release qualification 时沿用。
+
 正式开始测试前，确认三个仓库工作树无未知修改：
 
 ```powershell

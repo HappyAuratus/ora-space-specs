@@ -1,8 +1,8 @@
 # Extension Pack：安装编排核心用例
 
 对应决策：[插件集合包决策](../../../../decisions/desktop/plugin/extension-pack/0-extension-pack.md)
-的 D4（agent 过滤）、D5（preflight + 顺序安装）、D6（preflight 零下载；成员失败停止且不
-回滚）、D7（pack 不进入已安装模型）与不变量 3、5、6、7、10。
+的 D4（agent 过滤）、D5（preflight + 顺序安装）、D6（preflight 零下载；成员失败停止运行并
+回滚本次创建的成员）、D7（pack 不进入已安装模型）与不变量 3、5、6、7、10。
 
 前置状态：marketplace source 已同步，pack 清单与成员清单均已在源检出中。安装编排仅替代
 一次传输环节（本地制品替代 HTTPS 下载，沿用 RTK E2E 的既有先例），摘要校验与全部落盘
@@ -60,21 +60,24 @@
   | preflight 失败后 `installed/` 不存在 | 同上（断言安装树未创建） | Covered |
 - **决策依据**：D6 第 1 段、不变量 3。
 
-## A member failure stops the run without rollback and is reported per member
+## A member failure stops the run, rolls back created members, and is reported per member
 
-- **风险**：成员失败若伪装成整包失败，调用方无法知道哪些成员已就位；若自动回滚，刚装好的
-  可用插件会被破坏。
+- **风险**：成员失败若伪装成整包失败，调用方无法知道哪些成员已就位；若回滚越界到运行前
+  已存在的成员，用户既有插件会被误删。
 - **触发**：第二个成员的制品与其清单摘要不符（下载校验失败），第一个成员已安装成功。
 - **必须成立**：
-  - 编排返回 `Ok(PackInstalled)`：`members` 携带失败前已装成员（含其单插件 outcome），
-    `failed` 携带首个失败成员与错误码，剩余成员不再尝试；
-  - 已落盘成员保留，不回滚。
-- **禁止结果**：整体布尔失败掩盖部分成功；已安装成员被自动卸载。
+  - 编排返回 `Ok(PackInstalled)`：`failed` 携带首个失败成员、错误码与回滚诊断，剩余成员
+    不再尝试；
+  - 本次运行创建的成员按逆创建顺序回滚，本次运行之前已存在的成员与成员关系不受影响。
+- **禁止结果**：整体布尔失败掩盖成员级信息；回滚触碰运行前已存在的成员或成员关系。
 - **验证义务与证据**：
   | 义务 | 证据 | 状态 |
   | --- | --- | --- |
-  | 首个失败成员停止运行、已装成员保留并在结果中可辨 | `crates/backend/src/plugin/operations/install_tests.rs` `pack_install_stops_at_a_failing_member_without_rolling_back` | Covered |
-- **决策依据**：D6 第 2 段、不变量 6、7。
+  | 首个失败成员停止运行、创建成员被回滚且结果逐成员可辨 | `crates/backend/src/plugin/operations/install_tests.rs` `pack_install_stops_at_a_failing_member_and_rolls_back_created_members` | Covered |
+  | 回滚的完整语义（逆序、预存保留、残余日志） | [安装事务回滚核心用例](pack-rollback.md) | Covered |
+- **决策依据**：D6 第 2 段（回滚语义由
+  [Pack 安装事务性回滚决策](../../../../decisions/desktop/plugin/extension-pack/20260916-pack-install-transactional-rollback.md)
+  取代最初的"停止且不回滚"）、不变量 6、7。
 
 ## Agent-gated members join the install only when a referenced agent is installed
 

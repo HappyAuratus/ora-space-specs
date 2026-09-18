@@ -95,5 +95,5 @@
 - **验证义务与证据**：
   | 义务 | 证据 | 状态 |
   | --- | --- | --- |
-  | 失败保留日志 + 重试完成卸载 | `crates/backend/src/plugin/operations/install_tests.rs` `a_failed_member_uninstall_keeps_the_journal_and_a_retry_completes` | Covered |
+  | 失败保留日志 + 重试完成卸载 | 无直接测试（此前的证据条目引用了不存在的测试名，按证据规则如实降级） | Missing |
 - **决策依据**：卸载决策 D3、不变量 5、6。

@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 插件集合包：Extension Pack 是安装编排条目，不是运行时插件
@@ -7,20 +7,22 @@ status: approved
 Ora 的 marketplace 新增一种条目形态：Extension Pack（集合包）。pack 用一份 `kind = "pack"` 的
 release 清单声明一组成员插件（`[[pack.members]]`）与每个成员的 agent 适配范围，自身不携带任何
 可下载资产。用户安装一个 pack 时，宿主在 preflight 通过后按声明顺序逐个安装适用成员，复用既有
-单插件安装链路；pack 永远不会成为已安装插件、不生成 `.orax`、不参与卸载与更新生命周期。同时
-新增 release 形态可选字段 `marketplace_visible`（缺省 `true`）：声明为 `false` 的条目不进入
-派生索引、不在 marketplace 前端独立展示，但仍保留在源仓库中、可按 identifier 解析、可被 pack
-安装，安装后是真实 Installed Plugin。
+单插件安装链路；pack 自身永远不会成为已安装插件、不生成 `.orax`、不进入发现与更新生命周期，
+但 pack 安装会单独持久化一份所有权日志，卸载 pack 走所有权感知的成员回收。同时新增 release
+形态可选字段 `marketplace_visible`（缺省 `true`）：声明为 `false` 的条目不进入派生索引、不在
+marketplace 前端独立展示，但仍保留在源仓库中、可按 identifier 解析、可被 pack 安装，安装后是
+真实 Installed Plugin。
 
-本 ADR 处于 `proposed`：决策与需求尚未确认，正文保留示例与推测以帮助评审纠偏。文中的 TOML 与
-契约形状只用于固定语义，不构成实现契约；按 ADR 生命周期，核心测试用例在本决策 `approved` 后
-补充。涉及模块为 `ora-plugin-manifest`（清单 schema）、`ora-plugin-registry`（索引构建）、
-`crates/backend`（安装编排与契约）、`ora-plugin-manager`（成员安装复用）、`ora-contracts` 与
-`packages/app-shell`（聚合结果与前端呈现）。
+本 ADR 已随 Extension Pack V1 能力落地为 `implemented`：正文固定当前稳定边界，其中被后继决策
+修改的行为（成员失败回滚、pack 卸载、所有权持久化）以指向对应日期决策的方式标注，设计演进链
+由 `20260916-*` 系列决策承载。涉及模块为 `ora-plugin-manifest`（清单 schema）、
+`ora-plugin-registry`（索引构建）、`crates/backend`（安装编排与契约）、`ora-plugin-manager`
+（成员安装复用）、`ora-contracts` 与 `packages/app-shell`（聚合结果与前端呈现）。
 
 兼容性边界：pack 条目在旧宿主上整条消失（未知 kind 硬拒绝的既定行为），隐藏成员在旧宿主上
 仍然可见（未知字段忽略的既定保护），两者的不对称是接受的代价而非需要迁移的状态（见 D8）。
-本决策不承担插件依赖求解、pack 级卸载与更新、安装前成员预览——各自见"本决策未解决的问题"。
+本决策不承担插件依赖求解与安装前成员预览——见"本决策未解决的问题"；pack 级卸载已由
+[Pack 卸载所有权决策](20260916-pack-uninstall-ownership.md) 承担。
 
 ## 术语与边界
 
@@ -158,29 +160,38 @@ listing 期过滤。跨源同 identifier 的 agent 都已安装时，过滤结�
 顺序而非并行安装：复用单插件安装的全部原子性与错误定位，进度与失败一一对应；V1 成员数量小，
 并行的收益不值得引入并发编排。
 
-### D6：preflight 失败零下载；成员失败停止且不回滚，结果逐成员可辨
+### D6：preflight 失败零下载；成员失败停止运行并回滚本次创建的成员，结果逐成员可辨
 
 preflight 任一失败即整包失败，返回 typed 错误且不产生任何下载与落盘。成员重复、自引用、成员
 不存在、嵌套 pack、无适用成员复用或新增封闭的 public error 变体；入选成员与当前 host 不兼容
 复用既有 host 不兼容语义，但发生在 preflight 而非首个成员安装中途。
 
-preflight 通过后的成员安装中，任一成员失败：已安装的成员保留（每个成员的安装本身已是原子
-事务），剩余成员不再尝试，不自动回滚。契约 `InstallOutcome` 新增
-`PackInstalled { members, skipped, failed }`：`members` 按声明顺序携带已安装成员的
-`{ plugin_id, outcome }`（复用既有单插件 outcome 枚举，含命令别名冲突报告），`skipped` 列出
-已安装被跳过的成员，`failed` 携带首个失败成员与其错误码。用 `Ok` outcome 如实上报部分成功，
-而不是把部分成功伪装成整包失败——调用方需要知道哪些成员已装好，才能决定重试或放弃。
+preflight 通过后的成员安装中，任一成员失败：剩余成员不再尝试，**本次运行创建的成员**按逆创建
+顺序回滚（复用所有权感知的既有单插件卸载链路）；本次运行之前已存在的成员与成员关系不受影响。
+契约 `InstallOutcome` 新增 `PackInstalled { members, skipped, failed }`：`members` 按声明顺序
+携带已安装成员的 `{ plugin_id, outcome }`（复用既有单插件 outcome 枚举，含命令别名冲突报告），
+`skipped` 列出已安装被跳过的成员，`failed` 携带首个失败成员、其错误码与回滚失败诊断。用 `Ok`
+outcome 如实上报失败，而不是把失败伪装成整包成功。本节的回滚语义由
+[Pack 安装事务性回滚决策](20260916-pack-install-transactional-rollback.md) 取代了最初
+"停止且不回滚"的方案，该决策保留了回滚只撤销 `created_this_run` 的边界。
 
-### D7：pack 不进入已安装模型，重新安装等价于补齐缺失成员
+### D7：pack 不进入已安装模型；安装关系单独持久化，卸载按所有权回收
 
-pack 不落盘、不产生 `InstalledPlugin`、不参与发现/卸载/更新流程；marketplace 前端对 pack 卡片
-永远呈现安装入口。pack 条目的 `version` 是成员集合的内容版本，纯展示；成员变化后重装 pack 即
-补齐新成员，已装成员跳过。成员被单独卸载后再次安装 pack 会重装该成员——这是期望行为：pack
-表达的是"这套集合应该存在"，不是"曾经装过"。
+pack 不落盘、不产生 `InstalledPlugin`、不参与发现/更新流程；marketplace 前端对 pack 卡片永远
+呈现安装入口。pack 条目的 `version` 是成员集合的内容版本，纯展示；成员变化后重装 pack 即补齐
+新成员，已装成员跳过。成员被单独卸载后再次安装 pack 会重装该成员——这是期望行为：pack 表达的
+是"这套集合应该存在"，不是"曾经装过"。
 
 pack 与成员的生命周期有意分离：成员是真实插件，拥有完整的卸载/更新/数据目录生命周期；pack
-只在安装动作存在的几秒内被编排。把 pack 纳入已安装模型需要为它伪造包目录、贡献物类型与发现
-规则，并在"卸载 pack 是否卸载成员"上引入新的所有权语义；V1 不做。
+自身不伪造包目录、贡献物类型与发现规则。pack 的"已安装"状态由单独持久化的所有权日志承载
+（[Pack 安装所有权决策](20260916-pack-installation-ownership.md)）：日志记录每个被 pack 点名
+的成员是本次安装创建的（`managed_by_pack`）还是点名时已存在（`pre_existing`）及建立关系时的
+版本，记录本身不是 InstalledPlugin。卸载 pack 依据日志与重启对账计算计划，只回收 pack 创建
+且未被用户改变的成员（[Pack 卸载所有权决策](20260916-pack-uninstall-ownership.md)）；重启
+对账只识别漂移、不改写日志
+（[Pack 重启对账决策](20260916-pack-restart-reconciliation.md)）。本节的持久化与卸载语义由
+20260916 系列决策在"pack 不进入已安装模型"的边界之上补充，取代了最初"不参与卸载生命周期"的
+表述。
 
 ### D8：旧宿主对新条目的行为是确定的
 
@@ -201,31 +212,38 @@ pack 与成员的生命周期有意分离：成员是真实插件，拥有完整
 | `marketplace_visible` 放进 registry 侧旁路元数据，由投影或前端过滤 | 索引与 resolve 读取两个事实来源，可见性声明与安装声明可漂移；每层消费者都要记得尊重标志，遗漏即泄漏 |
 | 安装 pack 时安装全部声明的 agent 专属成员 | 给未安装对应 agent 的用户塞入不可用的插件，与"按 agent 适配安装"的需求直接相悖 |
 | 成员并行安装 | 单插件安装的原子性与错误定位被并发编排稀释；V1 成员量小，收益不成比例 |
-| 成员失败自动回滚已装成员 | 单插件安装是独立原子事务；回滚需要新的多包事务模型，且"卸掉刚装好的可用插件"对用户是破坏性行为 |
+| 成员失败自动回滚全部已装成员（含既有成员） | 最初的边界；"卸掉用户既有的可用插件"是破坏性行为。最终采用的折中见 [Pack 安装事务性回滚决策](20260916-pack-install-transactional-rollback.md)：只回滚本次运行创建的成员，既有成员关系不受影响 |
 | 通用 plugin-to-plugin 依赖求解器 | 版本区间、拓扑排序、冲突求解是依赖系统问题；当前需求只是"一次装多个 + 按过滤取舍"，用编排即可满足，求解器是不受支持的复杂度 |
 
 ## 不变量
 
 1. pack 条目不携带任何可下载资产；安装 pack 不下载 pack 自身的任何字节。
-2. pack 永远不会以 `InstalledPlugin`、安装目录或包内清单的形式存在。
+2. pack 永远不会以 `InstalledPlugin`、安装目录或包内清单的形式存在；所有权日志记录不是
+   InstalledPlugin。
 3. preflight 未通过时，不发生任何下载，`installed/` 不发生变化。
 4. 成员只在 pack 所属的 Marketplace Source 内解析；V1 不存在跨源成员。
 5. 已安装的成员在 pack 安装中被跳过且不算失败；其既有版本不被改动或降级。
-6. 任一成员安装失败后，不再尝试后续成员；已安装成员保留。
+6. 任一成员安装失败后，不再尝试后续成员；本次运行创建的成员按逆创建顺序回滚，本次运行之前的
+   成员与所有权关系保持不变。
 7. pack 安装的结果必须逐成员可辨（已装/跳过/失败），不存在整体布尔成功。
 8. `agents` 引用不进入持久化状态、协议字段或安装目录；它只在安装时与已安装 agent 插件求值。
 9. `marketplace_visible = false` 的条目不出现在任何派生索引文件中，但始终可按 identifier 在
    其所属源内解析与安装。
 10. 成员安装复用单插件安装的全部校验（SHA-256、staging、包校验、原子提交），不引入新的落盘
     路径。
+11. pack 安装的所有权关系单独持久化：`managed_by_pack` 与 `pre_existing` 连同
+    `version_at_install` 一起记录；marketplace 清单的内容变化不重写历史日志。
+12. pack 卸载只回收 `managed_by_pack` 且对账为 `ExpectedAndPresent` 的成员；`pre_existing` 与
+    独立升级（`VersionChanged`）的成员永远保留，`Missing` 成员不阻塞其余成员的回收。
 
 ## 本决策未解决的问题
 
 - pack 详情页与"安装前成员预览"：需要把成员的 listing 元数据经新契约暴露给前端，或为隐藏
   条目增加另一条读取路径；留待 V1 之后的 ADR。
-- pack 级卸载与"随 pack 一起装"的成员分组展示，需要已安装状态的分组记录，超出 V1。
 - 嵌套 pack、跨源成员、成员版本区间约束：需要依赖求解语义，明确不在 V1。
 - `agents` 引用未来是否扩展"agent 能力标签"（如 `any`、`none`）以表达反选语义。
+- pack 级卸载与成员分组展示已由 20260916 系列决策（所有权、对账、卸载、前端呈现）解决，
+  不再是本决策的未决项。
 
 ## 落地顺序
 
@@ -233,8 +251,8 @@ pack 与成员的生命周期有意分离：成员是真实插件，拥有完整
    `marketplace_visible`（清单链日期决策）；`ora-plugin-registry` 索引构建过滤隐藏条目
    （registry 链日期决策）。完成条件：pack/隐藏条目的解析、索引、resolve 行为有单元测试。
 2. **编排与契约层**：`crates/backend` 安装编排 + preflight + `PackInstalled` outcome；
-   `ora-contracts` 与 TS 类型再生成。完成条件：preflight 失败零下载、成员失败停止不回滚的
-   集成测试。
+   `ora-contracts` 与 TS 类型再生成。完成条件：preflight 失败零下载、成员失败停止运行并回滚
+   本次创建成员的集成测试。
 3. **前端层**：marketplace 卡片对 pack 的呈现、聚合进度、聚合结果反馈。完成条件：安装 pack
    的端到端用户路径可用。
 4. **内容层**：marketplace 仓库提交 `python-extension-pack` 及其成员条目（含
