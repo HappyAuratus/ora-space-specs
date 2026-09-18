@@ -1,12 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 迭代节点：以 foreach 复合运行时遍历数组，用按轮账本解耦错误策略
 
 迭代节点（foreach 语义）成为[节点运行时编排决策](0-node-runtime-orchestration.md)规划的第一个复合运行时：它以一个数组变量为迭代源，区域内的节点图对每个元素执行一轮，每轮绑定 `{iter}.item` / `{iter}.index`，完成时产出类型固定的暴露变量 `{iter}.output`、`{iter}.entries` 与 `{iter}.failed_count`。错误容忍不以 Dify 的三模式下拉建模，而解耦为二值控制流开关（`fail` / `continue`）加按轮账本：账本记录每轮的 `{item, status, output, error}`，`entries` 是它的完整投影，`output` 是只含成功项的过滤投影——Dify 三模式成为"策略 × 读哪个变量"的组合，而不是改变输出类型的配置项。失败传播获得作用域化的吸收能力：区域内失败可被 `continue` 策略吸收为账本条目，迭代节点自身的失败仍然终止 run。
 
-本决策已完成评审并标记为 `approved`：依据已 `approved` 的 0 号决策的区域机制与复合运行时契约细化，评审期间的修正（D5 账本编码由序列改为按轮索引、D2 把 `max(iteration)` 推导收窄为 v1 串行实现机制并补充 advance 协调语义）均已并入正文；核心测试用例已依据最终同意的不变量补充于 `test-cases/desktop/core/workflow/`（新增 `iteration-node.md`，并同步更新 `region-and-loop.md`、`stateless-recovery-and-hitl.md`、`variable-pool-boundary.md`、`runtime-forms.md`），证据缺口如实标记，待各落地阶段代码实现后回填。涉及模块为 `crates/application/src/workflow_run/engine`（`node_type.rs`、`node_runtime.rs`、`branch_projection.rs`、`variable_pool.rs`、`ports.rs`、`skill_delivery.rs`）、`crates/backend/src/workflow/run`（`executor.rs`、`recovery.rs`）、`crates/db/src/repository/workflow_run_engine.rs`、`ora-contracts`（`WorkflowNodeRun`）与前端 workflow-editor / workflow-run。兼容性边界：只含既有四种节点类型的冻结图执行行为不变（0 号决策不变量 9 继承）；旧版本 Ora 打开含迭代节点的图由 `UnknownNodeType` 解析拒绝，不产生半解析状态。本决策不承担 while 语义 Loop、并行迭代、嵌套复合、失败轮重试与区域内 HITL——各自留在后续决策，见"本决策未解决的问题"。
+本决策已实现：运行时、持久化、契约、编辑器和运行视图均已落地，核心测试用例登记于 `test-cases/desktop/core/workflow/iteration-node.md`。涉及模块为 `crates/application/src/workflow_run/engine`、`crates/backend/src/workflow/run`、`crates/db/src/repository/workflow_run_engine.rs`、`ora-contracts`（`WorkflowNodeRun`）与前端 workflow-editor / workflow-run。兼容性边界：不含迭代节点的冻结图执行行为不变；旧快照缺少容器尺寸时按 560×340 最小尺寸加载，既有 `parentId` 图无需迁移；编辑器新增的尺寸与 `iteration-entry` handle 都是兼容的图字段，不改变后端图契约或调度语义。本决策不承担 while 语义 Loop、并行迭代、嵌套复合、失败轮重试与区域内 HITL——各自留在后续决策，见"本决策未解决的问题"。
 
 ## 继承与修改
 
@@ -129,8 +129,13 @@ enum FailurePropagation {
 
 ### D7：编辑器与运行视图的呈现承诺
 
-- **内嵌区域呈现**（React Flow `parentId` + `extent`）：迭代节点渲染为同一画布上的大容器框，body 节点摆在框内，外层连线接到容器边框；配折叠态（折叠成小框 + 摘要）缓解大 body 的画布空间。不采用子流程画布：body 是同一冻结图的结构区域而非独立工作流（同一变量池、同一 worktree、同一快照），子流程画布在视觉上宣称了不存在的东西；该选择不泄漏进 wire format 与引擎，纯前端表现。
-- 节点目录放出 `iteration`。Inspector 暴露迭代源选择器（限数组类型变量）、收集目标选择器（限区域内已声明的根变量）、错误策略开关、上限输入。
+- **内嵌区域呈现**：迭代节点渲染为同一画布上的复合容器，body 节点摆在框内，外层连线接到容器边框；配折叠态（小框 + 摘要）缓解大 body 的画布空间。不采用子流程画布：body 是同一冻结图的结构区域而非独立工作流（同一变量池、同一 worktree、同一快照），子流程画布会宣称不存在的隔离。
+- **显式成员编辑**：区域展示不持久化的内部起点与“添加节点”入口；可在内部边上插入节点，也可从未连接输出或指定 Condition 分支追加节点。entry 创建 `iteration --iteration-entry--> member`；edge 插入保留原 `sourceHandle` 并改为 `source → new → target`；output 从指定节点/分支连接新成员。三种入口共用一个纯图变换模块，节点、边与尺寸在同一次历史操作和自动保存中提交。内部起点不是运行时节点，wire 继续只有普通节点、`parentId` 与普通边。
+- **能力声明**：`WorkflowNodeType.supportedScopes` 是目录过滤事实源。v1 只有 Agent、Condition 支持 `iteration`；Start、Output、Iteration 仅支持 `workflow`。区域内新建 Agent 强制 `interactive: false`；旧快照中的非法 interactive 成员保留原值并提供可理解的修复操作，发布期仍由 Rust 拒绝。
+- **身份不由几何推导**：`parentId` 只由显式区域入口写入。成员只能在所属区域内移动；外层节点落入区域时回退并提示使用内部入口；全局目录拖放到区域不创建视觉重叠的外层节点。React Flow 的 `extent: "parent"` / `expandParent` 只在渲染期从 `parentId` 派生，不进入快照。
+- **尺寸与布局**：展开尺寸以 560×340 为最小值，复用 `initialWidth` / `initialHeight` 持久化；新增、插入和成员移动只扩展，删除或自动整理时紧凑计算，折叠后恢复原尺寸。自动整理分别排布外层图与每个区域内部 DAG，外层按容器拟合后的真实宽高留位。
+- **删除与引用修复**：删除非空容器先显示成员数量并确认；确认后级联删除容器、成员与相关边，作为一次可完整撤销的历史操作。删除 `collectSelector` 目标时只清空该 selector 并提示重新配置，不隐式选择另一个输出。
+- Inspector 暴露迭代源选择器（限数组类型变量）、收集目标选择器（限区域内已声明的根变量）、错误策略开关、上限输入。
 - 变量目录区域规则：区域内节点可见全局变量、迭代节点上游可见变量、本迭代的 `item` / `index`，以及区域内的上游产物；不可见本迭代的 `output` / `entries` / `failed_count`（尚未产出）。区域外消费者按既有祖先闭包规则可见三个暴露变量，但不可见 `item` / `index`（轮内私有）。
 - 编辑器结构校验是提示性的；权威校验在 Rust（发布期 + run 启动期），遵守单一事实源原则。
 - 运行视图投影从"一节点一态"（`nodeStates: Record<nodeId, state>`）演化为按 `(node_id, iteration)` 分组；剧场把各轮归到迭代 act 下分组展示；每轮 Agent 会话按节点 + 轮次入口查看。
@@ -146,6 +151,8 @@ enum FailurePropagation {
 | 并行迭代 v1 | 串行覆盖写语义（`{{#fix.output#}}` 解析最新轮）在并发下是写竞态；共享 worktree 的并行轮次文件互踩属执行环境议题。需要迭代级变量隔离（独立副本 + 聚合）与"反馈式 vs 批处理"的静态区分，留给后续 ADR。承认 Dify 并行模式（并发上限 10）的效率优势 |
 | 到达上限才失败（0 号决策给 while 设计的行为） | foreach 的 N 在启动时已知，先检查零浪费；跑到上限再失败已消耗 N 个 Agent session |
 | 子流程画布呈现 | body 是同一冻结图的结构区域，不是独立工作流；子流程画布实现成本低但隐喻错误，还会让运行视图被迫两级钻入。承认其大 body 画布空间优势——用内嵌 + 折叠态弥补 |
+| 以拖入/拖出容器决定成员身份 | 操作轻量，但几何抖动会改写运行结构，目录拖放也可能生成视觉上在区域内、结构上在区域外的节点；显式入口让结构变更、连线维护与历史边界一致 |
+| 持久化 Dify `iteration-start` 节点 | 可直接复刻 Dify wire，但内部起点没有运行时语义，会制造第二套图契约；装饰性起点保留体验而不污染冻结图 |
 
 ## 本决策未解决的问题
 
@@ -170,6 +177,10 @@ enum FailurePropagation {
 8. 迭代节点自身失败（迭代源非数组、暴露写入失败、超限）总是传播为 run 失败；只有区域内失败可被 `continue` 吸收。
 9. v1 区域内不含 interactive 节点与嵌套复合节点；轮次串行执行。
 10. 不含迭代节点的冻结图执行行为与现状一致；旧版本打开含 `iteration` 的图由 `UnknownNodeType` 解析拒绝。
+11. 编辑器只有显式区域入口可以写入 `parentId`；拖拽不得改变成员身份，React Flow `extent` 不持久化。
+12. entry / edge / output 插入在一次图变换中同时维护节点、边和容器尺寸；Condition 的原 `sourceHandle` 不丢失。
+13. 展开尺寸不小于 560×340，折叠不覆盖其持久化尺寸；旧快照缺少尺寸仍可加载。
+14. 删除非空区域是一次可撤销的级联操作；删除收集目标只清空 `collectSelector`，不自动替换。
 
 ## 落地顺序
 
@@ -181,3 +192,5 @@ enum FailurePropagation {
 - **Stage D：契约与前端**。`WorkflowNodeRun.iteration` 字段；目录放出节点；内嵌区域编辑与折叠态；inspector；变量目录区域规则；运行视图按轮投影与剧场分组；双语文档。
 
 Stage A / B 不改变任何现有行为；从 Stage C 起含迭代节点的图成为可执行对象。
+
+以上阶段均已完成；代表性运行时、编辑器与 Desktop 端到端证据见 `test-cases/desktop/core/workflow/iteration-node.md`。

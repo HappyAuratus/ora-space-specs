@@ -17,17 +17,15 @@
 
 ## 当前状态
 
-根决策已评审通过（`approved`），核心测试用例依据最终同意的不变量登记如下。Stage 1（纯重构 +
-失效事件）已实现并验证：引擎核心经运行时注册表分发、既有引擎测试原样通过、失效事件通道贯通到
-前端重查，相关证据已回填。迭代节点决策也已评审通过（`approved`），其核心用例登记于
-`iteration-node.md`；区域机制（Stage A）、持久化基座（Stage B）与迭代复合运行时（Stage C/D）
-尚未实现，相关证据仍为 `Missing`，各阶段完成后按同一用例回填。
+节点运行时重构、区域机制与第一个 foreach 迭代复合运行时均已实现并验证：引擎核心经运行时注册表
+分发，轮次与账本由持久化事实重算，编辑器通过显式复合区域入口维护成员图，运行视图按轮投影。
+证据状态按各文件中的验证义务持续维护。
 
 | 文件 | 覆盖的风险面 |
 |---|---|
 | [engine-parity.md](engine-parity.md) | Stage 1 重构行为等价；调度层无节点类型字面量 |
 | [region-and-loop.md](region-and-loop.md) | 区域黑盒与结构校验；DAG 不变量；轮次持久化；while-Loop 上限用例待其 ADR 迁移 |
-| [iteration-node.md](iteration-node.md) | 迭代节点启动边界与轮次事务性；错误策略作用域与账本投影；跨策略类型稳定；按轮决策；恢复结算；v1 区域禁止 interactive；旧版本拒绝含迭代图 |
+| [iteration-node.md](iteration-node.md) | 迭代节点启动边界、轮次事务性、错误策略与恢复；显式区域编辑、容器几何、级联删除与 Desktop 真实执行 |
 | [stateless-recovery-and-hitl.md](stateless-recovery-and-hitl.md) | 崩溃后从持久化续算循环；循环体内 HITL 停靠与推进 |
 | [runtime-forms.md](runtime-forms.md) | 快执行器锁内无 IO；session 归属；回报幂等 |
 | [variable-pool-boundary.md](variable-pool-boundary.md) | 一切节点形态经声明 owner 与类型校验写入 |
