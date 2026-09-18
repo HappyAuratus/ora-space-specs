@@ -2,6 +2,12 @@
 
 本文件按实际平台与保证记录验证义务；文档中的机制选择不构成实现通过证据。
 
+
+## 当前验收范围（2026-09-18）
+
+本文件全部用例属于未来 Windows adapter ADR 的验收输入；当前新 process 体系不支持该平台。
+状态继续 Missing，旧 process crate 或跨平台编译通过不能替代真实 Job／guardian 测试。
+
 ## Windows Workloads Join The Job At Creation Without Breakaway
 
 ### 风险

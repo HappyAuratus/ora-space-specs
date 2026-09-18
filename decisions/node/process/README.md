@@ -1,114 +1,82 @@
 # Node 进程运行决策
 
-`process/` 只做导航，ADR 位于叶子目录；平台部分再分公共保证与三个 OS，避免将全体系决策误排成同一主题的时间演进链。
+本目录只作导航，ADR 保留原叶子路径和引用。2026-09-18 按 Eric 要求收紧原 approved 蓝图：
+当前交付是 **Linux、可信本机、无 root、BestEffort、独立 host／guardian 和 Node Git**。
+implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示全部 process 蓝图完成。
 
-本目录 13 篇根 ADR 已于 2026-09-17 经 Eric 批准，统一为 `approved`。架构方向、范围、不变量
-和实施顺序已经确认；实现、平台验证及各篇列出的待冻结事项仍未完成。每个叶子目录后续
-按 `YYYYMMDD-...md` 追加 ADR，并显式继承或修改该目录的前序决策。
+本次直接修订既有 ADR 是 Eric 的明确要求；保留未来设计方向和验证缺口，不创建一批空白未来 ADR。
+以后恢复延期能力时，在对应叶子追加日期 ADR，继承或修改当前规则，再补直接验收。
 
-## 阅读顺序与目录边界
+## 当前 ADR 状态与范围
 
-| 目录／根 ADR | 负责的决策 |
-|---|---|
-| [architecture](architecture/0-node-host-and-scope-guardians.md) | 逻辑 Node 宿主、Scope guardian、权威分工、范围与 crate 结构 |
-| [control](control/0-authorized-generations-and-leases.md) | 稳定身份、Controller 授权、代次、租约、撤权 |
-| [lifecycle](lifecycle/0-durable-run-attempts-and-scope-closure.md) | 一次尝试、幂等启动、未知事实、Run／Scope 结束与停止 |
-| [recovery](recovery/0-single-authority-and-failure-recovery.md) | 故障层级、单实例、独占恢复和逐 scope 放行 |
-| [containment/guarantees](containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) | 请求与实际保证、启动前降级、强／尽力清理证据 |
-| [containment/linux](containment/linux/0-cgroup-v2-containment.md) | cgroup v2、委派、受限 Linux／gVisor 能力证明 |
-| [containment/windows](containment/windows/0-creation-time-job-containment.md) | 创建时加入 Job、句柄归属和清空核实 |
-| [containment/macos](containment/macos/0-native-best-effort-containment.md) | 原生尽力纳管、跟踪缺口与身份复用 |
-| [io](io/0-bounded-output-and-fenced-input.md) | 输出政策、续读、输入交付与业务会话边界 |
-| [protocol](protocol/0-independent-local-streams-and-state-recovery.md) | 本地三流、编码、快照订阅与结果接管 |
-| [persistence](persistence/0-independent-journals-and-responsibility-retirement.md) | 独立 SQLite、耐久顺序、事实汇合、退休与回收 |
-| [upgrade](upgrade/0-version-coexistence-and-safe-migration.md) | 三个兼容边界、版本共存、目录并存与安全迁移 |
-| [integration](integration/0-shared-process-entry-and-resource-handoff.md) | Client 句柄、Git／插件入口、资源交接与业务对账 |
+| ADR | 状态 | 当前承诺／保留原因 |
+|---|---|---|
+| [architecture](architecture/0-node-host-and-scope-guardians.md) | implemented | Node／host／guardian 权威分离和独立 Linux 进程组合 |
+| [control](control/0-authorized-generations-and-leases.md) | approved | 可信本机宿主绑定已有实现；主题收敛和状态待确认，不冒充 Controller 授权 |
+| [lifecycle](lifecycle/0-durable-run-attempts-and-scope-closure.md) | approved | 持久尝试、收尾已有实现；完整 Start／Close 竞争证据未齐 |
+| [recovery 根决策](recovery/0-single-authority-and-failure-recovery.md) | approved | 完整恢复故障矩阵未齐 |
+| [rootless bootstrap](recovery/20260917-rootless-guardian-bootstrap-and-reconnect.md) | implemented | 原锁交接、原实例重连、持久宿主绑定和死亡缺口 |
+| [guarantees](containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) | approved | 不混淆强／尽力的契约；生产只启用 Linux BestEffort |
+| [Linux cgroup](containment/linux/0-cgroup-v2-containment.md) | approved | 获批方向，Strong 后续 ADR 负责实施和验收 |
+| [Linux helper](containment/linux/20260917-independent-privileged-helper.md) | approved | 预检／inspect／底层降权已有部分实现，不是 Strong 闭环 |
+| [Windows](containment/windows/0-creation-time-job-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
+| [macOS](containment/macos/0-native-best-effort-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
+| [io](io/0-bounded-output-and-fenced-input.md) | implemented | 丢弃／有界内存输出、偏移读取、控制隔离；stdin 关闭 |
+| [protocol](protocol/0-independent-local-streams-and-state-recovery.md) | implemented | 有界本机请求／查询；无订阅／结果接管协议 |
+| [persistence](persistence/0-independent-journals-and-responsibility-retirement.md) | approved | 独立 WAL／FULL 已实现；完整存储故障矩阵未齐，无退休回收 |
+| [upgrade](upgrade/0-version-coexistence-and-safe-migration.md) | approved | 已知迁移／错误版本拒绝；完整布局与迁移中断矩阵未齐 |
+| [integration](integration/0-shared-process-entry-and-resource-handoff.md) | approved | Node Git 已接入；共享仓库冲突边界待确认，不含插件／Backend 切换 |
 
-先阅读 architecture、control、lifecycle，理解身份与责任，再按主题进入其他 ADR。平台实现依赖
-公共保证；资源放行同时依赖控制权、生命周期、清理证据和业务对账。本地 process 协议与上层
-[Controller–Node Protocol](../protocol/0-controller-node-protocol.md)属于不同边界。
-术语统一见[领域词汇表](../../../domain/glossary.md#node-process)。
+## 未来 ADR 责任地图
 
-## 原方案覆盖映射
+| 未来主题 | 所属叶子／领域 | 当前处理 |
+|---|---|---|
+| Controller 授权、密钥／令牌、Node 代次、租约、角色与同 UID 隔离 | control | 信任本机 Node，不提供此安全保证 |
+| Linux Strong、helper 启动 IPC／持久协调、权限隔离及独立清理 | containment/linux | rootless BestEffort；不自动安装或提权 |
+| Windows Job 与 macOS 原生 adapter、身份复用和强杀证明 | containment/windows、containment/macos | 不从旧 crates CI 推导支持 |
+| 插件双向 I/O、输入交付未知、终端、背压／日志轮转、持久输出 | io | stdin 关闭，有界易失输出 |
+| 事件订阅、快照游标、多观察者、process 完成结果接管 | protocol | 查询原身份，不把 Events 端点当订阅 |
+| 结果责任解除、guardian／Scope 退休、GC 和旧身份拒绝压缩 | persistence | 保留记录与 guardian；成本可能持续增长 |
+| 自动版本共存、恢复工具和部署回滚工作流 | upgrade | 不兼容拒绝，保留原管理材料 |
+| 机器重启、休眠、服务管理器存续、guardian 死亡后独立清理 | recovery／平台 | 缺证据保留未知，不猜成功 |
+| 插件接管、Backend 写入入口切换、跨 Node 共享存储 | integration 及所属业务领域 | 不自动迁移旧执行 |
+| Controller–Node IPC、持久接管和业务事件 | Node protocol／Controller | 不由 process 协议的 implemented 代替验收 |
 
-编号沿用原方案第 2 节，用于核对拆分完整性，不充当本目录 ADR 编号。
+未来主题不等于已审批的新方案；启用前仍需新的具体 ADR。
+当前已实现能力的存储、并发、文件保护和资源冲突缺口不因范围收紧而成为可忽略的延期项。
 
-| 原决策编号 | 归属 |
-|---|---|
-| 1、13、14、25、30 | architecture；其中失权策略见 control，第 25 项明确不采纳运行配额 |
-| 3、5、20 | control |
-| 2、4、7、19、23、24、26 | lifecycle；资源冲突另见 integration |
-| 6、15、28 | recovery |
-| 12、18 | containment/guarantees；macOS、受限 Linux 的机制分别归平台 ADR |
-| 16 | containment/linux |
-| 17 | containment/windows |
-| 9、10 | io |
-| 11、34 | protocol |
-| 21、22、33 | persistence |
-| 27 | upgrade |
-| 8、29、31 | integration |
-| 32、35 | 各 ADR 的验收约束及下述实施顺序、故障验证 |
+## 需要 Eric 判断
 
-原第 15 节 REVIEW 的修正已融入相应决策：fencing 与资源交接属于根契约；各平台分别证明保证；
-宿主崩溃由 guardian 存续覆盖；Execution／Scope／Run 分离；断线、停止、退出分开；Git／插件
-统一入口；保留接管与多观察者基础，但不引入无限历史或资源配额。原第 16 节待冻结项分配到各篇
-“本决策未解决的问题”，没有因迁移变成已验证事实。
+1. control：是否将本叶子当前主题确认收敛为“可信本机宿主会话控制”，授权／租约完全由未来
+   ADR 另议？目前保留 approved，避免把删除原主体目标称为实现完成。
+2. guarantees 与平台：是否维持“approved 表示长期方向”的状态？建议保留，不把未实现平台
+   ADR 删成空壳或标 implemented；当前运行范围在索引和正文显式排除。
+3. integration：当前冲突保护主要是持久身份、分支、重叠路径；同仓库其他 worktree 可继续。
+   是否接受“仅当前 Worktree 操作、单 Node 管理”的明确限制，还是要求仓库级协调后再宣告完成？
+   这涉及安全边界，不由文档编辑替 Eric 作决定。
+4. 无退休回收会保留空闲 guardian 与日志。是否接受它作为进入 Controller 开发前的短期限制，
+   还是先补最小退休方案？这不是已实现 GC 的声明。
+
+lifecycle／recovery／persistence／upgrade 的测试缺口是实现验收工作，不需要 Eric 判断测试是否可以省略。
 
 ## 实施顺序
 
-| 阶段 | 闭环 | 完成条件与涉及 ADR |
-|---|---|---|
-| 1 | 平台启动与收尾 | containment 各篇＋lifecycle／recovery；真实创建、后代处理、停止、guardian 强杀，分别证明强／尽力保证 |
-| 2 | 持久启动与宿主恢复 | lifecycle、persistence、recovery；回复丢失不重复启动，关键窗口强杀不伪造未执行 |
-| 3 | 控制权与资源交接 | control、integration；旧 Node 恢复不能夺权，迟到输入失效，冲突资源按政策放行 |
-| 4 | 完整 I/O 与观察 | io、protocol、persistence；输出政策、输入交付、快照订阅、结果接管，拥塞时控制仍推进 |
-| 5 | Git 与插件接入 | integration；真实入口、持久关联、业务对账与会话恢复，消除已迁移调用方的启动旁路 |
-| 6 | 升级与退休 | upgrade、persistence；版本共存、迁移、回收和旧请求拒绝，完成全故障矩阵 |
+已交付：Linux adapter → 独立 guardian → 持久 host → Node 变更关联与资源恢复 → 独立 Node 入口。
+下一业务步骤是 Controller–Node 本机 IPC，再接 Controller 持久协调及 Desktop 写入切换。
+未来能力按需求另开 ADR，不再要求全平台、Strong、租约、完整 I/O／GC 先全部完成。
 
-每个切片包含必要协议、状态、持久化和测试，降低同时改动所有边界的风险。阶段 1 的最小入口
-不发展成另一套生产实现；阶段 4 才补齐完整 I/O 不代表此前可以忽略管道读取或撤权。
-各阶段保持原身份去重、责任不自动释放和实际保证可观察；行为变化只在相应闭环验收并迁移调用方后启用。
+## 故障验证与证据
 
-## 故障验证
+[核心用例索引](../../../test-cases/node/process/README.md)保留原稳定英文 anchors，并区分
+当前义务和未来设计输入；Covered／Partial／Missing 只描述直接证据，未来项不得改称已通过。
 
-以下是已批准方案的验收约束。对应核心用例与验证义务见
-[核心用例索引](../../../test-cases/node/process/README.md)；当前证据均为 `Missing`，不代表测试通过。
+本次依据 desktop 的 bdc6354e、66f61234、6d7c7a57、fd18e1de 及既有 host／guardian 实现。
+2026-09-17 全量 task test 通过；2026-09-18 重新运行 process-protocol、process-runtime、
+process-host、process-guardian、ora-node 测试。平台为本机 Linux，特权 ignored 不算通过。
+真实 Node／host／guardian 强杀证据不推导物理断电、服务管理器或其他平台保证。
 
-| 故障／并发点 | 必须保持的承诺 | 主要归属 |
-|---|---|---|
-| 接受启动后回复丢失 | 同 RunId 恢复原尝试，无第二次启动 | lifecycle |
-| 落盘、纳管、启动、回复之间强杀 | 未知不当作未执行，核实或阻塞／收尾 | lifecycle、persistence |
-| 旧 Node 暂停、接管后恢复 | 旧变更、续约和未交付输入失效，已交付命令按业务事实恢复 | control、io |
-| Node 强杀后立即重启 | 冲突工作遵守恢复政策，无冲突工作独立推进 | recovery、integration |
-| 宿主强杀或升级 | guardian 保持所选存续政策，新宿主不重复启动 | recovery、upgrade |
-| Guardian 强杀或暂时断线 | 确认死亡才关闭；不明时不补启，结果与清理分别报告 | recovery |
-| 直接退出、后台化或新会话 | 按策略管理后代，不提前完成或误报强保证 | lifecycle、containment |
-| 单 Run 终止与其他 Run 并行 | 不隐式杀整个 scope，不提前释放共同资源 | lifecycle、integration |
-| 启动与关闭／撤权并发 | 拒绝或纳入收尾，无漏管窗口 | lifecycle、control |
-| 输出积压、I/O／Events 独立断线 | 政策生效、缺口可见，控制和租约不受输出阻塞 | io、protocol |
-| stdin 写入后记录／回复丢失 | 暴露交付未知，不自动重发业务命令 | io、persistence |
-| 快照与订阅并发、游标回收 | 不静默漏变化，显式重新同步 | protocol |
-| 完成记录／确认丢失 | 接管幂等，未接管结果不被普通轮转删除 | protocol、persistence |
-| 退休后旧启动到达 | 拒绝旧身份，不隐式创建或重执行 | persistence |
-| 强能力缺失、受限 Linux／gVisor | 拒绝或启动前降级，保证与恢复政策可查询 | containment |
-| 清理失败、磁盘满、权限错误、记录损坏 | 不伪造完成，责任、错误及阻塞可观察 | containment、persistence |
-| 新旧协议／数据不兼容 | 不误解语义、不覆盖旧文件、不回退授权与去重事实 | upgrade |
-| 并发宿主启动、guardian 启动回复丢失 | 单一有效权威，取得锁不等于旧运行退出 | recovery |
-| Git 已改文件但结果未保存 | 不重跑原尝试，业务对账后决定新尝试 | integration |
-| 插件本地退出但外部任务继续 | 本地静止不解释为所有外部副作用结束 | integration、containment/guarantees |
+## 原方案与术语
 
-纯状态机测试控制时钟、授权、存储和平台事实；平台测试启动真实进程及后代；业务测试跨独立进程、
-持久存储和真实 Git／测试插件验证最终事实。使用显式同步点与外部强杀，不用 sleep 碰概率、正常
-Drop、正常退出或单进程 panic 代替。既证明不错误放行，也证明条件恢复后不会永久卡住；基础矩阵
-稳定后再增加顺序探索与随机故障。
-
-证据记录保证、场景、测试入口、实际平台／能力、结果和未验证范围。强／尽力、macOS、受限
-Linux／gVisor 与版本组合分别验收，不从其他环境通过推导支持。测试遵循 pretty_assertions、
-TRACE subscriber 隔离及不修改进程环境等仓库规范。
-
-## 评审与落地门槛
-
-对应[测试目录](../../../test-cases/node/process/README.md)镜像本目录，已登记核心用例、验证义务
-与待补证据。批准不代表完成实现或平台证明；改变已批准的规则须追加决策并同步受影响核心用例。
-实现验证后同步最终约束、补齐直接证据，再标记 `implemented`。本次批准仅更新规范与用例文档。
-实施时运行相应格式、lint 和测试，仓库级代码变更完成前运行 `task test`；涉及 `docs/` 时同步中英版本。
+原 35 项方案仍可从 Git 历史追溯；已实现承诺以各 ADR 当前正文为准，不以历史路线图扩大交付。
+术语见[领域词汇表](../../../domain/glossary.md#node-process)；其中长期授权／租约概念不表示本次已启用。
+本地 process 协议与 [Controller–Node Protocol](../protocol/0-controller-node-protocol.md)是不同边界。

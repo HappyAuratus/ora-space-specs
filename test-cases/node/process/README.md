@@ -1,7 +1,7 @@
 # Node 进程运行核心用例目录
 
 本目录与 [process 决策目录](../../../decisions/node/process/README.md) 完全镜像。13 篇根 ADR 已于
-2026-09-17 获批；本目录按其责任边界登记 33 个核心用例，每个用例包含风险、场景、验证义务和决策依据。
+2026-09-17 获批；连同后续 Linux helper 与无特权 Guardian 启动／重连决策，本目录登记 36 个核心用例，每个用例包含风险、场景、验证义务和决策依据。
 
 ## 用例导航
 
@@ -10,9 +10,9 @@
 | [architecture](architecture/ownership-and-isolation.md) | 运行责任与业务身份隔离 | 1 |
 | [control](control/authorization-and-fencing.md) | 授权、租约与实际执行点撤权 | 3 |
 | [lifecycle](lifecycle/attempts-and-closure.md) | 启动尝试、收尾与关闭并发 | 4 |
-| [recovery](recovery/authority-and-recovery.md) | 独占恢复、失联核实与故障隔离 | 3 |
+| [recovery](recovery/authority-and-recovery.md) | 启动资格交接、独占恢复、失联核实与故障隔离 | 4 |
 | [containment/guarantees](containment/guarantees/capability-and-evidence.md) | 实际能力与清理证据 | 2 |
-| [containment/linux](containment/linux/cgroup-ownership-and-cleanup.md) | Linux 创建纳管与清理边界 | 2 |
+| [containment/linux](containment/linux/cgroup-ownership-and-cleanup.md) | Linux 创建纳管、部署权限、无特权尽力清理边界 | 4 |
 | [containment/windows](containment/windows/job-ownership-and-cleanup.md) | Windows Job 归属与退出证据 | 2 |
 | [containment/macos](containment/macos/native-cleanup-and-identity.md) | macOS 原生尽力清理与身份复用 | 2 |
 | [io](io/output-and-input-delivery.md) | 输出政策、输入交付与控制可用性 | 3 |
@@ -21,16 +21,25 @@
 | [upgrade](upgrade/coexistence-and-migration.md) | 版本共存、迁移与权威事实保护 | 2 |
 | [integration](integration/business-entry-and-resource-handoff.md) | 业务入口、远程句柄与资源交接 | 3 |
 
-## 证据状态
+## 证据状态与当前范围
 
-当前新体系尚未实现，全部验证义务为 `Missing`。证据表中的“需……”描述后续取证方式，不是
-已有测试入口或测试通过记录。现有 `crates/process/tests/process.rs` 和
-`apps/ora-reaper/tests/reaper.rs` 验证旧体系，不能替代独立宿主、Scope guardian、持久接管和
-跨实例撤权的直接证据；本次没有执行或新增运行代码测试。
+2026-09-18 随 ADR 范围收紧同步本目录。当前是 Linux 可信本机 rootless BestEffort，
+真实 host／guardian／Node Git 已接通；架构、有界输出、本机查询协议和 bootstrap ADR 标为
+implemented，其余状态及保留原因见[决策索引](../../../decisions/node/process/README.md)。
 
-后续只有直接证明某项义务的测试才登记为证据：完整覆盖为 `Covered`，仅覆盖部分路径或较低层
-规则为 `Partial`，没有直接证据继续保留 `Missing`。平台、实际能力和强／尽力模式分别记录，
-不把 Linux 通过推导为 macOS、Windows 或受限 Linux／gVisor 通过。
+当前直接证据覆盖独立 Node／host 强杀恢复、原身份去重、持久绑定与旧通道拒绝、guardian
+丢失不伪造清理、局部恢复、有限输出及停止隔离。2026-09-18 重跑 process-protocol、
+process-runtime、process-host、process-guardian、ora-node 测试通过；基线 fd18e1de。
+本次是文档范围与证据维护，没有实现代码变更。
+
+Controller 授权／租约、stdin、订阅与结果接管、退休回收、Strong、Windows／macOS 新 adapter
+及自动版本部署用例保留原 anchor，明确标为未来 ADR 输入，证据仍 Missing／Partial。
+正文中“必须成立”对未来项只表示启用能力时的验收要求，不是当前 API 承诺。
+现有 Start／Close 并发、存储失败、迁移中断和共享仓库资源边界缺口仍属当前工作，不靠延期抹除。
+
+Covered 表示收紧后明确义务有直接证据；Partial 保留组合或平台缺口；Missing 没有直接证据。
+特权测试 ignored 不算通过，不把旧 process/reaper 的平台 CI 当成新独立运行体系验收。
+核心用例数量仍为 36（范围说明不是新增用例）；英文标题因稳定引用保留，不从其旧名推导新功能。
 
 ## 验证边界
 

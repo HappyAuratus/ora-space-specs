@@ -1,106 +1,66 @@
-# 输出政策、输入交付与控制可用性
+# 有界结果输出与控制隔离
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+当前只有丢弃／有界内存捕获和偏移读取。保留原英文 anchor；标题中的 lease／input 不表示已交付。
+延期能力的 Missing 不影响仅当前范围的 implemented，也不能被标成 Covered。
 
 ## Output Limits Preserve Each Channel Contract And Expose Gaps
 
-### 风险
+### 风险与前置状态
 
-统一丢弃策略会破坏协议，统一无限缓存会耗尽资源；EOF 与可靠完整输出混淆会误报业务结果。
+Git 分别向 stdout／stderr 输出，消费者可离线；有限捕获不能被误解为完整或持久结果。
 
-### 前置状态
+### 触发与必须成立
 
-分别运行结果捕获、插件 stdout 协议和诊断日志流；stdout／stderr 可选择不同政策，读取者可离线。
-
-### 触发
-
-超过容量／背压期限，在宿主强杀后续读，并读取已淘汰区间；分别产生正常 EOF、截断和未持久尾部。
-
-### 必须成立
-
-- 结果捕获超限终止并报告结果不完整；协议流保序背压，超过约定容量／期限终止且不静默丢字节；日志可继续运行但标记缺口。
-- Guardian 在宿主中断期间继续处理管道；续读按偏移／序号，区分 EOF、持久化、截断及中断，不把续读当作业务会话已恢复。
+达到限额、直接退出但后代持管道、EOF 先于退出、host 重启后读取。
+超限停止相应 Run，截断／失败可见；EOF 与直接退出分离；guardian 存活时仍能读取原前缀。
 
 ### 禁止结果
 
-协议字节静默淘汰；日志轮转无缺口提示；未持久尾部或 EOF 被报告为完整可靠结果。
+截断前缀按完整 Git 结果解析；输出无限缓存；guardian 死亡后声称内存输出可靠保存。
 
 ### 验证义务与证据
 
-| 验证义务 | 验证方式与直接证据 | 状态 |
+| 义务 | 直接证据 | 状态 |
 |---|---|---|
-| 三种输出政策分别在限制处产生约定行为 | 尚无直接证据；需真实消费者离线和输出超限测试 | `Missing` |
-| 宿主重启可按政策续读，缺口与完成阶段可观察 | 尚无直接证据；需管道、分段文件与生产读取接口验证 | `Missing` |
+| 精确限额与偏移、无消费者读取 | crates/process-runtime/tests/linux_output.rs::exact_limits_replay_and_partial_reads、readers_progress_without_consumer | Covered |
+| 超限只停止所属 Run | crates/process-runtime/tests/linux_output.rs::overflow_stops_only_its_run | Covered |
+| EOF 与退出分离 | crates/process-runtime/tests/linux_output.rs::descendant_pipe_outlives_direct_exit、eof_can_precede_process_exit | Covered |
+| 真实 host 重启仍从原 guardian 读取 | apps/ora-process-host/tests/service.rs::host_kill_reconnect_stop_and_close_use_original_attempt | Covered |
+| 插件背压、日志轮转、持久尾部 | 未来 I/O ADR；不属于当前结果捕获 | Missing |
 
-### 决策依据
-
-[根决策](../../../../decisions/node/process/io/0-bounded-output-and-fenced-input.md) D1、D2 与不变量 1。
+决策依据：[I/O](../../../../decisions/node/process/io/0-bounded-output-and-fenced-input.md)。
 
 ## Input Delivery Uncertainty Cannot Cause Automatic Command Replay
 
-### 风险
+范围：未来 stdin／插件会话 ADR 的验收输入，当前 stdin 关闭。
 
-OS 管道写入与记录不原子，重发回复丢失的输入会重复插件命令。
-
-### 前置状态
-
-输入具有身份与顺序，插件可记录实际收到／处理的命令；写入、持久记录和回复之间有同步点。
-
-### 触发
-
-重投同身份同数据及不同数据，在写入后记录／回复前强杀相关进程，再接管保留运行并撤销旧控制权。
-
-### 必须成立
-
-- 在可核实记录范围内保序去重，同身份不同数据拒绝；分别报告接受、已写入和业务已处理。
-- 写入是否完成无法确定时暴露交付未知，不自动重发；未交付旧队列受撤权约束，已交付字节由插件协议对账。
-
-### 禁止结果
-
-把已接受当作插件已处理；把交付未知当作未写入再发；撤权后继续交付旧队列。
-
-### 验证义务与证据
-
-| 验证义务 | 验证方式与直接证据 | 状态 |
-|---|---|---|
-| 原身份保序去重且拒绝数据冲突 | 尚无直接证据；需生产输入接口和真实插件接收记录 | `Missing` |
-| 写入／记录窗口故障保留未知，不自动重复业务命令 | 尚无直接证据；需真实管道与外部强杀 | `Missing` |
-| 撤权与业务对账分别处理未交付和已交付输入 | 尚无直接证据；需执行点屏障与插件确认恢复 | `Missing` |
-
-### 决策依据
-
-[根决策](../../../../decisions/node/process/io/0-bounded-output-and-fenced-input.md) D3 与不变量 2、3。
+- 风险／前置：有副作用的插件命令已写管道但记录或回复可能丢失。
+- 触发：写入、落盘、回复之间故障并重连。
+- 必须成立：区分接受、写入与业务确认，交付未知不自动重发；未交付队列在实际写入点检查资格。
+- 禁止结果：把回复丢失改写成未交付、撤权后写旧队列。
+- 验证义务与证据：真实管道、插件确认及故障恢复均 Missing，恢复该能力时另行设计。
+- 决策依据：I/O 根决策的未来 ADR 边界；不是当前 API 的承诺。
 
 ## Output Congestion Cannot Block Lease Revocation Or Stop
 
-### 风险
+### 风险与前置状态
 
-即使使用独立连接，共享锁或任务队列仍可能把续租、撤权和停止卡在输出之后。
+真实输出连接停滞，host／guardian 控制入口仍需可用。当前没有租约，保留旧 anchor 仅为引用稳定。
 
-### 前置状态
+### 触发与必须成立
 
-Control、Events、I/O 均已认证，业务持续大量输出；可分别阻塞读取者、写任务和事件消费者。
-
-### 触发
-
-制造输出积压并断开 I/O 或 Events，同时请求续租、查询、撤权和停止，再恢复消费。
-
-### 必须成立
-
-- 队列按政策有界，控制操作仍能推进并在实际执行点验权；不能持控制锁等待 I/O。
-- 单通道恢复按各自规则处理，数据流活动不替代控制续租，缺口与终止政策可观察。
+阻塞输出客户端，同时查询和停止；输出等待不占用控制锁或控制连接名额。
 
 ### 禁止结果
 
-拥塞无限延迟撤权或停止；缓冲无界增长；仅 I/O 活跃维持过期资格。
+等待消费者才能停止运行、无界积压、以 I/O 存活伪装租约有效。
 
 ### 验证义务与证据
 
-| 验证义务 | 验证方式与直接证据 | 状态 |
+| 义务 | 直接证据 | 状态 |
 |---|---|---|
-| 真实拥塞与独立断线期间控制操作仍可推进 | 尚无直接证据；需连接、队列和真实输出的宿主集成测试 | `Missing` |
-| 恢复后保留边界与缺口符合政策，不延长控制资格 | 尚无直接证据；需受控时钟与消费恢复测试 | `Missing` |
+| host 输出停滞不阻止控制 | apps/ora-process-host/tests/service.rs::lost_reply_executes_once_and_stalled_output_does_not_block_control | Covered |
+| guardian I/O 握手停滞不阻止控制 | apps/ora-process-guardian/tests/bootstrap.rs::stalled_io_probes_do_not_block_control | Covered |
+| 租约／stdin 撤权与订阅背压 | 未来 control／I/O ADR | Missing |
 
-### 决策依据
-
-[根决策](../../../../decisions/node/process/io/0-bounded-output-and-fenced-input.md) D4 与不变量 3；通道认证另见 protocol 用例。
+决策依据：[I/O](../../../../decisions/node/process/io/0-bounded-output-and-fenced-input.md)。

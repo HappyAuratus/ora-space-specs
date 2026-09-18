@@ -1,105 +1,49 @@
-# 本地三流、状态衔接与持久接管
+# 本机分流、绑定与查询恢复
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+当前范围为 Linux 有界请求／回复和输出读取，不含事件订阅、游标或结果接管协议。
+旧英文 anchor 保留；Authenticated 在当前表示 OS 对端及宿主绑定校验，不是秘密凭据认证。
 
 ## Every Local Stream Must Bind To The Same Authenticated Session
 
-### 风险
+### 风险与前置状态
 
-仅凭 ScopeId／RunId 接入或混用两层消息，会让旁路连接越权；错误 framing 可导致错读和无界分配。
+真实 host／guardian 通道已有宿主绑定；错误版本、错 Scope、旧会话或迟到请求可能错误执行。
 
-### 前置状态
+### 触发与必须成立
 
-Node—宿主、宿主—guardian 各有独立握手和版本语义，三流须绑定各自已认证会话。
-
-### 触发
-
-在 Unix Domain Socket／Named Pipe 分别发送拆帧、粘帧、超限帧、未知语义及另一会话的 Events／I/O 接入；交错三通道顺序。
-
-### 必须成立
-
-- 按长度前缀与 MessagePack 解析，分块和分页受限；不能把一次 read 当作完整消息。
-- 两层分别协商消息语义，所有通道验证会话，跨流按请求／Run／代次／版本关联；Events／I/O 不续租。
+发送不完整／超限消息、错误版本、错对端、接管后旧通道字节；丢失 Start 回复后按原身份恢复。
+拒绝错误边界，三 guardian 通道核对原绑定；host 输出与控制分离，同 Run 不重复执行。
 
 ### 禁止结果
 
-自报运行身份即可读写；跨层消息误执行；未知语义使用默认值；跨流到达顺序覆盖事实版本。
+可解码即兼容、旧队列接管后执行、输出阻塞停止；把 Events 端点当已实现订阅。
 
 ### 验证义务与证据
 
-| 验证义务 | 验证方式与直接证据 | 状态 |
+| 义务 | 直接证据 | 状态 |
 |---|---|---|
-| 实际字节流正确处理 framing、限制与两套消息边界 | 尚无直接证据；需 Unix／Windows 真实 transport 测试 | `Missing` |
-| 三通道会话绑定与跨流身份校验拒绝越权和错配 | 尚无直接证据；需错误凭据、会话与乱序输入的生产会话测试 | `Missing` |
+| 有界完整 framing、未知字段／身份拒绝 | crates/process-protocol/tests/guardian_wire.rs::framing_requires_one_complete_bounded_message、unknown_fields_and_noncanonical_identities_are_rejected | Covered |
+| 真实 host 错误版本／对端拒绝 | apps/ora-process-host/tests/service.rs::incompatible_requests_and_wrong_peer_are_rejected | Covered |
+| guardian 旧三通道及迟到字节失效 | apps/ora-process-guardian/tests/bootstrap/management.rs::durable_takeover_fences_old_channels_and_replays_original_session | Covered |
+| 已排队请求在执行点核对绑定 | crates/process-runtime/src/guardian/management_tests.rs::queued_request_checks_binding_after_takeover | Covered |
+| 回复丢失去重与控制／输出隔离 | apps/ora-process-host/tests/service.rs::lost_reply_executes_once_and_stalled_output_does_not_block_control | Covered |
 
-### 决策依据
-
-[根决策](../../../../decisions/node/process/protocol/0-independent-local-streams-and-state-recovery.md) D1、D2 与不变量 1。
+决策依据：[协议](../../../../decisions/node/process/protocol/0-independent-local-streams-and-state-recovery.md)。
 
 ## Snapshot Subscription Handoff Cannot Silently Lose Committed Changes
 
-### 风险
-
-快照读取与订阅建立之间的变化可能永久丢失，或历史回收后继续返回看似完整的增量。
-
-### 前置状态
-
-宿主查询投影可能落后于 guardian；有带版本与核实状态的快照及有限游标历史。
-
-### 触发
-
-在读取快照与订阅之间提交变化，回收游标历史，并在状态提交与发布之间强杀宿主。
-
-### 必须成立
-
-- 从快照对应游标续订，变化可恢复；历史不足明确要求重同步。
-- 状态和变更发布责任同事务保存；快照暴露新鲜度／核实状态，投影落后不触发再次启动。
-
-### 禁止结果
-
-静默漏变化；以有限历史尾部冒充完整衔接；状态已提交但通知责任永久丢失；投影缺失即重跑。
-
-### 验证义务与证据
-
-| 验证义务 | 验证方式与直接证据 | 状态 |
-|---|---|---|
-| 快照／订阅竞争与历史回收有可判断的恢复结果 | 尚无直接证据；需生产快照与订阅接口并发测试 | `Missing` |
-| 提交后故障仍恢复发布责任，落后投影不制造新启动 | 尚无直接证据；需真实持久存储和宿主强杀 | `Missing` |
-
-### 决策依据
-
-[根决策](../../../../decisions/node/process/protocol/0-independent-local-streams-and-state-recovery.md) D3 与不变量 2。
+范围：未来订阅 ADR，当前仅轮询。
+风险／前置：快照与事件之间并发更新；触发：订阅竞争、游标过期、提交后故障。
+必须成立：不静默漏变化，历史缺失要求重同步，发布责任可恢复。
+禁止结果：把旧快照当全部最新事实或从漏通知推导未执行。
+验证义务与证据：生产订阅、游标回收与提交／发布窗口均 Missing，不以当前查询测试替代。
+决策依据：协议根决策的未来 ADR 边界。
 
 ## Completion Records Remain Until Durable Responsibility Takeover
 
-### 风险
-
-把收到事件或查询结果视为接管，会在 Node 重启后丢失结果或重复触发业务后续。
-
-### 前置状态
-
-完成记录等待指定 Node 接管，诊断观察者同时订阅；普通变更历史可轮转。
-
-### 触发
-
-在 Node 持久接管前后分别强杀，丢失确认并重传结果／确认，轮转事件并使诊断观察者离线。
-
-### 必须成立
-
-- Node 持久保存结果和后续责任后才确认；确认丢失可重传，不重复业务处理。
-- 未接管记录不随事件轮转删除；只读查询／诊断观察不自动承担确认责任，观察者离线不永久阻塞回收。
-
-### 禁止结果
-
-内存收到即删除；事件轮转丢掉结果；重复确认产生第二次业务副作用；等待所有观察者永久阻塞退休。
-
-### 验证义务与证据
-
-| 验证义务 | 验证方式与直接证据 | 状态 |
-|---|---|---|
-| 确认严格晚于持久接管，重传不会重复业务处理 | 尚无直接证据；需 Node 持久存储和确认窗口强杀 | `Missing` |
-| 事件轮转与诊断观察不改变结果责任或回收资格 | 尚无直接证据；需真实轮转、观察与退休接口测试 | `Missing` |
-
-### 决策依据
-
-[根决策](../../../../decisions/node/process/protocol/0-independent-local-streams-and-state-recovery.md) D4 与不变量 3。
+范围：未来 process 结果接管／退休 ADR，不等于 Node 业务 EventAck。
+风险／前置：指定接管方尚未持久接受结果；触发：确认丢失、轮转和回收。
+必须成立：持久接管后确认，确认幂等，普通轮转不丢弃未接管结果。
+禁止结果：查询即确认，诊断观察者隐式承担责任，删除记录导致旧尝试复活。
+验证义务与证据：process 接管／回收接口均 Missing；当前不回收记录，不声称协议已实现。
+决策依据：协议根决策及持久化根决策的未来 ADR 边界。

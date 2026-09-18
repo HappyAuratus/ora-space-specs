@@ -156,6 +156,12 @@ _Avoid_: Node instance as Process Host, machine-wide supervisor
 观察和收尾事实。它不解释 Git 结果或插件命令是否达成业务目标。
 _Avoid_: legacy reaper as Scope Guardian, business result interpreter
 
+### Privileged Process Helper
+
+`Privileged Process Helper` 是部署授予有限平台管理权限的进程纳管辅助角色，隔离管理权限与工作负载身份。
+它不拥有业务解释权，不替代 Process Host 或 Scope Guardian，也不是通用提权入口。
+_Avoid_: machine-wide supervisor, arbitrary root command executor
+
 ### Scope Control Generation
 
 `Scope Control Generation`（Scope 控制权代次）区分某个 scope 前后两次变更资格；旧代次撤销后

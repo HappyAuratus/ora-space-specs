@@ -1,98 +1,54 @@
 ---
-status: approved
+status: implemented
 ---
 
-# 每个逻辑 Node 使用独立宿主，每个 Scope 使用独立 Guardian
+# 独立宿主协调意图，Scope Guardian 拥有运行事实
 
-运行身份与生命周期独立于 Node 实例。每个逻辑 Node 配置一个独立运行宿主，每个活跃
-`ProcessScope` 配置一个 guardian：宿主协调持久意图与控制权，guardian 持有进程、I/O 和运行事实。
-宿主重启可以恢复管理；guardian 确认失效后关闭对应 scope，不接管其原活进程。
+当前 Linux 可信本机路线使用独立 host 和每 Scope 一个 guardian。Node 管业务执行与资源对账，
+host 管持久意图和协调，guardian 管进程、输出与收尾。宿主重启不重新启动原 Run。
 
-本根决策已于 2026-09-17 获批（`approved`），承接已讨论确认但未实现、未完成平台验证的方向。适用于新进程体系；
-保留现有 `ora-process`、`ora-reaper`，允许重构 Git／插件接口，不增加旧 API 兼容包装。
-文件系统布局仍是硬兼容边界，具体并存与迁移由[升级决策](../upgrade/0-version-coexistence-and-safe-migration.md)负责。
-
-批准确认本文的架构选择与不变量；实现和平台验证仍待完成，文末待冻结事项不因批准视为已解决。
-
-## 背景与约束
-
-现有 `crates/process/src/reaper.rs` 使用进程级 reaper 状态和父进程存活管道；运行管理依附于
-Desktop 进程。三面架构需要在 Node 更替、宿主故障和通信恢复时继续解释已经接受的运行责任。
-一次 RPC 成功不能承担完整生命周期，需要分别保存意图、事实与协调进度。
+本文于 2026-09-18 按已交付范围收紧并标为 implemented；不表示全部 process 蓝图完成。
+旧 Backend／插件仍走原入口，不自动迁移活进程；文件系统兼容边界由 upgrade 决策约束。
 
 ## 决策
 
-### D1：按权威划分运行层和业务层
+### D1：事实按所有者分离
 
-```text
-Controller：授权逻辑 Node 的实例更替
-  └─ Node：Execution、资源协调、Git 对账、插件协议
-      └─ process-client：Session / Scope / Run
-          └─ 运行宿主：授权、控制权、意图、查询投影、恢复协调
-              ├─ Scope A guardian：Run A1、Run A2 及其受管后代
-              └─ Scope B guardian：Run B1 及其受管后代
-```
+Node 保存 Execution 及变更尝试的 Scope／Run 关联；host 保存创建、启动、停止、关闭意图及查询投影；
+guardian 独立保存接受记录和运行事实。退出码不等于业务成功，投影陈旧不等于尚未执行。
+一个 Execution 可有多个 Run，Scope 不固定等于业务执行或 worktree 路径。
 
-Controller 授权不证明旧进程退出；宿主未收到回复不证明 guardian 未执行；guardian 的退出码
-不证明业务目标完成。Node 持久记录本地执行关联，业务权威状态仍遵循
-[Controller–Node Protocol](../../protocol/0-controller-node-protocol.md) 的部署边界。
+### D2：独立进程承担故障责任
 
-一个业务 Execution 可以包含多个 Run。Scope 按共同控制、失联处置与收尾责任划分，不固定等于
-Node、worktree 路径或 Execution。不同 scope 仍可能争用同一资源，由
-[业务接入决策](../integration/0-shared-process-entry-and-resource-handoff.md)处理。
+每 Scope 的 guardian 独立 session、数据库及锁，不依赖 Node 或 host 的 Drop。
+host 故障可重连原 guardian；guardian 丢失不能由替代实例重新执行旧身份，也不宣称已清理。
+Node 为 Git 注入 owner 退出清理策略，该策略不等于 Controller 租约。
 
-### D2：以独立 Guardian 承担存续责任
+### D3：模块按责任组合
 
-Guardian 持续纳管、读写 I/O、记录事实和收尾；宿主集中协调并汇合事实。共用代码不能变成
-共用进程、数据库或内存权威。Scope 可以声明宿主失效时终止，但检测与执行必须在宿主之外。
-每 scope 一个 guardian 带来进程和存储成本，换取明确的故障与收尾边界；本版不做机器级统一宿主。
+protocol 拥有共享消息；client 只依赖协议而不依赖 runtime；runtime 拥有 host、guardian、
+平台和持久化实现；两个薄 app 负责部署入口。Node 的 ManagedGitRunner 实现 gitlancer 的
+GitRunner，gitlancer 不依赖 Node 或 process。通用 OS／路径能力归 ora-utils。
 
-### D3：三个 Library Crate 与两个薄 App
+### D4：明确本次范围调整
 
-| 位置／名称 | 责任与依赖 |
-|---|---|
-| `crates/process-protocol` / `ora-process-protocol` | 身份、策略、状态、消息、版本和编码；无 Tokio、数据库、Git 或 OS 进程操作 |
-| `crates/process-client` / `ora-process-client` | 远程句柄和连接管理；依赖 protocol，不依赖 runtime |
-| `crates/process-runtime` / `ora-process-runtime` | 私有 host、guardian、platform 模块，各自关联持久化和测试 |
-| `apps/ora-process-host`、`apps/ora-process-guardian` | 参数、日志与启动入口 |
-
-Platform seam 区分 Linux、Windows、macOS 和 fake，不以 Unix 抹平保证差异。优先静态分发、
-私有实现和显式导出；与 Ora 领域、transport、runtime 无关的通用能力归 `ora-utils`。
-
-### D4：范围服务于可恢复运行
-
-纳入稳定身份、幂等启动、控制权交接、宿主恢复、平台纳管、双向有界 I/O、查询订阅、结果接管、
-责任回收及 Git／插件接入。不纳入运行数量准入、并发配额、CPU／内存／进程数预算、机器级管理、
-guardian 崩溃后的活进程接管、Run 内自动业务重试、无限事件历史或恶意程序安全沙盒。
-有界队列、输出政策和磁盘故障处理属于正确性，不能据此重新引入资源配额模型。
+原 approved 蓝图中的 Controller 授权、租约、双向 I/O、订阅、结果接管回收、插件及全平台
+集成不再是本 ADR 的完成条件，由本目录索引列出的未来 ADR 分别负责。
+当前选择可信本机、Linux BestEffort、有限输出和轮询查询；不新增安全沙盒或资源调度配额。
 
 ## 不变量
 
-1. 运行身份跨 Node 实例和宿主实例保持稳定，实例更替不创建新的业务尝试。
-2. 意图、运行事实、业务解释各有唯一所有者，通过显式协议组合。
-3. 旧进程体系与新体系并存时，同一业务尝试只交给其中一套执行。
+1. 重连不更换原 Scope／Run 身份或生成第二次尝试。
+2. 业务解释、管理意图和运行事实各有所有者，不用跨库原子事务伪装共享权威。
+3. 同一次业务尝试不同时交给新旧执行体系。
 
-## 为什么不是这些替代方案
+## 取舍与后果
 
-| 方案 | 取舍 |
-|---|---|
-| 继续依附 Node 内存管理 | 进程少，但 Node 崩溃后无法独立承担已经接受的责任 |
-| 一个宿主直接持有全部进程和 I/O | 装配简单，但宿主升级和崩溃同时破坏所有运行存续 |
-| 每 Run 一个 guardian | 隔离更细，但共同交接与收尾仍需 Scope 协调；当前按 Scope 隔离已满足责任边界 |
-| 机器级统一管理器 | 可共享管理成本，但超出逻辑 Node 的授权、部署和恢复边界 |
+继续依附 Node 内存成本较低，但无法在 Node 强杀后独立收尾；单宿主直接持有所有进程会扩大
+宿主故障范围。每 Scope 一个 guardian 增加成本；当前尚无退休回收，不能宣称长期资源占用有界。
 
-## 落地与验收
+## 验收
 
-先按[实施顺序](../README.md#实施顺序)证明平台启动与收尾，再接入持久恢复和控制权。
-验证宿主强杀不丢失 guardian 已承担的责任、单个 scope 故障不误伤无冲突工作，并检查 crate 依赖
-和真实业务入口。物理结构检查不能替代跨进程行为证据。
-
-## 核心测试用例
-
-[风险与验证义务](../../../../test-cases/node/process/architecture/ownership-and-isolation.md)记录本决策的核心用例；
-当前直接实现证据为 `Missing`，实现后按验证结果更新。
-
-## 本决策未解决的问题
-
-各平台机制、授权协议、wire schema、存储布局与发布兼容窗口分别由本目录其他根 ADR 约束；
-具体类型与默认参数在对应边界实施前冻结，改变已批准规则时追加决策。本 ADR 不授权新增已排除的运行配额或安全沙盒。
+真实 Node 强杀重启、host 强杀重连、guardian 丢失后的局部阻塞已验证。
+见[核心用例](../../../../test-cases/node/process/architecture/ownership-and-isolation.md)。
+Strong、服务管理器下存续、物理断电及非 Linux 不在本次实现声明内。

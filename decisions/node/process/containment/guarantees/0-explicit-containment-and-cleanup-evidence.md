@@ -12,7 +12,13 @@ Scope 在业务启动前确定并保存实际纳管保证。强能力不足时�
 [macOS](../macos/0-native-best-effort-containment.md)。它不构成恶意程序安全沙盒或外部服务取消协议，
 也不自动把旧 reaper 运行提升为强纳管。
 
-批准确认本文的架构选择与不变量；实现和平台验证仍待完成，文末待冻结事项不因批准视为已解决。
+2026-09-18 收紧范围：当前公开 host／guardian 路线仅交付 Linux BestEffort；内核支持请求策略
+选择与 Strong 能力不足时拒绝，但不存在已验收的生产 Strong adapter。本文保持 approved，
+不以 fake Strong 证据或旧体系跨平台 CI 标记全平台保证实现。
+
+原文中 Strong、macOS、Windows 和受限部署的规则只约束未来启用对应能力的前提；具体机制、
+能力矩阵与正向验收由未来平台 ADR 负责，不是当前必须交付全部平台的要求。当前仍必须遵守
+不伪造清理完成、不事后降级、未知不重跑、BestEffort 不等于完整静止的底线。
 
 ## 背景与约束
 
@@ -72,7 +78,7 @@ Scope 内所有 Run 必须符合已保存契约。启动未知时不能更换实
 ## 核心测试用例
 
 [风险与验证义务](../../../../../test-cases/node/process/containment/guarantees/capability-and-evidence.md)记录本决策的核心用例；
-当前直接实现证据为 `Missing`，实现后按验证结果更新。
+当前 Linux BestEffort 与受控内核已有 `Partial` 证据；Strong 正向与跨平台证明仍为 `Missing`。
 
 ## 本决策未解决的问题
 

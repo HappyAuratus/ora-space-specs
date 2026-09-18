@@ -2,6 +2,12 @@
 
 本文件按实际平台与保证记录验证义务；文档中的机制选择不构成实现通过证据。
 
+
+## 当前验收范围（2026-09-18）
+
+当前范围是 Linux rootless BestEffort 及内核请求选择；Strong 正向、macOS／Windows、受限部署
+与外部服务协调由未来 ADR 负责。保留下文跨保证用例作为长期风险地图，Partial 不等于当前生产支持 Strong。
+
 ## Containment Guarantees Are Fixed Before Business Execution
 
 ### 风险
@@ -29,8 +35,8 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 三类请求按实际能力在执行前选择保证或拒绝 | 尚无直接证据；需能力可控测试及各受限部署验证 | `Missing` |
-| 保证跨重启与错误保持，未知启动不会切换后端重跑 | 尚无直接证据；需持久恢复和清理错误注入 | `Missing` |
+| 三类请求按实际能力在执行前选择保证或拒绝 | `crates/process-runtime/tests/admission.rs::containment_selection_respects_required_and_explicit_guarantees` 的受控能力测试通过（Linux 上运行）；`linux_best_effort.rs::rootless_admission_exit_and_idempotency` 另验证真实无特权 adapter 拒绝 RequireStrong、PreferStrong 选择 BestEffort；各受限部署仍需验证 | `Partial` |
+| 保证跨重启与错误保持，未知启动不会切换后端重跑 | apps/ora-process-host/tests/service.rs::host_kill_reconnect_stop_and_close_use_original_attempt 覆盖原尝试／BestEffort 事实恢复；Strong 正向和完整错误组合不在现有证据内 | `Partial` |
 
 ### 决策依据
 
@@ -63,7 +69,7 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 三类清理结果与证据一一对应，失败不伪造完成 | 尚无直接证据；需平台事实和错误可控的状态测试 | `Missing` |
+| 三类清理结果与证据一一对应，失败不伪造完成 | `crates/process-runtime/tests/lifecycle.rs::cleanup_failure_recovers_without_erasing_exit_evidence`、`contradictory_observations_remain_blocked_until_valid_evidence_arrives` 验证尽力完成、错误和矛盾事实；`crates/process-runtime/tests/facts.rs::exit_status_is_refined_and_never_erased_by_less_precise_observations` 验证退出事实单向细化；`linux_best_effort.rs::direct_exit_keeps_background_descendants_pending_until_stopped` 另验证真实 Linux 后代存活时不能完成，完成只输出 BestEffortComplete；强模式与完整故障矩阵仍缺失 | `Partial` |
 | 外部副作用保留独立责任，尽力恢复满足政策与对账后可推进 | 尚无直接证据；需外部写入服务和 Node 资源协调验证 | `Missing` |
 
 ### 决策依据

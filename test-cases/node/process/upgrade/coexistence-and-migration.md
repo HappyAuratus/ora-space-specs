@@ -1,8 +1,11 @@
 # 版本共存、迁移与权威事实保护
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+当前已有 wire 拒绝、精确旧 schema 迁移和旧文件保护证据；自动发布共存、版本管理／回收
+及完整回滚工作流转由未来 ADR。已实现迁移的中断与兼容性仍是当前验证义务。
 
 ## Compatible Versions Coexist Without Replacing Live Guardians
+
+自动双版本部署属于未来 ADR；当前应拒绝不兼容并保留兼容管理材料，不承诺自动升级成功。
 
 ### 风险
 
@@ -31,7 +34,7 @@
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
 | 兼容升级保持旧运行身份与存续，新 scope 使用新版本 | 尚无直接证据；需双版本独立进程升级测试 | `Missing` |
-| 三个边界分别拒绝不兼容语义，收尾和恢复先于切换 | 尚无直接证据；需版本矩阵与旧宿主故障测试 | `Missing` |
+| 三个边界分别拒绝不兼容语义，收尾和恢复先于切换 | apps/ora-process-host/tests/service.rs::incompatible_requests_and_wrong_peer_are_rejected、apps/ora-process-guardian/tests/bootstrap.rs::invalid_bootstrap_preserves_scope_and_never_publishes_endpoints；完整双版本矩阵仍缺 | `Partial` |
 
 ### 决策依据
 
@@ -65,7 +68,7 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 已有布局、锁和恢复文件在初始化／迁移／回收中安全保留 | 尚无直接证据；需真实旧目录与迁移中断测试 | `Missing` |
+| 已有布局、锁和恢复文件在初始化／迁移／回收中安全保留 | crates/process-runtime/tests/host_state.rs::version_one_upgrade_preserves_intent_and_ownership、version_two_upgrade_preserves_consumed_launches、incompatible_or_corrupt_journals_are_preserved；v3–v5 和迁移中断矩阵仍缺 | `Partial` |
 | 程序回滚与迁移失败不倒退权威事实，旧请求仍拒绝 | 尚无直接证据；需新旧二进制、持久记录和重放测试 | `Missing` |
 
 ### 决策依据

@@ -1,8 +1,11 @@
 # 业务入口、远程句柄与资源交接
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+当前范围为 Linux 独立 Node 受管 Git。插件、角色授权、租约、Backend 入口切换及跨 Node 协调
+是未来 ADR 输入，不是当前交付。共享仓库冲突集合仍待确认，不能将该风险整体延期。
 
 ## Remote Handle Release Does Not Cancel Accepted Operations
+
+当前只承诺请求取消不撤销已接受责任；下文 Session 租约、只读角色与高层句柄属于未来 ADR。
 
 ### 风险
 
@@ -52,7 +55,7 @@ Git 直接 spawn、辅助命令旁路或 Adapter 自动换 ID 会绕开纳管并
 
 ### 必须成立
 
-- 每条命令在启动前持久关联身份，重传保留原 RunId；主进程及直接辅助命令走唯一新入口，生产无隐式无纳管后端。
+- 每条变更命令在启动前持久关联业务身份；只读命令在 host 保留 Run 身份，重传保留原 RunId；主进程及直接辅助命令走唯一新入口，生产无隐式无纳管后端。
 - Git 对账实际仓库，插件核实已交付命令与会话，Node 决定新的业务尝试；运行层不解释业务成功。
 - 基础设施引导不能成为业务旁路，新旧体系同一尝试不双跑，旧运行明确停止交接。
 
@@ -64,9 +67,9 @@ Git 直接 spawn、辅助命令旁路或 Adapter 自动换 ID 会绕开纳管并
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| Git／插件真实入口及辅助命令统一纳管，关联先于副作用 | 尚无直接证据；需生产 Adapter、持久记录及真实 Git／测试插件 | `Missing` |
-| 回复丢失和业务副作用后崩溃仍恢复原尝试，按领域对账 | 尚无直接证据；需独立 Node 强杀与真实业务事实验证 | `Missing` |
-| 插件接管不重复已交付命令，迁移不双跑 | 尚无直接证据；需插件命令确认与新旧入口切换测试 | `Missing` |
+| Git／插件真实入口及辅助命令统一纳管，关联先于副作用 | apps/ora-node/tests/standalone.rs::node_kill_and_immediate_restart_wait_for_old_git_cleanup 验证生产 Git 及恢复；变更 Run 派发前持久关联，只读 Run 仅由 host 记录；插件与 Backend 切换延期 | `Partial` |
+| 回复丢失和业务副作用后崩溃仍恢复原尝试，按领域对账 | apps/ora-node/tests/standalone.rs::node_kill_and_immediate_restart_wait_for_old_git_cleanup 及 apps/ora-process-host/tests/service.rs::lost_reply_executes_once_and_stalled_output_does_not_block_control；Node 与 host 各自故障路径已测，完整组合未齐 | `Partial` |
+| 插件接管不重复已交付命令，迁移不双跑 | 未来插件／Backend 切换 ADR 验收输入 | `Missing` |
 
 ### 决策依据
 
@@ -100,9 +103,9 @@ Node 强杀后立即重启，分别出现租约失效、直接退出、单 Run �
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 持久资源关联与领域冲突集合防止重复分配，单 Run 不提前释放 | 尚无直接证据；需真实共享 Git 仓库与持久协调记录 | `Missing` |
-| 两种保证分别要求清理和对账，失败阻塞且恢复后可推进 | 尚无直接证据；需强／尽力模式、Node 重启及外部写入服务 | `Missing` |
-| 同一协调域单一有效权威，无冲突工作继续 | 尚无直接证据；需权威竞争与并行资源测试；跨 Node 部署另行验证 | `Missing` |
+| 持久资源关联与领域冲突集合防止重复分配，单 Run 不提前释放 | apps/ora-node/src/tests/local_recovery.rs 覆盖资源预留和重开；共享仓库元数据的完整冲突政策仍未确认 | `Partial` |
+| 两种保证分别要求清理和对账，失败阻塞且恢复后可推进 | apps/ora-node/tests/standalone.rs::guardian_loss_keeps_conflicting_recovery_unknown_but_allows_other_work 覆盖 BestEffort 缺证据不放行；Strong 与外部服务协调由未来 ADR 负责 | `Partial` |
+| 同一协调域单一有效权威，无冲突工作继续 | apps/ora-node/src/tests/local_recovery.rs::cleanup_failure_does_not_block_unrelated_work_or_release_conflicting_resources 及真实 guardian 丢失测试覆盖局部准入；并行共享仓库协调仍有缺口，跨 Node 延期 | `Partial` |
 
 ### 决策依据
 

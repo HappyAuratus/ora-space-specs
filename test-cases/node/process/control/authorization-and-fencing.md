@@ -1,6 +1,8 @@
 # 授权、租约与实际执行点撤权
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+本文件三项用例均保留为未来授权／租约 ADR 的设计与验收输入，状态仍为 Missing，
+不属于当前可信本机交付义务。当前宿主绑定证据见 recovery／protocol，不能替代 Controller 授权。
+下文“必须成立”仅适用于未来启用对应能力；根决策的旧 D 编号不再作为当前实现映射。
 
 ## Only Verified Newer Authorization Can Replace A Node Instance
 

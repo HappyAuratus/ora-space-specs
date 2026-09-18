@@ -1,6 +1,7 @@
 # 持久接受、事实汇合与责任退休
 
-本文件记录已批准进程运行决策的核心验证义务；当前新体系尚无直接实现证据。
+当前持久接受与事实投影已实现，完整存储故障矩阵仍有缺口。输出持久化及退休用例保留为
+未来 ADR 输入，当前不回收记录。旧用例的未来要求不能用当前保留全部记录替代验收。
 
 ## Durable Acceptance And Fact Convergence Respect Separate Writers
 
@@ -29,14 +30,16 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 关键接受事务与确认顺序跨强杀保持 | 尚无直接证据；需真实 SQLite、实际链接引擎版本及故障测试 | `Missing` |
-| 独立写权威与事实汇合幂等，恢复资格受约束 | 尚无直接证据；需双进程数据库和报告确认丢失测试 | `Missing` |
+| 关键接受事务与确认顺序跨强杀保持 | `crates/process-runtime/tests/host_state.rs::committed_intent_survives_owner_kill_without_becoming_a_new_attempt` 验证宿主 WAL／FULL 意图强杀后保留；`apps/ora-process-guardian/tests/bootstrap.rs::guardian_commits_before_ready_and_rejects_unauthorized_probes` 验证 guardian 初始化记录晚于自身事务、早于 Ready；`launcher_kill_preserves_original_guardian_and_lost_ready_is_queryable` 验证原启动记录在启动方强杀后可查询。运行时与 `crates/db/src/sqlite_engine_tests.rs::linked_sqlite_includes_wal_reset_fix` 检查链接引擎。另有 apps/ora-process-guardian/tests/bootstrap/runs.rs::run_journal_failures_never_retry_an_accepted_exec 覆盖 Run 日志失败；完整提交强杀、存储故障仍缺，物理断电／结果接管由未来 ADR 验收 | `Partial` |
+| 独立写权威与事实汇合幂等，恢复资格受约束 | apps/ora-process-host/tests/service.rs::host_kill_reconnect_stop_and_close_use_original_attempt 已覆盖原 Run 投影重连；完整报告／存储故障组合未齐 | `Partial` |
 
 ### 决策依据
 
 [根决策](../../../../decisions/node/process/persistence/0-independent-journals-and-responsibility-retirement.md) D1、D2 与不变量 1。
 
 ## Published Output Offsets Never Lead Durable Data
+
+范围：未来持久输出／stdin ADR。当前通用元数据存储失败不卸责仍是现有义务，完整磁盘满／权限故障证据 Missing。
 
 ### 风险
 
@@ -71,6 +74,8 @@ Guardian 写分段输出并保存已持久可读范围，输入存在不同确�
 [根决策](../../../../decisions/node/process/persistence/0-independent-journals-and-responsibility-retirement.md) D2、D4 与不变量 2、3。
 
 ## Retirement Cannot Revive Old Scope Or Run Requests
+
+范围：未来结果接管／退休 ADR。当前无 GC，以下回收条件不表示已有退休接口。
 
 ### 风险
 
