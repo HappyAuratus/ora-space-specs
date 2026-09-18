@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Host 持有 MCP 运行健康：一次性握手探测，失败不改变投递语义
@@ -12,7 +12,8 @@ Ora 在安装完成、配置保存成功、会话建立三个时机，以 MCP �
 健康状态只存在内存，呈现面消费健康抽象而非探测来源；传输实现是可复用的正式 MCP 客户端，而不是
 一次性脚本。
 
-`status: approved` 表示本文已通过评审，正文即实现契约；核心测试用例按本文登记（见文末
+`status: implemented` 表示正文所述的 Host MCP 健康契约已按 1a（传输、状态、错误码）与
+1b（触发、查询、事件、卡片、横幅、配对日志）落地，核心测试用例按本文登记（见文末
 「核心测试依据」）。涉及模块为
 `crates/backend` Session MCP（状态、触发、single-flight、身份）、`ora-contracts`（secret-free DTO、
 查询与 AppEvent）、`ora-utils`（不含 Ora 领域词汇的 MCP 传输客户端，必要时以 Cargo feature 门控）、
