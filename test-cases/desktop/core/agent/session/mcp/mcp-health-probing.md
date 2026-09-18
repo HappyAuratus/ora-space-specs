@@ -223,7 +223,7 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 卡片三个事实分离呈现，配置不完整插件不展示健康行 | `packages/app-shell` `features/settings/plugin-manager.health.test.tsx`（配置完整才有第三行；不完整只保留「需要配置」）、`features/settings/mcp-health-row.test.tsx`、`session_setup::mcp::health::tests::configuration_incomplete_member_is_not_listed_or_probed` | `Covered` |
+| 卡片三个事实分离呈现，配置不完整插件不展示健康行 | `packages/app-shell` `features/settings/plugin-manager.health.test.tsx`（无 Settings 的合格 MCP 与 required Settings 齐全的 MCP 都展示第三行；`incomplete` 只保留「需要配置」，`unavailable` 只保留「配置不可用」）、`features/settings/mcp-health-row.test.tsx`、`session_setup::mcp::health::tests::configuration_incomplete_member_is_not_listed_or_probed` | `Covered` |
 | 工作流横幅只含白名单内 Unhealthy 成员；Explicit 空集合无补探测、无横幅 | `packages/app-shell` `features/chat/session-mcp-health-banner.test.tsx`（未选择不出现；空显式集合无横幅）、`session_setup::mcp::health::tests::explicit_empty_selection_has_no_members_or_backfill`（空集合不发起补探测） | `Covered` |
 | 新增文案无 `MCP Ready` 或「会话内已生效」表述 | `features/chat/session-mcp-health-banner.test.tsx`、`features/settings/mcp-health-row.test.tsx`（健康文案显式声明「不代表该 MCP 已在会话内生效」）；文案源见 `features/settings/translations/plugins.ts` 与 `features/chat/translations.ts` | `Covered` |
 
