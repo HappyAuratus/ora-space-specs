@@ -42,7 +42,7 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | stdio 探测失败（spawn 失败、超时）后会话仍发送完整 `mcpServers` 且 setup 成功 | `plugin::operations::health_tests::probe_failure_does_not_change_session_delivery`（导入不可运行的 stdio MCP，卡片已为 `mcp_spawn_failed`，`SessionSetup::resolve` 仍解析出完整成员）；`session_setup::mcp::health::tests::probe_failure_does_not_change_the_delivered_snapshot` | `Covered` |
-| 横幅只提示不阻塞 prompt，成员范围限于该 Session Effective MCP Set | `packages/app-shell` `features/chat/session-mcp-health-banner.test.tsx`（自动会话列出、未选择不出现、空显式集合无横幅、`Unknown` 不视为失败、跳转配置入口）；横幅为 `role="status"` 的纯呈现，不参与 prompt admission | `Covered` |
+| 横幅只提示不阻塞 prompt，成员范围限于该 Session Effective MCP Set | `packages/app-shell` `features/chat/session-mcp-health-banner.test.tsx`（自动会话列出、未选择不出现、空显式集合无横幅、`Unknown` 不视为失败、跳转配置入口、横幅可见时 composer 仍可编辑并发送）；横幅为 `role="status"` 的纯呈现，不参与 prompt admission | `Covered` |
 | 分辨率失败仍按 D7 全量失败，探测结果不进入资格判定 | `session_setup::mcp::selection_tests::*`、`session_setup::mcp::tests::fails_closed_when_http_capability_is_missing`、`session_setup::mcp::health::tests::probe_failure_does_not_change_the_delivered_snapshot` | `Covered` |
 
 ### 决策依据
@@ -179,7 +179,7 @@ Host 为该 Session 执行 `session/new` 或 `session/load`。
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | `mcp_http_unauthorized` 场景下查询、事件、日志与 UI 不含 Key 原值与响应体 | `plugin::operations::health_tests::http_credential_failure_reaches_the_card_without_leaking_the_key`（带 Setting 凭据的 HTTP 成员失败后，安装列表、查询响应、探测响应与日志都不含 Key、`Bearer`、header 名）；分类本身见 `ora-utils` `mcp::tests::http_probe_maps_unauthorized` / `http_probe_maps_forbidden_to_unauthorized`；呈现见 `packages/app-shell` `features/settings/mcp-health-row.test.tsx`（`mcp_http_unauthorized` 码）。入库用例改用快速失败的 HTTP 不可达分支，因为测试环境无法在可信 TLS 端点后伪造真实 401；人工端到端复核时另以真实 HTTPS 端点复现过 401/403/500，分别落到 `mcp_http_unauthorized` 与 `mcp_http_server_error` | `Partial` |
-| 配对日志与该次 Session 发送日志可关联，字段 secret-free | `session_setup::mcp::health::tests::session_observation_pairs_secret_free_results`（同一 `session_id`、身份、稳定码、耗时；无实值、凭据、header、端点）；发送边界日志沿用 `agent_runtime::start::tests`，顺序由调用点保证（`observe_session_mcp_health` 紧跟 `log_session_mcp_request`） | `Covered` |
+| 配对日志与该次 Session 发送日志可关联，字段 secret-free | `session_setup::mcp::health::tests::session_observation_pairs_secret_free_results`（同一 `session_id`、身份、稳定码、耗时；无实值、凭据、header、端点）；发送边界与探测收敛为单一 seam：`log_session_mcp_request` 变为私有，`session/new` 与两条 `session/load`（prompt attach 与 live refresh）都经 `agent_runtime::record_session_mcp_boundary`，配对与先后由结构保证；`plugin::operations::health_tests::session_health_observation_is_logged_after_the_acp_send_boundary` 断言发送日志先于同 session 的探测结果日志，且去掉观测会让该用例失败 | `Covered` |
 | 健康错误码族封闭且与既有 setup 稳定码无碰撞 | `ora-contracts` `mcp_health::tests::serializes_every_error_code_token`、`session_setup::mcp::health::tests::maps_every_probe_error_to_a_closed_product_code`；两族是两个不同的 Rust 类型（`McpHealthErrorCode` 与 `SessionMcpErrorCode`），碰撞在类型层面不可表达 | `Covered` |
 
 ### 决策依据
