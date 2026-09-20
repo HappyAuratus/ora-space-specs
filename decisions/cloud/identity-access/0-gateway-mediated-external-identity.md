@@ -54,10 +54,11 @@ Cloud 的 `user_identities(source, subject)` 已经表达“外部身份映射�
 
 ### D1：Gateway 是公开认证边界，Cloud 不直接实现外部认证协议
 
-新增独立的 Gateway 进程作为浏览器可访问的认证与反向代理入口。建议在 Cloud 代码仓库中使用
-`cmd/gateway` 只做配置、依赖装配、生命周期与退出行为，认证编排、provider 适配、会话策略和 HTTP
-边界放在独立的 `internal/` 包中。Gateway 可以与 Cloud 一起部署，也可以独立扩缩容；进程边界不能因
-同仓库部署而消失。
+新增独立的 Gateway 进程作为浏览器可访问的认证与反向代理入口，即 RFC 10017 §6.1 描述的
+Backend-For-Frontend 模式：浏览器不持有任何 OAuth 或内部凭据，所有 provider 交互和 Cloud 请求都经由
+Gateway。建议在 Cloud 代码仓库中使用 `cmd/gateway` 只做配置、依赖装配、生命周期与退出行为，认证编排、
+provider 适配、会话策略和 HTTP 边界放在独立的 `internal/` 包中。Gateway 可以与 Cloud 一起部署，也可以
+独立扩缩容；进程边界不能因同仓库部署而消失。
 
 Gateway 只承担以下职责：
 
@@ -102,27 +103,42 @@ SQL 或拼装 JWT claim。
 
 ### D3：GitHub OAuth 是首个适配器，并使用 GitHub 数字用户 ID 作为稳定 subject
 
-MVP 使用 GitHub OAuth App 的 Authorization Code Flow，并启用随机 `state` 与 PKCE `S256`。Gateway 只
-请求读取基本身份所需的最小 scope，不请求 email、repository 或组织权限。callback 使用 code 换取短期
-可用的 GitHub access token，调用 GitHub authenticated-user API 读取身份后立即丢弃该 token。
+MVP 使用 GitHub OAuth App 的 Authorization Code Flow，并启用随机 `state` 与 PKCE `S256`。GitHub 在
+authorize 请求携带 `code_challenge` 后要求 token exchange 携带匹配的 `code_verifier`，因此 PKCE 在
+GitHub 上是被 provider 强制校验的保护，不是可被静默忽略的装饰参数。Gateway 只请求读取基本身份所需的
+最小 scope，不请求 email、repository 或组织权限。callback 使用 code 换取短期可用的 GitHub access
+token，调用 GitHub authenticated-user API 读取身份后立即丢弃该 token。
 
 GitHub 身份归一规则固定为：
 
 | 字段 | 取值 | 理由 |
 | --- | --- | --- |
-| `source` | `github.com` | 为 provider 身份空间提供稳定、可读的命名；不使用 OAuth App client ID |
+| `source` | `github.com` | 为 provider 身份空间提供稳定、可读的命名；不使用 OAuth App client ID。以 host 命名意味着未来的 GitHub Enterprise Server 实例是另一个 `source`，其数字 ID 不会与 `github.com` 混淆 |
 | `subject` | GitHub 响应中数字 `id` 的十进制字符串 | 数字 ID 不随 login 改名；login、name 或 email 都不能作为身份键 |
-| `displayName` | 非空 `name`，否则使用 `login` | 只用于展示，可以变化，不能参与查找、合并或授权 |
+| `displayName` | 非空 `name`，否则使用 `login`；规范化后不超过 200 个字符，超出按 Unicode 字符截断 | 只用于展示，可以变化，不能参与查找、合并或授权 |
 
-Gateway 必须校验 GitHub 响应完整性和字段长度；缺失或非法的稳定 ID 使登录失败。GitHub token、OAuth
-code、完整 provider 响应和 email 不写入数据库、日志、错误、JWT 或浏览器。若未来需要 GitHub 组织准入，
-它是独立的授权策略，不能把组织成员关系塞进 `source` 或 `subject`。
+字段长度以 Cloud 现有 identity contract 为准：`source` 1–128、`subject` 1–512、`displayName` 0–200
+（`internal/core/store.go` 的 `identity()` 对超出值返回 `401 invalid_identity`）。GitHub 的 `name` 最长
+255 个字符，因此 Gateway 必须在产生 `VerifiedIdentity` 前完成截断，而不是把长度错误留给 Cloud 变成
+用户不可理解的未认证响应。Gateway 必须校验 GitHub 响应完整性和字段长度；缺失或非法的稳定 ID 使登录
+失败。GitHub token、OAuth code、完整 provider 响应和 email 不写入数据库、日志、错误、JWT 或浏览器。
+若未来需要 GitHub 组织准入，它是独立的授权策略，不能把组织成员关系塞进 `source` 或 `subject`。
 
 ### D4：Login Attempt 使用 PostgreSQL 保存一次性、短期的登录关联事实
 
-Gateway 为每次登录生成至少 256 bit 的随机 attempt secret 和独立随机 `state`。浏览器只在 HttpOnly、
-same-origin Cookie 中持有 attempt secret；PostgreSQL 只保存它与 `state` 的 SHA-256 digest。PKCE verifier
-由 attempt secret 和仅 Gateway 可读的密钥通过带域分离的 HMAC 确定性派生，数据库不保存 verifier 明文。
+登录由浏览器向 Gateway 发起一次 `POST` start 请求触发，该请求与其他状态改变请求一样接受 D8 的
+`Origin` 校验，并受限流约束；不提供可被 `<img>`、预取或第三方页面顶层导航触发的 `GET` start。原因是
+start 会无条件写入一行 attempt：没有 Origin 校验与限流，任何页面都能让受害者浏览器或脚本无界灌入
+attempt 表，也能替受害者发起登录 CSRF。
+
+Gateway 为每次登录生成至少 256 bit 的随机 attempt secret 和独立随机 `state`。浏览器只在 attempt Cookie
+中持有 attempt secret；PostgreSQL 只保存它与 `state` 的 SHA-256 digest。PKCE verifier 由 attempt secret
+和仅 Gateway 可读的密钥通过带域分离的 HMAC 确定性派生，数据库不保存 verifier 明文。
+
+attempt Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path` 限定为 callback 路径、`Max-Age` 等于 attempt
+有效期，生产 HTTPS 下必须 `Secure`。这里必须是 `Lax` 而不是 `Strict`：provider 回跳是来自 `github.com`
+的跨站顶层 `GET` 导航，`Strict` Cookie 不会随之发送，callback 将永远无法匹配 attempt。限定 `Path` 使
+该 secret 不随普通业务请求或代理请求发送。callback 无论成功还是失败都必须清除 attempt Cookie。
 
 Login Attempt 至少保存以下字段：
 
@@ -132,7 +148,7 @@ Login Attempt 至少保存以下字段：
 | `secret_hash` | 32-byte digest，唯一 |
 | `provider` | 受配置注册表限制的适配器名称 |
 | `state_hash` | 32-byte digest，唯一 |
-| `return_to` | 已验证的 same-origin 相对路径，不允许 scheme、host 或 protocol-relative URL |
+| `return_to` | 已验证的 same-origin 相对路径：以单个 `/` 开头且第二个字符不是 `/` 或 `\`，不允许 scheme、host、protocol-relative URL 或反斜杠伪装的 host |
 | `created_at` / `expires_at` | `timestamptz`；有效性使用 PostgreSQL 权威时间判定 |
 | `consumed_at` | `timestamptz NULL`；非空后永远不能再次创建 session |
 
@@ -142,7 +158,8 @@ callback 必须同时匹配 attempt Cookie、`state`、provider、未过期和�
 
 若 provider 已消费 code 但数据库事务失败，本次登录明确失败，用户重新发起登录；系统不得推断 session
 已经创建。重复、过期、已消费、错误 state 或错误 attempt secret 对外使用同一种安全失败语义，避免暴露
-attempt 是否存在。Login Attempt 的有效期必须是分钟级配置，并在短期审计窗口后有界清理。
+attempt 是否存在。Login Attempt 的有效期必须是分钟级配置，并在短期审计窗口后有界清理；attempt 表的
+行数由有效期、有界清理和 start 限流共同约束，不存在无界增长路径。
 
 ### D5：Browser Session 存在 PostgreSQL，数据库只保存不透明 token 的 digest
 
@@ -157,7 +174,7 @@ Gateway Session Service 使用 PostgreSQL 作为唯一权威存储，不提供�
 | `id` | Gateway 生成的 UUID 主键，用于审计，不作为浏览器凭据 |
 | `token_hash` | 32-byte digest，唯一；数据库永远没有原始 token |
 | `source` / `subject` | 归一后的稳定外部身份，字段长度与 Cloud identity contract 一致 |
-| `display_name` | 可空、受长度限制的非权威快照 |
+| `display_name` | 可空、不超过 200 个字符的非权威快照，与 D3 的规范化结果和 Cloud 上限一致 |
 | `created_at` | PostgreSQL 权威时间 |
 | `expires_at` | `timestamptz NOT NULL`；必须晚于 `created_at`，表示不可滑动延长的绝对期限 |
 | `revoked_at` / `revoked_reason` | 可空；一旦吊销不可恢复，reason 使用稳定、脱敏的有限值 |
@@ -174,9 +191,15 @@ Session Store 在消费边界至少提供 Create、Resolve、Revoke 和 RevokeId
 MVP 的 session TTL 是正数配置，默认 30 天，硬上限 90 天；缺失配置使用默认值，零、负数或超过上限的
 配置使 Gateway 启动失败。创建 session 时由 PostgreSQL 权威时间确定 `created_at` 与 `expires_at`，读取
 session 不进行滑动续期。Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path=/`、无 `Domain`，在生产 HTTPS 下
-必须使用 `Secure`；它应是持久 Cookie，且 `Expires`/`Max-Age` 不得晚于数据库 `expires_at`。浏览器可以
-更早清除 Cookie。退出只吊销当前 session 并清除 Cookie；“退出所有设备”和管理员吊销可以复用
-RevokeIdentity，但其公开管理 API 不在本 ADR 范围。
+必须使用 `Secure`，并使用 `__Host-` 名称前缀：浏览器对该前缀强制要求 `Secure`、`Path=/` 且无 `Domain`，
+把上述属性从约定变成浏览器端强制，也阻止子域或同站其他 origin 覆盖该 Cookie。它应是持久 Cookie，且
+`Expires`/`Max-Age` 不得晚于数据库 `expires_at`。浏览器可以更早清除 Cookie。退出只吊销当前 session 并
+清除 Cookie；“退出所有设备”和管理员吊销可以复用 RevokeIdentity，但其公开管理 API 不在本 ADR 范围。
+仅本地开发的 loopback HTTP 配置可以省略 `__Host-` 前缀与 `Secure`，且该降级必须由显式 development
+配置开启。
+
+同一 identity 的 session 数量不设上限：每次成功登录都创建新 session，重复登录只会累积直到各自到期或
+被吊销。MVP 接受这一点以保持登录路径简单；数据库增长由绝对期限与 D6 的有界清理约束。
 
 ### D6：Gateway 与 Cloud 可共用 PostgreSQL 集群，但数据库权限和表所有权必须分离
 
@@ -200,31 +223,43 @@ revoke、attempt state lookup 和有界清理建立索引。时间字段使用 `
 
 ### D7：有限期浏览器会话只换取短期内部凭据，不改变 Cloud 的 JWT 安全上限
 
-每次代理已认证请求时，Gateway 先从 PostgreSQL Resolve 当前 session，再用独立 Ed25519 私钥签发：
+每次代理已认证请求时，Gateway 先从 PostgreSQL Resolve 当前 session，再用两把按用途分离的 Ed25519
+私钥签发：
 
-- `kind=service`、`role=gateway` 的 service JWT，其 `sub` 是稳定的 Gateway 服务/实例身份；
-- `kind=user` 的 user JWT，其 `source`、`sub` 和 `displayName` 来自 session，`caller` 必须等于本次 service
-  JWT 的 `sub`。
+- 用 service 签名密钥签发 `kind=service`、`role=gateway` 的 service JWT，其 `sub` 是稳定的 Gateway
+  服务/实例身份；
+- 用 user 签名密钥签发 `kind=user` 的 user JWT，其 `source`、`sub` 和 `displayName` 来自 session，
+  `caller` 必须等于本次 service JWT 的 `sub`。
+
+必须是两把密钥而不是一把：Cloud 的验证器按 `kid` 登记的 key purpose（`kind=service` 或 `kind=user`）
+选择公钥，`docs/authentication.md` 中的 `gateway-service-2026` 与 `user-identity-2026` 就是这两个用途的
+公钥。一把私钥同时签发两种 kind 会让 key-purpose 绑定失去意义，也无法分别轮换。
 
 两种 JWT 的 issuer、audience、`kid`、kind、role、caller 和最长有效期继续服从 Cloud 现有验证规则，期限
 保持分钟级且不得按 browser session 的较长期限签发。内部 JWT 只存在于 Gateway 到固定 Cloud upstream
 的请求中，不得写入 session 表、浏览器 Cookie、重定向 URL、响应 body 或日志。
 
-Gateway 的签名私钥和 PKCE 派生密钥是独立 secret，支持分别轮换，不存入 PostgreSQL。Cloud 只配置对应
-公钥及允许的用途。Gateway 多副本共享 session 数据，但每个副本使用的 service subject 和受信 key 必须
-满足 Cloud caller binding；不能拿一个实例生成的 user JWT 与另一个 caller 不同的 service JWT 混用。
+Gateway 的两把签名私钥和 PKCE 派生密钥是三个独立 secret，支持分别轮换，不存入 PostgreSQL。Cloud 只
+配置对应公钥及允许的用途。Gateway 多副本共享 session 数据，但每个副本使用的 service subject 和受信
+key 必须满足 Cloud caller binding；不能拿一个实例生成的 user JWT 与另一个 caller 不同的 service JWT
+混用。
 
 ### D8：浏览器安全依赖 same-origin、CSRF 防护和严格 redirect，而不只依赖 Cookie 属性
 
 Gateway 的认证路由与代理路由默认同源，不开放 credentialed cross-origin CORS。对会改变状态的浏览器
-请求，Gateway 必须校验 `Origin` 与配置的 public origin 完全一致，并继续要求现有的 JSON/content-type
-边界；缺失或不匹配的 origin 按稳定错误拒绝。OAuth callback 是跨站顶层导航的例外，但必须完整验证
-Login Attempt、`state`、PKCE 和 callback URL。
+请求（包括 login start、logout 和代理的 `/api/v1/*` mutation），Gateway 必须校验 `Origin` 与配置的
+public origin 完全一致，并继续要求现有的 JSON/content-type 边界；不匹配的 `Origin` 按稳定错误拒绝。
+`Origin` 缺失时，`Sec-Fetch-Site: same-origin` 可作为等价的同源证据被接受；两者都缺失则拒绝。这样既
+不依赖单一 header，也不放行任何没有浏览器同源证据的跨站请求。OAuth callback 是跨站顶层导航的例外，
+但必须完整验证 Login Attempt、`state`、PKCE 和 callback URL。
 
-所有 `return_to` 必须在写入 attempt 前规范化为同源相对路径，并在回调后再次从可信 attempt 读取；请求
-参数不能直接成为 `Location`。认证错误不得回显 provider token、code、state、attempt secret、session
-token、SQL 或上游响应。结构化日志可以记录 request ID、provider、阶段、稳定错误码和 session UUID，
-不能记录上述秘密、完整 Cookie 或不必要的个人信息。
+所有 `return_to` 必须在写入 attempt 前按 D4 的规则规范化为同源相对路径，并在回调后再次从可信 attempt
+读取；请求参数不能直接成为 `Location`。认证错误不得回显 provider token、code、state、attempt secret、
+session token、SQL 或上游响应。结构化日志可以记录 request ID、provider、阶段、稳定错误码和 session
+UUID，不能记录上述秘密、完整 Cookie 或不必要的个人信息。
+
+login start 和 callback 是未认证入口，必须有限流：至少按客户端来源限制单位时间内的 start 次数，且
+限流拒绝不写入 attempt。限流阈值是部署配置，本 ADR 只要求它存在并在被触发时返回稳定错误。
 
 Gateway 必须设置请求体、header、callback 参数、provider 响应和代理响应的大小/时间上限，向外部 provider
 发起的 HTTP 请求使用可取消 context、连接与总超时，并在所有路径关闭 response body。provider 暂时失败
@@ -262,15 +297,19 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 1. 只有 Gateway 解释外部认证协议；Cloud 不接收或验证 GitHub token、OAuth code、密码或浏览器 Cookie。
 2. Authenticator 成功只产生 `VerifiedIdentity`，不能授予 Ora tenant、role、membership、owner 或业务权限。
 3. 外部身份只由稳定的 `(source, subject)` 查找；`displayName`、login、name 和 email 永不参与身份合并或授权。
-4. GitHub 的 `subject` 必须来自数字用户 ID，`source` 必须为 `github.com`。
+4. GitHub 的 `subject` 必须来自数字用户 ID，`source` 必须为 `github.com`；`VerifiedIdentity` 的字段长度
+   在离开 Authenticator 前已满足 Cloud 的 128/512/200 上限。
 5. 原始 session token、attempt secret、OAuth code、provider access token 和 PKCE verifier 不得持久化、记录或返回给 Cloud。
 6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`/PKCE，并且最多成功创建一个 session。
+   login start 只接受经过同源校验和限流的 `POST`；attempt Cookie 只发送到 callback 路径，并在 callback
+   结束时清除。
 7. Browser Session 的有效性只由 PostgreSQL 当前状态和权威时间决定；未知、过期和已吊销统一为未认证。
 8. 每个 session 的 `expires_at` 必须非空、晚于 `created_at` 且不超过创建时间 90 天；Resolve 不得滑动延长期限。
 9. 同一 identity 可以有多个 session；session 不外键关联 Cloud user，也不证明该用户当前可访问任何资源。
 10. Gateway 运行时只访问自己拥有的认证表，不读写 Cloud 业务表，不在启动时执行 DDL。
 11. Gateway 必须移除浏览器提供的内部认证 header，只向固定 Cloud upstream 代理允许的公开 API，绝不代理内部 API。
-12. Gateway 到 Cloud 的 service/user JWT 始终短期有效并满足现有 issuer、audience、kind、role、caller 与 key-purpose 校验。
+12. Gateway 到 Cloud 的 service/user JWT 始终短期有效并满足现有 issuer、audience、kind、role、caller 与 key-purpose 校验；
+    service JWT 与 user JWT 由两把按 kind 分离的私钥签发。
 13. 生产公开 origin 和 OAuth callback 必须使用 HTTPS；redirect URI 来自显式配置，不能由不受信请求 header 决定。
 14. 外部 HTTP 调用不得发生在数据库事务或行锁内；ambiguous failure 不得被推断为登录或业务操作成功。
 15. 有效 session 不能覆盖 Cloud 对 disabled user、membership、tenant 和 owner 的当前授权判定。
@@ -278,7 +317,9 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
 ## 验收场景
 
 - 首次 GitHub 登录用数字 ID 建立 `github.com/<id>` identity；GitHub login 或 name 改变后再次登录仍映射到
-  同一个 Cloud user，只更新/携带非权威展示名。
+  同一个 Cloud user，user JWT 只携带最新的非权威展示名。Cloud 现有 JIT 语义只在创建用户时写入
+  `users.display_name`，不因后续登录更新它；是否同步展示名是独立的 Cloud 决策，不属于本 ADR。
+- GitHub `name` 超过 200 个字符时，Gateway 截断后登录成功，Cloud 不会返回 `invalid_identity`。
 - 两个并发 callback 使用同一个 attempt 时，最多一个事务消费 attempt 并创建 session；另一个返回统一
   登录失败，数据库没有第二个有效 session。
 - session 表只出现 token digest；使用数据库内容、日志或 Cloud 请求都无法还原浏览器 session token 或
@@ -291,8 +332,11 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
   拒绝这些输入，Cloud 只看到 Gateway 根据 PostgreSQL session 生成的内部凭据。
 - session 仍有效但 Cloud user 已 disabled、membership 已删除或 owner 不匹配时，Cloud 基于当前数据库
   状态拒绝访问；Gateway 不把这类响应改写为认证成功。
-- 错误 state、错误 attempt Cookie、过期 attempt、重复 callback、绝对 `return_to`、跨源 mutation 和非
-  HTTPS 生产配置都在产生 session 或调用 Cloud 前失败。
+- 错误 state、错误 attempt Cookie、过期 attempt、重复 callback、绝对或 `//`、`/\` 开头的 `return_to`、
+  跨源 mutation、`GET` start、无同源证据的 start 和非 HTTPS 生产配置都在产生 session 或调用 Cloud 前
+  失败。
+- 超过限流阈值的 start 请求返回稳定错误且不写入 attempt 行；同一浏览器完成 callback 后 attempt Cookie
+  已被清除，重放同一 callback URL 得到统一登录失败。
 - provider 超时发生在数据库事务之外；Cloud 5xx 不吊销 session；数据库 commit 失败后即使 provider code
   已消费也不会出现推断创建的 session。
 - migration 由 `cloudctl migrate` 执行；Gateway 的受限数据库角色无法执行 DDL 或读取 Cloud 业务表。
@@ -305,6 +349,8 @@ Gateway 必须设置请求体、header、callback 参数、provider 响应和代
   存储、90 天硬上限和吊销降低但不能消除风险；正式支持高价值操作前应增加空闲期限、再认证和会话管理。
 - Gateway 成为公开可用性的关键路径，需要独立 readiness、限流、超时、日志脱敏和密钥轮换演练。共享
   PostgreSQL 集群降低运维成本，但必须通过数据库角色防止横向读取业务数据。
+- 同一 identity 的 session 数量无上限，反复登录只增不减，直到各自到期或被吊销。表体积由 30/90 天
+  期限、start 限流和有界清理约束；若观察到异常累积，按 identity 限制并发 session 数是后续决策。
 - GitHub 是首个外部可用性依赖。GitHub 故障会阻止新登录，但不得使已有 session 或 Cloud 内部授权失效。
 
 ## 本决策未解决的问题
