@@ -27,6 +27,13 @@ Session 从旧 Active revision 切换到最新 Desired revision。变化提交�
 `Agent Session Barrier` 是 Effect Resource mutation、Agent replacement 与 MCP refresh 共用的协调
 seam。它等待已经开始的 prompt 到达安全点，并阻止新 prompt 穿过未完成的变更窗口。
 
+`Host MCP Health` 是 Host 对配置完整的已安装 MCP 执行有界握手得到的运行健康事实。它不是配置完整、
+不是 Active Session MCP Revision，也不是 Agent 在会话内已经连上 Server 或工具已经可用。会话横幅只
+展示该 Session Effective MCP Set 内的健康结果。
+
+`MCP Health Probe` 是一次完整的 MCP 客户端会话：按该成员的 transport 完成 `initialize` 与
+`tools/list`，然后拆除连接。它只证明 Host 视角下该绑定产物此刻可以握手。
+
 ## Plugin
 
 插件相关术语必须区分“插件叫什么”“插件属于谁”和“插件的完整身份”。除非明确讨论某个旧版
