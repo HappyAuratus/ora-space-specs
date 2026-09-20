@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # minicloud：本机 Web Client 与内嵌 Controller
@@ -8,7 +8,8 @@ status: approved
 clone 指定仓库与分支的最小闭环及短期需求。client 使用 Vite、React 19、shadcn；
 server 是内嵌 Rust Controller 的薄 HTTP 入口，Node 继续作为独立进程运行。
 
-本 ADR 已于 2026-09-20 获 Eric 批准，状态为 `approved`；方向和落地约束已确认，不表示代码已实现。
+本 ADR 状态为 `implemented`：Linux 主链路及当前范围的故障恢复验收已完成。
+完整浏览器引擎验收按 Eric 确认不在本次范围内；页面行为通过 DOM 测试验证，网络及执行通过真实 HTTP／Vite proxy 验证。
 首版沿用 Linux 本机执行环境，不接入 Desktop、不切换既有 Backend 写入入口，
 不迁移用户 checkout 或重建已有 Controller／Node／process 数据。minicloud 不投入生产环境。
 
@@ -62,6 +63,12 @@ server 监听回环地址，Vite 同样供本机使用；浏览器通过 Vite pr
 不建设安全体系不改变业务正确性要求：输入契约、请求冲突、持久接受、数据目录保护和恢复规则继续生效。
 私有仓库凭据仍由 Node 的既有部署提供，不在浏览器收集或另建凭据管理功能。
 
+本机开发使用 debug 构建：共享 `ora-utils` 受信路径打开逻辑在 `debug_assertions` 启用时跳过
+Unix 权限位校验，允许组可写的 checkout；release 仍强制这些校验。两者均保留所有者、符号链接、
+硬链接和类型校验，不修改已有权限，不放宽目录重叠、数据库独占或已有文件保护。
+开发启动器以 `.data/minicloud` 为显式配置／状态根，正常停止先让 Node 收尾，再停止 host 与专用 guardian；
+全栈关闭不承诺中断执行立即获得业务终态，原责任与残留仍保留。
+
 ### D4：首条闭环是提交 clone 与持续查询
 
 用户输入仓库 URL 和分支；目标 Node 来自显式部署配置，不引入调度器。
@@ -102,7 +109,7 @@ server 与 Controller 同进程，共同故障；恢复依靠已有持久接受�
 正式 Cloud、远程访问、认证授权、多租户、生产部署、Desktop 集成与 Backend 切换留给未来 ADR，
 不由 minicloud 的实现暗中扩展。首版也不增加取消、自动重试新执行、目录复用或自动清理功能。
 
-落地按三个可独立检视的阶段推进：先提供 Controller 可嵌入运行时及最小查询接口，
-再接通本机 HTTP 与 Vite proxy，最后完成 clone 提交／查询页面及刷新、重启后的真实闭环验证。
-核心测试义务见[本机 Web 闭环验收](../../../test-cases/minicloud/runtime/local-web-clone-loop.md)。
-当前尚无 minicloud 直接验收证据，不将已有 Node／Controller 测试冒充本应用验收。
+Controller 可嵌入运行时、本机 HTTP／Vite proxy 及 clone 提交／查询页面均已落地。
+真实链路验证接受写失败、回复截断后原身份重传、server 强杀恢复、Git 执行期间正常关闭及唯一 Run；
+server 入口验证目录保护与独立 Controller 所有权交接，DOM 测试验证轮询恢复、未确认请求重试和刷新身份恢复。
+直接证据见[本机 Web 闭环验收](../../../test-cases/minicloud/runtime/local-web-clone-loop.md)。

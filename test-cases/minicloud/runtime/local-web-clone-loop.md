@@ -1,8 +1,10 @@
 # minicloud 本机 Web 闭环验收
 
 依据[已批准的根 ADR](../../../decisions/minicloud/runtime/0-local-web-client-embedded-controller.md)。
-本页登记 minicloud 新入口的直接验证义务。应用尚未实现，证据均为 Missing；
+本页登记 minicloud 新入口的直接验证义务。Linux client／server 已实现，以下记录当前验收范围的直接证据。
 已有 Controller／Node 测试作为下层基础，不代替真实 HTTP、Vite proxy 和页面链路。
+Eric 已明确不要求完整浏览器引擎验收；页面行为以 DOM 测试验证，网络与执行链路以真实 HTTP／Vite proxy 验证。
+此范围调整不免除回复丢失、正常关闭、所有权交接及目录保护等非浏览器验证义务。
 
 ## Local Proxy Reaches The Embedded Controller
 
@@ -16,8 +18,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 部署与 proxy 链路 | 启动真实 Vite／server，检查绑定地址并通过 proxy 完成请求，不附带应用凭据 | Missing |
-| 内嵌协调与真实执行 | 真实 HTTP → Controller → Node → host／guardian → HTTPS Git clone，结果可查询 | Missing |
+| 部署与 proxy 链路 | `minicloud_vite_proxy_reaches_real_https_clone_and_restart` 启动真实本机 Vite／server，经 proxy 无凭据提交；server `http.rs` 验证拒绝非回环监听 | Covered |
+| 内嵌协调与真实执行 | Node standalone `repository_minicloud.rs` 两个测试覆盖真实 HTTP／Vite proxy → 独立 server → Node → host／guardian → HTTPS Git，查询实际 commit／目录并验证唯一 Run | Covered |
 
 决策依据：D1、D2、D3，不变量 1、2。
 
@@ -33,9 +35,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 接受与失败顺序 | 通过 HTTP 注入真实 Controller 接受写失败，验证无成功接受、无 Node 派发 | Missing |
-| 回复丢失与幂等 | 截断接受回复后重传原身份，查询原操作并验证没有新增 clone 执行 | Missing |
-| 输入冲突 | 同身份不同仓库／分支返回冲突，原操作及结果保持不变 | Missing |
+| 接受与失败顺序 | `repository_minicloud.rs` 持有真实 SQLite writer lock，HTTP 接受失败返回 503、列表为空；释放锁后同请求接受并最终只有一个 Run | Covered |
+| 回复丢失与幂等 | `repository_minicloud.rs` 真实 TCP 代理收到上游 202 后只交付一个 body 字节，客户端解码失败；强杀重启后重传原输入，返回原执行且最终唯一 Run；`App.test.tsx` 覆盖回复丢失后刷新并重传原输入 | Covered |
+| 输入冲突 | `apps/minicloud/server/tests/http.rs` 同身份改分支返回 409，列表与重启查询保留原记录 | Covered |
 
 决策依据：D2、D4，不变量 2、3。
 
@@ -52,8 +54,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 展示与生命周期 | 通过生产前端接口及类型化操作 handler 验证状态、查询失败、恢复和卸载行为 | Missing |
-| 刷新恢复 | 浏览器经真实 proxy 提交并刷新，重新读取同一接受记录及结果 | Missing |
+| 展示与生命周期 | `App.test.tsx` 覆盖 pending、成功 commit／路径、失败残留、查询失败保留成功事实和卸载 abort；`automatically resumes polling after an outage without submitting again` 验证恢复后自动显示原结果、清除告警且不提交命令 | Covered |
+| 刷新恢复 | `App.test.tsx` 卸载／重挂载恢复 session storage 中的原身份；真实 Vite proxy 测试验证原记录读取；完整浏览器引擎点击和刷新不在本次验收要求内 | Covered |
 
 决策依据：D4，不变量 2、3、4。
 
@@ -69,8 +71,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 断连与正常关闭 | 实际 HTTP 断连／server 停止后，原 Node clone 继续完成并可在重启后查询 | Missing |
-| 强杀与接管恢复 | 强杀 minicloud server 后从原存储恢复，验证原身份、结果与唯一 clone Run | Missing |
+| 断连与正常关闭 | `repository_minicloud.rs` 暂停 HTTPS，确认 Git 创建 .git 并以 pidfd 固定存活身份；SIGTERM server 后验证正常退出且原 Git 仍存活，重启后得到原结果及唯一 Run；HTTP 测试另覆盖待协调记录恢复 | Covered |
+| 强杀与接管恢复 | `repository_minicloud.rs` 接受后与完成后分别强杀独立 server，重传／查询原执行，HTTPS 拒绝访问时仍恢复原结果，Node 唯一 Run | Covered |
 
 决策依据：D2、D4，不变量 3、4。
 
@@ -86,7 +88,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 组合入口保护 | 经 minicloud 启动入口验证重复所有者、路径重叠及未知文件拒绝，文件保持不变 | Missing |
-| 既有记录复用 | 由独立 Controller 接受的记录可在其停止后通过 minicloud 查询和继续协调 | Missing |
+| 组合入口保护 | server `http_acceptance_is_idempotent_and_survives_server_restart` 通过 Server::bind 验证重复所有者、回环限制、重叠目录拒绝且不创建目录、未知状态文件拒绝且逐字节保留 | Covered |
+| 既有记录复用 | 同一 HTTP 测试用独立 Controller 公共接口接受原请求，验证持有所有权时 server 拒绝启动；释放独立所有者后 minicloud 打开原目录，通过 HTTP 重传／查询及正常重启保留原 operation／execution 和输入 | Covered |
+| 开发权限与发布权限分离 | `ora-utils` 的 `private_path`／`trusted_path` 测试分别在 debug、release 运行，前者允许原有宽松权限且不 chmod，后者拒绝；两者仍拒绝符号链接及不符所有者 | Covered |
 
 决策依据：D1、D2、D3，不变量 2、5。
