@@ -5,6 +5,7 @@
 
 | 目录 | 范围 |
 |---|---|
+| [repository](repository/0-clone-selected-repository-branch.md) | 当前最小闭环：clone 指定仓库的指定分支；范围根决策与[最小执行契约](repository/20260918-minimal-clone-execution-contract.md)均 approved，尚未实现 |
 | `worktree` | main worktree、task worktree 及 Git worktree 生命周期 |
 | `agent-runtime` | Agent 进程、ACP 转发、会话连接和运行恢复 |
 | `plugin-runtime` | Plugin 安装、启动、停止、运行和本地状态 |

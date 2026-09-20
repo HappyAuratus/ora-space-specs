@@ -47,6 +47,11 @@ implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示
 
 ## 需要 Eric 判断
 
+2026-09-18 补充：Eric 已认可第 1 项按实际窄范围判断状态；第 3 项随后讨论接受了 Worktree
+管理命令禁用 hooks、普通残留局部隔离、仅旧 Git 收尾未知时采用仓库级门禁。相关后续实现尚未开始，
+当前先记录 clone 目标调整；不能把该讨论直接当作现有行为或已经冻结的 clone 恢复模型。
+以下原问题保留为讨论背景，第 2、4 项仍待明确。
+
 1. control：是否将本叶子当前主题确认收敛为“可信本机宿主会话控制”，授权／租约完全由未来
    ADR 另议？目前保留 approved，避免把删除原主体目标称为实现完成。
 2. guarantees 与平台：是否维持“approved 表示长期方向”的状态？建议保留，不把未实现平台
@@ -62,7 +67,9 @@ lifecycle／recovery／persistence／upgrade 的测试缺口是实现验收工�
 ## 实施顺序
 
 已交付：Linux adapter → 独立 guardian → 持久 host → Node 变更关联与资源恢复 → 独立 Node 入口。
-下一业务步骤是 Controller–Node 本机 IPC，再接 Controller 持久协调及 Desktop 写入切换。
+2026-09-18 首条业务闭环已改为[clone 指定仓库与分支](../repository/0-clone-selected-repository-branch.md)。
+先明确 clone 契约及 Node 执行适配，再接 Controller–Node IPC、持久协调和 Client 入口；
+不按原 Worktree 剩余步骤直接推进。process 已交付事实及当前实现状态不因目标变化而改变。
 未来能力按需求另开 ADR，不再要求全平台、Strong、租约、完整 I/O／GC 先全部完成。
 
 ## 故障验证与证据
