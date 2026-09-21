@@ -112,9 +112,10 @@ callback、`scope=base.profile` 和随机 `state`。不发送 `display`（可选
 
 回调后以 `application/x-www-form-urlencoded` POST 调用 `/saaslogin1/oauth2/v1/token`，请求体仅包含
 `grant_type=authorization_code`、`client_id`、`client_secret` 和 `code`；不发送 `Authorization: Basic`，
-也不发送 PKCE-NULL 的 `code_verifier` 或 `redirect_uri`。IDaaS 2.0 示例把同一组字段写在 query；Gateway
-按 RFC 6749 §2.3.1 `client_secret_post` 与 GitHub 适配器把它们放在请求体，避免 secret 进入 URL 或访问
-日志。随后以 `access_token` 表单 POST `/saaslogin1/oauth2/v1/userinfo`，完成身份归一后立即丢弃 token。
+也不发送 PKCE-NULL 的 `code_verifier` 或 `redirect_uri`。IDaaS 2.0 示例把同一组字段写在 query，但把
+`Content-Type: application/x-www-form-urlencoded` 列为必填，该头只约束 entity-body。Gateway 按 RFC 6749
+§2.3.1 `client_secret_post` 与 GitHub 适配器把它们放在请求体，避免 secret 进入 URL 或访问日志。随后以
+`access_token` 表单 POST `/saaslogin1/oauth2/v1/userinfo`，完成身份归一后立即丢弃 token。
 授权码截获后的换 token 保护依赖机密客户端的 `client_secret`、IDaaS 对 code 的一次性消费，以及 Gateway
 的 attempt Cookie 与 `state` 绑定。编排层仍派生 PKCE verifier 以满足 provider-neutral `Authenticator`
 接口，但 IDaaS 适配器不得把它放到线上请求里。
@@ -122,7 +123,7 @@ callback、`scope=base.profile` 和随机 `state`。不发送 `display`（可选
 | 字段 | 取值 | 理由 |
 | --- | --- | --- |
 | `source` | 固定 `huawei-corp`，不可配置 | 避免环境或命名漂移把同一员工拆成多个身份空间 |
-| `subject` | IDaaS 顶层非空字符串 `uuid` | UUID 是注册应用获得的稳定企业身份键；姓名、邮箱和工号均不可作键 |
+| `subject` | IDaaS 顶层 `uuid` 去掉首尾空白后的非空字符串 | UUID 是稳定企业身份键；文档成功示例含尾部空格，空白不承载区分度。§2.1 默认返回列表与 §2.4 是否必含 `uuid` 互相矛盾，上线前必须在控制台确认/申请该字段，不能改用 `globalUserID` |
 | `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权 |
 
 authorization code、verifier、access/refresh token、client secret 和完整 userinfo 只存在于当前请求内存；
@@ -269,7 +270,8 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 | 向 IDaaS 发送 PKCE S256 或 `display=page` | 与 GitHub 适配器对称，且 RFC 7636 可防授权码截获 | IDaaS 2.0 PKCE 默认关闭，且仅 PKCE 模式必填；Gateway 是机密客户端，用 `client_secret_post` 而非 PKCE-NULL。多发 PKCE 字段会按错误认证方式被拒。`display` 可选且页面已自适应 |
 | 使用 `client_secret_basic` | 与部分 OAuth 服务器的 Basic 头一致 | 与 GitHub 表单换票形态不同，要新增 `Authorization` 头；IDaaS 在方法不匹配时返回 `error=invalid_request` |
 | 使用 PKCE-NULL | 公共客户端不必持有 `client_secret` | Gateway 已持有 client secret；PKCE-NULL 示例不含 secret，会放弃机密客户端认证 |
-| 把 token/`access_token` 放在 query | 与 IDaaS 2.0 示例逐字相同 | `client_secret` 与 `access_token` 会进入 URL、反向代理和访问日志；RFC 6749 `client_secret_post` 要求放在请求体 |
+| 把 token/`access_token` 放在 query | 与 IDaaS 2.0 示例逐字相同 | 示例同时把 `Content-Type: application/x-www-form-urlencoded` 列为必填，该头只约束 body。`client_secret` 与 `access_token` 会进入 URL、反向代理和访问日志；RFC 6749 `client_secret_post` 要求放在请求体 |
+| 用默认返回的 `globalUserID`/`UID` 作 `subject` | 避开 §2.1 默认字段列表可能不含 uuid 的矛盾 | 身份键不能随文档版本漂移；缺 uuid 时在控制台申请该字段，而不是改写已选定的 `huawei-corp + uuid` |
 | 持久化 GitHub access token | 减少 provider 调用 | 只需登录时读取身份；长期保存扩大泄露、加密、scope、撤销和轮换责任 |
 | IDaaS refresh/revoke 或 Cloud 退出联动 W3 全局退出 | 可延长 provider 会话或一次退出全部系统 | Cloud 只拥有自己的 session；保存 refresh token 扩大凭据责任，全局退出会意外影响同浏览器中的其他华为系统 |
 | 每种 provider 单独建 session 表和 handler | 单个适配器局部直观 | 复制安全策略、清理、Cookie、JWT 和代理，使不同认证方式的权限与失败语义不一致 |

@@ -108,21 +108,22 @@
 
 - 风险：把姓名、邮箱或工号作为身份键，或允许部署自由配置 source，会因字段变化、复用和环境漂移错误合并或
   拆分员工身份；把 userinfo 或 provider token 保存下来会扩大个人信息与凭据泄露面。
-- 前置状态：Gateway 选择 `huawei-idaas`；IDaaS 返回顶层 `uuid`、配置指定的显示名称字段以及其他个人字段；
-  Cloud 中尚无该 identity。
-- 触发：首次登录、显示名称变化后的再次登录、显示名称缺失、UUID 缺失，以及 token/userinfo 响应异常。
-- 必须成立：identity 固定为 `(huawei-corp, uuid)`；显示名称缺失时回退 UUID；首次 `/api/v1/me` 以 JIT
-  方式创建用户，后续登录不覆盖用户显示名称；登录不创建 membership；code、verifier、access/refresh token、
-  client secret、完整 userinfo、邮箱和工号不进入数据库、Cloud、JWT、日志或公开错误。
-- 禁止结果：source 可配置漂移；按姓名、邮箱或工号合并；缺失 UUID 仍创建 session；provider token 被用作
-  Browser Session 或发给 Cloud。
+- 前置状态：Gateway 选择 `huawei-idaas`；IDaaS 返回顶层 `uuid`（可能含文档示例中的首尾空白）、配置指定的
+  显示名称字段以及其他个人字段；Cloud 中尚无该 identity。
+- 触发：首次登录、显示名称变化后的再次登录、显示名称缺失、UUID 缺失或全空白，以及 token/userinfo 响应异常。
+- 必须成立：identity 固定为 `(huawei-corp, trim 后的 uuid)`；文档示例 `uuid~dGVzdDE = ` 归一为
+  `uuid~dGVzdDE =`；显示名称缺失时回退 trim 后的 UUID；全空白或缺失 UUID 拒绝登录；首次 `/api/v1/me` 以
+  JIT 方式创建用户，后续登录不覆盖用户显示名称；登录不创建 membership；code、verifier、access/refresh
+  token、client secret、完整 userinfo、邮箱和工号不进入数据库、Cloud、JWT、日志或公开错误。
+- 禁止结果：source 可配置漂移；按姓名、邮箱、工号或 `globalUserID` 合并；缺失或全空白 UUID 仍创建
+  session；因首尾空白拒绝本可识别的 uuid；provider token 被用作 Browser Session 或发给 Cloud。
 - 决策依据：ADR D3a、D4，不变量 2—6、15。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| adapter 固定 `huawei-corp + uuid`，显示名称字段缺失时回退 UUID，并拒绝缺失 UUID/错误响应 | `idaas.TestExchangeUsesClientSecretPostAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers` | `Covered` |
-| 全链路只建立一条 identity，显示名称保持首次 JIT 快照，登录不授予 membership | `integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
+| adapter 固定 `huawei-corp + uuid`，去掉首尾空白，显示名称字段缺失时回退 UUID，并拒绝缺失/全空白 UUID 与错误响应 | `idaas.TestExchangeUsesClientSecretPostAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers` | `Covered` |
+| 全链路只建立一条 identity（假 IDaaS 返回带首尾空白的 uuid），显示名称保持首次 JIT 快照，登录不授予 membership | `integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
 | access/refresh token 不成为 session token，session 只保存最小归一身份字段 | `integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
 | 日志与公开错误不包含 code、token、refresh token、client secret、邮箱或工号 | 适配器错误不携带响应正文；尚无覆盖所有日志输出的捕获扫描 | `Partial` |
