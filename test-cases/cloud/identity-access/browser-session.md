@@ -20,7 +20,7 @@
 | 数据库只出现 token digest，原始 token 片段不出现 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries` | `Covered` |
 | 多次访问后 `expires_at` 不变；到期后所有副本拒绝 | `integration.TestGatewaySessionsAcrossReplicasExpiryRevocationAndCleanup` | `Covered` |
 | Cookie `Max-Age` 等于数据库期限且不为负 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries`、`gateway.TestCookiePolicyEnforcesPrefixesScopeAndDatabaseBoundedMaxAge` | `Covered` |
-| session TTL 配置零、负数或超过 90 天时启动失败；GitHub 缺省 30 天，IDaaS 未显式配置时缺省 12 小时 | `gateway.TestConfigDefaultsAndSessionLifetimeBounds`、`gateway.TestIDaaSConfigIsSelectedIndependentlyAndDefaultsToTwelveHours`、`gateway.TestLoadConfigReadsFileAndEnvironmentOverrides`、`integration.TestGatewayIDaaSPKCELoginIdentityAndSessionLifetime` | `Covered` |
+| session TTL 配置零、负数或超过 90 天时启动失败；GitHub 缺省 30 天，IDaaS 未显式配置时缺省 12 小时 | `gateway.TestConfigDefaultsAndSessionLifetimeBounds`、`gateway.TestIDaaSConfigIsSelectedIndependentlyAndDefaultsToTwelveHours`、`gateway.TestLoadConfigReadsFileAndEnvironmentOverrides`、`integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
 | 生产 `__Host-` 前缀与 `Secure`，开发 loopback 才允许降级 | `gateway.TestCookiePolicyEnforcesPrefixesScopeAndDatabaseBoundedMaxAge`、`gateway.TestPublicOriginRequiresHTTPSOutsideLoopbackDevelopment` | `Covered` |
 
 ## Revocation Is Immediate On Every Replica And Idempotent
