@@ -11,7 +11,7 @@
 - 必须成立：只有同源、JSON、限流内的请求写入一行 attempt 并返回 `authorizationUrl`；attempt Cookie 为
   `SameSite=Lax`、`HttpOnly`、`Path=/auth/callback`、`Max-Age` 等于 attempt 有效期；`returnTo` 被规范化为
   同源相对路径或在写入前被拒绝；authorize URL 携带 `state` 和固定 `redirect_uri`，并遵守所选 provider
-  的固定 scope（GitHub 不请求 scope 但携带 S256 `code_challenge`；IDaaS 只发送官方参数
+  的固定 scope（GitHub 不请求 scope 但携带 S256 `code_challenge`；IDaaS 只发送 2.0 普通模式必填参数
   `client_id`/`response_type`/`redirect_uri`/`scope=base.profile`/`state`，不发送 `display` 或 PKCE）。
 - 禁止结果：`GET /auth/login` 存在；无同源证明或被限流的请求写入 attempt；绝对、`//`、`/\` 或带反斜杠/
   控制字符的 `returnTo` 被保存；attempt secret 或 `state` 明文进入数据库。
@@ -62,7 +62,7 @@
 - 风险：provider 拒绝（错误 code、verifier 不匹配、用户文档非法）若被当作成功，或 provider 超时被当作
   拒绝而丢弃可重试的 attempt，会产生无效身份的 session 或错误的用户提示。
 - 前置状态：有效 attempt 与 Cookie；GitHub 会校验 `code_verifier` 与 challenge、拒绝未签发的 code；
-  IDaaS 按官方字段校验 client secret 与一次性 code，拒绝未签发的 code 以及超大或非法 JSON。
+  IDaaS 按 `client_secret_post` 校验 client secret 与一次性 code，拒绝未签发的 code 以及超大或非法 JSON。
 - 触发：callback 携带 provider 从未签发的 code；callback 落到一个 PKCE 派生密钥不同的 GitHub 副本；
   provider 返回错误对象、非 bearer token、非 200 用户响应、缺失稳定 ID、超过 64 KiB 或非法 JSON；
   provider 超时或 context 取消。
@@ -81,7 +81,7 @@
 | 超时与取消是基础设施错误而非 provider 拒绝 | `github.TestExchangeReportsInfrastructureFailuresDistinctly` | `Covered` |
 | 经过完整 HTTP 路径时 provider 超时返回 `503 login_unavailable` 且 attempt 保持可用 | 只有适配器层证据，没有通过 Gateway HTTP 的超时验收 | `Partial` |
 | exchange 表单携带 `code`、`code_verifier`、`client_secret`、`redirect_uri`，用户读取使用换得的 token | `github.TestExchangeUsesVerifierReadsNumericIDAndDiscardsToken` | `Covered` |
-| IDaaS token JSON 只携带官方五字段与固定 callback，userinfo JSON 使用 access token；错误码、超大或非法 JSON 为 `ErrProviderRejected`，取消、超时与重定向按契约分类 | `idaas.TestExchangeUsesDocumentedJSONAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers`、`idaas.TestExchangeBoundsResponsesAndPropagatesCancellation`、`idaas.TestHTTPClientTimesOutAndRefusesProviderRedirects` | `Covered` |
+| IDaaS token 表单只携带 `grant_type`/`client_id`/`client_secret`/`code`，userinfo 表单只携带 `access_token`；OAuth `error`、遗留错误码、超大或非法 JSON 为 `ErrProviderRejected`，取消、超时与重定向按契约分类 | `idaas.TestExchangeUsesClientSecretPostAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers`、`idaas.TestExchangeBoundsResponsesAndPropagatesCancellation`、`idaas.TestHTTPClientTimesOutAndRefusesProviderRedirects` | `Covered` |
 
 ## GitHub Identity Is Keyed By Numeric ID Within Cloud Field Limits
 
@@ -122,7 +122,7 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| adapter 固定 `huawei-corp + uuid`，显示名称字段缺失时回退 UUID，并拒绝缺失 UUID/错误响应 | `idaas.TestExchangeUsesDocumentedJSONAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers` | `Covered` |
+| adapter 固定 `huawei-corp + uuid`，显示名称字段缺失时回退 UUID，并拒绝缺失 UUID/错误响应 | `idaas.TestExchangeUsesClientSecretPostAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers` | `Covered` |
 | 全链路只建立一条 identity，显示名称保持首次 JIT 快照，登录不授予 membership | `integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
 | access/refresh token 不成为 session token，session 只保存最小归一身份字段 | `integration.TestGatewayIDaaSLoginIdentityAndSessionLifetime` | `Covered` |
 | 日志与公开错误不包含 code、token、refresh token、client secret、邮箱或工号 | 适配器错误不携带响应正文；尚无覆盖所有日志输出的捕获扫描 | `Partial` |
