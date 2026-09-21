@@ -13,8 +13,9 @@ JSON HTTP 接口作为过渡契约随入口迁移；Go Cloud（API Server）与 
 
 本决策处于 `proposed` 状态，覆盖 `apps/ora-controller`、被移除的 `apps/minicloud/server`、
 `ora-contracts` 中的过渡 DTO，以及 Cloud↔Controller 契约的定义与生成方式。它不定义认证、TLS、
-租户边界、Internal Control API 的具体消息集合、PTY 或其他流式执行交互，也不改变
-Controller–Node 协议。可执行入口的启动参数拆分、`--single-node` 与进程生命周期由
+Internal Control API 的具体消息集合、PTY 或其他流式执行交互，也不改变 Controller–Node 协议。
+租户不是本文的未决项而是明确边界：Controller 与 Node 不感知租户，租户身份、成员授权与资源
+归属只由 Cloud 的 API Server 处理，Controller API 及其 proto 契约中不出现租户或用户字段。可执行入口的启动参数拆分、`--single-node` 与进程生命周期由
 [可执行入口组合决策](../lifecycle/0-executable-composition-and-single-node.md)承担。
 
 ## 继承与修改
@@ -25,7 +26,7 @@ Controller–Node 协议。可执行入口的启动参数拆分、`--single-node
 | [minicloud 根决策](../../minicloud/runtime/0-local-web-client-embedded-controller.md) D2：独立 `apps/minicloud/server` 内嵌 Controller | 修改：不再有独立 server 程序，API 由 `ora-controller` 可执行入口承载；协调规则唯一实现的要求不变 |
 | minicloud 根决策 D3：server 拒绝非回环监听 | 修改：回环成为可执行入口的默认值，非回环监听需显式 `--host`；minicloud 开发部署继续只用回环，见[minicloud 后续决策](../../minicloud/runtime/20260921-controller-hosted-server.md) |
 | [Client–Controller Contract 提案](../../desktop/protocol/0-client-controller-contract.md)：异步接受、幂等重传、查询 | 继承其语义；本文仍不引入 Subscription、Worktree 业务或 Desktop IPC |
-| [Internal Control Protocol 提案](../protocol/0-internal-control-protocol.md)：API Server 是权威存储，Controller 不接数据库 | 继承；本文回答其未决项中的“Transport 选择”，不定义其消息集合 |
+| [Internal Control Protocol 提案](../protocol/0-internal-control-protocol.md)：API Server 是权威存储，Controller 不接数据库、不含 Tenant 领域模型 | 继承；本文回答其未决项中的“Transport 选择”，不定义其消息集合；租户授权仍只发生在 API Server 的公开边界 |
 | 代码仓库 `AGENTS.md` 的 contracts 单一来源规则 | 继承并按边界解释：浏览器／Desktop DTO 的来源是 `ora-contracts`，Cloud↔Controller 契约的来源是 `.proto`；两者不互相生成，也不各自维护对方的副本 |
 
 ## 决策
@@ -90,6 +91,11 @@ JSON 流，是因为跨 Rust／Go 的双向流、取消、截止时间、流控�
 单一来源规则按边界成立：浏览器不消费 gRPC，因此 `ora-contracts` 与 `.proto` 描述的是两个
 不同边界，各自唯一；禁止为同一 DTO 同时维护 serde 结构、proto message 与手写转换。
 
+proto 中的资源身份是 API Server 已完成租户授权后交给 Controller 的 opaque 标识
+（`request_id`、`operation_id`、`execution_id`、Node 与仓库意图），不包含 tenant、user、
+membership 或角色字段；Controller 不据此做任何租户筛选，返回的状态与事件由 API Server 重新
+归属到原租户资源。`buf lint` 之外，评审以此作为拒绝 proto 变更的依据。
+
 契约对齐只证明结构一致；行为一致由 Cloud 仓库的集成测试以真实 `ora-controller --transport unix`
 替换其 Controller 替身来验证，该义务在契约稳定后登记。
 
@@ -112,6 +118,7 @@ Cloud 场景中 Controller 领取和推进操作的方向（Controller 拨入 AP
 4. Cloud↔Controller 契约唯一来源是本仓库的 `.proto`；两侧生成代码与之无漂移，破坏性修改不进入 `v1`。
 5. 同一 DTO 不存在 serde、proto 与手写转换三份并行定义。
 6. 调用方断连不取消 Node 已接受的执行，也不改变 Controller 持久状态。
+7. Controller API 与 proto 契约不含租户、用户或成员字段；租户授权只发生在 API Server。
 
 ## 为什么不是这些替代方案
 
