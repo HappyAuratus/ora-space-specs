@@ -15,7 +15,8 @@ JSON HTTP 接口作为过渡契约随入口迁移；Go Cloud（API Server）与 
 `ora-contracts` 中的过渡 DTO，以及 Cloud↔Controller 契约的定义与生成方式。它不定义认证、TLS、
 Internal Control API 的具体消息集合、PTY 或其他流式执行交互，也不改变 Controller–Node 协议。
 租户不是本文的未决项而是明确边界：Controller 与 Node 不感知租户，租户身份、成员授权与资源
-归属只由 Cloud 的 API Server 处理，Controller API 及其 proto 契约中不出现租户或用户字段。可执行入口的启动参数拆分、`--single-node` 与进程生命周期由
+归属只由 Cloud 的 API Server 处理，Controller API 及其 proto 契约中不出现租户或用户字段。
+可执行入口的启动参数拆分、`--single-node` 与进程生命周期由
 [可执行入口组合决策](../lifecycle/0-executable-composition-and-single-node.md)承担。
 
 ## 继承与修改
