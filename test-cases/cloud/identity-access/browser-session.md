@@ -20,7 +20,7 @@
 | 数据库只出现 token digest，原始 token 片段不出现 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries` | `Covered` |
 | 多次访问后 `expires_at` 不变；到期后所有副本拒绝 | `integration.TestGatewaySessionsAcrossReplicasExpiryRevocationAndCleanup` | `Covered` |
 | Cookie `Max-Age` 等于数据库期限且不为负 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries`、`gateway.TestCookiePolicyEnforcesPrefixesScopeAndDatabaseBoundedMaxAge` | `Covered` |
-| session TTL 配置零、负数或超过 90 天时启动失败，缺省 30 天 | `gateway.TestConfigDefaultsAndSessionLifetimeBounds`、`gateway.TestLoadConfigReadsFileAndEnvironmentOverrides` | `Covered` |
+| session TTL 配置零、负数或超过 90 天时启动失败；GitHub 缺省 30 天，IDaaS 未显式配置时缺省 12 小时 | `gateway.TestConfigDefaultsAndSessionLifetimeBounds`、`gateway.TestIDaaSConfigIsSelectedIndependentlyAndDefaultsToTwelveHours`、`gateway.TestLoadConfigReadsFileAndEnvironmentOverrides`、`integration.TestGatewayIDaaSPKCELoginIdentityAndSessionLifetime` | `Covered` |
 | 生产 `__Host-` 前缀与 `Secure`，开发 loopback 才允许降级 | `gateway.TestCookiePolicyEnforcesPrefixesScopeAndDatabaseBoundedMaxAge`、`gateway.TestPublicOriginRequiresHTTPSOutsideLoopbackDevelopment` | `Covered` |
 
 ## Revocation Is Immediate On Every Replica And Idempotent
@@ -46,6 +46,26 @@
 | `RevokeIdentity` 吊销全部活跃 session 且幂等，只计活跃行 | `integration.TestGatewaySessionsAcrossReplicasExpiryRevocationAndCleanup` | `Covered` |
 | 吊销行持久化 `revoked_reason=logout` | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries` | `Covered` |
 | 已过期 session 的 logout 不写入吊销标记 | 当前测试未直接对过期行调用 logout 并检查 `revoked_at` | `Missing` |
+
+## IDaaS Logout Revokes Only The Local Cloud Session
+
+- 风险：Cloud logout 若调用 IDaaS/W3 全局退出，会意外结束同一浏览器中的其他华为系统；若只清 Cookie 而
+  不吊销 PostgreSQL session，复制的 Cookie 仍可在其他 Gateway 副本使用。
+- 前置状态：用户通过 IDaaS/W3 建立一个有效的 12 小时 Cloud Browser Session。
+- 触发：同源 `POST /auth/logout`，随后再次访问 Cloud 页面。
+- 必须成立：Gateway 在 PostgreSQL 中吊销当前 session、清除本地 Cookie，所有副本立即拒绝旧 token；不调用
+  IDaaS logout、revoke 或 refresh。前端清除当前用户查询缓存后再次进入自动登录；若 W3 SSO 仍有效，IDaaS
+  可以无感完成新一次授权，但必须创建全新的 Cloud session。
+- 禁止结果：logout 只清浏览器 Cookie；保存/刷新 provider token；Cloud 退出影响其他 W3 应用。
+- 决策依据：ADR D5、D8，不变量 5、7。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| logout 吊销数据库 session、跨副本立即生效且幂等 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries`、`integration.TestGatewaySessionsAcrossReplicasExpiryRevocationAndCleanup` | `Covered` |
+| 前端 logout 调用真实 `/auth/logout` 并返回自动登录页，不保存本地 token | `app-sidebar.test.tsx`、`login-page.test.tsx`、`api-client.test.ts` | `Covered` |
+| Gateway 不调用 IDaaS logout/revoke/refresh | adapter 未实现这些端点；尚无“无外部调用”的显式 spy 断言 | `Partial` |
 
 ## Cleanup Is Bounded And Preserves Live Rows
 

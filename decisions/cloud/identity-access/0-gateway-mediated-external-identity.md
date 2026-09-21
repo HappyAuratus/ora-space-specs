@@ -14,6 +14,10 @@ membership 和资源 owner 关系作为用户与授权的唯一权威。
 非空的绝对过期时间：默认 30 天，配置上限 90 天，可提前退出或吊销。外部 provider token、OAuth code、PKCE
 verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud。
 
+内网部署增加华为 IDaaS Authorization Code + PKCE S256 适配器。未登录前端自动发起 Gateway Login Attempt，
+由 IDaaS 跳转华为 W3 统一登录；成功后 Gateway 建立 12 小时绝对期限的本地会话并返回登录开始时保存的
+Cloud 站内目标。身份键固定为 `huawei-corp + uuid`，provider token 与完整用户资料不持久化、不进入 Cloud。
+
 本决策已实现并验证：`cmd/gateway`、`internal/gateway`、`internal/gateway/github` 与 migration
 `internal/core/migrations/0005_gateway_auth.sql` 已落地，运行文档为 `docs/gateway.md`，核心测试用例登记于
 `test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities` 唯一性、用户
@@ -75,6 +79,10 @@ challenge 和固定 callback URL）和用 code 加 verifier 交换出 `VerifiedI
 表、Cookie 策略、内部 JWT 签发或代理。账户关联、MFA、组织准入和高风险操作的再认证需另行决策；
 Authenticator 不能通过伪造新的 `source/subject` 合并已有 Ora 用户。
 
+部署配置 `login.provider` 选择默认适配器；`POST /auth/login` 省略 provider 时使用该默认值，保留显式字段以
+兼容既有调用方。命令只读取被选择 provider 的 secret：选择 IDaaS 不要求 GitHub secret，选择 GitHub 也不
+要求 IDaaS client secret。所有副本必须共享 PostgreSQL、PKCE 派生密钥以及所选 provider 的 client 配置。
+
 ### D3：GitHub OAuth 是首个适配器，并使用 GitHub 数字用户 ID 作为稳定 subject
 
 适配器使用 GitHub OAuth App 的 Authorization Code Flow，启用随机 `state` 与 PKCE `S256`。GitHub 在
@@ -92,6 +100,26 @@ authenticated-user 后立即丢弃该 token。
 （Cloud 用 Go `len` 度量）。GitHub 的 `name` 最长 255 字符，因此适配器结果离开编排层前必须截断，否则
 Cloud 会返回用户无法理解的 `401 invalid_identity`。GitHub token、OAuth code、完整用户文档和 email 不写入
 数据库、日志、错误、JWT 或浏览器。GitHub 组织准入若有需要是独立的授权策略，不塞进 `source`/`subject`。
+
+### D3a：华为 IDaaS 使用 Authorization Code + PKCE S256，并以 UUID 作为稳定 subject
+
+内网部署通过 `login.provider=huawei-idaas` 显式选择适配器。Gateway 构造
+`/saaslogin1/oauth2/authorize` 请求，固定 `scope=base.profile`、`display=page`、callback、随机 `state`，
+并携带 `code_challenge_method=S256`。回调后以 JSON POST 调用 `/saaslogin1/oauth2/accesstoken`，请求必须
+同时包含注册的 client、固定 callback、authorization code 和与 challenge 对应的 `code_verifier`；随后以
+access token 通过 JSON POST 调用 `/saaslogin1/oauth2/userinfo`，完成身份归一后立即丢弃 token。PKCE
+（Proof Key for Code Exchange，授权码交换证明）使截获授权码的一方因缺少一次性 verifier 而无法换取 token。
+
+| 字段 | 取值 | 理由 |
+| --- | --- | --- |
+| `source` | 固定 `huawei-corp`，不可配置 | 避免环境或命名漂移把同一员工拆成多个身份空间 |
+| `subject` | IDaaS 顶层非空字符串 `uuid` | UUID 是注册应用获得的稳定企业身份键；姓名、邮箱和工号均不可作键 |
+| `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权 |
+
+authorization code、verifier、access/refresh token、client secret 和完整 userinfo 只存在于当前请求内存；
+userinfo 中除 `uuid` 和显示名称外的字段立即丢弃。IDaaS 明确拒绝、错误 `errorCode`、非法响应或缺失 UUID
+收敛为 `401 login_failed`；网络、超时、取消、429 与 5xx 收敛为 `503 login_unavailable`。响应有 64 KiB
+上限，HTTP 调用传播取消、使用独立超时且禁止跟随重定向。
 
 ### D4：Login Attempt 使用 PostgreSQL 保存一次性、短期的登录关联事实
 
@@ -136,7 +164,8 @@ Store 提供 Create、Resolve、Revoke、RevokeIdentity 和 Cleanup。Resolve �
 Revoke 与 RevokeIdentity 幂等，并且只作用于尚未过期的 session：过期行保留其过期事实作为审计，不再获得
 吊销标记。吊销保证后续新进入 Gateway 的请求失败，不撤回已经通过 admission 并正在 Cloud 执行的请求。
 
-session TTL 是正数配置，默认 30 天，硬上限 90 天；零、负数或超过上限的配置使启动失败。`created_at` 与
+session TTL 是正数配置：GitHub 默认 30 天，华为 IDaaS 默认 12 小时，硬上限均为 90 天；显式配置仍可
+覆盖默认值，零、负数或超过上限使启动失败。`created_at` 与
 `expires_at` 由 PostgreSQL 时间确定。session Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path=/`、无
 `Domain`，生产 HTTPS 下 `Secure` 且使用 `__Host-` 前缀，由浏览器强制上述属性并阻止同站其他 origin 覆盖；
 它是持久 Cookie，`Max-Age` 等于数据库 `expires_at` 与当前时间之差。仅开发 loopback HTTP 可以省略前缀与
@@ -190,6 +219,11 @@ callback 是跨站顶层导航的例外，但完整验证 Login Attempt、`state
 `return_to` 在写入 attempt 前规范化：以单个 `/` 开头，第二个字符不是 `/` 或 `\`，不含反斜杠、控制字符，
 没有 scheme、host、userinfo；回调后只从可信 attempt 行读取，请求参数不能直接成为 `Location`。
 
+前端以 `/api/v1/me` 作为唯一会话事实：401 保存当前站内路径并自动 `POST /auth/login`，随后用
+`location.replace` 导航 authorization URL；403 表示用户已停用，不重复登录；5xx 停止自动循环并提供显式
+重试。已有有效会话访问登录页直接返回目标页面。浏览器不在 localStorage、sessionStorage、Zustand 或模拟
+handler 中保存 token；退出只调用 `POST /auth/logout` 吊销 Cloud 本地 session，不退出 W3/IDaaS SSO。
+
 login start 与 callback 是未认证入口，按客户端传输地址限流（每进程令牌桶，键表有界），限流拒绝不写入
 attempt。认证错误不回显 provider token、code、state、attempt secret、session token、SQL 或上游响应；结构化
 日志记录 request ID、provider、阶段、稳定错误码和 session UUID，不记录上述秘密、完整 Cookie 或不必要的
@@ -214,13 +248,15 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 
 | 方案 | 优势 | 否决理由 |
 | --- | --- | --- |
-| Cloud 直接实现 GitHub OAuth | 少一个部署进程和一次代理 | 把外部协议、Cookie、重定向和业务授权耦合到权威服务，后续认证方式扩大 Cloud 攻击面并复制边界逻辑 |
-| 浏览器直接持有 GitHub token 调 Cloud | Gateway 更薄 | Cloud 被迫信任 provider token 并联网验证；token 暴露给浏览器和业务 API，破坏 service/user 双凭据边界 |
+| Cloud 直接实现 GitHub/IDaaS 协议 | 少一个部署进程和一次代理 | 把外部协议、Cookie、重定向和业务授权耦合到权威服务，后续认证方式扩大 Cloud 攻击面并复制边界逻辑 |
+| 浏览器直接持有 provider token 调 Cloud | Gateway 更薄 | Cloud 被迫信任 provider token 并联网验证；token 暴露给浏览器和业务 API，破坏 service/user 双凭据边界 |
 | 把内部 user JWT 做成长期 token | 无需 session 查询 | 破坏 Cloud 的短期凭据上限，禁用、logout 和泄露处置无法及时生效，并把内部凭据暴露给浏览器 |
 | 纯签名/加密 Cookie，不存 session | 无数据库读取 | 无法可靠 logout、按身份吊销或观察泄露影响；长期凭据只能等密钥全局轮换 |
 | session 外键关联 `users` | 可在数据库中直接绑定 Ora user | Gateway 必须跨越业务表所有权，首次 JIT 创建前无法建 session，并把外部认证成功误读为 Cloud 授权成功 |
 | 用 GitHub login 或 email 作 `subject` | 人类可读 | login 可改名，email 可缺失、变化或复用；会错误合并或分裂 durable identity |
+| 用 IDaaS 姓名、邮箱或工号作 `subject` | 便于人工识别 | 这些字段可变、可复用或缺失；只有 `huawei-corp + uuid` 能维持稳定且不随部署命名漂移 |
 | 持久化 GitHub access token | 减少 provider 调用 | 只需登录时读取身份；长期保存扩大泄露、加密、scope、撤销和轮换责任 |
+| IDaaS refresh/revoke 或 Cloud 退出联动 W3 全局退出 | 可延长 provider 会话或一次退出全部系统 | Cloud 只拥有自己的 session；保存 refresh token 扩大凭据责任，全局退出会意外影响同浏览器中的其他华为系统 |
 | 每种 provider 单独建 session 表和 handler | 单个适配器局部直观 | 复制安全策略、清理、Cookie、JWT 和代理，使不同认证方式的权限与失败语义不一致 |
 | 单独部署 Redis session | 低延迟、天然 TTL | 唯一权威持久化是 PostgreSQL；PostgreSQL 已能表达有限 TTL、即时吊销和清理审计，不值得新增运维与恢复边界 |
 | login start 用 `GET` 链接或返回 `303` | 更接近传统 OAuth 入口 | `GET` 可被跨站导航、预取和图片触发，无法要求同源证明；fetch 跟随到 provider 的 `303` 会被 CORS 打断。同源 JSON `POST` 返回 URL 由前端导航两者都避免 |
@@ -228,11 +264,12 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 
 ## 不变量
 
-1. 只有 Gateway 解释外部认证协议；Cloud 不接收或验证 GitHub token、OAuth code、密码或浏览器 Cookie。
+1. 只有 Gateway 解释外部认证协议；Cloud 不接收或验证 GitHub/IDaaS token、OAuth code、密码或浏览器 Cookie。
 2. Authenticator 成功只产生 `VerifiedIdentity`，不能授予 Ora tenant、role、membership、owner 或业务权限。
 3. 外部身份只由稳定的 `(source, subject)` 查找；`displayName`、login、name 和 email 永不参与身份合并或授权。
 4. GitHub 的 `subject` 必须来自数字用户 ID，`source` 必须为 provider host（公共 GitHub 为 `github.com`）；
-   `VerifiedIdentity` 的字段长度在离开 Authenticator 前已满足 Cloud 的 128/512/200 字节上限。
+   华为 IDaaS 必须使用固定 `source=huawei-corp` 和顶层 `uuid` subject；`VerifiedIdentity` 的字段长度在
+   离开 Authenticator 前已满足 Cloud 的 128/512/200 字节上限。
 5. 原始 session token、attempt secret、OAuth code、provider access token 和 PKCE verifier 不得持久化、记录或返回给 Cloud。
 6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`/PKCE，并且最多成功创建一个 session。
    login start 只接受经过同源校验和限流的 `POST`；attempt Cookie 只发送到 callback 路径，并在 callback
@@ -258,25 +295,27 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 
 - 每个已认证请求增加一次 PostgreSQL session lookup。接受这项成本以换取即时 logout 和吊销；只有在保持
   数据库为权威、证明失效上限并另行决策后才能增加缓存。
-- 30 天默认绝对期限仍给 Cookie 被盗留下较长暴露窗口。HttpOnly、Secure、`__Host-`、同源/CSRF、digest-only
-  存储、90 天硬上限和吊销降低但不能消除风险；正式支持高价值操作前应增加空闲期限、再认证和会话管理。
+- GitHub 的 30 天默认绝对期限仍给 Cookie 被盗留下较长暴露窗口；IDaaS 以 12 小时默认值缩短员工状态变化
+  的暴露窗口，但不会主动感知 W3 账号变化。HttpOnly、Secure、`__Host-`、同源/CSRF、digest-only 存储、
+  90 天硬上限和吊销降低但不能消除风险；正式支持高价值操作前应增加空闲期限、再认证和会话管理。
 - Gateway 成为公开可用性的关键路径，需要独立 readiness、限流、超时、日志脱敏和密钥轮换演练。共享
   PostgreSQL 集群降低运维成本，但必须通过数据库角色防止横向读取业务数据。
 - 限流是每进程的，多副本下的全局公平性不是目标；它保证 attempt 写入有界，不保证精确配额。
 - 同一 identity 的 session 数量无上限；表体积由 30/90 天期限、start 限流和有界清理约束，若观察到异常
   累积，按 identity 限制并发 session 数是后续决策。
-- GitHub 是首个外部可用性依赖。GitHub 故障阻止新登录，但不使已有 session 或 Cloud 内部授权失效。
+- GitHub 或 IDaaS 故障会阻止对应部署的新登录，但不使已有 session 或 Cloud 内部授权失效。
 
 ## 本决策未解决的问题
 
-- 前端登录页面、按钮、回调展示、失败跳转、路由恢复和用户会话管理 UI。当前 callback 失败返回 JSON，
-  接入前端时应增加同源失败跳转路径配置。
+- provider callback 自身失败后的品牌化错误落地页；当前 start 失败由前端展示并显式重试，callback 失败仍返回
+  稳定 JSON Fault，避免把不可信 provider 参数带回前端路由。
 - 账户主动关联/解绑、多个 external identity 合并、误绑定恢复和 identity 管理审计。
-- GitHub organization/team 准入、企业 OIDC/SAML、MFA、passkey、step-up authentication 和风险评分。
+- GitHub organization/team 准入、IDaaS 组织/群组授权、MFA、passkey、step-up authentication 和风险评分。
 - 管理员 session 列表与吊销 API、用户“退出所有设备”公开接口和完整安全事件审计产品；`RevokeIdentity`
   已在 Store 层可用。
 - session token 自动轮换、空闲过期、续期策略、设备信息以及高价值操作的重新认证策略。
 - Cloud 是否在后续登录时同步 `users.display_name`：当前 JIT 只在创建时写入，user JWT 每次携带最新快照。
+- IDaaS refresh token、token revoke、W3 全局退出、资料持续同步与自动租户授权。
 - ingress、域名、证书和 secret manager 的具体产品选择；本文只固定公开 HTTPS 与可信配置边界。
 
 ## 参考
