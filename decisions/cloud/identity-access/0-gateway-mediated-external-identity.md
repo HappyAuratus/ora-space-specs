@@ -18,9 +18,9 @@ verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud�
 由 IDaaS 跳转华为 W3 统一登录；成功后 Gateway 建立 12 小时绝对期限的本地会话并返回登录开始时保存的
 Cloud 站内目标。身份键固定为 `huawei-corp + uuid`，provider token 与完整用户资料不持久化、不进入 Cloud。
 
-本决策已实现并验证：`cmd/gateway`、`internal/gateway`、`internal/gateway/github`、`internal/gateway/idaas`
-与 migration `internal/core/migrations/0005_gateway_auth.sql` 已落地，运行文档为 `docs/gateway.md`，核心
-测试用例登记于 `test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities`
+本决策已实现并验证：`cmd/gateway`、`internal/gateway`、`internal/gateway/github` 与 migration
+`internal/core/migrations/0005_gateway_auth.sql` 已落地，`internal/gateway/idaas` 随 ora-space/cloud#15
+落地，运行文档为 `docs/gateway.md`，核心测试用例登记于 `test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities`
 唯一性、用户 JIT 创建语义、短期 JWT 上限和 tenant/owner 授权规则均未改变；变化只发生在 Cloud 之前新增
 一个认证与会话边界。前端登录页面、UI 路由和交互不属于本决策。
 
@@ -118,7 +118,8 @@ callback、`scope=base.profile` 和随机 `state`。不发送 `display`（可选
 `access_token` 表单 POST `/saaslogin1/oauth2/v1/userinfo`，完成身份归一后立即丢弃 token。
 授权码截获后的换 token 保护依赖机密客户端的 `client_secret`、IDaaS 对 code 的一次性消费，以及 Gateway
 的 attempt Cookie 与 `state` 绑定。编排层仍派生 PKCE verifier 以满足 provider-neutral `Authenticator`
-接口，但 IDaaS 适配器不得把它放到线上请求里。
+接口，但 IDaaS 适配器不得把它放到线上请求里。上线前须按 `docs/gateway.md` 上线检查以 beta 环境实测
+v1 token/userinfo 接受请求体中的表单字段（query 为空），以及 userinfo 默认返回已申请的 `uuid`。
 
 | 字段 | 取值 | 理由 |
 | --- | --- | --- |
