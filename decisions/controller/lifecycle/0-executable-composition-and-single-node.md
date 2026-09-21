@@ -83,7 +83,7 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 
 启动器保留初始化、构建、guardian 部署、host 启动／恢复、Vite 启动与整体停止；不再直接启动
 `ora-node` 与 server，改为启动
-`ora-controller --config <server.json> --single-node --transport tcp --host 127.0.0.1 --port <port>`。
+`ora-controller --config <controller.json> --single-node --transport tcp --host 127.0.0.1 --port <port>`。
 启动器写入的 Controller 配置包含 `single_node` 段，其中 `node_config` 指向启动器生成的
 `node.json`。停止时先停 Vite，再向 Controller 发送终止信号并等待（Controller 内部完成 Node 收尾），
 最后停止 host 与 guardian。第二个启动器对同一数据目录的独占拒绝、状态路径必须位于启动器
@@ -109,7 +109,7 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 
 ## 本决策未解决的问题
 
-- 非 Linux 平台的托管方式（Windows 无 `setsid` 语义）。
+- 非 Linux 平台的托管方式（Windows 没有等价的进程组信号语义）。
 - 多 Node 部署下的托管与目标选择。
 - 托管 Node 的自动重启策略与日志路由。
 - 服务化部署（systemd、容器）中 host／guardian 与 Controller 的启动依赖表达。
@@ -118,7 +118,7 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 
 1. 入口参数：实现 `--config` 与 Transport 参数，保持现有独立 Controller 行为不变。完成条件：
    现有 Controller 持久接管测试与独立进程验收在新入口上通过。
-2. `--single-node`：实现交叉检查、独立进程组启动、就绪等待、关闭顺序与超时；启动器改为启动
+2. `--single-node`：实现交叉检查、同进程组启动、就绪等待、关闭顺序与超时；启动器改为启动
    Controller。完成条件：minicloud 真实链路测试（含 Controller 强杀后 Node 存活、正常关停后
    原 Git 存活并得到唯一 Run）在新组合上通过。
 3. 进入 `approved` 后在 `specs/test-cases/controller/lifecycle/` 登记参数拒绝、就绪超时、崩溃
