@@ -108,11 +108,11 @@
 
 - 风险：把姓名、邮箱或工号作为身份键，或允许部署自由配置 source，会因字段变化、复用和环境漂移错误合并或
   拆分员工身份；把 userinfo 或 provider token 保存下来会扩大个人信息与凭据泄露面。
-- 前置状态：Gateway 选择 `huawei-idaas`；IDaaS 返回顶层 `uuid`（可能含文档示例中的首尾空白）、配置指定的
+- 前置状态：Gateway 选择 `huawei-idaas`；IDaaS 返回顶层 `uuid`（对应员工工号而非工号明文，可能含文档示例中的首尾空白）、配置指定的
   显示名称字段以及其他个人字段；Cloud 中尚无该 identity。
 - 触发：首次登录、显示名称变化后的再次登录、显示名称缺失、UUID 缺失或全空白，以及 token/userinfo 响应异常。
 - 必须成立：identity 固定为 `(huawei-corp, trim 后的 uuid)`；文档示例 `uuid~dGVzdDE = ` 归一为
-  `uuid~dGVzdDE =`；显示名称缺失时回退 trim 后的 UUID；全空白或缺失 UUID 拒绝登录；首次 `/api/v1/me` 以
+  `uuid~dGVzdDE =`；uuid 对应员工工号但非工号明文；显示名称缺失时回退 trim 后的 UUID；全空白或缺失 UUID 拒绝登录；首次 `/api/v1/me` 以
   JIT 方式创建用户，后续登录不覆盖用户显示名称；登录不创建 membership；code、verifier、access/refresh
   token、client secret、完整 userinfo、邮箱和工号不进入数据库、Cloud、JWT、日志或公开错误。
 - 禁止结果：source 可配置漂移；按姓名、邮箱、工号或 `globalUserID` 合并；缺失或全空白 UUID 仍创建

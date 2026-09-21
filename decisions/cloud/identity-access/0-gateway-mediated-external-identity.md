@@ -123,8 +123,8 @@ callback、`scope=base.profile` 和随机 `state`。不发送 `display`（可选
 | 字段 | 取值 | 理由 |
 | --- | --- | --- |
 | `source` | 固定 `huawei-corp`，不可配置 | 避免环境或命名漂移把同一员工拆成多个身份空间 |
-| `subject` | IDaaS 顶层 `uuid` 去掉首尾空白后的非空字符串 | UUID 是稳定企业身份键；文档成功示例含尾部空格，空白不承载区分度。§2.1 默认返回列表与 §2.4 是否必含 `uuid` 互相矛盾，上线前必须在控制台确认/申请该字段，不能改用 `globalUserID` |
-| `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权 |
+| `subject` | IDaaS 顶层 `uuid` 去掉首尾空白后的非空字符串 | UUID 是稳定企业身份键，由 IDaaS 分配并对应员工工号，而非工号明文或 W3 账号；文档成功示例含尾部空格，空白不承载区分度。§2.1 默认返回列表与 §2.4 是否必含 `uuid` 互相矛盾，上线前必须在控制台确认/申请该字段，不能改用 `globalUserID`。部署预置管理员（如 cloudctl bootstrap）必须使用真实 IDaaS uuid，切勿填写工号 |
+| `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权；强烈建议在控制台申请真实姓名（如 `userName`）并配置，避免前端展示 uuid 字符串 |
 
 authorization code、verifier、access/refresh token、client secret 和完整 userinfo 只存在于当前请求内存；
 userinfo 中除 `uuid` 和显示名称外的字段立即丢弃。IDaaS 明确拒绝、OAuth `error`（以及遗留 `errorCode`）、
@@ -266,7 +266,7 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 | 纯签名/加密 Cookie，不存 session | 无数据库读取 | 无法可靠 logout、按身份吊销或观察泄露影响；长期凭据只能等密钥全局轮换 |
 | session 外键关联 `users` | 可在数据库中直接绑定 Ora user | Gateway 必须跨越业务表所有权，首次 JIT 创建前无法建 session，并把外部认证成功误读为 Cloud 授权成功 |
 | 用 GitHub login 或 email 作 `subject` | 人类可读 | login 可改名，email 可缺失、变化或复用；会错误合并或分裂 durable identity |
-| 用 IDaaS 姓名、邮箱或工号作 `subject` | 便于人工识别 | 这些字段可变、可复用或缺失；只有 `huawei-corp + uuid` 能维持稳定且不随部署命名漂移 |
+| 用 IDaaS 姓名、邮箱或工号作 `subject` | 便于人工识别 | 这些字段可变、可复用或缺失；且 IDaaS 默认 userinfo 并不返回工号或姓名；只有 `huawei-corp + uuid` 能维持稳定且不随部署命名漂移 |
 | 向 IDaaS 发送 PKCE S256 或 `display=page` | 与 GitHub 适配器对称，且 RFC 7636 可防授权码截获 | IDaaS 2.0 PKCE 默认关闭，且仅 PKCE 模式必填；Gateway 是机密客户端，用 `client_secret_post` 而非 PKCE-NULL。多发 PKCE 字段会按错误认证方式被拒。`display` 可选且页面已自适应 |
 | 使用 `client_secret_basic` | 与部分 OAuth 服务器的 Basic 头一致 | 与 GitHub 表单换票形态不同，要新增 `Authorization` 头；IDaaS 在方法不匹配时返回 `error=invalid_request` |
 | 使用 PKCE-NULL | 公共客户端不必持有 `client_secret` | Gateway 已持有 client secret；PKCE-NULL 示例不含 secret，会放弃机密客户端认证 |
