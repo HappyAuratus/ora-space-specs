@@ -1,0 +1,288 @@
+---
+status: implemented
+---
+
+# 外部身份由 Gateway 归一，Cloud 保持授权权威
+
+Ora 的公开认证入口由独立 Gateway 承担，即 RFC 10017 §6.1 的 Backend-For-Frontend 模式：浏览器不持有
+任何 OAuth 或内部凭据。Gateway 通过可插拔的 Authenticator 验证外部身份，把结果归一为稳定的 `source`、
+`subject` 和非权威的 `displayName`，再用现有的短期内部 service/user JWT 调用 Cloud。Cloud 不直接接入
+GitHub、密码或其他身份协议，也不持有浏览器会话；它继续以 PostgreSQL 中的 `users`、`user_identities`、
+membership 和资源 owner 关系作为用户与授权的唯一权威。
+
+首个适配器是 GitHub OAuth Authorization Code Flow。浏览器会话由 Gateway 存入 PostgreSQL，所有会话都有
+非空的绝对过期时间：默认 30 天，配置上限 90 天，可提前退出或吊销。外部 provider token、OAuth code、PKCE
+verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud。
+
+本决策已实现并验证：`cmd/gateway`、`internal/gateway`、`internal/gateway/github` 与 migration
+`internal/core/migrations/0005_gateway_auth.sql` 已落地，运行文档为 `docs/gateway.md`，核心测试用例登记于
+`test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities` 唯一性、用户
+JIT 创建语义、短期 JWT 上限和 tenant/owner 授权规则均未改变；变化只发生在 Cloud 之前新增一个认证与会话
+边界。前端登录页面、UI 路由和交互不属于本决策。
+
+## 问题与现有边界
+
+Cloud 接受两类相互独立的内部凭据：`Authorization` 中的 service JWT 证明调用服务，`X-Ora-User-Token`
+中的 user JWT 证明最终用户；公开 API 只允许 `role=gateway` 的服务调用，并要求 `user.caller == service.sub`。
+内部 JWT 的有效期上限是 5 分钟，不能被改造成浏览器长期会话。
+
+`user_identities(source, subject)` 已经表达“外部身份映射到 Ora 用户”的关系，并通过联合唯一约束保证并发
+首次登录只创建一个用户。这个模型刻意不依赖协议名、用户名、展示名或 email。本决策补上此前缺失的部分：
+谁负责完成外部登录、浏览器如何保持登录而不延长内部 JWT、会话如何保存/过期/吊销/清理、新增认证方式如何
+避免复制会话与代理逻辑，以及各方在失败时保留什么事实。
+
+## 术语与信任边界
+
+- **Authenticator**：验证一种外部认证证明并返回 `VerifiedIdentity` 的适配器。只有适配器解释 provider
+  code、token 和用户响应；它不能授予 Ora tenant、role 或 owner 权限。
+- **VerifiedIdentity**：Gateway 内部的短生命周期值，包含稳定的 `source`、稳定的 `subject` 和可选
+  `displayName`。它表示外部认证已成功，不表示 Cloud 用户启用、membership 有效或资源可访问。
+- **Login Attempt**：一次有时限、一次性的外部登录尝试，绑定 provider、`state`、PKCE、浏览器和同源
+  `return_to`。
+- **Browser Session**：Gateway 接受浏览器请求时使用的长期、不透明凭据，权威状态在 PostgreSQL，与内部
+  JWT 的生命周期分离。
+- **Internal Credentials**：Gateway 为一次上游调用签发的 service JWT 和 user JWT。Cloud 只信任经过现有
+  密钥、issuer、audience、kind、role 和 caller 校验的内部凭据。
+- **Absolute Session Lifetime**：从 session 创建到 `expires_at` 的固定期限。请求活动不会滑动延长它。
+
+## 决策
+
+### D1：Gateway 是公开认证边界，Cloud 不直接实现外部认证协议
+
+Gateway 是独立进程 `cmd/gateway`，只做配置、依赖装配、生命周期与退出；认证编排、provider 适配、会话策略
+和 HTTP 边界在 `internal/gateway`。它可以与 Cloud 一起部署，也可以独立扩缩容；进程边界不因同仓库而消失。
+
+Gateway 只承担：发起和完成外部登录；创建、解析、吊销浏览器会话；为通过会话校验的请求签发短期内部
+凭据；移除浏览器提交的内部认证 header 并把 `/api/v1/*` 转发给固定配置的 Cloud upstream；对改变状态的
+浏览器请求执行同源校验并返回稳定、脱敏的错误。它不转发 `/internal/v1/*`（该前缀没有路由），不接受
+请求参数选择 upstream，不把客户端提供的 `Authorization`、`X-Ora-User-Token`、`Cookie` 或
+`Forwarded`/`X-Forwarded-*` 传给 Cloud。Cloud 继续负责用户启用状态、identity 映射、JIT 用户创建、tenant
+membership、role、owner 和所有业务访问判定；Cloud 的 401/403 原样透传，有效 session 不能绕过它们。
+
+生产环境可以在受信 ingress 终止 TLS，但浏览器看到的公开 origin 和 OAuth callback 必须是 HTTPS。Gateway
+使用显式配置的 `public.base_url`，callback 固定为 `<base_url>/auth/callback/<provider>`，不从 `Host`、
+`Forwarded` 或 `X-Forwarded-*` 推导。只有显式 `public.development` 配置允许 `localhost`/`127.0.0.1`/`::1`
+上的 HTTP，其他 host 上的 HTTP 使启动失败。
+
+### D2：认证方式通过 `VerifiedIdentity` 收敛，会话与 Cloud 转发保持 provider-neutral
+
+编排层依赖小型 `Authenticator` 接口：适配器只生成 provider 授权 URL（编排层提供 `state`、PKCE
+challenge 和固定 callback URL）和用 code 加 verifier 交换出 `VerifiedIdentity`。编排层拥有 Login Attempt、
+`state`、PKCE、`return_to`、失败映射和 session 创建；Session Store 只接受已验证的 `VerifiedIdentity`；
+代理只接受已解析的 Session。HTTP handler 只做输入限制与协议翻译。
+
+增加新的认证方式只需新增一个产生 `VerifiedIdentity` 的适配器及其配置和 callback 路径，不复制 session
+表、Cookie 策略、内部 JWT 签发或代理。账户关联、MFA、组织准入和高风险操作的再认证需另行决策；
+Authenticator 不能通过伪造新的 `source/subject` 合并已有 Ora 用户。
+
+### D3：GitHub OAuth 是首个适配器，并使用 GitHub 数字用户 ID 作为稳定 subject
+
+适配器使用 GitHub OAuth App 的 Authorization Code Flow，启用随机 `state` 与 PKCE `S256`。GitHub 在
+authorize 请求携带 `code_challenge` 后要求 token exchange 携带匹配的 `code_verifier`，因此 PKCE 在 GitHub
+上是被 provider 强制校验的保护。不请求任何 scope。callback 用 code 换取 access token，读取
+authenticated-user 后立即丢弃该 token。
+
+| 字段 | 取值 | 理由 |
+| --- | --- | --- |
+| `source` | `github.com`；GitHub Enterprise Server 配置为该实例 host | 稳定、可读的 provider 身份空间；不同 host 的数字 ID 不会混淆 |
+| `subject` | 数字 `id` 的十进制字符串；缺失、非数字或非正使登录失败 | 数字 ID 不随 login 改名；login、name、email 都不能作身份键 |
+| `displayName` | 非空 `name`，否则 `login`；按字节截断到 200，截断落在 rune 边界 | 只用于展示，可变化，不参与查找、合并或授权 |
+
+字段长度以 Cloud identity contract 为准：`source` ≤ 128、`subject` ≤ 512、`displayName` ≤ 200 **字节**
+（Cloud 用 Go `len` 度量）。GitHub 的 `name` 最长 255 字符，因此适配器结果离开编排层前必须截断，否则
+Cloud 会返回用户无法理解的 `401 invalid_identity`。GitHub token、OAuth code、完整用户文档和 email 不写入
+数据库、日志、错误、JWT 或浏览器。GitHub 组织准入若有需要是独立的授权策略，不塞进 `source`/`subject`。
+
+### D4：Login Attempt 使用 PostgreSQL 保存一次性、短期的登录关联事实
+
+登录由浏览器向 `POST /auth/login` 发起同源 JSON 请求触发（`provider`、可选 `returnTo`），响应
+`authorizationUrl` 由前端导航。该请求接受 D8 的同源校验并受限流约束，没有可被 `<img>`、预取或第三方
+顶层导航触发的 `GET` 形式：start 会无条件写入一行 attempt，没有同源校验与限流就是登录 CSRF 和无界写入。
+
+Gateway 为每次登录生成至少 256 bit 的随机 attempt secret 和独立随机 `state`。浏览器只在 attempt Cookie
+中持有 attempt secret；PostgreSQL 只保存两者的 SHA-256 digest。PKCE verifier 由 attempt secret 和仅
+Gateway 可读的密钥通过带域分离的 HMAC-SHA256 确定性派生，不落库；所有副本必须共享同一把派生密钥。
+
+attempt Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path` 限定为 callback 路径、`Max-Age` 等于 attempt
+有效期，生产 HTTPS 下 `Secure` 并使用 `__Secure-` 前缀。必须是 `Lax` 而非 `Strict`：provider 回跳是来自
+`github.com` 的跨站顶层 `GET` 导航，`Strict` Cookie 不会随之发送。callback 无论成功还是失败都清除
+attempt Cookie；因此一次失败或被注入的 callback 会结束这个 attempt，用户需重新发起登录，而不是让
+attempt 悬空可用。
+
+`gateway_login_attempts` 保存 `id`、唯一的 `secret_hash` 与 `state_hash`（定长 32 字节）、`provider`、
+已验证的同源相对路径 `return_to`（数据库层也拒绝绝对、`//` 和 `/\` 形式）、`created_at`/`expires_at`
+（有效期为分钟级配置，1 分钟到 1 小时）和 `consumed_at`。
+
+callback 必须同时匹配 attempt Cookie、`state`、provider、未过期和未消费状态；这次预检不加锁。对 provider
+的 HTTP 调用不在数据库事务或行锁内。exchange 成功后，Gateway 开启短事务 `FOR UPDATE` 锁定 attempt，再次
+验证其未消费和未过期，并在同一事务中写入 `consumed_at` 与新 session；这两个写入只能一起提交。provider 已
+消费 code 但事务失败时登录明确失败，不推断 session 已创建。重复、过期、已消费、错误 state、错误 attempt
+secret、provider 拒绝对外统一为 `401 login_failed`（JSON，不重定向），不暴露 attempt 是否存在。
+基础设施故障（数据库、provider 网络/超时）与之区分为 `503 login_unavailable`。
+
+### D5：Browser Session 存在 PostgreSQL，数据库只保存不透明 token 的 digest
+
+Session Store 以 PostgreSQL 为唯一权威存储，没有内存、SQLite 或仅签名 Cookie 的并行实现。创建 session
+时生成至少 256 bit 的随机 token，明文只返回一次写入 Cookie，数据库只保存 SHA-256 digest，按唯一索引解析。
+
+`gateway_sessions` 保存 `id`（审计用 UUID，不作凭据）、唯一 `token_hash`、与 Cloud contract 等长的
+`source`/`subject`、可空且不超过 200 字节的 `display_name`、`created_at`、非空 `expires_at`（晚于
+`created_at` 且不超过其后 90 天）、`revoked_at` 与 `revoked_reason`（同时为空或同时非空，reason 限于
+`logout`/`identity_revoked`/`administrative`）。同一 identity 可以有多个并发 session；session 不外键关联
+Cloud `users`，因为外部身份可能在首次 Cloud 请求前已登录，且 Gateway 不读写 Cloud 业务表。
+
+Store 提供 Create、Resolve、Revoke、RevokeIdentity 和 Cleanup。Resolve 只在 `revoked_at IS NULL` 且
+`expires_at > clock_timestamp()` 时成功，不续期；不存在、过期和已吊销统一表现为 `401 unauthenticated`。
+Revoke 与 RevokeIdentity 幂等，并且只作用于尚未过期的 session：过期行保留其过期事实作为审计，不再获得
+吊销标记。吊销保证后续新进入 Gateway 的请求失败，不撤回已经通过 admission 并正在 Cloud 执行的请求。
+
+session TTL 是正数配置，默认 30 天，硬上限 90 天；零、负数或超过上限的配置使启动失败。`created_at` 与
+`expires_at` 由 PostgreSQL 时间确定。session Cookie 使用 `HttpOnly`、`SameSite=Lax`、`Path=/`、无
+`Domain`，生产 HTTPS 下 `Secure` 且使用 `__Host-` 前缀，由浏览器强制上述属性并阻止同站其他 origin 覆盖；
+它是持久 Cookie，`Max-Age` 等于数据库 `expires_at` 与当前时间之差。仅开发 loopback HTTP 可以省略前缀与
+`Secure`。退出（`POST /auth/logout`，同源）只吊销当前 session 并清除 Cookie；RevokeIdentity 服务“退出
+所有设备”和管理员吊销，其公开管理 API 不在本决策范围。
+
+同一 identity 的 session 数量不设上限：每次成功登录都创建新 session，累积直到各自到期或被吊销，数据库
+增长由绝对期限与 D6 的有界清理约束。
+
+### D6：Gateway 与 Cloud 共用 PostgreSQL 集群，但数据库权限和表所有权分离
+
+`gateway_login_attempts` 与 `gateway_sessions` 通过 `internal/core/migrations` 下的有序 forward migration
+`0005_gateway_auth.sql` 创建，由单独授权的 `cloudctl migrate` 应用；Gateway 启动时复用 Cloud 的
+`CheckSchema` 只校验全部 migration 的校验和，绝不执行 DDL。
+
+运行时应使用独立的 Gateway 数据库角色，只授予上述两张表的 `SELECT/INSERT/UPDATE/DELETE` 与
+`schema_migrations` 的 `SELECT`。Gateway 代码不查询 `users`、`user_identities`、membership、tenant、
+project、workspace 或 operation 表；Cloud 也不依赖 session 表完成业务授权。共享集群是部署复用，不是
+共享数据所有权。角色的创建与授权是部署步骤，不写入不可变的 migration 文件。
+
+表约束在数据库层保证 digest 长度、identity 字段边界、`expires_at > created_at`、90 天/1 小时上限、
+吊销 reason 与时间一致、`return_to` 形式，并为 token lookup、identity 吊销、过期清理建立索引。时间字段
+使用 `timestamptz`，有效性与清理边界使用数据库时间。
+
+过期或吊销 session 与过期 attempt 保留一个可配置审计窗口（默认 7 天）后由 Gateway 生命周期拥有的清理
+goroutine 按批删除（默认每表每批 500 行，循环直到一批未满）。清理不删除尚未过期且未吊销的活跃 session，
+不用无界 `DELETE` 阻塞生产表，失败只记录并等待下一轮。
+
+### D7：有限期浏览器会话只换取短期内部凭据，不改变 Cloud 的 JWT 安全上限
+
+每次代理已认证请求时，Gateway 先 Resolve 当前 session，再用两把按用途分离的 Ed25519 私钥签发：service
+签名密钥签发 `kind=service`、`role=gateway` 的 service JWT，`sub` 是本副本稳定的服务身份；user 签名密钥
+签发 `kind=user` 的 user JWT，`source`、`sub`、`displayName` 来自 session，`caller` 等于本次 service JWT
+的 `sub`。必须是两把密钥：Cloud 按 `kid` 登记的 key purpose 选择公钥，一把私钥同时签两种 kind 会让
+purpose 绑定失去意义，也无法分别轮换。
+
+两种 JWT 的 issuer、audience、`kid`、kind、role、caller 和最长有效期服从 Cloud 现有验证规则；配置的
+凭据期限默认 60 秒、上限 5 分钟，绝不按 browser session 的期限签发。内部 JWT 只存在于 Gateway 到 Cloud
+的请求中，不写入 session 表、Cookie、重定向 URL、响应 body 或日志。两把签名私钥与 PKCE 派生密钥是三个
+独立 secret，从文件读入进程内存，不存入 PostgreSQL；Cloud 只配置对应公钥及用途。多副本共享 session
+数据，每个副本用自己的 service subject 和密钥签发配对的 JWT，因此 caller binding 天然成立。
+
+### D8：浏览器安全依赖同源证明、CSRF 防护和严格 redirect，而不只依赖 Cookie 属性
+
+认证路由与代理路由同源，不开放 credentialed cross-origin CORS。对改变状态的浏览器请求（login start、
+logout 和代理的非 `GET/HEAD/OPTIONS` 请求），`Origin` 必须与配置的 public origin 完全一致；`Origin` 缺失
+时接受 `Sec-Fetch-Site: same-origin` 作为等价证据；两者都缺失或不匹配返回 `403 origin_forbidden`。
+`POST /auth/login` 还要求 `application/json` 且严格解码（未知字段、尾随内容、超过 4 KiB 均拒绝）。OAuth
+callback 是跨站顶层导航的例外，但完整验证 Login Attempt、`state`、PKCE 和固定 callback URL。
+
+`return_to` 在写入 attempt 前规范化：以单个 `/` 开头，第二个字符不是 `/` 或 `\`，不含反斜杠、控制字符，
+没有 scheme、host、userinfo；回调后只从可信 attempt 行读取，请求参数不能直接成为 `Location`。
+
+login start 与 callback 是未认证入口，按客户端传输地址限流（每进程令牌桶，键表有界），限流拒绝不写入
+attempt。认证错误不回显 provider token、code、state、attempt secret、session token、SQL 或上游响应；结构化
+日志记录 request ID、provider、阶段、稳定错误码和 session UUID，不记录上述秘密、完整 Cookie 或不必要的
+个人信息。请求体、provider 响应（64 KiB）与代理响应（8 MiB）有大小上限，向 provider 与 Cloud 的调用有
+可取消 context 与超时并关闭 response body。provider 暂时失败不创建 session；Cloud 暂时失败返回
+`502 upstream_unavailable`，不吊销 session。
+
+## 失败与恢复语义
+
+| 失败点 | 对外结果 | 持久事实与恢复 |
+| --- | --- | --- |
+| 创建 attempt 失败或被限流 | `503 login_unavailable` / `429 rate_limited`，不跳转 provider | 没有可用 attempt；可安全重试 start |
+| provider 拒绝、state/PKCE 不匹配、attempt Cookie 缺失、过期或已消费 | `401 login_failed`，attempt Cookie 被清除 | 不创建 session；attempt 保持未消费直到过期后清理 |
+| provider exchange 成功、session 事务失败 | `401 login_failed` 或 `503 login_unavailable` | code 可能已不可重用，但没有 session；必须重新开始登录 |
+| session Cookie 不存在、未知、过期或已吊销 | `401 unauthenticated`，Cookie 被清除 | 不泄露 token 是否曾存在；可重新登录 |
+| Gateway 签名失败 | `503 credential_unavailable`，请求不发给 Cloud | session 保持有效；修复密钥配置后重试 |
+| Cloud 网络或 5xx 失败 | `502 upstream_unavailable` 或透传 Cloud 响应 | 不吊销 session，不推断业务请求成功；幂等仍由 Cloud contract 决定 |
+| 用户在 Cloud 被禁用或 membership 被移除 | 透传 Cloud 的 `403`/`404` | session 可以存在，但不能绕过当前业务状态 |
+| logout 与业务请求并发 | logout 幂等 `204` | 已 admission 的请求可完成，后续 Resolve 必须失败 |
+
+## 为什么不是这些替代方案
+
+| 方案 | 优势 | 否决理由 |
+| --- | --- | --- |
+| Cloud 直接实现 GitHub OAuth | 少一个部署进程和一次代理 | 把外部协议、Cookie、重定向和业务授权耦合到权威服务，后续认证方式扩大 Cloud 攻击面并复制边界逻辑 |
+| 浏览器直接持有 GitHub token 调 Cloud | Gateway 更薄 | Cloud 被迫信任 provider token 并联网验证；token 暴露给浏览器和业务 API，破坏 service/user 双凭据边界 |
+| 把内部 user JWT 做成长期 token | 无需 session 查询 | 破坏 Cloud 的短期凭据上限，禁用、logout 和泄露处置无法及时生效，并把内部凭据暴露给浏览器 |
+| 纯签名/加密 Cookie，不存 session | 无数据库读取 | 无法可靠 logout、按身份吊销或观察泄露影响；长期凭据只能等密钥全局轮换 |
+| session 外键关联 `users` | 可在数据库中直接绑定 Ora user | Gateway 必须跨越业务表所有权，首次 JIT 创建前无法建 session，并把外部认证成功误读为 Cloud 授权成功 |
+| 用 GitHub login 或 email 作 `subject` | 人类可读 | login 可改名，email 可缺失、变化或复用；会错误合并或分裂 durable identity |
+| 持久化 GitHub access token | 减少 provider 调用 | 只需登录时读取身份；长期保存扩大泄露、加密、scope、撤销和轮换责任 |
+| 每种 provider 单独建 session 表和 handler | 单个适配器局部直观 | 复制安全策略、清理、Cookie、JWT 和代理，使不同认证方式的权限与失败语义不一致 |
+| 单独部署 Redis session | 低延迟、天然 TTL | 唯一权威持久化是 PostgreSQL；PostgreSQL 已能表达有限 TTL、即时吊销和清理审计，不值得新增运维与恢复边界 |
+| login start 用 `GET` 链接或返回 `303` | 更接近传统 OAuth 入口 | `GET` 可被跨站导航、预取和图片触发，无法要求同源证明；fetch 跟随到 provider 的 `303` 会被 CORS 打断。同源 JSON `POST` 返回 URL 由前端导航两者都避免 |
+| callback 失败重定向到前端错误页 | 用户体验更顺 | 需要在本决策发明前端路由；JSON `401 login_failed` 稳定可测，前端接入时可增加失败跳转配置 |
+
+## 不变量
+
+1. 只有 Gateway 解释外部认证协议；Cloud 不接收或验证 GitHub token、OAuth code、密码或浏览器 Cookie。
+2. Authenticator 成功只产生 `VerifiedIdentity`，不能授予 Ora tenant、role、membership、owner 或业务权限。
+3. 外部身份只由稳定的 `(source, subject)` 查找；`displayName`、login、name 和 email 永不参与身份合并或授权。
+4. GitHub 的 `subject` 必须来自数字用户 ID，`source` 必须为 provider host（公共 GitHub 为 `github.com`）；
+   `VerifiedIdentity` 的字段长度在离开 Authenticator 前已满足 Cloud 的 128/512/200 字节上限。
+5. 原始 session token、attempt secret、OAuth code、provider access token 和 PKCE verifier 不得持久化、记录或返回给 Cloud。
+6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`/PKCE，并且最多成功创建一个 session。
+   login start 只接受经过同源校验和限流的 `POST`；attempt Cookie 只发送到 callback 路径，并在 callback
+   结束时清除。
+7. Browser Session 的有效性只由 PostgreSQL 当前状态和权威时间决定；未知、过期和已吊销统一为未认证。
+8. 每个 session 的 `expires_at` 必须非空、晚于 `created_at` 且不超过创建时间 90 天；Resolve 不得滑动延长期限。
+9. 同一 identity 可以有多个 session；session 不外键关联 Cloud user，也不证明该用户当前可访问任何资源。
+10. Gateway 运行时只访问自己拥有的认证表，不读写 Cloud 业务表，不在启动时执行 DDL。
+11. Gateway 必须移除浏览器提供的内部认证 header，只向固定 Cloud upstream 代理允许的公开 API，绝不代理内部 API。
+12. Gateway 到 Cloud 的 service/user JWT 始终短期有效并满足现有 issuer、audience、kind、role、caller 与
+    key-purpose 校验；service JWT 与 user JWT 由两把按 kind 分离的私钥签发。
+13. 生产公开 origin 和 OAuth callback 必须使用 HTTPS；redirect URI 来自显式配置，不能由不受信请求 header 决定。
+14. 外部 HTTP 调用不得发生在数据库事务或行锁内；ambiguous failure 不得被推断为登录或业务操作成功。
+15. 有效 session 不能覆盖 Cloud 对 disabled user、membership、tenant 和 owner 的当前授权判定。
+
+## 核心测试用例
+
+- [登录尝试与 provider 交换](../../../test-cases/cloud/identity-access/login-attempt.md)
+- [浏览器会话](../../../test-cases/cloud/identity-access/browser-session.md)
+- [代理与内部凭据](../../../test-cases/cloud/identity-access/proxy-and-credentials.md)
+
+## 风险与代价
+
+- 每个已认证请求增加一次 PostgreSQL session lookup。接受这项成本以换取即时 logout 和吊销；只有在保持
+  数据库为权威、证明失效上限并另行决策后才能增加缓存。
+- 30 天默认绝对期限仍给 Cookie 被盗留下较长暴露窗口。HttpOnly、Secure、`__Host-`、同源/CSRF、digest-only
+  存储、90 天硬上限和吊销降低但不能消除风险；正式支持高价值操作前应增加空闲期限、再认证和会话管理。
+- Gateway 成为公开可用性的关键路径，需要独立 readiness、限流、超时、日志脱敏和密钥轮换演练。共享
+  PostgreSQL 集群降低运维成本，但必须通过数据库角色防止横向读取业务数据。
+- 限流是每进程的，多副本下的全局公平性不是目标；它保证 attempt 写入有界，不保证精确配额。
+- 同一 identity 的 session 数量无上限；表体积由 30/90 天期限、start 限流和有界清理约束，若观察到异常
+  累积，按 identity 限制并发 session 数是后续决策。
+- GitHub 是首个外部可用性依赖。GitHub 故障阻止新登录，但不使已有 session 或 Cloud 内部授权失效。
+
+## 本决策未解决的问题
+
+- 前端登录页面、按钮、回调展示、失败跳转、路由恢复和用户会话管理 UI。当前 callback 失败返回 JSON，
+  接入前端时应增加同源失败跳转路径配置。
+- 账户主动关联/解绑、多个 external identity 合并、误绑定恢复和 identity 管理审计。
+- GitHub organization/team 准入、企业 OIDC/SAML、MFA、passkey、step-up authentication 和风险评分。
+- 管理员 session 列表与吊销 API、用户“退出所有设备”公开接口和完整安全事件审计产品；`RevokeIdentity`
+  已在 Store 层可用。
+- session token 自动轮换、空闲过期、续期策略、设备信息以及高价值操作的重新认证策略。
+- Cloud 是否在后续登录时同步 `users.display_name`：当前 JIT 只在创建时写入，user JWT 每次携带最新快照。
+- ingress、域名、证书和 secret manager 的具体产品选择；本文只固定公开 HTTPS 与可信配置边界。
+
+## 参考
+
+- Cloud 认证契约：`docs/authentication.md`；Gateway 运行文档：`docs/gateway.md`
+- Cloud identity schema：`internal/core/migrations/0001_core.sql`；Gateway 表：`0005_gateway_auth.sql`
+- OAuth 2.0 Security Best Current Practice：[RFC 9700](https://www.rfc-editor.org/rfc/rfc9700)
+- OAuth 2.0 for Browser-Based Applications：[RFC 10017](https://www.rfc-editor.org/rfc/rfc10017)
+- GitHub OAuth web application flow：<https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps>
