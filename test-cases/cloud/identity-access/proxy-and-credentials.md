@@ -25,6 +25,28 @@
 | 私钥只接受 PKCS#8 Ed25519 PEM | `gateway.TestLoadPrivateKeyAcceptsOnlyPKCS8Ed25519` | `Covered` |
 | 内部 JWT 不出现在 session 表、Cookie、重定向、响应 body 或日志 | 没有日志捕获或响应扫描测试 | `Missing` |
 
+## Browser Authentication Uses Only The HttpOnly Session And Current User Probe
+
+- 风险：前端把 service/user JWT、provider token 或模拟 token 放入 localStorage、sessionStorage、Zustand 或
+  JavaScript header，会让脚本注入直接窃取长期认证材料，并形成与 Gateway session 不一致的第二事实来源。
+- 前置状态：前端与 Gateway 对浏览器表现为同一公开 origin；Gateway 代理 `/api/v1/*` 并签发内部短期 JWT。
+- 触发：未登录访问任意 Cloud 站内目标、已登录访问登录页、账号被停用、Gateway 暂时失败和用户退出。
+- 必须成立：前端只用 `/api/v1/me` 判断状态；401 保存经过约束的当前路径并自动 POST `/auth/login`，随后用
+  `location.replace` 跳转；403 停止重登并显示停用；5xx 停止循环并提供重试；有效会话直接返回目标；退出调用
+  `/auth/logout`。Vite 只把 `/auth`、`/api`、`/healthz` 代理到 Gateway，不暴露 `/internal`。
+- 禁止结果：前端持久化或注入任何认证 token；模拟 auth handler 响应登录；callback 新参数覆盖 attempt 的
+  `return_to`；401/403/5xx 形成自动跳转循环。
+- 决策依据：ADR D1、D7、D8，不变量 5、11—15。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 401 自动启动登录并恢复包含 query/hash 的站内目标；外部 URL 通过校验后用 replace 跳转 | `login-page.test.tsx`、`return-to.test.ts`、`dashboard-layout.test.tsx` | `Covered` |
+| 已登录、403、登录 start 失败和暂时故障停止循环并提供正确恢复入口 | `login-page.test.tsx`、`dashboard-layout.test.tsx` | `Covered` |
+| 共享客户端不注入 `Authorization`/`X-Ora-User-Token`，模拟业务 client 与真实认证分离 | `api-client.test.ts` | `Covered` |
+| 开发代理只暴露 `/auth`、`/api`、`/healthz` 到 Gateway | `vite.config.ts` 为静态配置，尚无自动化配置断言 | `Partial` |
+
 ## Internal Routes And Cross-Site Mutations Never Reach Cloud
 
 - 风险：Gateway 若代理 `/internal/v1/*`，Controller 内部契约就暴露给浏览器；改变状态的请求若不要求

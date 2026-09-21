@@ -11,7 +11,7 @@
 - 必须成立：只有同源、JSON、限流内的请求写入一行 attempt 并返回 `authorizationUrl`；attempt Cookie 为
   `SameSite=Lax`、`HttpOnly`、`Path=/auth/callback`、`Max-Age` 等于 attempt 有效期；`returnTo` 被规范化为
   同源相对路径或在写入前被拒绝；authorize URL 携带 `state`、S256 `code_challenge` 和固定 `redirect_uri`
-  且不请求 scope。
+  并遵守所选 provider 的固定 scope（GitHub 不请求 scope；IDaaS 固定 `base.profile` 与 `display=page`）。
 - 禁止结果：`GET /auth/login` 存在；无同源证明或被限流的请求写入 attempt；绝对、`//`、`/\` 或带反斜杠/
   控制字符的 `returnTo` 被保存；attempt secret 或 `state` 明文进入数据库。
 - 决策依据：ADR D4、D8，不变量 6、13。
@@ -24,7 +24,7 @@
 | 绝对、`//`、`/\`、反斜杠、控制字符与超长 `returnTo` 在写入前失败 | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume`、`gateway.TestNormalizeReturnToRejectsEveryOffOriginForm` | `Covered` |
 | 超过限流阈值的 start 返回 `429` 且 attempt 行数不增加 | `integration.TestGatewayProviderAndUpstreamFailuresKeepFactsStraight`、`gateway.TestRateLimiterBurstRefillAndBoundedKeys` | `Covered` |
 | attempt Cookie 的 `SameSite=Lax`、`Path`、`HttpOnly`、`Max-Age` 与前缀策略 | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume`（startLogin）、`gateway.TestCookiePolicyEnforcesPrefixesScopeAndDatabaseBoundedMaxAge` | `Covered` |
-| authorize URL 绑定 `state`、S256 challenge、固定 callback，不含 scope 或 secret | `github.TestAuthorizationURLBindsStateChallengeAndCallbackWithoutScopes` | `Covered` |
+| authorize URL 绑定 `state`、S256 challenge、固定 callback，且 scope 不可由浏览器选择 | `github.TestAuthorizationURLBindsStateChallengeAndCallbackWithoutScopes`、`idaas.TestAuthorizationURLBindsIDaaSAndPKCEParameters` | `Covered` |
 | 未知 provider 与未知 JSON 字段被拒绝 | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume` | `Covered` |
 | 数据库只出现 secret/state 的定长 digest，attempt secret 明文不出现 | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume` | `Covered` |
 
@@ -52,6 +52,7 @@
 | 失败 callback 清除 attempt Cookie 并使原 attempt 不再可用 | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume` | `Covered` |
 | 成功 callback 重定向到 attempt 保存的 `return_to`，attempt 被标记消费 | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries` | `Covered` |
 | provider 允许 code 重用时，两个并发 callback 只有一个创建 session | `integration.TestGatewayLoginAttemptReplayStateAndConcurrentConsume` | `Covered` |
+| IDaaS 的错误 Cookie/state/verifier、重放和并发 callback 不产生第二个 session，并恢复原目标 | `integration.TestGatewayIDaaSPKCELoginIdentityAndSessionLifetime` | `Covered` |
 | provider exchange 成功但 session 事务失败时没有 session、返回失败而非推断成功 | 没有数据库提交失败的故障注入 | `Missing` |
 | provider 调用不在数据库事务或行锁内 | 结构上由 `Login.Callback` 的调用顺序保证，没有直接检测锁持有的测试 | `Missing` |
 
@@ -78,6 +79,7 @@
 | 超时与取消是基础设施错误而非 provider 拒绝 | `github.TestExchangeReportsInfrastructureFailuresDistinctly` | `Covered` |
 | 经过完整 HTTP 路径时 provider 超时返回 `503 login_unavailable` 且 attempt 保持可用 | 只有适配器层证据，没有通过 Gateway HTTP 的超时验收 | `Partial` |
 | exchange 表单携带 `code`、`code_verifier`、`client_secret`、`redirect_uri`，用户读取使用换得的 token | `github.TestExchangeUsesVerifierReadsNumericIDAndDiscardsToken` | `Covered` |
+| IDaaS token JSON 携带 `code_verifier`/固定 callback，userinfo JSON 使用 access token；错误码、超大响应、取消、超时与重定向按契约分类 | `idaas.TestExchangeUsesJSONPKCEAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers`、`idaas.TestExchangeBoundsResponsesAndPropagatesCancellation`、`idaas.TestHTTPClientTimesOutAndRefusesProviderRedirects` | `Covered` |
 
 ## GitHub Identity Is Keyed By Numeric ID Within Cloud Field Limits
 
@@ -99,3 +101,26 @@
 | 超长多字节 name 被截断到 200 字节的 rune 边界，登录与 `/api/v1/me` 成功 | `integration.TestGatewayProviderAndUpstreamFailuresKeepFactsStraight`、`gateway.TestNormalizeMatchesCloudByteLimits` | `Covered` |
 | `source`/`subject` 超过 128/512 字节或为空时拒绝而非截断 | `gateway.TestNormalizeMatchesCloudByteLimits` | `Covered` |
 | `name` 为空时回退到 `login`；数字 `id` 以十进制字符串作为 subject | `github.TestExchangeFallsBackToLoginAndRejectsBadProviderAnswers`、`github.TestExchangeUsesVerifierReadsNumericIDAndDiscardsToken` | `Covered` |
+
+## Huawei IDaaS Identity Is Keyed Only By Corporate UUID
+
+- 风险：把姓名、邮箱或工号作为身份键，或允许部署自由配置 source，会因字段变化、复用和环境漂移错误合并或
+  拆分员工身份；把 userinfo 或 provider token 保存下来会扩大个人信息与凭据泄露面。
+- 前置状态：Gateway 选择 `huawei-idaas`；IDaaS 返回顶层 `uuid`、配置指定的显示名称字段以及其他个人字段；
+  Cloud 中尚无该 identity。
+- 触发：首次登录、显示名称变化后的再次登录、显示名称缺失、UUID 缺失，以及 token/userinfo 响应异常。
+- 必须成立：identity 固定为 `(huawei-corp, uuid)`；显示名称缺失时回退 UUID；首次 `/api/v1/me` 以 JIT
+  方式创建用户，后续登录不覆盖用户显示名称；登录不创建 membership；code、verifier、access/refresh token、
+  client secret、完整 userinfo、邮箱和工号不进入数据库、Cloud、JWT、日志或公开错误。
+- 禁止结果：source 可配置漂移；按姓名、邮箱或工号合并；缺失 UUID 仍创建 session；provider token 被用作
+  Browser Session 或发给 Cloud。
+- 决策依据：ADR D3a、D4，不变量 2—6、15。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| adapter 固定 `huawei-corp + uuid`，显示名称字段缺失时回退 UUID，并拒绝缺失 UUID/错误响应 | `idaas.TestExchangeUsesJSONPKCEAndReturnsCorporateIdentity`、`idaas.TestExchangeFallsBackToUUIDAndRejectsProviderAnswers` | `Covered` |
+| 全链路只建立一条 identity，显示名称保持首次 JIT 快照，登录不授予 membership | `integration.TestGatewayIDaaSPKCELoginIdentityAndSessionLifetime` | `Covered` |
+| access/refresh token 不成为 session token，session 只保存最小归一身份字段 | `integration.TestGatewayIDaaSPKCELoginIdentityAndSessionLifetime` | `Covered` |
+| 日志与公开错误不包含 code、token、refresh token、client secret、邮箱或工号 | 适配器错误不携带响应正文；尚无覆盖所有日志输出的捕获扫描 | `Partial` |
