@@ -2,14 +2,14 @@
 status: proposed
 ---
 
-# Controller 可执行入口的组合：配置文件承载部署状态，启动参数承载组合，`--single-node` 以独立进程组托管 Node
+# Controller 可执行入口的组合：配置文件承载部署状态，启动参数承载组合，`--single-node` 托管生命周期独立的 Node
 
 `ora-controller` 的启动输入分为两类：配置文件保存部署状态（数据目录、受保护目录、
 `ControllerId`、Node 列表、会话与重连参数、时区、API 目标 Node），启动参数保存本次进程的组合
-方式（监听 Transport、是否托管 Node）。`--single-node` 让 Controller 在独立进程组中启动配置指定的
-`ora-node`，等待其 IPC endpoint 就绪后按既有本机 IPC 连接；Controller 崩溃不连带终止 Node，
-正常关停时向 Node 发送终止信号并等待其完成受管 Git 收尾。process host 与 guardian 不由
-Controller 部署或启动。
+方式（监听 Transport、是否托管 Node）。`--single-node` 让 Controller 启动配置指定的 `ora-node`，
+等待其 IPC endpoint 就绪后按既有本机 IPC 连接；Node 与 Controller 同属一个进程组，但 Controller
+崩溃不连带终止 Node，正常关停时向 Node 发送终止信号并等待其完成受管 Git 收尾。process host 与
+guardian 不由 Controller 部署或启动。
 
 本决策处于 `proposed` 状态，覆盖 `apps/ora-controller` 的入口、配置校验、Node 子进程生命周期与
 关闭顺序，以及 minicloud 开发启动器的职责调整。它不改变 Controller 持久接管、Node IPC 协议、
@@ -47,15 +47,18 @@ Transport 参数含义由[Client API 决策](../api-boundary/0-controller-hosted
 检查：`ipc.controller_id` 等于本 Controller 的 `controller_id`，`ipc.endpoint` 等于 `nodes[0].endpoint`。
 不一致即拒绝启动，不修改 Node 配置，也不为 Node 生成配置。
 
-启动顺序为：校验并打开 Controller 状态 → 以新会话（`setsid`）启动 `ora-node <node_config>`，
+启动顺序为：完成上述校验并探测 endpoint（已有进程接受连接则拒绝启动，不接管来历不明的 Node）→
+打开 Controller 状态 → 在 Controller 自身进程组内启动 `ora-node <node_config>`（不新建会话），
 标准输出／错误继承给 Controller 的终端 → 在 `ready_timeout_ms` 内等待 `nodes[0].endpoint` 可连接 →
 启动 API 监听与既有重连循环。就绪超时视为启动失败：Controller 向 Node 发送终止信号并退出，
 不进入受理状态。
 
-独立进程组的目的是隔离崩溃：Controller 被强杀时 Node 及其受管 Git 继续运行，已接受的执行
-按既有规则由重启后的 Controller 恢复。Node 意外退出时，Controller 记录原因并执行正常关停后
-以失败退出：托管组合只对“Controller 与它启动的 Node”成立，Node 消失后继续受理只会产生无法
-派发的接受记录，交给启动器或运维处理更明确。
+崩溃隔离不依赖新会话：进程组成员关系不会在父进程死亡时传递信号，Controller 被强杀时 Node 及其
+受管 Git 继续运行，已接受的执行按既有规则由重启后的 Controller 恢复。保留同一进程组是为了让
+启动器或运维按进程组发出的停止信号同时到达两者——尤其是 Controller 已经崩溃、只剩 Node 的情况，
+否则 Node 会成为没有任何持有者知道其 PID 的孤儿。Node 意外退出时，Controller 记录原因并执行
+正常关停后以失败退出：托管组合只对“Controller 与它启动的 Node”成立，Node 消失后继续受理只会
+产生无法派发的接受记录，交给启动器或运维处理更明确。
 
 Node 需要 process host 已在其配置的 `process.host_directory` 内运行，guardian 已按哈希部署；
 这是 `--single-node` 的前置条件，Controller 不启动 host、不部署 guardian、不校验其版本。
@@ -89,7 +92,7 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 ## 不变量
 
 1. 配置文件只承载部署状态，启动参数只承载组合方式；两者的非法值都在获取数据库租约前拒绝。
-2. `--single-node` 启动的 Node 位于独立进程组；Controller 崩溃不终止 Node 或其受管 Git。
+2. `--single-node` 启动的 Node 与 Controller 同进程组；Controller 崩溃不终止 Node 或其受管 Git，进程组级停止同时到达两者。
 3. 正常关停顺序固定为 API 受理 → Node 会话 → 托管 Node → 数据库租约；不向 Node 升级 `SIGKILL`。
 4. Controller 不生成、不修改 Node 配置，不部署 guardian，不启动 host。
 5. 托管 Node 意外退出时 Controller 不继续受理，且不清空或改写已接受记录。
@@ -99,7 +102,7 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 | 方案 | 取舍 |
 |---|---|
 | 在 Controller 进程内以任务形式运行 Node | 少一个进程，但 Controller 崩溃即丢失 Node 的受管 Git 进程归属，违反“断连不取消执行”与两侧独立重启 |
-| 完全脱离（启动后不再跟踪 Node） | 隔离最强，但开发时 Ctrl+C 后 Node 仍占用 endpoint，下一次启动被拒绝；正常关停需要显式收尾 |
+| 以新会话（`setsid`）完全脱离 Node | 隔离最强，但 Controller 崩溃后没有任何持有者知道 Node 的 PID：启动器按进程组停止到不了它，下一次启动因 endpoint 仍活跃被拒绝 |
 | Controller 同时部署 guardian 并启动 host | 一条命令拉起全栈，但复制了 host／guardian 的版本共存与恢复规则，形成第二套编排 |
 | Controller 监督并自动重启 Node | 对长期部署有价值，但重启策略、退避和状态判定超出当前范围；先由启动器或运维决定 |
 | 把 `listen`／`single_node` 全放进配置文件 | 少几个参数，但同一部署配置无法在不同组合方式间复用，且启动器需要为每种组合改写文件 |
