@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 已登录用户自助创建租户，租户成为协作空间的隐式容器
@@ -9,8 +9,10 @@ Cloud 新增公开接口 `POST /api/v1/tenants`：任何已通过 Gateway 验证
 空间 `owner`。产品界面不展示租户，用户只看见并管理协作空间（产品术语 Workspace）；租户继续作为隔离、
 成员与凭据引用的边界存在于后端。`cloudctl bootstrap` 保留为部署路径，两条路径共用一个事务形态。
 
-本文处于 `proposed`，覆盖 Cloud 的租户创建语义、幂等边界与授权前提；不改变已发布的 `/api/v1/tenants/{tid}/*`
+本文已按评审意见修正并批准（`approved`），覆盖 Cloud 的租户创建语义、幂等边界与授权前提；不改变已发布的 `/api/v1/tenants/{tid}/*`
 契约、`user_identities` 的 JIT 语义、tenant/space 的角色模型，也不承担合并或拆分既有租户的迁移义务。
+核心测试用例登记于 `test-cases/cloud/tenancy/self-serve-provisioning.md`（与本 ADR 同批）；实现位于
+ora-space/cloud#14 并已通过完整门禁与端到端验证，合入 main 后按最终实现重新同步并标记 `implemented`。
 涉及模块：`internal/core`（`tenant.go`、`public.go`）、`internal/api/router`、`internal/contract`、
 `frontend/src/features/onboarding`。
 
@@ -116,7 +118,10 @@ Cloud 新增公开接口 `POST /api/v1/tenants`：任何已通过 Gateway 验证
 1. Cloud：`provisionTenant` 与 `createTenant`，路由与 OpenAPI，集成测试覆盖授权前提、原子性、重放与冲突、
    跨租户隔离。完成条件：`task check` 通过，`api/openapi.json` 与前端客户端重新生成。
 2. 前端：`/onboarding` 页面、无租户引导、`postApiV1Tenants` 接入。完成条件：`task frontend:check` 通过。
-3. 评审通过后标记 `approved`，并在 `test-cases/cloud/tenancy/` 补充核心用例；实现验证后标记 `implemented`。
+3. 已按评审意见标记 `approved`；核心用例见 `test-cases/cloud/tenancy/self-serve-provisioning.md`（三个：
+   事务原子性与授权前提、user+key 跨租户幂等、成员租户列表创建时间升序分页）。实现位于 ora-space/cloud#14，
+   已通过 `task check`、race、`task frontend:check` 与真机端到端验证；该 PR 合入 main 后将本 ADR 重新同步
+   并标记 `implemented`。
 4. 与本 ADR 同批实现的能力还包括：Gateway 的 SSE 中继（已授权的事件流不受 upstream timeout、server write
    timeout 与 8 MiB 响应体上限约束）与本地开发登录 provider（`dev`，仅 loopback development origin）。它们属于
    identity-access 已批准 ADR 的范畴，其边界修订与证据登记见该领域。
