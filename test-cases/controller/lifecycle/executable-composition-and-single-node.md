@@ -2,8 +2,10 @@
 
 依据[已批准 ADR](../../../decisions/controller/lifecycle/0-executable-composition-and-single-node.md)。
 证据基于 [desktop#595](https://github.com/ora-space/desktop/pull/595) 的
-`e22bfdd063032d22532c2a007320072b374aaed9`；该 PR 尚未合并。已核对测试源码与绿色 CI，
-本次未重跑 Linux 进程测试。下表区分已有直接证据与仍缺少的异常路径断言。
+`7b7fea969eba76fb0b8694f07b308f860a061200`；该 PR 尚未合并。Linux 进程测试已在该提交上本地重跑。
+`apps/ora-controller/tests/composition.rs` 以子进程 Node 替身（正常监听／永不就绪／忽略 SIGTERM）
+在可执行入口层复现真实 Node 难以稳定制造的异常路径；托管真实 Node 的证据仍来自
+`apps/ora-node/tests/standalone/repository_single_node.rs`。
 
 ## Invalid Composition Leaves Deployment State Untouched
 
@@ -16,7 +18,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 校验无副作用 | `apps/ora-controller/tests/api.rs` 覆盖未知目标、缺失 single_node、相对 Node 路径、目录重叠及未知文件保护；`repository_single_node.rs` 覆盖归属不符且不创建状态；其他输入及配置只读断言待补 | Partial |
+| 校验无副作用 | `apps/ora-controller/tests/api.rs` 覆盖未知目标、缺失 single_node、多 Node 托管、相对 Node 路径、目录重叠及未知文件保护；`composition.rs::refused_composition_leaves_no_state_behind` 以真实入口覆盖相对配置路径、非法 Transport 组合、Node 配置归属不符时拒绝且不创建状态、不启动 Node、Node 配置逐字节不变；`repository_single_node.rs` 断言真实 Node 配置在托管全程只读 | Covered |
 
 决策依据：D1、D2，不变量 1、4。
 
@@ -33,7 +35,7 @@
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 活跃 endpoint 保护 | `apps/ora-node/tests/standalone/repository_single_node.rs::single_node_composition_hosts_and_retires_its_node` 覆盖活跃 endpoint 拒绝第二个托管入口且原 Node 存活 | Covered |
-| 就绪与失败清理 | 待补受控延迟 endpoint，验证受理时机、超时终止、退出和租约释放 | Missing |
+| 就绪与失败清理 | `composition.rs::readiness_timeout_stops_node_and_never_opens_api` 以永不就绪的替身验证超时后终止 Node、从不打印监听地址、失败退出且同一身份可重新打开状态（租约已释放）；`composition.rs::normal_stop_orders_phases_and_retires_node` 断言 `managed Node ready` 日志先于监听地址 | Covered |
 
 决策依据：D2。
 
@@ -50,7 +52,7 @@
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 崩溃与恢复 | `apps/ora-node/tests/standalone/repository_single_node.rs::single_node_composition_hosts_and_retires_its_node` 固定 Node 身份，强杀 Controller 后原 Node 完成 clone，替换组合接管原执行且唯一 Run | Covered |
-| 进程组可达性 | 待补 Controller 消失后向原进程组发送停止信号并验证 Node 收到 | Missing |
+| 进程组可达性 | 同一用例断言托管 Node 的 pgid 等于 Controller pid，并在 Controller 被强杀后向该进程组发送 SIGTERM，验证 Node 收到并退出 | Covered |
 
 决策依据：D2，不变量 2。
 
@@ -66,8 +68,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 正常顺序与收尾 | `repository_single_node.rs::single_node_composition_hosts_and_retires_its_node` 验证正常退出前托管 Node 已退出；缺在途请求、活动 Git 收尾及各关闭阶段顺序断言 | Partial |
-| 停止超时 | 待补延迟收尾验证告警、有限退出且无 SIGKILL | Missing |
-| Node 意外退出 | 待补杀死托管 Node 后 Controller 失败退出、停止受理且原记录可恢复 | Missing |
+| 正常顺序与收尾 | `composition.rs::normal_stop_orders_phases_and_retires_node` 按日志断言 API 受理 → Node 会话 → 托管 Node 的完成顺序、退出后端口不可达且 Node 已退出；`repository_single_node.rs` 在 HTTPS 暂停、Git 活跃时正常停止，验证 Node 完成受管 Git 收尾且 Git 已退出后 Controller 才成功退出，重启后两条已接受记录保持原身份、已完成记录状态不变；在途 HTTP 请求的有限等待仍缺直接证据 | Partial |
+| 停止超时 | `composition.rs::stop_timeout_warns_without_sigkill` 以忽略 SIGTERM 的替身验证 Controller 在期限内告警并成功退出，替身仍存活（未 SIGKILL） | Covered |
+| Node 意外退出 | `composition.rs::node_exit_stops_admission_and_keeps_records` 在接受一条 clone 后强杀替身，验证 Controller 失败退出并报告原因、端口不可达，重新打开状态后原 operation／execution／request 身份保留且无终态 | Covered |
 
 决策依据：D2、D3，不变量 3、5。

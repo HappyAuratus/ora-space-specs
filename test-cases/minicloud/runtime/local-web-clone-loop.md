@@ -1,7 +1,7 @@
 # minicloud 本机 Web 闭环验收
 
 依据[已批准的根 ADR](../../../decisions/minicloud/runtime/0-local-web-client-embedded-controller.md)。
-入口迁移依据[后续 ADR](../../../decisions/minicloud/runtime/20260921-controller-hosted-server.md)。证据已核对 [desktop#595](https://github.com/ora-space/desktop/pull/595) 的 `e22bfdd063032d22532c2a007320072b374aaed9` 测试源码及绿色 CI；PR 尚未合并，本次未重跑 Linux 进程测试。稳定用例标题保留，正文与证据以 ora-controller 新入口为准。
+入口迁移依据[后续 ADR](../../../decisions/minicloud/runtime/20260921-controller-hosted-server.md)。证据已核对 [desktop#595](https://github.com/ora-space/desktop/pull/595) 的 `7b7fea969eba76fb0b8694f07b308f860a061200`；PR 尚未合并，Linux 进程测试已在该提交上本地重跑。稳定用例标题保留，正文与证据以 ora-controller 新入口为准。
 已有 Controller／Node 测试作为下层基础，不代替真实 HTTP、Vite proxy 和页面链路。
 Eric 已明确不要求完整浏览器引擎验收；页面行为以 DOM 测试验证，网络与执行链路以真实 HTTP／Vite proxy 验证。
 此范围调整不免除回复丢失、正常关闭、所有权交接及目录保护等非浏览器验证义务。
@@ -18,7 +18,7 @@ Eric 已明确不要求完整浏览器引擎验收；页面行为以 DOM 测试�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 部署与 proxy 链路 | `minicloud_vite_proxy_reaches_real_https_clone_and_restart` 启动真实本机 Vite／ora-controller，经 proxy 无凭据提交；CLI 测试验证回环默认值；启动器显式回环参数仍缺自动化断言 | Partial |
+| 部署与 proxy 链路 | `minicloud_vite_proxy_reaches_real_https_clone_and_restart` 启动真实本机 Vite／ora-controller，经 proxy 无凭据提交；CLI 测试验证回环默认值；`scripts/run-minicloud.test.ts` 断言启动器生成的 Controller 参数含 `--single-node` 与 `--host 127.0.0.1`，且 `controller.json`／`node.json`／`client.json` 之间的 Node 身份、endpoint 与端口一致 | Covered |
 | 内嵌协调与真实执行 | Node standalone `repository_minicloud.rs` 两个测试覆盖真实 HTTP／Vite proxy → ora-controller → Node → host／guardian → HTTPS Git，查询实际 commit／目录并验证唯一 Run | Covered |
 
 决策依据：D1、D2、D3，不变量 1、2。
@@ -105,6 +105,6 @@ Eric 已明确不要求完整浏览器引擎验收；页面行为以 DOM 测试�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 启动器完整关闭与崩溃回收 | PR #595 报告真实启动器手工验收；`apps/ora-node/tests/standalone/repository_single_node.rs` 直接证明 Controller 正常收回托管 Node，但未覆盖完整启动器顺序和活动 Git 收尾，仍待补自动化证据 | Partial |
+| 启动器完整关闭与崩溃回收 | `apps/ora-node/tests/standalone/repository_single_node.rs` 直接证明 Controller 正常收回托管 Node、活动 Git 期间正常停止时 Node 先完成受管 Git 收尾，以及 Controller 崩溃后按进程组发送 SIGTERM 能到达残留 Node；`apps/ora-controller/tests/composition.rs` 覆盖关停阶段顺序与停止超时；启动器自身的 Vite → Controller → host 顺序仍只有 PR #595 的手工验收，待补自动化证据 | Partial |
 
 决策依据：入口迁移 ADR D1、不变量 3、4；生命周期 ADR D3、D4。

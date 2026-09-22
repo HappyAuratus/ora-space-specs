@@ -2,8 +2,8 @@
 
 依据[已批准 ADR](../../../decisions/controller/api-boundary/0-controller-hosted-client-api.md)。
 入口迁移证据基于 [desktop#595](https://github.com/ora-space/desktop/pull/595) 的
-`e22bfdd063032d22532c2a007320072b374aaed9`；该 PR 尚未合并。已核对测试源码与绿色 CI，
-本次未重跑 Linux 进程测试。proto／gRPC 属于后续阶段，仍缺直接证据。
+`7b7fea969eba76fb0b8694f07b308f860a061200`；该 PR 尚未合并。Linux 进程测试已在该提交上本地重跑。
+proto／gRPC 属于后续阶段，仍缺直接证据。
 
 ## Transport Validation Preserves Private State
 
@@ -17,8 +17,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 监听与拒绝时机 | `apps/ora-controller/src/cli.rs::flags_map_to_explicit_transports` 验证默认值与参数拒绝；缺真实入口拒绝无副作用及非回环日志断言 | Partial |
-| Unix 路径保护 | `apps/ora-controller/tests/api.rs::http_acceptance_is_idempotent_and_survives_service_restart` 覆盖越界拒绝与合法 Unix HTTP；缺其余文件保护入口断言 | Partial |
+| 监听与拒绝时机 | `apps/ora-controller/src/cli.rs::flags_map_to_explicit_transports` 验证默认值与参数拒绝；`apps/ora-controller/tests/composition.rs::refused_composition_leaves_no_state_behind` 以真实可执行入口验证非法组合、相对配置路径与相对 socket 均拒绝且不创建 Controller 状态；`composition.rs::non_loopback_listener_warns` 断言 `0.0.0.0` 监听成功并写入告警日志 | Covered |
+| Unix 路径保护 | `apps/ora-controller/tests/api.rs::http_acceptance_is_idempotent_and_survives_service_restart` 覆盖越界拒绝、socket 路径为普通文件或符号链接时拒绝且原文件逐字节保留，以及合法 Unix HTTP；`composition.rs::refused_composition_leaves_no_state_behind` 覆盖相对 socket 在租约前拒绝 | Covered |
 
 决策依据：D2，不变量 3。
 
