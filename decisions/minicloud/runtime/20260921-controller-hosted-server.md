@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # minicloud：移除独立 server，client 直接访问 `ora-controller` 承载的接口
@@ -10,7 +10,9 @@ status: approved
 → Vite。浏览器可观察行为、持久接受与恢复规则、回环访问约束均不变；改变的只有可执行程序、
 启动参数与 DTO 模块名。
 
-本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文基于[根决策](0-local-web-client-embedded-controller.md)，承接
+本决策处于 `implemented` 状态：desktop#595（`7b7fea96`）完成了 server 移除、DTO 更名与启动器改写，
+[本机 Web 闭环验收](../../../test-cases/minicloud/runtime/local-web-clone-loop.md)的证据已改指
+`ora-controller`。本文基于[根决策](0-local-web-client-embedded-controller.md)，承接
 [Controller Client API 决策](../../controller/api-boundary/0-controller-hosted-client-api.md)与
 [可执行入口组合决策](../../controller/lifecycle/0-executable-composition-and-single-node.md)在
 minicloud 侧的落地。它不改变 minicloud 的非生产定位，不引入认证、Cloud 接入或 Desktop 集成，
@@ -77,11 +79,10 @@ Controller 默认 `127.0.0.1`，启动器显式传 `--host 127.0.0.1` 并继续�
 - client 何时改为经 Go Cloud 访问并退役过渡接口，取决于 Cloud 侧接入进度。
 - 非 Linux 开发环境仍不在 minicloud 范围内。
 
-## 落地顺序
+## 落地结果
 
-1. 与 Client API 决策落地顺序第 1 步同步完成：迁移接口与测试、删除 server、更名 DTO、改写启动器
-   与文档。完成条件：[本机 Web 闭环验收](../../../test-cases/minicloud/runtime/local-web-clone-loop.md)
-   全部义务在新入口上保持 `Covered`，证据路径改指 `ora-controller` 的测试；
-   DOM 测试不变。
-2. 已根据 desktop#595 更新上述用例页的迁移义务、ora-controller 测试路径与证据状态；
-   完整启动器关闭顺序等剩余缺口保留 `Partial`，补齐直接证据后再更新为 `Covered`。
+- 接口、测试与启动器已随 Client API 决策的入口迁移一并完成；DOM 测试不变，真实链路测试在
+  `ora-controller` 上通过，启动器的回环参数与三份配置的一致性由 `scripts/run-minicloud.test.ts`
+  断言。
+- 验收页中"启动器完整关闭与崩溃回收"仍为 `Partial`：Controller 收回托管 Node、活动 Git 收尾与
+  进程组可达性已有直接证据，启动器自身的 Vite → Controller → host 顺序目前只有手工验收。

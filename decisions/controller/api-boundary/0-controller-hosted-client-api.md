@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 可执行入口承载 Client API：显式 Transport、过渡 JSON 接口与 proto 定义的 Cloud 契约
@@ -11,7 +11,11 @@ JSON HTTP 接口作为过渡契约随入口迁移；Go Cloud（API Server）与 
 拥有的 `.proto` 定义，运行在同一监听器上的 gRPC over HTTP/2 之上，两侧均从同一份 proto 生成代码，
 不再人工对齐字段。浏览器不直接使用 gRPC。
 
-本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文覆盖 `apps/ora-controller`、被移除的 `apps/minicloud/server`、
+本决策处于 `implemented` 状态：D1–D3（入口承载、显式 Transport、过渡 JSON 接口）已由
+desktop#595（`7b7fea96`）实现并在
+[API 边界核心用例](../../../test-cases/controller/api-boundary/controller-hosted-client-api.md)登记证据；
+D4–D5 固定的是 Cloud↔Controller 契约的规则与边界，其 proto／gRPC 实现属于下一阶段，对应核心用例
+仍为 `Missing`，由后续 ADR 与 PR 承担。本文覆盖 `apps/ora-controller`、被移除的 `apps/minicloud/server`、
 `ora-contracts` 中的过渡 DTO，以及 Cloud↔Controller 契约的定义与生成方式。它不定义认证、TLS、
 Internal Control API 的具体消息集合、PTY 或其他流式执行交互，也不改变 Controller–Node 协议。
 租户不是本文的未决项而是明确边界：Controller 与 Node 不感知租户，租户身份、成员授权与资源
@@ -142,17 +146,13 @@ Cloud 场景中 Controller 领取和推进操作的方向（Controller 拨入 AP
 - PTY、Session 等流式执行交互及其所需的 Controller–Node 流式消息。
 - 多 Node 部署下的目标选择；当前 `api.node_id` 固定单一目标。
 
-## 落地顺序
+## 落地结果
 
-1. 入口迁移：`ora-controller` 承载 JSON 接口与 Transport 参数，删除 `apps/minicloud/server`，
-   更名过渡 DTO，minicloud 启动器改为启动 `ora-controller`。完成条件：minicloud 现有真实
-   HTTP／Vite proxy／强杀恢复测试在新入口上逐项通过，Controller 的持久接管测试不变。
-   此阶段调用方可观察行为不变，只有可执行程序名与启动参数改变。
-2. proto 契约：Go Cloud 开始调用 Controller 时加入 `proto/`、生成 crate、`buf` 漂移与破坏性
-   检查，gRPC 与 JSON 接口共用监听器。完成条件：Cloud 仓库以 tag 生成并编译通过，错误枚举
-   在两侧映射一致。
-3. 过渡接口退役：浏览器经 Go Cloud 接入后删除 JSON 接口与 `ora_contracts::controller_api`。
-
-已在[API 边界核心用例](../../../test-cases/controller/api-boundary/controller-hosted-client-api.md)
-登记 Transport、接口语义与契约义务，入口迁移证据来自 desktop#595；proto 阶段仍为 `Missing`。
-minicloud 证据已改指 ora-controller，Transport 与生命周期的剩余验收缺口如实登记。
+- 入口迁移已完成：`ora-controller` 承载 JSON 接口与 Transport 参数，`apps/minicloud/server` 删除，
+  DTO 更名为 `ora_contracts::controller_api`，minicloud 启动器改为启动 `ora-controller`；调用方可
+  观察行为不变，现有真实 HTTP／Vite proxy／强杀恢复测试在新入口上逐项通过。
+- 实现期间收紧的一处边界：`--socket` 的绝对路径与目录归属校验最初只在绑定时执行，会先占用数据库
+  租约并创建数据目录；最终实现把 Transport 校验提前到开库之前，与 D2"非法组合在打开数据库前拒绝"
+  一致。
+- 未实现、保持承诺：proto 契约（`proto/`、生成 crate、`buf` 漂移与破坏性检查、gRPC 与 JSON 共用
+  监听器）以及浏览器经 Go Cloud 接入后退役过渡接口；相关核心用例为 `Missing`。

@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 可执行入口的组合：配置文件承载部署状态，启动参数承载组合，`--single-node` 托管生命周期独立的 Node
@@ -11,7 +11,10 @@ status: approved
 崩溃不连带终止 Node，正常关停时向 Node 发送终止信号并等待其完成受管 Git 收尾。process host 与
 guardian 不由 Controller 部署或启动。
 
-本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文覆盖 `apps/ora-controller` 的入口、配置校验、Node 子进程生命周期与
+本决策处于 `implemented` 状态：desktop#595（`7b7fea96`）实现了配置与启动参数分工、`--single-node`
+托管、关闭顺序与启动器职责调整，直接证据登记在
+[生命周期核心用例](../../../test-cases/controller/lifecycle/executable-composition-and-single-node.md)。
+本文覆盖 `apps/ora-controller` 的入口、配置校验、Node 子进程生命周期与
 关闭顺序，以及 minicloud 开发启动器的职责调整。它不改变 Controller 持久接管、Node IPC 协议、
 process host／guardian 的部署规则，也不引入进程监督、自动重启或多 Node 编排。API 监听的
 Transport 参数含义由[Client API 决策](../api-boundary/0-controller-hosted-client-api.md)定义。
@@ -114,13 +117,13 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 - 托管 Node 的自动重启策略与日志路由。
 - 服务化部署（systemd、容器）中 host／guardian 与 Controller 的启动依赖表达。
 
-## 落地顺序
+## 落地结果
 
-1. 入口参数：实现 `--config` 与 Transport 参数，保持现有独立 Controller 行为不变。完成条件：
-   现有 Controller 持久接管测试与独立进程验收在新入口上通过。
-2. `--single-node`：实现交叉检查、同进程组启动、就绪等待、关闭顺序与超时；启动器改为启动
-   Controller。完成条件：minicloud 真实链路测试（含 Controller 强杀后 Node 存活、正常关停后
-   原 Git 存活并得到唯一 Run）在新组合上通过。
-3. 已在[生命周期核心用例](../../../test-cases/controller/lifecycle/executable-composition-and-single-node.md)
-   登记参数拒绝、就绪超时、崩溃隔离、关闭顺序与 Node 意外退出义务，并关联 desktop#595 的直接证据；
-   未覆盖的超时、关闭竞态与异常退出义务保持 `Partial` 或 `Missing`。
+- 入口参数与 `--single-node` 均由 desktop#595 实现；Controller 持久接管测试、独立进程验收与
+  minicloud 真实链路测试在新入口上通过，`apps/ora-controller/tests/composition.rs` 以 Node 替身
+  覆盖就绪超时、停止超时与 Node 意外退出等真实 Node 难以稳定制造的路径。
+- 与最初提案的偏离：提案阶段设想以 `setsid` 让托管 Node 完全脱离，实现时发现 Controller 崩溃后
+  没有任何持有者知道 Node 的 PID，启动器按进程组停止到不了它；最终采用 D2 记录的同进程组方案，
+  崩溃隔离由"进程组关系不在父进程死亡时传递信号"保证。
+- 核心用例中仍为 `Partial` 的两项如实保留：在途 HTTP 请求的有限等待、启动器自身 Vite →
+  Controller → host 顺序的自动化断言（目前为手工验收）。
