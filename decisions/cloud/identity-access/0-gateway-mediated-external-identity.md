@@ -14,15 +14,15 @@ membership 和资源 owner 关系作为用户与授权的唯一权威。
 非空的绝对过期时间：默认 30 天，配置上限 90 天，可提前退出或吊销。外部 provider token、OAuth code、PKCE
 verifier 和浏览器 session token 明文均不持久化，也不进入 Cloud。
 
-内网部署增加华为 IDaaS Authorization Code + PKCE S256 适配器。未登录前端自动发起 Gateway Login Attempt，
+内网部署增加华为 IDaaS 2.0 Authorization Code（`client_secret_post`）适配器。未登录前端自动发起 Gateway Login Attempt，
 由 IDaaS 跳转华为 W3 统一登录；成功后 Gateway 建立 12 小时绝对期限的本地会话并返回登录开始时保存的
 Cloud 站内目标。身份键固定为 `huawei-corp + uuid`，provider token 与完整用户资料不持久化、不进入 Cloud。
 
 本决策已实现并验证：`cmd/gateway`、`internal/gateway`、`internal/gateway/github` 与 migration
-`internal/core/migrations/0005_gateway_auth.sql` 已落地，运行文档为 `docs/gateway.md`，核心测试用例登记于
-`test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities` 唯一性、用户
-JIT 创建语义、短期 JWT 上限和 tenant/owner 授权规则均未改变；变化只发生在 Cloud 之前新增一个认证与会话
-边界。前端登录页面、UI 路由和交互不属于本决策。
+`internal/core/migrations/0005_gateway_auth.sql` 已落地，`internal/gateway/idaas` 随 ora-space/cloud#15
+落地，运行文档为 `docs/gateway.md`，核心测试用例登记于 `test-cases/cloud/identity-access/`。兼容性边界：Cloud 已发布的公开 API、`user_identities`
+唯一性、用户 JIT 创建语义、短期 JWT 上限和 tenant/owner 授权规则均未改变；变化只发生在 Cloud 之前新增
+一个认证与会话边界。前端登录页面、UI 路由和交互不属于本决策。
 
 ## 问题与现有边界
 
@@ -101,25 +101,36 @@ authenticated-user 后立即丢弃该 token。
 Cloud 会返回用户无法理解的 `401 invalid_identity`。GitHub token、OAuth code、完整用户文档和 email 不写入
 数据库、日志、错误、JWT 或浏览器。GitHub 组织准入若有需要是独立的授权策略，不塞进 `source`/`subject`。
 
-### D3a：华为 IDaaS 使用 Authorization Code + PKCE S256，并以 UUID 作为稳定 subject
+### D3a：华为 IDaaS 使用 2.0 `client_secret_post` Authorization Code，并以 UUID 作为稳定 subject
 
-内网部署通过 `login.provider=huawei-idaas` 显式选择适配器。Gateway 构造
-`/saaslogin1/oauth2/authorize` 请求，固定 `scope=base.profile`、`display=page`、callback、随机 `state`，
-并携带 `code_challenge_method=S256`。回调后以 JSON POST 调用 `/saaslogin1/oauth2/accesstoken`，请求必须
-同时包含注册的 client、固定 callback、authorization code 和与 challenge 对应的 `code_verifier`；随后以
-access token 通过 JSON POST 调用 `/saaslogin1/oauth2/userinfo`，完成身份归一后立即丢弃 token。PKCE
-（Proof Key for Code Exchange，授权码交换证明）使截获授权码的一方因缺少一次性 verifier 而无法换取 token。
+内网部署通过 `login.provider=huawei-idaas` 显式选择适配器。Gateway 使用 IDaaS 2.0 Authorization Code
+的 `client_secret_post` 机密客户端认证；PKCE 模式默认关闭，且面向无 secret 的公共客户端，因此不启用。
+authorize 地址为 `/saaslogin1/oauth2/v1/authorize`，只发送 `client_id`、`response_type=code`、固定
+callback、`scope=base.profile` 和随机 `state`。不发送 `display`（可选，页面已按分辨率自适应），也不发送
+`code_challenge` / `code_challenge_method`（仅 PKCE 模式必填）。认证方法不匹配时 IDaaS 返回
+`error=invalid_request`。
+
+回调后以 `application/x-www-form-urlencoded` POST 调用 `/saaslogin1/oauth2/v1/token`，请求体仅包含
+`grant_type=authorization_code`、`client_id`、`client_secret` 和 `code`；不发送 `Authorization: Basic`，
+也不发送 PKCE-NULL 的 `code_verifier` 或 `redirect_uri`。IDaaS 2.0 示例把同一组字段写在 query，但把
+`Content-Type: application/x-www-form-urlencoded` 列为必填，该头只约束 entity-body。Gateway 按 RFC 6749
+§2.3.1 `client_secret_post` 与 GitHub 适配器把它们放在请求体，避免 secret 进入 URL 或访问日志。随后以
+`access_token` 表单 POST `/saaslogin1/oauth2/v1/userinfo`，完成身份归一后立即丢弃 token。
+授权码截获后的换 token 保护依赖机密客户端的 `client_secret`、IDaaS 对 code 的一次性消费，以及 Gateway
+的 attempt Cookie 与 `state` 绑定。编排层仍派生 PKCE verifier 以满足 provider-neutral `Authenticator`
+接口，但 IDaaS 适配器不得把它放到线上请求里。上线前须按 `docs/gateway.md` 上线检查以 beta 环境实测
+v1 token/userinfo 接受请求体中的表单字段（query 为空），以及 userinfo 默认返回已申请的 `uuid`。
 
 | 字段 | 取值 | 理由 |
 | --- | --- | --- |
 | `source` | 固定 `huawei-corp`，不可配置 | 避免环境或命名漂移把同一员工拆成多个身份空间 |
-| `subject` | IDaaS 顶层非空字符串 `uuid` | UUID 是注册应用获得的稳定企业身份键；姓名、邮箱和工号均不可作键 |
-| `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权 |
+| `subject` | IDaaS 顶层 `uuid` 去掉首尾空白后的非空字符串 | UUID 是稳定企业身份键，由 IDaaS 分配并对应员工工号，而非工号明文或 W3 账号；文档成功示例含尾部空格，空白不承载区分度。§2.1 默认返回列表与 §2.4 是否必含 `uuid` 互相矛盾，上线前必须在控制台确认/申请该字段，不能改用 `globalUserID`。部署预置管理员（如 cloudctl bootstrap）必须使用真实 IDaaS uuid，切勿填写工号 |
+| `displayName` | 配置指定的顶层字符串；缺失或空时回退 `uuid` | 只用于首次 JIT（Just-In-Time，首次访问即时创建）用户快照，不参与匹配或授权；强烈建议在控制台申请真实姓名（如 `userName`）并配置，避免前端展示 uuid 字符串 |
 
 authorization code、verifier、access/refresh token、client secret 和完整 userinfo 只存在于当前请求内存；
-userinfo 中除 `uuid` 和显示名称外的字段立即丢弃。IDaaS 明确拒绝、错误 `errorCode`、非法响应或缺失 UUID
-收敛为 `401 login_failed`；网络、超时、取消、429 与 5xx 收敛为 `503 login_unavailable`。响应有 64 KiB
-上限，HTTP 调用传播取消、使用独立超时且禁止跟随重定向。
+userinfo 中除 `uuid` 和显示名称外的字段立即丢弃。IDaaS 明确拒绝、OAuth `error`（以及遗留 `errorCode`）、
+超大或非法 JSON 响应、缺失 UUID 收敛为 `401 login_failed`；网络、超时、取消、429 与 5xx 收敛为
+`503 login_unavailable`。响应有 64 KiB 上限，HTTP 调用传播取消、使用独立超时且禁止跟随重定向。
 
 ### D4：Login Attempt 使用 PostgreSQL 保存一次性、短期的登录关联事实
 
@@ -214,7 +225,9 @@ purpose 绑定失去意义，也无法分别轮换。
 logout 和代理的非 `GET/HEAD/OPTIONS` 请求），`Origin` 必须与配置的 public origin 完全一致；`Origin` 缺失
 时接受 `Sec-Fetch-Site: same-origin` 作为等价证据；两者都缺失或不匹配返回 `403 origin_forbidden`。
 `POST /auth/login` 还要求 `application/json` 且严格解码（未知字段、尾随内容、超过 4 KiB 均拒绝）。OAuth
-callback 是跨站顶层导航的例外，但完整验证 Login Attempt、`state`、PKCE 和固定 callback URL。
+callback 是跨站顶层导航的例外，但完整验证 Login Attempt、`state` 和固定 callback URL。GitHub 额外由
+provider 强制 PKCE；IDaaS 额外以 `client_secret_post` 校验 client secret，且不向 provider 发送 PKCE 或
+`display` 参数。
 
 `return_to` 在写入 attempt 前规范化：以单个 `/` 开头，第二个字符不是 `/` 或 `\`，不含反斜杠、控制字符，
 没有 scheme、host、userinfo；回调后只从可信 attempt 行读取，请求参数不能直接成为 `Location`。
@@ -236,7 +249,7 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 | 失败点 | 对外结果 | 持久事实与恢复 |
 | --- | --- | --- |
 | 创建 attempt 失败或被限流 | `503 login_unavailable` / `429 rate_limited`，不跳转 provider | 没有可用 attempt；可安全重试 start |
-| provider 拒绝、state/PKCE 不匹配、attempt Cookie 缺失、过期或已消费 | `401 login_failed`，attempt Cookie 被清除 | 不创建 session；attempt 保持未消费直到过期后清理 |
+| provider 拒绝、state 不匹配、GitHub PKCE 不匹配、attempt Cookie 缺失、过期或已消费 | `401 login_failed`，attempt Cookie 被清除 | 不创建 session；attempt 保持未消费直到过期后清理 |
 | provider exchange 成功、session 事务失败 | `401 login_failed` 或 `503 login_unavailable` | code 可能已不可重用，但没有 session；必须重新开始登录 |
 | session Cookie 不存在、未知、过期或已吊销 | `401 unauthenticated`，Cookie 被清除 | 不泄露 token 是否曾存在；可重新登录 |
 | Gateway 签名失败 | `503 credential_unavailable`，请求不发给 Cloud | session 保持有效；修复密钥配置后重试 |
@@ -254,7 +267,12 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 | 纯签名/加密 Cookie，不存 session | 无数据库读取 | 无法可靠 logout、按身份吊销或观察泄露影响；长期凭据只能等密钥全局轮换 |
 | session 外键关联 `users` | 可在数据库中直接绑定 Ora user | Gateway 必须跨越业务表所有权，首次 JIT 创建前无法建 session，并把外部认证成功误读为 Cloud 授权成功 |
 | 用 GitHub login 或 email 作 `subject` | 人类可读 | login 可改名，email 可缺失、变化或复用；会错误合并或分裂 durable identity |
-| 用 IDaaS 姓名、邮箱或工号作 `subject` | 便于人工识别 | 这些字段可变、可复用或缺失；只有 `huawei-corp + uuid` 能维持稳定且不随部署命名漂移 |
+| 用 IDaaS 姓名、邮箱或工号作 `subject` | 便于人工识别 | 这些字段可变、可复用或缺失；且 IDaaS 默认 userinfo 并不返回工号或姓名；只有 `huawei-corp + uuid` 能维持稳定且不随部署命名漂移 |
+| 向 IDaaS 发送 PKCE S256 或 `display=page` | 与 GitHub 适配器对称，且 RFC 7636 可防授权码截获 | IDaaS 2.0 PKCE 默认关闭，且仅 PKCE 模式必填；Gateway 是机密客户端，用 `client_secret_post` 而非 PKCE-NULL。多发 PKCE 字段会按错误认证方式被拒。`display` 可选且页面已自适应 |
+| 使用 `client_secret_basic` | 与部分 OAuth 服务器的 Basic 头一致 | 与 GitHub 表单换票形态不同，要新增 `Authorization` 头；IDaaS 在方法不匹配时返回 `error=invalid_request` |
+| 使用 PKCE-NULL | 公共客户端不必持有 `client_secret` | Gateway 已持有 client secret；PKCE-NULL 示例不含 secret，会放弃机密客户端认证 |
+| 把 token/`access_token` 放在 query | 与 IDaaS 2.0 示例逐字相同 | 示例同时把 `Content-Type: application/x-www-form-urlencoded` 列为必填，该头只约束 body。`client_secret` 与 `access_token` 会进入 URL、反向代理和访问日志；RFC 6749 `client_secret_post` 要求放在请求体 |
+| 用默认返回的 `globalUserID`/`UID` 作 `subject` | 避开 §2.1 默认字段列表可能不含 uuid 的矛盾 | 身份键不能随文档版本漂移；缺 uuid 时在控制台申请该字段，而不是改写已选定的 `huawei-corp + uuid` |
 | 持久化 GitHub access token | 减少 provider 调用 | 只需登录时读取身份；长期保存扩大泄露、加密、scope、撤销和轮换责任 |
 | IDaaS refresh/revoke 或 Cloud 退出联动 W3 全局退出 | 可延长 provider 会话或一次退出全部系统 | Cloud 只拥有自己的 session；保存 refresh token 扩大凭据责任，全局退出会意外影响同浏览器中的其他华为系统 |
 | 每种 provider 单独建 session 表和 handler | 单个适配器局部直观 | 复制安全策略、清理、Cookie、JWT 和代理，使不同认证方式的权限与失败语义不一致 |
@@ -271,9 +289,10 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
    华为 IDaaS 必须使用固定 `source=huawei-corp` 和顶层 `uuid` subject；`VerifiedIdentity` 的字段长度在
    离开 Authenticator 前已满足 Cloud 的 128/512/200 字节上限。
 5. 原始 session token、attempt secret、OAuth code、provider access token 和 PKCE verifier 不得持久化、记录或返回给 Cloud。
-6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`/PKCE，并且最多成功创建一个 session。
-   login start 只接受经过同源校验和限流的 `POST`；attempt Cookie 只发送到 callback 路径，并在 callback
-   结束时清除。
+6. Login Attempt 必须有时限、绑定浏览器与 provider、验证 `state`，并且最多成功创建一个 session。
+   GitHub 的 token 交换由 provider 强制 PKCE；IDaaS 不发送 PKCE 参数，改由 `client_secret_post` 与一次性
+   code 保护。login start 只接受经过同源校验和限流的 `POST`；attempt Cookie 只发送到 callback 路径，并在
+   callback 结束时清除。
 7. Browser Session 的有效性只由 PostgreSQL 当前状态和权威时间决定；未知、过期和已吊销统一为未认证。
 8. 每个 session 的 `expires_at` 必须非空、晚于 `created_at` 且不超过创建时间 90 天；Resolve 不得滑动延长期限。
 9. 同一 identity 可以有多个 session；session 不外键关联 Cloud user，也不证明该用户当前可访问任何资源。
