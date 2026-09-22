@@ -88,28 +88,43 @@ JSON `/internal/v1` 在 gRPC 服务可用并有真实 Controller 对端验证后
 原成功响应，不能因当前版本已是 8 而报版本冲突。这是现有 `epoch + version` 校验做不到的：它会把
 "已提交的重传"当作陈旧写入拒绝，使 Controller 无法区分"从未提交"和"已提交但不知道"。
 
-提交记录按 operation 终态后的保留窗口清理（具体时长在落地时固定，不短于 Controller 的最大重传窗口）；
+提交记录必须有界：按请求进入终态后的保留窗口清理，窗口不短于 Controller 的最大重传窗口
+（首版固定为 24 小时，由 Cloud 定期任务清理；在清理落地前不得标记本文为 `implemented`）。
 读取类方法不携带 `submission_id`。
 
 ### D4：派发前登记执行身份，Node 事件结果与收据原子接管
 
-为 Controller 向 Node 派发执行与接管 Node 事件，新增以执行为中心的服务（示意名 `Executions`），
-它是 Controller 侧持久协调接口在云端的直接对应，第一版只覆盖 clone 闭环：
+为 Controller 向 Node 派发执行与接管 Node 事件，新增以执行为中心的服务 `ExecutionService`，
+它是 Controller 侧持久协调接口在云端的直接对应，第一版只覆盖 clone 闭环。clone 在第一版是
+**独立的已接受工作项**（`clone_requests`：租户、用户、`request_id`、仓库、分支、状态
+`queued → dispatched → succeeded | failed`），由 Cloud 在自己的业务事务中接受，不挂在 Effect 级
+`operations` 状态机上；两者的对齐留给后续决策。
 
 | 方法 | 事务内保存 | 成功返回的意义 |
 |---|---|---|
-| `RecordDispatch` | `operation_id`、`execution_id`、目标 Node、完整执行输入、待协调责任 | Controller 现在才可以向 Node 发送该执行；同一 `execution_id` 相同输入幂等，不同输入冲突 |
-| `TakeOverNodeEvent` | 执行事实（结果）、事件收据 `(execution_id, sequence, 事件内容)`、必要后续责任 | Controller 现在才可以向 Node 发送该序号的 `EventAck`；同序号相同内容幂等，不同内容冲突 |
+| `ClaimWork` | 无（纯读） | 返回最早的 `queued` 请求；归属**不在这里**决定，Controller 在领取与登记之间死亡不留任何需恢复的中间状态 |
+| `RecordDispatch` | `operation_id`、`execution_id`、目标 Node、完整执行输入、登记时的租约 `epoch`；请求 `queued → dispatched` | Controller 现在才可以向 Node 发送该执行；同一执行相同输入幂等，不同输入或同一请求的第二个执行冲突 |
+| `TakeOverNodeEvent` | 执行事实（结果）、事件收据 `(execution_id, sequence, 事件内容)`；请求进入终态 | Controller 现在才可以向 Node 发送该序号的 `EventAck`；同序号相同内容幂等，不同内容冲突 |
 | `RecordQueriedResult` | 由查询得到的 Completed 结果，无收据 | 保存结果；不产生任何 Ack 依据 |
-| `GetDispatch`、`ListPendingDispatches` | 无 | 恢复原输入与待协调责任；新 worker 用它定位原执行而不是创建第二次执行 |
+| `GetDispatch`、`ListPendingDispatches` | 无（恢复读取） | 恢复原输入与无结果的执行；新 worker 用它定位原执行而不是创建第二次执行 |
 
-规则：Cloud 不可用时 Controller 不能派发尚未登记的新执行，也不能确认尚未接管的事件；接管请求
-中的 Node 身份、原派发身份与输入必须与登记记录一致，历史事件中的 `NodeIncarnationId` 不被改写；
-结果内容冲突拒绝、不覆盖原事实。这些方法同样携带 `submission_id`，并受租约 `epoch` fencing。
+规则：
 
-Cloud 侧为此新增执行登记与事件收据的表；它们与现有 `operations`／`external_effects` 的关联方式
-属于 Cloud 的 `persistence` 决策，本文只要求：登记、接管、提交记录在同一事务提交，响应只在
-提交后返回。
+- 每个请求恰有一个执行；明确失败后的用户重试是新的请求，不是同一请求的第二次执行。
+- Cloud 不可用时 Controller 不能派发尚未登记的新执行，也不能确认尚未接管的事件；接管请求中的
+  Node 身份、原派发身份与输入必须与登记记录一致，历史事件中的 `NodeIncarnationId` 不被改写；
+  结果内容冲突拒绝、不覆盖原事实。
+- 写方法（`RecordDispatch`、`TakeOverNodeEvent`、`RecordQueriedResult`）携带 `submission_id`（D3）
+  并受租约 `epoch` fencing；`ClaimWork` 受 fencing 但不需要提交身份。
+- **恢复读取不要求持有租约**：替换 worker 必须先定位原执行才能决定是否接手，而读不改变任何
+  归属或状态；fencing 只约束写。
+- 输入与结果以固定 JSON 形状落库（输入 `{kind, repositoryUrl, branch}`；结果
+  `{node{nodeId, nodeIncarnationId}, outcome: clone_ready{path, commit} | clone_failed{reason, retainedPath?}}`），
+  幂等与冲突按该形状比较，不解析自由文本。
+
+Cloud 侧为此新增执行登记、事件收据与提交记录的表；它们与现有 `operations`／`external_effects` 的
+关联方式属于 Cloud 的 `persistence` 决策，本文只要求：登记、接管、提交记录在同一事务提交，响应
+只在提交后返回。
 
 ### D5：Cloud→Controller 信号经 Controller 发起的服务端流
 
@@ -147,10 +162,34 @@ Cloud 侧为此新增执行登记与事件收据的表；它们与现有 `operat
 
 ### D7：认证与监听
 
-gRPC 服务由 API Server 进程直接监听（与 HTTP 分端口或复用同一端口在落地时固定），不经 Gateway。
-调用方凭据沿用现有服务 token（`role=controller`／`node`），作为 gRPC metadata 携带并在拦截器中
-校验，进入 `Control` 事务的 `Service` 主体与今天相同。TLS 与凭据轮换留给认证 ADR；在其落地前，
-gRPC 监听器只允许回环或私网地址，与现有内部 HTTP 接口的部署约束一致。
+gRPC 服务由 API Server 进程在独立地址（`control.grpc_addr`，必填、无默认值）监听，不经 Gateway。
+调用方凭据沿用现有服务 token 规则（`kind=service, role=controller`，Ed25519，`kid` 对应 Cloud
+配置中的可信公钥，`iat`／`exp` 相差不超过 5 分钟），以 `authorization: Bearer` metadata 携带并在
+unary／stream 拦截器中校验；只有 `role=controller` 被允许（缺失 `UNAUTHENTICATED`，其他角色
+`PERMISSION_DENIED`）。进入 `Control` 事务的 `Service` 主体与今天相同，租约持有者取自已验证的
+`sub`。
+
+Controller 侧的凭据是**长期机器身份 + 短期票据**：部署时发给该 Controller 一把 Ed25519 私钥与
+`kid`／issuer，Cloud 登记对应公钥；Controller 在每次调用前用私钥为自己签一张 ≤ 5 分钟的服务 token，
+`sub` 固定为其持久 `ControllerId`。签名是本地操作，续票不需要网络或任何审批；机器身份只在运维
+替换 Cloud 配置中的公钥时失效，双 `kid` 并存支持无缝轮换。Cloud 从不持有私钥，也不提供长期静态
+token——那会在认证模型里加第二种规则。Controller 不解析、不校验任何 token，不感知租户或用户。
+
+TLS 留给认证 ADR；在其落地前，gRPC 监听器只允许回环或私网地址，与现有内部 HTTP 接口的部署
+约束一致。
+
+### D8：clone 请求的公开入口（第一版）
+
+浏览器经 Gateway 调用 Cloud 公开 API 提交与查询 clone：`POST /api/v1/tenants/{tid}/clones`
+（`request_id`、`repository`、`branch`；`202` 返回 `request_id`／`operation_id`）、
+`GET /api/v1/tenants/{tid}/clones`、`GET /api/v1/tenants/{tid}/clones/{operation}`；状态投影为
+`pending | succeeded{path, commit} | failed{reason, retained_path?}`。语义与 desktop 过渡 JSON 接口逐字
+对应，使 minicloud 客户端只换入口不换契约；租户授权、`Idempotency-Key` 与错误契约沿用公开 API 的
+现有规则。`operation_id` 是 `clone_requests.id`；`execution_id` 由 Controller 选择并经 `RecordDispatch`
+登记，公开 API 不暴露 Node 路径以外的执行细节。
+
+这是 clone 闭环第一版的入口，放在本文是因为它只服务本契约；公开 API 的根决策建立后，本节由
+`cloud/api-boundary` 承接。
 
 ## 不变量
 
@@ -158,11 +197,12 @@ gRPC 监听器只允许回环或私网地址，与现有内部 HTTP 接口的部
 2. Cloud 是云端业务状态与执行登记的唯一权威写入者；Controller 不访问 PostgreSQL，也不在别处持有权威副本。
 3. 每个状态变更提交都有稳定提交身份；同身份同内容返回原结果，同身份不同内容拒绝，重传不续期租约。
 4. `RecordDispatch` 成功先于任何 Node 派发；`TakeOverNodeEvent` 成功先于任何 `EventAck`；
-   查询得到的结果不构成 Ack 依据。
-5. 状态变更受租约 `epoch` 与资源版本校验；陈旧 Controller 不能覆盖新状态。
+   查询得到的结果不构成 Ack 依据；`ClaimWork` 不改变归属。
+5. 状态变更受租约 `epoch` 与资源版本校验；陈旧 Controller 不能覆盖新状态；恢复读取不受租约约束。
 6. 服务端流不持久化、不保证送达、不改变归属；断流只影响延迟。
 7. 契约不含租户、用户、成员或角色字段；授权在 Cloud 公开边界完成。
 8. 状态码与 `ErrorDetail` 由 Cloud 一处产生，二者一致；无 detail 的失败不是 Cloud 裁决。
+9. Controller 以自签的短期服务 token 出示长期机器身份；Cloud 不持有其私钥，不发长期 token。
 
 ## 为什么不是这些替代方案
 
@@ -181,19 +221,23 @@ gRPC 监听器只允许回环或私网地址，与现有内部 HTTP 接口的部
 - 新 worker 接管原沙盒与原 Node 连接的规则；沙盒服务接口。
 - `Executions` 服务与 Cloud 现有 Effect 级 operation 模型的对齐：第一版只服务 clone 闭环，
   worktree、sandbox 等 effect 由 Controller 用现有 `Operations` 方法处理还是并入 `Executions`，留给后续决策。
-- TLS、凭据轮换与非私网监听。
+- TLS 与非私网监听。
 - JSON `/internal/v1` 的退役时点。
+- `control_submissions` 清理任务的调度方式（首版窗口 24 小时已定，清理实现未落地）。
 
 ## 落地顺序
 
 1. **契约与生成链**：`proto/` 与 `buf` 配置、生成包、`proto:lint`／`proto:breaking`／`proto:check`
    与 CI。完成条件：主干上生成无 diff；lint 通过。行为不变：无运行时接入。
-2. **gRPC 服务端与提交记录**：拦截器认证、D2 方法直接调用 `Control` 事务、`submission_id` 表与
-   D3 规则、D6 错误映射。完成条件：同一事务规则的 gRPC 与 JSON 测试等价；提交回复丢失重传返回原结果。
-   行为不变：JSON 接口继续可用。
-3. **执行登记与事件接管**：`Executions` 服务及其表（D4）。完成条件：登记先于派发、接管先于确认、
-   冲突拒绝、恢复读取以 PostgreSQL 事务测试证明。
+2. **gRPC 服务端、拦截器与租约**（cloud#20）：拦截器认证、`ControllerLeaseService` 直接调用
+   `Control` 事务、D6 错误映射。完成条件：认证拒绝、单持有者、epoch 单调、陈旧 epoch 被拒以
+   PostgreSQL 测试证明。行为不变：JSON 接口继续可用。
+3. **执行登记、事件接管与提交记录**（cloud#21）：`ExecutionService`、四张表、D3 规则。完成条件：
+   登记先于派发、接管先于确认、提交回放与冲突、恢复读取以 PostgreSQL 事务测试证明。
 4. **服务端流**：`Watch` 与 `WorkAvailable`／`Drain`（D5）。完成条件：断流后 Controller 按周期
    领取仍正确；`Drain` 后不再领取且不取消任务。
-5. **真实对端契约测试**：以真实 `ora-controller`（Cloud 适配器模式）为对端，`ORA_CONTROLLER_BIN`
-   门控。进入 `approved` 后在 `test-cases/cloud/controller-integration/` 登记上述义务与证据。
+5. **公开入口**（D8）：clones API、OpenAPI 与前端生成客户端。完成条件：契约与集成测试覆盖接受、
+   幂等、查询投影。
+6. **真实对端契约测试**：以真实 `ora-controller`（Cloud 适配器模式）为对端，`ORA_CONTROLLER_BIN`
+   门控；提交记录清理落地。进入 `approved` 后在 `test-cases/cloud/controller-integration/` 登记
+   上述义务与证据。

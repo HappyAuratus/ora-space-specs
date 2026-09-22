@@ -48,7 +48,7 @@ Effect 级 operation 的云端协调。
 | `take_over_node_event(session, event)` | 执行结果、事件收据 `(execution, sequence)`、后续责任 | 可以向 Node 发送该序号的 `EventAck` | 同序号同内容幂等；不同内容冲突 |
 | `record_queried_result(session, execution, result)` | 由查询得到的 Completed 结果 | 结果可查询 | 同内容幂等；不同内容冲突；不产生 Ack 依据 |
 | `original_dispatch(node, operation, execution)` | 无 | 恢复原命令以重传或校验归属 | 缺失为冲突，不补造 |
-| `pending_dispatches(node)` | 无 | 重连后查询与重放的依据 | — |
+| `pending_dispatches(node)` | 无 | 重连后周期查询的依据：该 Node 上**尚无结果**的派发；已完成执行的事件重放经 `original_dispatch` 校验，不再被周期查询 | — |
 | `operations()`／`operation(execution)` | 无 | 调用方查询；缺失与无终态区分 | — |
 
 接口不暴露 `begin`／`commit`、连接、表名或 SQL；协调逻辑不能通过组合两次调用来"补齐"一个原子
@@ -59,9 +59,13 @@ Effect 级 operation 的云端协调。
 
 ### D2：适配器在部署时选定，运行时不切换，不互为后备
 
-部署配置以枚举表达持久模式：本机模式给出数据目录（SQLite 适配器，继承根决策 D3 的全部文件与
-租约规则）；云端模式给出 Cloud 端点与凭据（Cloud RPC 适配器）。启动时只构造一个适配器；云端模式
-不创建数据目录、不打开 SQLite、不取文件租约。
+部署配置以枚举 `persistence` 表达持久模式：`{ kind: sqlite }` 使用 `home_directory` 内的 SQLite
+与文件租约（继承根决策 D3 的全部文件与租约规则）；`{ kind: cloud, endpoint, key_file, key_id, issuer }`
+使用 Cloud RPC 适配器——`endpoint` 是 Cloud 的 gRPC 地址，`key_file` 是部署给该 Controller 的
+Ed25519 私钥，`key_id`／`issuer` 对应 Cloud 配置中的可信公钥条目；适配器用它为每次调用自签
+≤ 5 分钟的 `role=controller` 服务 token，`sub` 为持久 `ControllerId`（见 Cloud 根决策 D7）。
+启动时只构造一个适配器；云端模式不创建数据库、不取文件租约，`home_directory` 仍是进程私有状态根
+（API socket 等），从不保存云端权威记录。
 
 Cloud 不可用时，Controller 不能切换到本地 SQLite 代写：那会形成第二个权威状态源，恢复时无法判定
 哪一份是事实。正确行为是保持未派发、未确认，按 D3 的分类重试或等待。云端 Controller 的内存缓存、
@@ -101,6 +105,9 @@ schema 与文件租约规则不变，现有本机测试作为 SQLite 适配器�
 Cloud 的公开 API 承担，Controller 通过 Cloud 契约的领取与 `Watch` 信号获得工作，再走
 `record_dispatch` 及之后的操作；本地与云端共享持久协调语义，不要求请求入口相同。
 
+云端模式下 Controller 不再提供过渡 JSON clone 接口：浏览器经 Cloud 公开 API 提交与查询，
+`accept_request` 在 Cloud 适配器上返回配置错误而不是伪装接受。
+
 worktree、sandbox、Effect 级 operation 的云端协调不在第一版：Cloud 现有的 Effect 级方法
 （快照、effect 规划与结果）由后续决策决定是并入本接口还是另建接口。
 
@@ -130,17 +137,21 @@ worktree、sandbox、Effect 级 operation 的云端协调不在第一版：Cloud
 - 稳定逻辑控制归属与可替换 worker 实例的身份区分；本机固定绑定规则在云端的对应物。
 - 新 worker 定位原沙盒、连接原 Node 并恢复原执行的规则；沙盒创建、绑定与回收的持久责任。
 - Effect 级 operation 的云端协调接口。
-- Cloud 连接的认证凭据与 TLS。
+- Cloud 连接的 TLS。
 
 ## 落地顺序
 
-1. **接口抽取（只接 SQLite）**：定义接口与错误分类，把现有 `storage`／`takeover`／`operations`
-   的 SQL 下沉为 SQLite 适配器，运行时与会话改为异步调用接口。完成条件：本机行为不变，现有
-   本机测试全部通过，共享行为契约套件对 SQLite 通过。行为不变：全部本机可观察行为。
-2. **Cloud RPC 适配器**：基于锁定的 Cloud 契约生成物实现适配器，含提交身份、未知结果重传、
-   错误映射。完成条件：共享套件对远程适配器通过；未知结果与资格失效场景通过。
-   从此阶段起改变：云端模式下 `ora-controller` 不打开 SQLite。
-3. **拨出任务与部署模式**：部署配置的持久模式枚举、`Watch` 长驻任务、关闭顺序。完成条件：
-   云端模式下 clone 闭环以真实 Cloud 为对端跑通，强杀 Controller 后新实例恢复原执行。
-4. **进入 `approved` 后**：在 `test-cases/controller/persistence/` 登记两种适配器的共享义务与
+1. **接口抽取（只接 SQLite）**（desktop#599）：定义接口与错误分类，把现有 `storage`／`takeover`／
+   `operations` 的 SQL 下沉为 SQLite 适配器，运行时与会话改为异步调用接口。完成条件：本机行为不变，
+   现有本机测试全部通过。行为不变：全部本机可观察行为。
+2. **部署模式与泛型运行时**（desktop#601）：`persistence` 枚举、运行时／服务对接口泛型；`cloud` 在
+   适配器落地前于创建任何本机状态之前被拒绝。
+3. **Cloud RPC 适配器**：基于锁定的 Cloud 契约生成物实现适配器，含自签服务 token、提交身份、
+   未知结果重传、错误映射；`pending_dispatches` 在 SQLite 适配器上同步收敛为"无结果的派发"。
+   完成条件：共享行为契约套件对两种适配器通过；未知结果与资格失效场景通过。
+   从此阶段起改变：云端模式下 `ora-controller` 不打开 SQLite、不提供 JSON clone 接口。
+4. **领取循环与拨出任务**：租约获取／续期、`ClaimWork` 轮询与 `Watch` 唤醒、`RecordDispatch`
+   后交由现有 Node 会话派发、关闭顺序。完成条件：云端模式下 clone 闭环以真实 Cloud 为对端跑通，
+   强杀 Controller 后新实例恢复原执行。
+5. **进入 `approved` 后**：在 `test-cases/controller/persistence/` 登记两种适配器的共享义务与
    远程特有义务，并同步根决策核心用例中"由 Controller 自身 SQLite 持久"的表述。
