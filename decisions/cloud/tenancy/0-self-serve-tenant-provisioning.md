@@ -75,9 +75,12 @@ Cloud 新增公开接口 `POST /api/v1/tenants`：任何已通过 Gateway 验证
 ### D5：前端把“无租户”视为引导态，而不是错误态
 
 规则：登录后 `GET /api/v1/me/tenants` 为空的用户进入 `/onboarding`，页面只有名称、slug（自动从名称
-派生、可改）与 URL 预览；创建成功后进入 `/{slug}/projects`。已有租户的用户不经过该页；他们创建更多
-空间继续使用 `POST /tenants/{tid}/spaces`。前端在任何界面都不显示租户名称或让用户切换租户，`tenantId`
-只用于拼接 API 路径。
+派生、可改）与 URL 预览；创建成功后进入 `/w/{slug}/issues`。已有租户但没有存活空间的用户也走同一页（改用
+`POST /tenants/{tid}/spaces` 在已有租户下补建第一个空间）；前端为多租户成员解析“当前租户”时取列表第一个元素，
+`me/tenants` 因此按租户创建时间升序（`id` 为决胜负列）返回，使“第一个”是确定的最早创建者，而不是随机的一个；
+分页 cursor 仍是排他租户 UUID。已有租户的用户不经过该页；他们创建更多空间继续使用 `POST /tenants/{tid}/spaces`。
+前端在任何界面都不显示租户名称或让用户切换租户，`tenantId` 只用于拼接 API 路径；工作区路由统一在保留前缀
+`/w/` 之下，slug 永不与顶层路由冲突。
 
 理由：这是本决策的产品含义——租户对用户是隐式的。若未来需要“一个用户多个租户”的可见模型，那是新的
 决策，不是本 ADR 的延伸。
@@ -114,3 +117,6 @@ Cloud 新增公开接口 `POST /api/v1/tenants`：任何已通过 Gateway 验证
    跨租户隔离。完成条件：`task check` 通过，`api/openapi.json` 与前端客户端重新生成。
 2. 前端：`/onboarding` 页面、无租户引导、`postApiV1Tenants` 接入。完成条件：`task frontend:check` 通过。
 3. 评审通过后标记 `approved`，并在 `test-cases/cloud/tenancy/` 补充核心用例；实现验证后标记 `implemented`。
+4. 与本 ADR 同批实现的能力还包括：Gateway 的 SSE 中继（已授权的事件流不受 upstream timeout、server write
+   timeout 与 8 MiB 响应体上限约束）与本地开发登录 provider（`dev`，仅 loopback development origin）。它们属于
+   identity-access 已批准 ADR 的范畴，其边界修订与证据登记见该领域。

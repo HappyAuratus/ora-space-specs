@@ -242,7 +242,35 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 日志记录 request ID、provider、阶段、稳定错误码和 session UUID，不记录上述秘密、完整 Cookie 或不必要的
 个人信息。请求体、provider 响应（64 KiB）与代理响应（8 MiB）有大小上限，向 provider 与 Cloud 的调用有
 可取消 context 与超时并关闭 response body。provider 暂时失败不创建 session；Cloud 暂时失败返回
-`502 upstream_unavailable`，不吊销 session。
+`502 upstream_unavailable`，不吊销 session。以 `text/event-stream` 应答的已授权连接是例外（D10）。
+
+### D9：本地开发登录 provider 只存在于 loopback development origin
+
+`login.development_provider: true` 在 `login.provider` 旁边额外注册一个 `dev` Authenticator（`internal/gateway/devlogin`）：
+Gateway 自己扮演外部 provider，浏览器被送到同源表单 `GET /auth/dev/authorize`（携带 `state` 与 `code_challenge`），
+开发者输入任意 `source` / `subject` / `display_name`，表单把身份与 challenge 用进程内随机密钥的 HMAC-SHA256
+封装成 5 分钟有效期的 code，`303` 回普通的 `/auth/callback/dev`。之后的 attempt、PKCE、session、Cookie 与凭据
+签发与 GitHub/IDaaS 完全相同；`Exchange` 的任何失败都是 `ErrProviderRejected`。
+
+这项能力看起来违反 D2 的“Authenticator 不能通过伪造新的 `source/subject` 合并已有 Ora 用户”（输入已有身份
+即可以其登录），因此它被硬性约束在开发边界内，作为该规则的显式豁免而不是静默例外：
+
+- `gateway.Config.Validate` 只在同时开启 `public.development`（loopback HTTP）时接受 `login.development_provider`，
+  生产配置无法开启；`New` 额外拒绝非 loopback 的 `http://` origin。
+- `dev` 永远不会被隐式选中：`POST /auth/login` 省略 `provider` 时用 `login.provider`（外部 provider），仅当
+  `login.development_provider` 开启且 `login.provider` 留空时 `dev` 才是唯一选项。
+- provider 不授予任何权限：Cloud 仍按 `(source, subject)` JIT 创建或解析用户，membership 与授权判定与
+  GitHub/IDaaS 身份完全相同。
+- 签名密钥只存在于进程内存，每次启动重新生成。
+
+表单路由自身的错误响应（缺失 `state`/`code_challenge`、跨站提交、身份非法时重新渲染表单）是面向人的纯文本/HTML，
+不走 JSON fault 形状；`/auth/callback/dev` 的失败仍统一为 fault，编排层不因 provider 而异。
+
+### D10：已授权的 SSE 事件流豁免逐连接的超时与体积上限
+
+Cloud 以 `text/event-stream` 应答的空间事件流是无限期流：Gateway 对该已授权连接解除 `cloud.timeout`、server
+`write_timeout` 与 8 MiB 代理响应体上限，逐帧转发直到任一方关闭；限制只对这一个已授权连接放开，未授权或普通
+bounded 响应仍受全部约束。上游不可达或超时仍为 `502 upstream_unavailable`。
 
 ## 失败与恢复语义
 
@@ -303,6 +331,9 @@ attempt。认证错误不回显 provider token、code、state、attempt secret�
 13. 生产公开 origin 和 OAuth callback 必须使用 HTTPS；redirect URI 来自显式配置，不能由不受信请求 header 决定。
 14. 外部 HTTP 调用不得发生在数据库事务或行锁内；ambiguous failure 不得被推断为登录或业务操作成功。
 15. 有效 session 不能覆盖 Cloud 对 disabled user、membership、tenant 和 owner 的当前授权判定。
+16. `dev` provider 只能与 `public.development`（loopback HTTP）同时开启，生产配置无法启用；它不会被
+    `POST /auth/login` 的省略 provider 隐式选中，也不会授予任何 GitHub/IDaaS 身份之外的权限。
+17. SSE 豁免只作用于单个已授权的 `text/event-stream` 连接；其余请求的超时、体积上限与失败语义不变。
 
 ## 核心测试用例
 
