@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 可执行入口承载 Client API：显式 Transport、过渡 JSON 接口与 proto 定义的 Cloud 契约
@@ -11,7 +11,7 @@ JSON HTTP 接口作为过渡契约随入口迁移；Go Cloud（API Server）与 
 拥有的 `.proto` 定义，运行在同一监听器上的 gRPC over HTTP/2 之上，两侧均从同一份 proto 生成代码，
 不再人工对齐字段。浏览器不直接使用 gRPC。
 
-本决策处于 `proposed` 状态，覆盖 `apps/ora-controller`、被移除的 `apps/minicloud/server`、
+本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文覆盖 `apps/ora-controller`、被移除的 `apps/minicloud/server`、
 `ora-contracts` 中的过渡 DTO，以及 Cloud↔Controller 契约的定义与生成方式。它不定义认证、TLS、
 Internal Control API 的具体消息集合、PTY 或其他流式执行交互，也不改变 Controller–Node 协议。
 租户不是本文的未决项而是明确边界：Controller 与 Node 不感知租户，租户身份、成员授权与资源
@@ -153,6 +153,6 @@ Cloud 场景中 Controller 领取和推进操作的方向（Controller 拨入 AP
    在两侧映射一致。
 3. 过渡接口退役：浏览器经 Go Cloud 接入后删除 JSON 接口与 `ora_contracts::controller_api`。
 
-进入 `approved` 后，在 `specs/test-cases/controller/api-boundary/` 登记 Transport 拒绝、回环默认、
-接口语义与 Controller 记录一致、契约生成无漂移等核心用例，并把 minicloud 用例中指向
-`apps/minicloud/server` 的证据改指新入口。
+已在[API 边界核心用例](../../../test-cases/controller/api-boundary/controller-hosted-client-api.md)
+登记 Transport、接口语义与契约义务，入口迁移证据来自 desktop#595；proto 阶段仍为 `Missing`。
+minicloud 证据已改指 ora-controller，Transport 与生命周期的剩余验收缺口如实登记。

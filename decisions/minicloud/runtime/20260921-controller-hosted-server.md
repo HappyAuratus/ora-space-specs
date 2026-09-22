@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # minicloud：移除独立 server，client 直接访问 `ora-controller` 承载的接口
@@ -10,7 +10,7 @@ status: proposed
 → Vite。浏览器可观察行为、持久接受与恢复规则、回环访问约束均不变；改变的只有可执行程序、
 启动参数与 DTO 模块名。
 
-本决策处于 `proposed` 状态，基于[根决策](0-local-web-client-embedded-controller.md)，承接
+本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文基于[根决策](0-local-web-client-embedded-controller.md)，承接
 [Controller Client API 决策](../../controller/api-boundary/0-controller-hosted-client-api.md)与
 [可执行入口组合决策](../../controller/lifecycle/0-executable-composition-and-single-node.md)在
 minicloud 侧的落地。它不改变 minicloud 的非生产定位，不引入认证、Cloud 接入或 Desktop 集成，
@@ -83,5 +83,5 @@ Controller 默认 `127.0.0.1`，启动器显式传 `--host 127.0.0.1` 并继续�
    与文档。完成条件：[本机 Web 闭环验收](../../../test-cases/minicloud/runtime/local-web-clone-loop.md)
    全部义务在新入口上保持 `Covered`，证据路径改指 `ora-controller` 的测试；
    DOM 测试不变。
-2. 进入 `approved` 后更新上述用例页的证据表与“组合入口保护”义务的描述（`Server::bind` →
-   `ora-controller` 入口校验）。
+2. 已根据 desktop#595 更新上述用例页的迁移义务、ora-controller 测试路径与证据状态；
+   完整启动器关闭顺序等剩余缺口保留 `Partial`，补齐直接证据后再更新为 `Covered`。

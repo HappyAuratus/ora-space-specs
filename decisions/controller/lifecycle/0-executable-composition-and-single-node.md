@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 可执行入口的组合：配置文件承载部署状态，启动参数承载组合，`--single-node` 托管生命周期独立的 Node
@@ -11,7 +11,7 @@ status: proposed
 崩溃不连带终止 Node，正常关停时向 Node 发送终止信号并等待其完成受管 Git 收尾。process host 与
 guardian 不由 Controller 部署或启动。
 
-本决策处于 `proposed` 状态，覆盖 `apps/ora-controller` 的入口、配置校验、Node 子进程生命周期与
+本决策处于 `approved` 状态，方案已批准，入口实现见 desktop#595，剩余验收义务见核心用例。本文覆盖 `apps/ora-controller` 的入口、配置校验、Node 子进程生命周期与
 关闭顺序，以及 minicloud 开发启动器的职责调整。它不改变 Controller 持久接管、Node IPC 协议、
 process host／guardian 的部署规则，也不引入进程监督、自动重启或多 Node 编排。API 监听的
 Transport 参数含义由[Client API 决策](../api-boundary/0-controller-hosted-client-api.md)定义。
@@ -121,5 +121,6 @@ host 前自行决定。先停 API 再停会话再停 Node，是为了保证不�
 2. `--single-node`：实现交叉检查、同进程组启动、就绪等待、关闭顺序与超时；启动器改为启动
    Controller。完成条件：minicloud 真实链路测试（含 Controller 强杀后 Node 存活、正常关停后
    原 Git 存活并得到唯一 Run）在新组合上通过。
-3. 进入 `approved` 后在 `specs/test-cases/controller/lifecycle/` 登记参数拒绝、就绪超时、崩溃
-   隔离、关闭顺序与 Node 意外退出的核心用例。
+3. 已在[生命周期核心用例](../../../test-cases/controller/lifecycle/executable-composition-and-single-node.md)
+   登记参数拒绝、就绪超时、崩溃隔离、关闭顺序与 Node 意外退出义务，并关联 desktop#595 的直接证据；
+   未覆盖的超时、关闭竞态与异常退出义务保持 `Partial` 或 `Missing`。
