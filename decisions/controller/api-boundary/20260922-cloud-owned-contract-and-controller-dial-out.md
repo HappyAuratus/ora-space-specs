@@ -112,8 +112,8 @@ Cloud 以 gRPC 规范状态码作为主分类，并把契约中的 `ErrorDetail`
 ### D4：租户边界与过渡接口不变
 
 契约仍只携带 Cloud 已授权的 opaque 身份，不出现 tenant、user、membership 或角色字段；Controller
-不做租户筛选，也不解析或校验任何 token——它只以自签的短期服务 token 出示自己的机器身份
-（Cloud 根决策 D7）。这一规则从根决策继承，评审 Cloud 侧 proto 变更时同样以此拒绝。本机 SQLite
+不做租户筛选，也不解析或校验任何 token——当前阶段它只以 metadata 声明自己的 `ControllerId`，
+不出示凭据（Cloud 根决策 D7）。这一规则从根决策继承，评审 Cloud 侧 proto 变更时同样以此拒绝。本机 SQLite
 模式下过渡 JSON 接口、`ora_contracts::controller_api` DTO 与浏览器链路不因本文改变；云端模式下
 Controller 不提供该接口，浏览器经 Cloud 公开 API 接入（见 minicloud 后续决策），过渡接口随本机
 模式退役的承诺不变。

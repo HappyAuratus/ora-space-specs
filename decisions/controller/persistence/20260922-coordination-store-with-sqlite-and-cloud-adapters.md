@@ -60,10 +60,10 @@ Effect 级 operation 的云端协调。
 ### D2：适配器在部署时选定，运行时不切换，不互为后备
 
 部署配置以枚举 `persistence` 表达持久模式：`{ kind: sqlite }` 使用 `home_directory` 内的 SQLite
-与文件租约（继承根决策 D3 的全部文件与租约规则）；`{ kind: cloud, endpoint, key_file, key_id, issuer }`
-使用 Cloud RPC 适配器——`endpoint` 是 Cloud 的 gRPC 地址，`key_file` 是部署给该 Controller 的
-Ed25519 私钥，`key_id`／`issuer` 对应 Cloud 配置中的可信公钥条目；适配器用它为每次调用自签
-≤ 5 分钟的 `role=controller` 服务 token，`sub` 为持久 `ControllerId`（见 Cloud 根决策 D7）。
+与文件租约（继承根决策 D3 的全部文件与租约规则）；`{ kind: cloud, endpoint, claim_interval_ms }`
+使用 Cloud RPC 适配器——`endpoint` 是 Cloud 的 gRPC 地址，`claim_interval_ms` 是领取间隔；适配器
+每次调用以 `x-ora-controller-id` metadata 声明持久 `ControllerId`，当前阶段不出示凭据（见 Cloud
+根决策 D7）。
 启动时只构造一个适配器；云端模式不创建数据库、不取文件租约，`home_directory` 仍是进程私有状态根
 （API socket 等），从不保存云端权威记录。
 
@@ -146,7 +146,7 @@ worktree、sandbox、Effect 级 operation 的云端协调不在第一版：Cloud
    现有本机测试全部通过。行为不变：全部本机可观察行为。
 2. **部署模式与泛型运行时**（desktop#601）：`persistence` 枚举、运行时／服务对接口泛型；`cloud` 在
    适配器落地前于创建任何本机状态之前被拒绝。
-3. **Cloud RPC 适配器**：基于锁定的 Cloud 契约生成物实现适配器，含自签服务 token、提交身份、
+3. **Cloud RPC 适配器**：基于锁定的 Cloud 契约生成物实现适配器，含 `ControllerId` metadata、提交身份、
    未知结果重传、错误映射；`pending_dispatches` 在 SQLite 适配器上同步收敛为"无结果的派发"。
    完成条件：共享行为契约套件对两种适配器通过；未知结果与资格失效场景通过。
    从此阶段起改变：云端模式下 `ora-controller` 不打开 SQLite、不提供 JSON clone 接口。

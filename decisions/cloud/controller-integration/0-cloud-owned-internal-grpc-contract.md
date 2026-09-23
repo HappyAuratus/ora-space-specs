@@ -32,7 +32,7 @@ Controller 侧同一持久协调接口的另一个适配器，与本文无关。
 | 同 D4：领取、幂等与恢复；`submission_id` 语义 | 采用并固定为 proto 字段与 Cloud 表 |
 | 同 D6：Node 结果确认以 API Server 持久化为边界 | 采用为 D4 的接管服务 |
 | Cloud 现有 `/internal/v1`：全局租约、epoch fencing、claim、snapshot、plan／effect_result／advance／defer、node_* | 继承其事务规则与状态机；改为 gRPC 表达，字段与错误枚举化 |
-| Cloud 现有服务凭据：`kind="service"`、`role=controller|node` 的 token | 继承；作为 gRPC metadata 携带 |
+| Cloud 现有服务凭据：`kind="service"`、`role=controller|node` 的 token | 当前阶段不用于 gRPC 控制接口：Controller 只以 metadata 声明 `ControllerId`（D7）；HTTP `/internal/v1` 与 Node 接口仍按原规则 |
 | Cloud 身份 ADR：Gateway 不代理内部 API | 继承；gRPC 监听器由 API Server 进程直接提供 |
 
 ## 决策
@@ -160,23 +160,18 @@ Cloud 侧为此新增执行登记、事件收据与提交记录的表；它们�
 细分而不改变状态码。截止时间与取消不附 detail，它们是调用方自己的结果而不是 Cloud 的裁决。
 无 detail 的状态（如传输层错误）不是 Cloud 的裁决，Controller 按"未知"处理。
 
-### D7：认证与监听
+### D7：调用方身份与监听
 
 gRPC 服务由 API Server 进程在独立地址（`control.grpc_addr`，必填、无默认值）监听，不经 Gateway。
-调用方凭据沿用现有服务 token 规则（`kind=service, role=controller`，Ed25519，`kid` 对应 Cloud
-配置中的可信公钥，`iat`／`exp` 相差不超过 5 分钟），以 `authorization: Bearer` metadata 携带并在
-unary／stream 拦截器中校验；只有 `role=controller` 被允许（缺失 `UNAUTHENTICATED`，其他角色
-`PERMISSION_DENIED`）。进入 `Control` 事务的 `Service` 主体与今天相同，租约持有者取自已验证的
-`sub`。
 
-Controller 侧的凭据是**长期机器身份 + 短期票据**：部署时发给该 Controller 一把 Ed25519 私钥与
-`kid`／issuer，Cloud 登记对应公钥；Controller 在每次调用前用私钥为自己签一张 ≤ 5 分钟的服务 token，
-`sub` 固定为其持久 `ControllerId`。签名是本地操作，续票不需要网络或任何审批；机器身份只在运维
-替换 Cloud 配置中的公钥时失效，双 `kid` 并存支持无缝轮换。Cloud 从不持有私钥，也不提供长期静态
-token——那会在认证模型里加第二种规则。Controller 不解析、不校验任何 token，不感知租户或用户。
+当前项目阶段只保证业务语义，不建立机器身份：Controller 不出示任何凭据，Cloud 不验签。每次调用以
+`x-ora-controller-id` metadata 声明自身持久 `ControllerId`（缺失、为空或超过 256 字节时
+`INVALID_ARGUMENT`），unary／stream 拦截器把它构造成 `role=controller` 的 `Service` 主体交给
+`Control` 事务；租约持有者、提交记录的持有者与 epoch fencing 的语义与今天相同。
 
-TLS 留给认证 ADR；在其落地前，gRPC 监听器只允许回环或私网地址，与现有内部 HTTP 接口的部署
-约束一致。
+声明不是证明：能连到监听地址的进程都可以冒名任一 `ControllerId`，因此 gRPC 监听器只允许回环或私网
+地址，与现有内部 HTTP 接口的部署约束一致。Controller 认证（凭据形态、TLS、轮换）等产品需要时另立
+ADR，届时替换本条而不改变契约的业务字段。HTTP `/internal/v1` 与 Node 接口的服务凭据不在本条范围内。
 
 ### D8：clone 请求的公开入口（第一版）
 
@@ -202,7 +197,7 @@ TLS 留给认证 ADR；在其落地前，gRPC 监听器只允许回环或私网�
 6. 服务端流不持久化、不保证送达、不改变归属；断流只影响延迟。
 7. 契约不含租户、用户、成员或角色字段；授权在 Cloud 公开边界完成。
 8. 状态码与 `ErrorDetail` 由 Cloud 一处产生，二者一致；无 detail 的失败不是 Cloud 裁决。
-9. Controller 以自签的短期服务 token 出示长期机器身份；Cloud 不持有其私钥，不发长期 token。
+9. 当前阶段 Controller 只以 metadata 声明 `ControllerId`，不出示凭据；它是租约与提交记录的持有者名，不是经过认证的身份。
 
 ## 为什么不是这些替代方案
 
@@ -229,8 +224,8 @@ TLS 留给认证 ADR；在其落地前，gRPC 监听器只允许回环或私网�
 
 1. **契约与生成链**：`proto/` 与 `buf` 配置、生成包、`proto:lint`／`proto:breaking`／`proto:check`
    与 CI。完成条件：主干上生成无 diff；lint 通过。行为不变：无运行时接入。
-2. **gRPC 服务端、拦截器与租约**（cloud#20）：拦截器认证、`ControllerLeaseService` 直接调用
-   `Control` 事务、D6 错误映射。完成条件：认证拒绝、单持有者、epoch 单调、陈旧 epoch 被拒以
+2. **gRPC 服务端、拦截器与租约**（cloud#20，认证随 cloud#24 改为身份声明）：身份拦截器、`ControllerLeaseService` 直接调用
+   `Control` 事务、D6 错误映射。完成条件：缺少身份被拒、单持有者、epoch 单调、陈旧 epoch 被拒以
    PostgreSQL 测试证明。行为不变：JSON 接口继续可用。
 3. **执行登记、事件接管与提交记录**（cloud#21）：`ExecutionService`、四张表、D3 规则。完成条件：
    登记先于派发、接管先于确认、提交回放与冲突、恢复读取以 PostgreSQL 事务测试证明。

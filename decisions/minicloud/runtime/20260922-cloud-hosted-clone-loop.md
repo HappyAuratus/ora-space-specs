@@ -40,8 +40,8 @@ D4／D8 与[持久协调双适配器](../../controller/persistence/20260922-coor
                                 ora-controller(cloud) → Unix socket → Node → Git
 ```
 
-启动器为云端形态生成 `persistence: { kind: cloud, endpoint, key_file, key_id, issuer }` 的 Controller
-配置，并把 Controller 的公钥写入 Cloud 配置的可信 key 列表；Cloud、Gateway 与 PostgreSQL 由
+启动器为云端形态生成 `persistence: { kind: cloud, endpoint, claim_interval_ms }` 的 Controller
+配置，不生成也不分发任何密钥：当前阶段 Controller 只以 `ControllerId` 声明自身（Cloud 根决策 D7）；Cloud、Gateway 与 PostgreSQL 由
 开发者按 Cloud 仓库的本地方式启动，启动器只校验它们可达。不提供"Cloud 不可达时退回本机"的
 隐式降级：两种形态是不同的权威存储，切换必须显式。
 
@@ -72,5 +72,5 @@ D4／D8 与[持久协调双适配器](../../controller/persistence/20260922-coor
 
 ## 本决策未解决的问题
 
-- 启动器如何为开发者生成与轮换 Controller 密钥对；密钥文件的存放位置。
+- Controller 认证：等产品需要机器身份时另立决策，本形态届时再补充密钥或凭据的发放方式。
 - 云端形态下的 Node 远程连接与沙盒，仍由后续决策承担。
