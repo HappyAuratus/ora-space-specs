@@ -84,6 +84,25 @@
 | disabled user 经 Gateway 得到 Cloud 的 `403 user_disabled` | `integration.TestGatewayLoginProxyLogoutAndCredentialBoundaries` | `Covered` |
 | membership 移除或 owner 不匹配的拒绝透传 | 只有 disabled user 路径，membership/owner 路径由 Cloud 自身测试覆盖但未经 Gateway 验证 | `Partial` |
 
+## Authorized Event Streams Outlive Proxy Timeouts
+
+- 风险：空间事件流（SSE）是无限期连接，若 Gateway 的 upstream timeout、server write timeout 或 8 MiB 响应体
+  上限同样作用于它，流会在超时后被静默切断，前端进入无休止重连；若豁免被扩大到普通 bounded 响应，卡死的
+  upstream 会永久占住连接。
+- 前置状态：已登录用户经 Gateway 订阅 `GET /api/v1/tenants/{tid}/spaces/{sid}/events`，Cloud 以
+  `text/event-stream` 应答；Gateway 配置了远短于流寿命的 upstream/write timeout。
+- 触发：订阅后等待两个超时窗口之和以上，再提交一次空间更新；另外让 upstream 对普通请求永不应答。
+- 必须成立：事件流在两个超时都过期后仍保持打开并投递后续事件；永不响应的普通请求仍被 upstream timeout
+  切断并返回 `502 upstream_unavailable`。
+- 禁止结果：事件流在超时后断开；豁免作用于未授权连接或 bounded 响应。
+- 决策依据：ADR D10，不变量 17。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 已授权事件流超过 upstream 与 write timeout 后仍打开并投递事件；bounded 请求仍被超时切断 | `integration.TestGatewayRelaysEventStreamsBeyondTimeouts` | `Covered` |
+
 ## Cloud Outage Is A Stable Failure That Keeps Sessions
 
 - 风险：Cloud 不可达时若 Gateway 吊销 session、返回不稳定错误或泄露上游细节，用户会在 Cloud 恢复后被

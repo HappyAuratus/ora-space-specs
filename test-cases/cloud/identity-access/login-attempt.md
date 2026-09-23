@@ -104,6 +104,32 @@
 | `source`/`subject` 超过 128/512 字节或为空时拒绝而非截断 | `gateway.TestNormalizeMatchesCloudByteLimits` | `Covered` |
 | `name` 为空时回退到 `login`；数字 `id` 以十进制字符串作为 subject | `github.TestExchangeFallsBackToLoginAndRejectsBadProviderAnswers`、`github.TestExchangeUsesVerifierReadsNumericIDAndDiscardsToken` | `Covered` |
 
+## Development Provider Sign-In And Its Loopback Boundary
+
+- 风险：本地开发登录 provider 允许输入任意 `source`/`subject`，若它在生产 origin 上可用，或在省略
+  `provider` 时被隐式选中，就在 D2 “Authenticator 不得伪造 `source/subject` 合并已有用户”之外打开了一个
+  生产可用的身份伪造入口；伪造的 code 若被接受，同样会签发真实 session。
+- 前置状态：`login.development_provider` 与 `public.development` 同时开启（loopback HTTP），Gateway 注册
+  `dev` 与外部 provider 两个适配器。
+- 触发：`GET /auth/providers`；省略 `provider` 的 `POST /auth/login`；选择 `dev` 的完整表单流；携带伪造
+  code 的 `/auth/callback/dev`；生产 origin 上开启该 provider 的配置。
+- 必须成立：provider 列表同时含 `dev` 与外部 provider，`default` 是外部 provider；省略 provider 的 start 永远
+  指向外部 provider；表单仅同源提交，封装的 code 只在 5 分钟内、签名、challenge 匹配时有效；伪造 code 统一
+  `401 login_failed` 且不创建 session；真实流程后 `/api/v1/me` 返回输入的显示名，`user_identities` 恰好落在
+  输入的 `(source, subject)` 上；配置校验拒绝生产 origin 上的 `login.development_provider`。
+- 禁止结果：生产配置开启 `dev`；省略 provider 时落到 `dev`；伪造 code 创建 session；provider 授予任何
+  Cloud 内权限。
+- 决策依据：ADR D2、D9，不变量 16。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 表单流程登录输入的典型身份，伪造 code 统一 `401 login_failed` 且不产生 session | `integration.TestGatewayDevelopmentProviderSignsInTypedIdentity` | `Covered` |
+| `GET /auth/providers` 同时列出 `dev` 与外部 provider，`default` 为外部 provider，省略 provider 的 start 指向外部 provider | `integration.TestGatewayDevelopmentProviderSignsInTypedIdentity` | `Covered` |
+| `devlogin` 表单仅同源提交、code 由进程内密钥 HMAC 封装且过期/篡改拒绝 | `devlogin.TestAuthenticator`（表单、封印与校验） | `Partial` |
+| 生产 origin 上开启 `login.development_provider` 被配置校验拒绝，仅 loopback development origin 可开 | `gateway.TestConfigDefaultsAndSessionLifetimeBounds` | `Covered` |
+
 ## Huawei IDaaS Identity Is Keyed Only By Corporate UUID
 
 - 风险：把姓名、邮箱或工号作为身份键，或允许部署自由配置 source，会因字段变化、复用和环境漂移错误合并或
