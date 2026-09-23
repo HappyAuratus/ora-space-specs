@@ -95,6 +95,9 @@ namespace 与插件名都允许连字符，扁平拼接（如 `<namespace>-<name
 新增公开错误 `plugin_package_invalid`，参数为 `{field, message}`，分类为 `Unprocessable`。缺失清单、
 清单语法或字段错误、宿主侧校验失败、身份不一致、下载摘要不匹配都映射到该码，`field` 取稳定字段路径
 （`description`、`webview.allowed_origins[0]`、`assets/config.json`、`orax.toml`、`sha256` 等）。
+清单解析失败的字段归因由清单 schema 的所有者 `ora-plugin-manifest` 提供：缺少必填字段归因到该字段
+的完整路径（嵌套时如 `webview.downloads.rules[0].page.path_prefix`），TOML 语法错误属于整份文档，
+`field` 取 `orax.toml`。安装侧不自行解析反序列化报文，避免两处对同一 schema 各持一份归因规则。
 
 传输失败、宿主 I/O 失败与解包失败不进入该码，仍为 `internal_error`：前者没有可操作的字段，后者
 属于归档错误族而非清单字段错误。分类为 `Unprocessable` 是因为这类失败重试同样的包不会成功，

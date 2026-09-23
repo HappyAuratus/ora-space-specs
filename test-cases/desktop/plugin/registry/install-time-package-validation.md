@@ -49,7 +49,8 @@ marketplace 安装。
 | 合法包端到端安装成功，目录内容完整 | `ora_plugin_manager::install::tests::installs_local_release_end_to_end` | `Covered` |
 | 包内缺少 `orax.toml` 时拒绝安装，且零残留 | `ora_plugin_manager::install::tests::rejects_a_release_without_an_in_package_manifest` | `Covered` |
 | `orax.toml` 不是普通文件时以该字段拒绝安装 | `ora_plugin_manager::install::tests::rejects_a_manifest_entry_that_is_not_a_regular_file` | `Covered` |
-| 缺少必填字段时以结构性清单错误拒绝 | `ora_plugin_manager::install::tests::rejects_a_package_manifest_missing_a_required_field` | `Covered` |
+| 缺少必填字段时以结构性清单错误拒绝，并归因到该字段 | `ora_plugin_manager::install::tests::rejects_a_package_manifest_missing_a_required_field` | `Covered` |
+| TOML 语法错误时拒绝安装，且错误不归因到任何单个字段 | `ora_plugin_manager::install::tests::rejects_a_package_manifest_that_is_not_valid_toml` | `Covered` |
 | kind 专属贡献不合法（MCP 配置）时以 `assets/config.json` 拒绝 | `ora_plugin_manager::install::tests::rejects_a_package_whose_kind_contribution_is_malformed` | `Covered` |
 | 校验失败不产生版本目录、空父目录与缓存残留 | `ora_plugin_manager::install::tests::assert_no_install_residue`（由上述用例调用） | `Covered` |
 | 同一失败经生产入口映射为可操作的公开错误 | `ora_backend::plugin::operations::install_tests::incomplete_package_manifest_is_reported_as_a_package_error` | `Covered` |
@@ -94,7 +95,7 @@ marketplace 安装。
 |---|---|---|
 | `identifier`、`version`、`kind` 各自不一致都被拒绝并指出字段 | `ora_plugin_manager::install::tests::rejects_packages_that_contradict_the_listing_identity` | `Covered` |
 | 版本不一致经生产入口报告为 `version` 字段错误且不落盘 | `ora_backend::plugin::operations::install_tests::package_identity_mismatch_is_reported_as_a_package_error` | `Covered` |
-| 展示字段差异不阻止安装 | 尚无针对展示字段差异的专门用例 | `Missing` |
+| 展示字段差异不阻止安装，discovery 读回包内文案 | `ora_plugin_manager::install::tests::installs_a_package_whose_descriptive_metadata_differs_from_the_listing` | `Covered` |
 
 ### 决策依据
 
@@ -181,7 +182,7 @@ namespace 与插件名又都允许连字符，两个来源可能落到同一路�
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
 | 连字符歧义下的两个来源得到不同缓存路径 | `ora_plugin_manager::install::tests::keeps_same_name_and_version_releases_from_different_namespaces_apart` | `Covered` |
-| 并发安装互不覆盖字节 | 尚无真实并发安装用例（当前仅证明路径唯一） | `Partial` |
+| 并发安装互不覆盖字节 | 尚无真实并发安装用例（当前仅证明路径唯一）。每次安装开始的全量清扫可能删除并发安装的在途归档，真实并发用例的结果因此不确定，需先有可控的调度注入点 | `Partial` |
 
 ### 决策依据
 
@@ -225,6 +226,9 @@ I/O 失败也塞进包内容错误，用户会被引导去修一个并不存在�
 |---|---|---|
 | 缺字段经生产入口报告为 `plugin_package_invalid` 且分类为 `Unprocessable` | `ora_backend::plugin::operations::install_tests::incomplete_package_manifest_is_reported_as_a_package_error` | `Covered` |
 | 身份不一致经生产入口报告为对应字段错误 | `ora_backend::plugin::operations::install_tests::package_identity_mismatch_is_reported_as_a_package_error` | `Covered` |
+| TOML 语法错误经生产入口报告为 `orax.toml` 字段错误 | `ora_backend::plugin::operations::install_tests::malformed_package_manifest_is_reported_against_the_manifest_file` | `Covered` |
+| 清单解析失败归因到用户需修改的字段（根级与嵌套缺字段、语义错误），语法错误不归因 | `ora_plugin_manifest::tests::attributes_parse_failures_to_the_field_to_fix` | `Covered` |
+| 本地导入与更新复用同一映射 | `ora_backend::plugin::operations::install_tests::{importing_an_invalid_package_is_reported_as_a_package_error,updating_to_an_invalid_package_keeps_the_installed_version}` | `Covered` |
 | 摘要不匹配在 pack 结果中报告为该错误码 | `ora_backend::plugin::operations::install_tests::sha256_mismatch_aborts_install_without_phantom_ownership` | `Covered` |
 | 契约码与 serde 标签、样本清单一致 | `ora_contracts::error::tests::public_error_codes_match_serde_tags_for_every_variant` | `Covered` |
 | 每个公开错误码在两种语言都有文案且插值字段与参数一致 | `@ora/app-shell` `contract error translations > covers every generated public code in Chinese and English with valid interpolation` | `Covered` |
