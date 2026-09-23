@@ -66,5 +66,6 @@ namespace 相关的身份、绑定与去重规则以来源派生 Namespace 决�
 - [Marketplace Install Must Validate the Package's Own Manifest Before Committing](install-time-package-validation.md#marketplace-install-must-validate-the-packages-own-manifest-before-committing)
 - [Package Identity Must Match the Listing Before It Is Committed](install-time-package-validation.md#package-identity-must-match-the-listing-before-it-is-committed)
 - [Failed Installs Must Leave No Package or Cache Residue](install-time-package-validation.md#failed-installs-must-leave-no-package-or-cache-residue)
+- [A Concurrent Install Must Not Delete Another Install's In-Flight Archive](install-time-package-validation.md#a-concurrent-install-must-not-delete-another-installs-in-flight-archive)
 - [Same Name and Version From Different Sources Must Not Share a Cache Path](install-time-package-validation.md#same-name-and-version-from-different-sources-must-not-share-a-cache-path)
 - [Package Content Failures Must Surface as Actionable Field Errors](install-time-package-validation.md#package-content-failures-must-surface-as-actionable-field-errors)

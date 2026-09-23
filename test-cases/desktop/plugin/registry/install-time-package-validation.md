@@ -2,7 +2,9 @@
 
 本文件是 [安装期包内清单校验 ADR](../../../../decisions/desktop/plugin/registry/20260922-install-time-package-validation.md)
 的风险导航图，覆盖 marketplace 安装如何判定一个包能否落盘，以及安装结束后磁盘与缓存的状态。
-清单字段规则本身由
+并发安装时缓存清扫的范围由
+[在途归档不被清扫决策](../../../../decisions/desktop/plugin/registry/20260923-cache-sweep-skips-in-flight-archives.md)
+收紧。清单字段规则本身由
 [清单配套决策](../../../../decisions/desktop/plugin/manifest/0-versioned-dual-form-manifest.md)
 拥有，本文件只记录安装期承诺与直接证据。
 
@@ -120,7 +122,8 @@ marketplace 安装。
 
 ### 必须成立
 
-- 安装开始先清扫缓存中的 `*.orax`，包括旧布局写在缓存根下的历史残留。
+- 真正开始传输之前清扫缓存中未被其他进行中的安装声明的 `*.orax`，包括旧布局写在缓存根下的历史残留。
+  已安装拒绝发生在清扫之前，不触碰缓存。
 - 成功与失败都删除本次下载的 `.orax`。
 - 失败时 best-effort 删除空的 `<namespace>/<name>/` 父目录；非空目录保持不动。
 - 清理只匹配 `*.orax`：`registry_index.json` 与下载中的 `.tmp` 文件不受影响。
@@ -139,13 +142,65 @@ marketplace 安装。
 |---|---|---|
 | 清扫删除历史残留（含旧扁平布局）并移除空 namespace 目录 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index` | `Covered` |
 | 清扫不触碰派生索引与下载中的临时文件 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index` | `Covered` |
+| 已安装拒绝不触发清扫 | `ora_plugin_manager::install::tests::reinstalling_an_installed_release_does_not_sweep_other_archives` | `Covered` |
 | 失败路径删除缓存文件并移除空父目录 | `ora_plugin_manager::install::tests::{rejects_a_release_without_an_in_package_manifest,rejects_packages_that_contradict_the_listing_identity}` | `Covered` |
 | 成功后缓存只剩派生索引 | `ora_plugin_manager::install::tests::installs_local_release_end_to_end` | `Covered` |
 | 失败不影响已安装版本与其他成员 | `ora_backend::plugin::operations::install_tests::missing_artifact_aborts_install_without_creating_directory` | `Covered` |
 
 ### 决策依据
 
-- 安装期包内清单校验决策 D4、D7 与不变量 2、3。
+- 安装期包内清单校验决策 D4、D7，以及
+  [在途归档不被清扫决策](../../../../decisions/desktop/plugin/registry/20260923-cache-sweep-skips-in-flight-archives.md)
+  D1、D2 与不变量 2、3。
+
+## A Concurrent Install Must Not Delete Another Install's In-Flight Archive
+
+### 风险
+
+安装之间没有互斥锁。若每次安装开始都删除缓存里的全部 `*.orax`，安装 B 的清扫会删掉安装 A
+在下载完成之后、解包完成之前的归档。A 因此失败，而失败原因是一次无关的安装。窗口覆盖整段解包，
+大插件可以持续数秒。若已安装拒绝也先清扫，一次不会下载的重复安装同样会删掉别人的归档。
+
+反过来，如果清扫只删除“本次路径”，其他插件崩溃留下的 `.orax` 就没有回收者，除非用户恰好再次
+安装那个插件。
+
+### 前置状态
+
+- 安装 A 已通过摘要校验，归档已落在 `<cache>/<namespace>/<name>-<version>.orax`，尚未解包完成。
+- 安装 B 即将开始一次真正的传输，缓存里还有与 A 无关的崩溃残留。
+- 另有一次针对已提交版本的重复安装请求。
+
+### 触发
+
+并发执行两次不同插件的 marketplace 安装；或对已安装版本再次调用安装。
+
+### 必须成立
+
+- 开始传输前，安装声明自己的归档路径；清扫删除其余 `*.orax`，不删除已声明的路径。
+- A 的归档在 B 的清扫之后仍然存在，A 能解包并提交。
+- 与任何进行中的安装无关的崩溃残留仍被清扫；`registry_index.json` 与 `.tmp` 不受影响。
+- 已安装拒绝发生在声明与清扫之前，不删除其他归档。
+- 声明只存在于进程内存中。进程崩溃后声明消失，下一次真正的传输仍清扫该残留。
+
+### 禁止结果
+
+- 并发安装把另一路已下载、尚未解包的归档删掉，使那次安装失败。
+- 为避免上述失败而永久留下其他插件的崩溃残留。
+- 已安装拒绝触发缓存清扫。
+- 清扫误删 `registry_index.json` 或正在写入的 `.tmp`。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 并发安装不清扫另一路已下载、尚未解包的归档，同时仍清扫无关残留 | `ora_plugin_manager::install::tests::a_concurrent_install_does_not_sweep_another_installs_in_flight_archive` | `Covered` |
+| 已安装拒绝不触发清扫 | `ora_plugin_manager::install::tests::reinstalling_an_installed_release_does_not_sweep_other_archives` | `Covered` |
+| 未被声明的崩溃残留仍被下一次传输清扫 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index` | `Covered` |
+
+### 决策依据
+
+- [在途归档不被清扫决策](../../../../decisions/desktop/plugin/registry/20260923-cache-sweep-skips-in-flight-archives.md)
+  D1、D2 与不变量 1、2。
 
 ## Same Name and Version From Different Sources Must Not Share a Cache Path
 
