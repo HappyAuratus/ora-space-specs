@@ -12,8 +12,8 @@ desktop 以 git submodule `third_party/cloud` 锁定 Cloud 的契约 commit，sp
 部署下它不打开任何监听。
 
 本决策处于 `implemented` 状态。它修改[根决策](0-controller-hosted-client-api.md)的 D4（契约归属与生成
-方向）和 D5（调用方向），继承 D1–D3。契约消费链由 desktop#598 落地，Cloud 适配器与拨出任务由
-desktop#601、desktop#602 落地（均已合入）；Cloud 侧契约见
+方向）和 D5（调用方向），继承 D1–D3。契约消费链由 desktop#598 落地（gitlink 改指主干合并提交的 desktop#600 尚未合并），
+Cloud 适配器与拨出任务由 desktop#601、desktop#602 落地（均已合入）；Cloud 侧契约见
 [Cloud 拥有 Internal Control gRPC 契约](../../cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md)，
 Controller 侧持久化抽象见
 [持久协调接口与双适配器](../persistence/20260922-coordination-store-with-sqlite-and-cloud-adapters.md)。
@@ -139,7 +139,8 @@ Cloud 以 gRPC 状态码作为主分类并附 `ErrorDetail`（映射表由 Cloud
 
 - 契约消费链（desktop#598）：`third_party/cloud` submodule 锁定 Cloud 主干上的契约 commit，
   `proto:init`／`proto:generate`／`proto:check` 任务与 PR CI 检查，`ora-controller-proto` 客户端生成物；
-  desktop 原有 `proto/` 目录与 lint／breaking 任务已移除。
+  desktop 原有 `proto/` 目录与 lint／breaking 任务已移除。desktop#600（尚未合并）把 gitlink 从 cloud#19 的 PR
+  head `535ca76c` 移到其主干合并提交 `ad12201a`，契约内容相同，重新生成无漂移。
 - Cloud 适配器与拨出任务（desktop#601、#602）：租约维持、周期领取、派发登记、事件接管、恢复读取与
   D3 的错误映射；云端部署不开监听、不创建本地状态。
 - 与提案不同的最终决定：Controller 暂不消费 `Watch`（D2）；`PERMISSION_DENIED` 与读取超时归为不可用（D3）。
