@@ -53,7 +53,8 @@ marketplace 安装。
 | `orax.toml` 不是普通文件时以该字段拒绝安装 | `ora_plugin_manager::install::tests::rejects_a_manifest_entry_that_is_not_a_regular_file` | `Covered` |
 | 缺少必填字段时以结构性清单错误拒绝 | `ora_plugin_manager::install::tests::rejects_a_package_manifest_missing_a_required_field` | `Covered` |
 | kind 专属贡献不合法（MCP 配置）时以 `assets/config.json` 拒绝 | `ora_plugin_manager::install::tests::rejects_a_package_whose_kind_contribution_is_malformed` | `Covered` |
-| 校验失败不产生版本目录、空父目录与缓存残留 | `ora_plugin_manager::install::tests::assert_no_install_residue`（由上述用例调用） | `Covered` |
+| 校验失败不产生版本目录、空父目录与缓存残留 | `ora_plugin_manager::install::tests::{rejects_a_release_without_an_in_package_manifest,rejects_a_manifest_entry_that_is_not_a_regular_file,rejects_a_package_manifest_missing_a_required_field,rejects_a_package_whose_kind_contribution_is_malformed}`（经 `assert_no_install_residue`） | `Covered` |
+| 安装期拒绝超出大小预算的清单、非法 UTF-8 与 TOML 语法错误 | 安装路径上尚无直接用例 | `Missing` |
 | 同一失败经生产入口映射为可操作的公开错误 | `ora_backend::plugin::operations::install_tests::incomplete_package_manifest_is_reported_as_a_package_error` | `Covered` |
 
 ### 决策依据
@@ -133,7 +134,7 @@ marketplace 安装。
 
 - 失败后残留本次下载的 `.orax`。
 - 删除 `registry_index.json` 或正在写入的临时文件。
-- 为清理而删除其他插件、其他版本或其他 workspace 的文件。
+- 为清理而删除已安装的版本目录，或其他 workspace 的文件。其他插件留在缓存里、且当前没有安装声明的 `.orax` 是崩溃残留，清扫会删除它们。
 - 清理失败使一次已经成功的安装被报告为失败。
 
 ### 验证义务与证据
@@ -144,7 +145,7 @@ marketplace 安装。
 | 清扫不触碰派生索引与下载中的临时文件 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index` | `Covered` |
 | 已安装拒绝不触发清扫 | `ora_plugin_manager::install::tests::reinstalling_an_installed_release_does_not_sweep_other_archives` | `Covered` |
 | 失败路径删除缓存文件并移除空父目录 | `ora_plugin_manager::install::tests::{rejects_a_release_without_an_in_package_manifest,rejects_packages_that_contradict_the_listing_identity}` | `Covered` |
-| 成功后缓存只剩派生索引 | `ora_plugin_manager::install::tests::installs_local_release_end_to_end` | `Covered` |
+| 成功后删除本次归档，并移除因此变空的缓存 namespace 目录 | `ora_plugin_manager::install::tests::installs_local_release_end_to_end` | `Covered` |
 | 失败不影响已安装版本与其他成员 | `ora_backend::plugin::operations::install_tests::missing_artifact_aborts_install_without_creating_directory` | `Covered` |
 
 ### 决策依据
