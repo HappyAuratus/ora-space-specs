@@ -7,10 +7,8 @@
 架构边界和不变量来自
 [插件分发根决策](../../../../decisions/desktop/plugin/registry/0-registry-distribution.md) 与
 [来源派生 Namespace 决策](../../../../decisions/desktop/plugin/registry/20260831-source-derived-namespace.md)，
-以及 [Source 级插件包获取决策](../../../../decisions/desktop/plugin/registry/20260904-source-configured-artifact-retrieval.md)、
-[本地 pack 与隐藏条目索引决策](../../../../decisions/desktop/plugin/registry/20260915-local-pack-installation-and-hidden-listings.md)、
-[安装期包内清单校验决策](../../../../decisions/desktop/plugin/registry/20260922-install-time-package-validation.md)
-与 [在途归档不被清扫决策](../../../../decisions/desktop/plugin/registry/20260923-cache-sweep-skips-in-flight-archives.md)。
+以及 [Source 级插件包获取决策](../../../../decisions/desktop/plugin/registry/20260904-source-configured-artifact-retrieval.md)
+和 [本地 pack 与隐藏条目索引决策](../../../../decisions/desktop/plugin/registry/20260915-local-pack-installation-and-hidden-listings.md)。
 namespace 相关的身份、绑定与去重规则以来源派生 Namespace 决策为准。
 
 ## 阅读与维护规则
@@ -68,6 +66,5 @@ namespace 相关的身份、绑定与去重规则以来源派生 Namespace 决�
 - [Marketplace Install Must Validate the Package's Own Manifest Before Committing](install-time-package-validation.md#marketplace-install-must-validate-the-packages-own-manifest-before-committing)
 - [Package Identity Must Match the Listing Before It Is Committed](install-time-package-validation.md#package-identity-must-match-the-listing-before-it-is-committed)
 - [Failed Installs Must Leave No Package or Cache Residue](install-time-package-validation.md#failed-installs-must-leave-no-package-or-cache-residue)
-- [A Concurrent Install Must Not Delete Another Install's In-Flight Archive](install-time-package-validation.md#a-concurrent-install-must-not-delete-another-installs-in-flight-archive)
 - [Same Name and Version From Different Sources Must Not Share a Cache Path](install-time-package-validation.md#same-name-and-version-from-different-sources-must-not-share-a-cache-path)
 - [Package Content Failures Must Surface as Actionable Field Errors](install-time-package-validation.md#package-content-failures-must-surface-as-actionable-field-errors)
