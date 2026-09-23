@@ -1,9 +1,12 @@
 # Controller API 边界验收
 
-依据[已批准 ADR](../../../decisions/controller/api-boundary/0-controller-hosted-client-api.md)。
+依据[根决策](../../../decisions/controller/api-boundary/0-controller-hosted-client-api.md)与
+[Cloud 拥有契约的后续决策](../../../decisions/controller/api-boundary/20260922-cloud-owned-contract-and-controller-dial-out.md)。
 入口迁移证据基于 [desktop#595](https://github.com/ora-space/desktop/pull/595) 的
-`7b7fea969eba76fb0b8694f07b308f860a061200`；该 PR 尚未合并。Linux 进程测试已在该提交上本地重跑。
-proto／gRPC 属于后续阶段，仍缺直接证据。
+`7b7fea969eba76fb0b8694f07b308f860a061200`，Linux 进程测试已在该提交上本地重跑。Cloud 契约的消费与调用方向
+证据核对 desktop 主干 `aa635a12`（含 desktop#598、#601、#602），`cargo test -p ora-controller` 已在该提交上
+本地重跑；Cloud 服务端一侧的证据见
+[Cloud 内部控制契约核心用例](../../cloud/controller-integration/cloud-owned-internal-grpc-contract.md)。
 
 ## Transport Validation Preserves Private State
 
@@ -41,18 +44,24 @@ proto／gRPC 属于后续阶段，仍缺直接证据。
 
 ## Generated Cloud Contracts Preserve The Boundary
 
-- **风险**：两侧契约漂移、破坏 `v1` 或在 Controller 复制租户授权。
-- **前置状态**：Controller 拥有 proto；Cloud 固定 tag；双方提交生成代码。
-- **触发**：变更契约、重新生成和编译，并以真实 Controller 执行 Cloud 集成测试。
-- **必须成立**：生成无漂移；破坏性修改新增 `v2` 并保留 `v1`；错误枚举映射唯一；
-  proto 不含租户、用户、成员或角色字段；不改变 Controller 拨入 Cloud 领取操作的方向。
-- **禁止结果**：同一 DTO 的手写并行副本、解析错误字符串、以编译通过替代行为验证、Controller 做租户筛选。
+- **风险**：desktop 使用的契约与 Cloud 锁定版本不一致，Controller 为 Cloud 打开监听，错误在多处被解释，或
+  Controller 复制租户授权。
+- **前置状态**：Cloud 拥有 proto；desktop 以 `third_party/cloud` submodule 锁定契约 commit，提交
+  `ora-controller-proto` 客户端生成物；Controller 以云端持久模式部署。
+- **触发**：移动 submodule 指针或修改生成物后运行检查；以云端持久模式启动并尝试打开监听；Cloud 返回各类
+  gRPC 状态；Controller 发起调用。
+- **必须成立**：submodule 位于锁定 commit、`proto/` 无本地修改、重新生成无 diff；云端部署拒绝监听参数且
+  不打开任何监听；状态码只在 Cloud 适配器内映射一次；每次调用只携带 `x-ora-controller-id` 声明，不含凭据
+  或租户字段；无法作为 ASCII metadata 传输的 `ControllerId` 在启动时拒绝。
+- **禁止结果**：本仓库保留 proto 副本或手改生成物、Cloud 拨入 Controller、协调逻辑解析 gRPC 状态或消息
+  文本、Controller 做租户筛选。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 生成与版本门禁 | 待补两侧漂移检查、buf lint／breaking 与固定 tag 编译 | Missing |
-| 协议与错误行为 | 待补 Cloud 使用真实 Unix Controller 的调用和结构化错误测试，以及 TCP 上 JSON／gRPC 共用监听器验证 | Missing |
-| 授权与调用方向边界 | 待补契约字段评审及 Cloud 授权／领取集成证据 | Missing |
+| 锁定与生成漂移 | `task proto:check`（`task lint:crates` 与 `.github/workflows/pr-tests.yml` 执行，CI 先 `task proto:init`）校验 gitlink、无本地修改与重新生成无 diff；lint／breaking 由 Cloud CI 承担 | Covered |
+| 拨出且不监听 | `apps/ora-controller/tests/composition.rs::cloud_persistence_serves_no_surface_and_creates_no_local_state` 以真实可执行入口验证云端模式拒绝 `--port`、日志无监听、Cloud 不可达时持续运行且无写资格 | Covered |
+| 错误映射唯一 | `apps/ora-controller/src/cloud/fault.rs::statuses_map_to_contract_classes` 覆盖冲突、缺失、资格失效、不可用与未知分类；尚无以真实 Cloud 服务端返回的状态驱动适配器的自动化测试 | Partial |
+| 身份声明与租户边界 | `cloud.rs::every_request_names_the_controller` 与 `non_ascii_controller_ids_are_configuration_errors` 覆盖 metadata 声明与启动拒绝；契约不含租户字段仍只依赖评审 | Partial |
 
-决策依据：D4、D5，不变量 4、5、7。
+决策依据：后续决策 D1–D4，其不变量 1–5。
