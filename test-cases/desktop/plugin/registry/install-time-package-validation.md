@@ -196,6 +196,7 @@ marketplace 安装。
 | 并发安装不清扫另一路已下载、尚未解包的归档，同时仍清扫无关残留 | `ora_plugin_manager::install::tests::a_concurrent_install_does_not_sweep_another_installs_in_flight_archive` | `Covered` |
 | 已安装拒绝不触发清扫 | `ora_plugin_manager::install::tests::reinstalling_an_installed_release_does_not_sweep_other_archives` | `Covered` |
 | 未被声明的崩溃残留仍被下一次传输清扫 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index` | `Covered` |
+| 声明随进程内存消失，崩溃后的归档重新变成可清扫的残留 | `ora_plugin_manager::install::tests::sweeps_leftover_archives_without_touching_the_registry_index`（仅证明未被声明的残留会被下一次传输清扫，进程崩溃本身无直接用例） | `Partial` |
 
 ### 决策依据
 
@@ -236,7 +237,7 @@ namespace 与插件名又都允许连字符，两个来源可能落到同一路�
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
 | 连字符歧义下的两个来源得到不同缓存路径 | `ora_plugin_manager::install::tests::keeps_same_name_and_version_releases_from_different_namespaces_apart` | `Covered` |
-| 并发安装互不覆盖字节 | 尚无真实并发安装用例（当前仅证明路径唯一） | `Partial` |
+| 不同来源的并发安装互不覆盖字节（同一路径上的并发写入不做互斥，见 [在途归档不被清扫决策](../../../../decisions/desktop/plugin/registry/20260923-cache-sweep-skips-in-flight-archives.md) D3） | 尚无真实并发安装用例（当前仅证明不同来源路径唯一） | `Partial` |
 
 ### 决策依据
 

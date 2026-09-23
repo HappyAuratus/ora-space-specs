@@ -72,6 +72,7 @@ marketplace 安装仍然在真正开始传输前清扫 `plugins/cache/` 里的�
 ## 落地顺序
 
 1. 缓存声明与清扫顺序（D1、D2）。完成条件：并发的两次不同插件安装都能提交；已安装拒绝留下其他归档。
-2. 文档与证据：本 ADR、核心用例与 `ora-plugin-manager` README 同步。
+2. 文档与证据：本 ADR、[安装期包内清单校验核心用例](../../../../test-cases/desktop/plugin/registry/install-time-package-validation.md)
+   与 `ora-plugin-manager` README 同步。
 
 包内清单校验、错误码、缓存路径形状和单次安装的失败零残留保持不变。
