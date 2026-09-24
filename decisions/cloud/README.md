@@ -19,6 +19,7 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `controller-integration` | Controller lease、内部快照、effect plan、epoch fencing 和接管边界 |
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界 |
+| `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
 
 Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node 的 Git、文件、进程、Agent、
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他
