@@ -4,6 +4,8 @@ status: implemented
 
 # 执行访问准入跟随 Space 成员身份
 
+> 历史决策：已准入任务按原生命周期收尾的规则保留；下文的独立空间成员表已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前新访问与准入核验活动租户成员身份。
+
 `/internal/v1/access` 与 `/internal/v1/admissions` 的用户侧授权从「project owner 专属」改为
 「project 所属 Space 的 active member」。准入判定本身（`admissionOpen`、desired/observed
 state、lifecycle active、Node 30 秒在线）与 Execution Ticket 的 actor 绑定、controller

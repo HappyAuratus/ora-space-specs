@@ -7,19 +7,29 @@
 ## Non-members cannot open an event stream
 
 - 风险：猜测 spaceId 即可订阅他人 Space 的事件，泄露变更情报。
-- 前置状态：carol 是 tenant 成员但非该 Space 成员。
+- 前置状态：carol 未加入该 Space 对应租户。
 - 触发：carol 携带合法双凭证 `GET /spaces/:sid/events`。
-- 必须成立：404 且连接不建立（与 REST 读取同一授权路径）。
+- 必须成立：403 且连接不建立（与 REST 租户授权路径一致）。
 - 禁止结果：200、或空流连接保持。
 - 验证义务与证据：**Covered** — `integration TestSpaceEventsAuthorizationAndCommitOrder`
-  断言非成员订阅 404。
+  断言非成员订阅 403。
+
+## Revoked members cannot receive events on an existing stream
+
+- 风险：只在连接建立时校验成员身份，停用后旧连接继续获知项目和成员变更。
+- 前置状态：bob 以有效成员身份订阅空间事件流。
+- 触发：管理员停用 bob，服务端广播成员变更；浏览器随后以旧空间尝试重连。
+- 必须成立：已停用成员收不到停用事件或后续通知，旧连接关闭；重连返回 403 后刷新已加入空间列表并停止订阅。
+- 禁止结果：停用后的事件仍发送到旧连接、浏览器持续重连或保留已失效的空间列表。
+- 验证义务与证据：**Covered** — `integration TestRemovedMemberLosesOpenEventStream`
+  断言停用通知不进入旧连接且连接关闭；前端 `spaces.test.tsx` 断言 403 后刷新空间列表并停止重连。
 
 ## Events are published only after commit and never for rejected mutations
 
 - 风险：事件在事务提交前广播，订阅者看到未提交状态；或失败变更也发布，客户端 refetch
   后与通知矛盾。
 - 前置状态：bob（成员）已订阅事件流。
-- 触发：owner 用错误 version PATCH Space（409）；随后 bob 创建 Project（202）。
+- 触发：admin 用错误 version PATCH Space（409）；随后 bob 创建 Project（202）。
 - 必须成立：被拒绝的 PATCH 不产生任何事件；提交成功的事件随后到达。
 - 禁止结果：订阅者先收到与失败变更对应的事件、或成功变更无事件。
 - 验证义务与证据：**Covered** — `integration TestSpaceEventsAuthorizationAndCommitOrder`
@@ -36,6 +46,16 @@
 - 禁止结果：类型错序、事件携带业务状态或错误资源标识。
 - 验证义务与证据：**Covered** — `integration TestSpaceEventsAuthorizationAndCommitOrder`
   断言两条事件类型，并在事件后重读列表确认权威状态一致。
+
+## Membership admission notifies existing members once
+
+- 风险：邀请兑换、申请批准或内网目录添加已经提交，新成员可访问资源，但其他在线成员的成员列表保持旧值；幂等重放又可能重复通知。
+- 前置状态：管理员已订阅空间事件流，待加入用户尚未成为成员。
+- 触发：依次通过邀请、申请批准和目录添加成员，并重放一次邀请兑换请求。
+- 必须成立：每条真正执行的加入路径提交后发出 `space.member_updated`；幂等重放不再发出通知。
+- 禁止结果：成员已加入却没有通知、失败或重放的请求产生新通知。
+- 验证义务与证据：**Covered** — `integration TestNewMembershipNotifiesOnlineMembers`
+  断言三种加入路径均到达在线订阅者，并同步检查重放零事件。
 
 ## Project resources expose spaceId in the public contract
 

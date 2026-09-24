@@ -4,6 +4,8 @@ status: implemented
 
 # 协作 Space 是租户内的共享、可见性与授权边界
 
+> 历史决策：下文记录 0006/0007 阶段的模型。当前一租户一空间、租户成员唯一授权、无独立空间成员和空间 owner，由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代；本页保留旧迁移的决策背景。
+
 Cloud 在 Tenant 之下新增协作 Space（产品 UI 称为 Workspace，表 `collab_workspaces`）作为多人
 协作的共享与可见性边界。每个 Project 必须属于且仅属于一个 Space；Space 成员
 （`collab_workspace_members`）使用 `owner/admin/member` 角色与 `active/disabled` 状态管理，

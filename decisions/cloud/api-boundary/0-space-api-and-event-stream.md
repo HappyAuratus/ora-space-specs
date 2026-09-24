@@ -4,11 +4,13 @@ status: implemented
 
 # Space API 与 Space 级失效事件流：REST 为权威，SSE 只做失效通知
 
+> 历史决策：REST 为权威、SSE 只做失效通知仍适用；下文的空间创建、归档及空间成员写 API 已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前使用租户级成员管理和一租户一空间接口。
+
 Cloud 公开 API 新增 `/api/v1/tenants/:tid/spaces` 路由族（Space CRUD、成员 upsert、Space 作用域
 Project 集合）与 SSE 端点 `/spaces/:sid/events`。REST 保持唯一权威状态来源；SSE 只投递轻量失效
 通知（`{type, spaceId, projectId?, version?}`），客户端收到后 invalidate 对应查询并 refetch REST。
 事件在数据库事务提交成功后才广播，被拒绝的变更绝不发布；连接建立前按与 REST 读取完全相同的
-路径校验 Space membership，非成员不建立连接（404）。单实例部署使用进程内内存 hub，无持久化、
+路径校验 Space membership，非成员不建立连接（当前为 403）。已建立的连接在每次投递前重新校验凭证与成员身份，停用成员的连接随下一条通知关闭。单实例部署使用进程内内存 hub，无持久化、
 无回放、无跨实例投递。
 
 本决策已实现：`/spaces` 白名单路由、OpenAPI `Space*`/`SpaceEvent` schema、orval 生成客户端、
@@ -47,10 +49,9 @@ not_found`，不区分「不存在」与「无权限」，避免泄露目标 Spa
 
 `GET /api/v1/tenants/:tid/spaces/:sid/events` 是独立 handler（不在路由白名单内）：先做与 REST
 相同的双凭证验证（gateway service JWT + `caller` 绑定的 user JWT），再以同一授权语义执行一次
-Space 读取——成员校验通过才打开 `text/event-stream` 连接，非成员 404。
+Space 读取——成员校验通过才打开 `text/event-stream` 连接，当前非成员返回 403。连接存续期间，每次投递前重新执行凭证与成员校验；成员停用或凭证失效时关闭连接，不投递触发关闭的通知。
 
-事件集合为 5 种失效通知：`space.updated`（PATCH/归档 Space）、`space.member_updated`（PUT 成员
-成功）、`project.created`（含 legacy tenant 级创建）、`project.updated`（PATCH Project name）、
+事件集合为 5 种失效通知：`space.updated`（PATCH/归档 Space）、`space.member_updated`（成员调整、内网目录添加、邀请兑换或申请批准）、`project.created`（含 legacy tenant 级创建）、`project.updated`（PATCH Project name）、
 `project.archived`（删除操作创建、lifecycle 进入 deleting 时）。`POST /spaces` 本身不发布事件。
 事件只携带失效信息，不携带业务状态；客户端按类型 invalidate 对应 query key 后向 REST 获取
 权威状态。
@@ -58,7 +59,7 @@ Space 读取——成员校验通过才打开 `text/event-stream` 连接，非�
 ## D4：提交后广播与单实例 hub
 
 `Store.Public` 在事务成功提交后才 `Publish` 全部待发事件，事务失败或 `reject` 的变更不产生
-任何事件。`SpaceHub` 是进程内 per-space 订阅表：订阅得到缓冲 8 的 channel，`Publish` 非阻塞，
+任何事件；加入请求的幂等重放不重复广播。`SpaceHub` 是进程内 per-space 订阅表：订阅得到缓冲 8 的 channel，`Publish` 非阻塞，
 慢订阅者丢弃过期通知（由下一次变更或显式刷新兜底）；无持久化、无回放。Cloud 事务经
 `pg_advisory_xact_lock(67420911)` 全局串行化且当前单实例部署，内存广播与提交顺序天然一致。
 多实例部署时以 broker（Redis/NATS）替换 hub 实现，保持同一 Subscribe/Publish 边界与提交后
@@ -76,7 +77,7 @@ invalidate，绝不把事件内容当状态。真实账号凭证由 devgateway�
 
 1. REST 是唯一权威状态来源；事件只触发 refetch，不携带业务状态。
 2. 事件只在事务提交成功后发布，绝不发布未提交或已回滚状态。
-3. 非成员不能建立事件流，判定与 REST 读取同一授权路径。
+3. 非成员不能建立事件流；成员失效后，既有连接不能继续接收事件，判定与 REST 读取同一授权路径。
 4. 路由白名单 + 字段白名单 + 严格解码；服务端拥有的身份与范围字段不接受客户端输入。
 5. 事件丢失最多造成一次延迟刷新，不破坏一致性。
 
@@ -89,13 +90,13 @@ invalidate，绝不把事件内容当状态。真实账号凭证由 devgateway�
 | 事件携带完整业务状态 | 客户端直接消费会与 REST 权威产生分叉，payload 膨胀 |
 | 事件在事务内发送 | 未提交状态泄漏给订阅者，违反权威一致性 |
 | outbox / 持久化事件表 | MVP 无离线回放与审计需求；多实例时再引入 |
-| 非成员返回 403 区分 | 泄露 Space 存在性，与既有 404 策略不一致 |
+| 仅在建立连接时校验成员 | 可省去每次通知的查询，但成员停用后旧连接继续获知空间变更 |
 
 ## 落地与验收
 
 实现位于 `internal/api/router/router.go`（白名单 + SSE handler）、`internal/core/hub.go`、
 `internal/contract/openapi.go`。核心行为由 `integration/space_events_test.go` 的
-`TestSpaceEventsAuthorizationAndCommitOrder` 直接验证（非成员订阅失败、拒绝的变更零事件、
-提交后事件到达且类型与变更一致），前端事件解析与凭证隔离由 `spaces.test.tsx`、
+`TestSpaceEventsAuthorizationAndCommitOrder`、`TestRemovedMemberLosesOpenEventStream`、`TestNewMembershipNotifiesOnlineMembers` 直接验证（非成员订阅失败、停用后旧连接关闭、成员加入后通知在线成员、拒绝的变更零事件、
+提交后事件到达且类型与变更一致），前端事件解析、停用后重连与凭证隔离由 `spaces.test.tsx`、
 `cloud-session.test.ts` 覆盖。核心用例见
 [Space API 与事件流](../../../test-cases/cloud/api-boundary/space-api-and-events.md)。

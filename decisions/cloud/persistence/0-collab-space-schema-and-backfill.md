@@ -4,6 +4,8 @@ status: implemented
 
 # 协作 Space 的 Schema、确定性回填与迁移不可变性
 
+> 历史决策：本页记录不可变迁移 0006/0007。前向迁移 0008 按 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 删除独立空间成员表、约束一租户一空间和全局 slug 唯一；旧迁移文件未改写。
+
 新增 migration 0006（`collab_workspaces` + `collab_workspace_members`）与 0007
 （`projects.space_id` 回填与约束升级）。编号在合入上游 main 时顺延：上游已占用 0005
 （gateway 认证表）。0007 的默认 Space 回填完全确定、不依赖在线 IDaaS：

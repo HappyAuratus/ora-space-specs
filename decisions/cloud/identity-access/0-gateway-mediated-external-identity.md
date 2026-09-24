@@ -4,6 +4,8 @@ status: implemented
 
 # 外部身份由 Gateway 归一，Cloud 保持授权权威
 
+> 历史决策：Gateway 验证、Cloud 授权以及 IDaaS `uuid` 登录键仍适用；下文忽略 `globalUserId` 的规则已由 [20260923-huawei-global-id-alias](20260923-huawei-global-id-alias.md) 修改。当前经验证的 `globalUserId` 用于关联天舟人员，冲突时拒绝自动合并。
+
 Ora 的公开认证入口由独立 Gateway 承担，即 RFC 10017 §6.1 的 Backend-For-Frontend 模式：浏览器不持有
 任何 OAuth 或内部凭据。Gateway 通过可插拔的 Authenticator 验证外部身份，把结果归一为稳定的 `source`、
 `subject` 和非权威的 `displayName`，再用现有的短期内部 service/user JWT 调用 Cloud。Cloud 不直接接入
