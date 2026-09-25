@@ -1,16 +1,16 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 控制监听允许 HTTP/2 保活：放宽 PING 执行策略，更正 `Drain` 的持有者义务表述，并约定 `Watch` 只在排空时正常结束
 
-Cloud 的 Controller gRPC 监听（`control.grpc_addr`）改为接受客户端的 HTTP/2 PING 保活：两次 PING 间隔
-不短于 5 秒即不计违规，连接上没有活动流时也允许 PING。`signals.proto` 中 `Drain` 的注释改为与根决策
-D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者停止对它领取直到新的 `Watch` 建立，不要求
-释放租约，也不取消用户任务。`Watch` 以 OK 状态结束成为契约：只在实例排空时发生，其他任何结束都以
+Cloud 的 Controller gRPC 监听（`control.grpc_addr`）接受客户端的 HTTP/2 PING 保活：两次 PING 间隔
+不短于 5 秒即不计违规，连接上没有活动流时也允许 PING。`signals.proto` 中 `Drain` 的注释与根决策
+D5 一致：它表示发送它的 Cloud 实例即将停止，持有者停止对它领取直到新的 `Watch` 建立，不要求
+释放租约，也不取消用户任务。`Watch` 以 OK 状态结束是契约的一部分：只在实例排空时发生，其他任何结束都以
 错误状态报告，使持有者可以把正常结束当作排空证据。三项都不改变任何消息、状态码、事务或授权。
 
-本决策处于 `approved` 状态：方案已通过评审，尚未实现；核心用例登记在
+本决策处于 `implemented` 状态，由 ora-space/cloud#29 落地（主干合并提交 `34d8067`）；验证证据登记在
 [Cloud 内部控制契约核心用例](../../../test-cases/cloud/controller-integration/cloud-owned-internal-grpc-contract.md#controller-keepalive-pings-never-trigger-goaway)。它是
 [Cloud 拥有 Internal Control gRPC 契约](0-cloud-owned-internal-grpc-contract.md)的后续决策，修改其 D7
 （监听）的传输参数，并澄清 D5 中 `Drain` 的持有者义务与 `Watch` 的结束语义。它只涉及
@@ -22,7 +22,7 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 
 | 根决策约定 | 本文处理 |
 |---|---|
-| D1：proto 是唯一契约源；`v1` 只接受非破坏性修改；生成物提交并检查漂移 | 继承；注释修改是非破坏性变更，`internal/controlpb` 随之重新生成 |
+| D1：proto 是唯一契约源；`v1` 只接受非破坏性修改；生成物提交并检查漂移 | 继承；D2、D3 只修改注释，是非破坏性变更 |
 | D5：`Watch` 至多一次、不持久化、缓冲有界；关停前 `Drain`，之后流正常结束，新订阅为 `UNAVAILABLE` | 继承并澄清：正常结束只在排空时发生，其他结束都是错误状态（D3） |
 | D5：持有者收到 `Drain` 后不再领取，不取消用户任务、不销毁沙盒 | 继承并澄清：不再领取持续到新流建立；不要求释放租约（D2） |
 | D7：独立地址监听、不经 Gateway、只能位于回环或私网；`x-ora-controller-id` 声明身份 | 继承，不变 |
@@ -32,7 +32,7 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 
 ### D1：接受间隔不短于 5 秒的客户端 PING，允许无活动流时 PING
 
-`controlgrpc.New` 构造服务端时设置执行策略 `MinTime = 5s`、`PermitWithoutStream = true`。
+`controlgrpc.New` 构造的服务端使用执行策略 `MinTime = 5s`、`PermitWithoutStream = true`。
 
 - grpc-go 默认策略为 `MinTime = 5min`、`PermitWithoutStream = false`：间隔更短的 PING，或无活动流时的
   PING，各计一次违规；超过两次即以 `GOAWAY(ENHANCE_YOUR_CALM, "too_many_pings")` 关闭整条连接，连接上
@@ -48,11 +48,11 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 最终会被关闭，其 `Watch` 上下文随之取消并退订；在此之前订阅者缓冲有界，失联订阅只会丢弃自己的信号，
 不阻塞发布者，也不影响其他订阅者。
 
-### D2：`Drain` 的注释与 D5 一致
+### D2：`Drain` 只表示发送它的实例即将停止
 
-`signals.proto` 中 `Drain` 现有注释为"要求持有者停止领取并排空在途协调，然后释放租约"。改为：发送它
-的 Cloud 实例即将停止；持有者停止对其领取，直到新的 `Watch` 建立；它不要求释放租约，从不取消用户
-任务或销毁沙盒。
+`signals.proto` 中 `Drain` 的注释是：发送它的 Cloud 实例即将停止；持有者停止对其领取，直到新的
+`Watch` 建立；它不要求释放租约，从不取消用户任务或销毁沙盒。此前的注释要求持有者"排空在途协调，
+然后释放租约"，与 D5 不一致。
 
 - 根决策 D5 与 `cmd/server` 的关停顺序都把 `Drain` 定义为实例关停前的提示；此时释放租约的调用会被
   正在停止的服务端拒绝，而租约是 PostgreSQL 中的事实，Cloud 重启后在过期前仍然有效。
@@ -65,8 +65,8 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 拒绝、传输或内部失败、服务端被强制停止等其他结束方式都以错误状态报告；由调用方取消的流不受此约束，
 调用方本身不会观察到它的结束状态。`signals.proto` 中 `rpc Watch` 的注释写明这一规则。
 
-- 现有实现已经如此：Watch handler 只在排空关闭订阅通道时正常返回，订阅被拒绝返回 `UNAVAILABLE`，
-  epoch 校验失败返回对应裁决。本条把这一行为从实现细节提升为契约，不改变任何代码路径。
+- Watch handler 只在排空关闭订阅通道时正常返回，订阅被拒绝返回 `UNAVAILABLE`，epoch 校验失败返回
+  对应裁决。本条把这一既有行为从实现细节提升为契约，没有改变任何代码路径。
 - 持有者依赖它区分"实例即将停止"与"流出错"：`Drain` 消息与其他信号一样可能因订阅缓冲满被丢弃，
   而正常结束不会丢失，是更可靠的排空证据
   （[Controller 消费 Watch 信号流](../../controller/api-boundary/20260924-controller-consumes-watch-signals.md) D3）。
@@ -98,13 +98,12 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 - TLS、Controller 认证与非私网监听，仍留给认证 ADR。
 - 多实例下 `Drain` 的让位语义与 `NodeAssignment`，仍留给 scale 决策。
 
-## 落地顺序
+## 落地结果
 
-1. `internal/controlgrpc` 设置执行策略；`signals.proto` 更正 `Drain` 注释、在 `rpc Watch` 注释中写明
-   D3 的结束语义，并重新生成 `internal/controlpb`；
-   `internal/controlgrpc` 的中英文 README 同步。完成条件：测试在无活动流的连接上以略长于 5 秒的间隔
-   连续发送 PING，服务端全部回应且不发送 `GOAWAY`（同一测试在默认策略下会在第四次 PING 收到
-   `GOAWAY`）；现有 `TestControlGRPCWatchDeliversWorkAndDrain` 继续断言 `Drain` 后流以 EOF 结束、之后的
-   订阅为 `UNAVAILABLE`；lint、breaking 与生成漂移检查通过。
-2. desktop 把 submodule 移到包含步骤 1 的主干合并提交，Controller 启用保活（Controller 后续决策）。
-   Controller 的保活必须在步骤 1 部署之后才能上线。
+- ora-space/cloud#29（主干合并提交 `34d8067`）：`internal/controlgrpc` 以常量 `keepaliveMinTime` 设置 D1
+  的执行策略；`signals.proto` 的 `Drain` 与 `rpc Watch` 注释写明 D2、D3，`internal/controlpb` 重新生成且
+  只有注释变化；`internal/core` 中 `SignalDrain` 的注释与 `internal/controlgrpc` 中英文 README 同步。
+- 与提案一致，没有偏离。
+- 部署约束：Controller 的 30 秒保活
+  （[Controller 消费 Watch 信号流](../../controller/api-boundary/20260924-controller-consumes-watch-signals.md) D5）
+  只能连接包含本决策的 Cloud；更早的 Cloud 会在约两分钟空闲后以 `GOAWAY` 断开该连接。

@@ -197,7 +197,8 @@ Cloud 通道启用 HTTP/2 PING 保活：间隔 30 秒，等待回应 10 秒，�
 ## 落地顺序
 
 1. Cloud：监听放宽 PING 执行策略，更正 `Drain` 注释、约定 `Watch` 只在排空时正常结束并重新生成（Cloud
-   后续决策）。完成条件：测试证明按新间隔的 PING 不触发 `GOAWAY`。
+   后续决策）。完成条件：测试证明按新间隔的 PING 不触发 `GOAWAY`。已由 ora-space/cloud#29 完成（主干
+   合并提交 `34d8067`）。
 2. desktop：`ora-controller-proto` 以测试专用 feature 生成服务端桩，`ora-controller` 的测试据此建立
    内存假 Cloud；Cloud 适配器按 D1–D6 消费 `Watch` 并启用保活；文档中英文同步。完成条件：以假 Cloud 为
    对端的行为测试覆盖信号触发领取、订阅前积压、断流回退与重开、`Drain` 暂停与恢复、打开时资格失效、

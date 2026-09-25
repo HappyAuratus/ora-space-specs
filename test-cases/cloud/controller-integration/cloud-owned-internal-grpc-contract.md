@@ -1,8 +1,9 @@
 # Cloud 内部控制契约验收
 
 依据[已实现的根决策](../../../decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md)与
-[已批准的监听保活后续决策](../../../decisions/cloud/controller-integration/20260924-control-listener-keepalive.md)。
-后续决策尚未实现，其新增义务的证据按实际状态标记。
+[已实现的监听保活后续决策](../../../decisions/cloud/controller-integration/20260924-control-listener-keepalive.md)。
+后续决策新增义务的证据核对 Cloud 主干 `34d8067`（含 cloud#29），`task check` 已在该变更上以
+`REQUIRE_POSTGRES=1` 本地通过。
 证据核对 ora-space/cloud#24 栈顶 `9b33596ddee1e59e90f622181fb88e88afa95cdf`（cloud#20–#24 尚未合并，契约本身
 由 cloud#19 合入主干）；下列 PostgreSQL 测试已在该提交上以 `REQUIRE_POSTGRES=1` 本地重跑通过。
 
@@ -121,7 +122,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 空闲连接上的 PING 不计违规 | 计划 `controlgrpc` 包内以裸 HTTP/2 客户端在无流连接上按 `MinTime + 500ms` 发送 4 个 PING，断言 4 个 ACK 且无 `GOAWAY`；去掉策略时同一测试须在第 4 个 PING 收到 `GOAWAY` | Missing |
+| 空闲连接上的 PING 不计违规 | `controlgrpc.TestKeepalivePingsOnIdleConnectionNeverTriggerGoaway` 以裸 HTTP/2 客户端在无流连接上按 `keepaliveMinTime + 500ms` 发送 4 个 PING，再立即发送一个探测 PING 以冲出排在最后一个 ACK 之后的 `GOAWAY`，断言全部 ACK 且无 `GOAWAY`；去掉策略时该测试以 `GOAWAY(too_many_pings)` 失败 | Covered |
+| 服务端不主动 PING | 目前只依赖评审：`controlgrpc.New` 不设置 `KeepaliveParams` | Missing |
 
 决策依据：监听保活后续决策 D1，不变量 1、2。
 
