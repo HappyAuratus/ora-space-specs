@@ -1,10 +1,10 @@
 # Controller–Node 传输：FrameChannel、本机 IPC 与云端 WebSocket
 
-依据[已批准的传输决策](../../../decisions/node/protocol/20260924-frame-channel-with-ipc-and-websocket.md)。
+依据[已实现的传输决策](../../../decisions/node/protocol/20260924-frame-channel-with-ipc-and-websocket.md)。
 这里登记的是跨传输一致性和 WebSocket 接入的验证义务。握手身份、单会话、持久接管和确认顺序
 这些与传输无关的规则，继续以[本机归属核心用例](../../controller/persistence/local-controller-node-ownership.md)
-为准；本文只要求它们在两种传输下都成立。本决策已批准、尚未实现：现有证据只来自当前的 Unix socket 实现
-和字节流 codec，没有任何 `FrameChannel` 或 WebSocket 证据。
+为准；本文只要求它们在两种传输下都成立。证据来自 desktop `0d046a57`。经 cluster Sandbox Server
+或平台路由的联调属于部署验证，不在本文登记。
 
 ## Both Transports Carry Identical Frame Bodies
 
@@ -21,8 +21,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 帧体唯一定义与 IPC 线上兼容 | `ora-node-protocol` 往返测试（如 `clone_request_has_independent_wire_and_fragmented_round_trip`）覆盖现有字节流 codec 与分片；尚缺拆出纯帧体函数后的 IPC 线上字节不变证据 | Partial |
-| WS 一消息一帧与非法输入拒绝 | 无 | Missing |
+| 帧体唯一定义与 IPC 线上兼容 | `ora-node-protocol` 的 `stream_envelope_is_length_prefix_around_frame_body` 证明流式线上字节恰为长度前缀加帧体，`rejects_invalid_frame_bodies` 证明帧体与流式读取共用长度、类型、JSON 和不变量校验；`ora-node-transport` 的 `frames_round_trip_with_length_prefix_wire` 与 `rejects_truncated_and_out_of_range_frames` 覆盖 IPC 通道的线上字节、半帧和越界长度 | Covered |
+| WS 一消息一帧与非法输入拒绝 | `frames_round_trip_as_binary_messages` 覆盖双向一消息一帧；`close_codes_and_invalid_messages` 覆盖 text message 与超过 `MAX_FRAME_LENGTH` 的消息被拒绝 | Covered |
 
 决策依据：D1、D2，不变量 2、3。
 
@@ -39,8 +39,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| IPC 取消安全 | 当前 Controller 以 pin 整帧读取保证，没有针对 `FrameChannel` 接口的测试 | Missing |
-| WS 取消安全 | 无 | Missing |
+| IPC 取消安全 | `cancelled_receive_keeps_partial_frame` 以 3 字节分片慢速写入，并在 `select!` 中反复取消 `recv`，验证得到完整帧且其后正常结束 | Covered |
+| WS 取消安全 | `cancelled_receive_keeps_fragmented_message` 以慢速分片（中间夹 ping）发送一条消息，并在 `select!` 中反复取消 `recv`，验证整条消息恰好交付一次，其后正常结束 | Covered |
 
 决策依据：D1，不变量 2。
 
@@ -57,9 +57,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| IPC 会话语义 | 本机归属核心用例中 `local_ipc_enforces_owner_and_replays_original_clone_after_restart`、`ora-controller/tests/session.rs` 等证据覆盖当前 Unix socket 实现；尚缺迁到 `FrameChannel` 后的同一组证据 | Partial |
-| WS 会话语义 | 无；需要在进程内 WS 上重复同一组会话测试 | Missing |
-| 经 Sandbox Server 的端到端恢复 | 无；需要在 cluster 中覆盖代理断连、重连、ACK 丢失重放和身份不符 | Missing |
+| IPC 会话语义 | 本机归属核心用例中的 `local_ipc_enforces_owner_and_replays_original_clone_after_restart`、`independent_controller_replays_durable_takeover_after_lost_ack_and_kill` 与 `ora-controller/tests/session.rs` 在迁移后经 `FrameChannel` 运行，全部通过 | Covered |
+| WS 会话语义 | `controller_session_over_websocket_takes_over_clone_and_keeps_single_session` 让生产 Controller 会话经 WebSocket 连接生产 Node，覆盖握手、clone 结果持久接管和身份不符拒绝；`websocket_replays_unacknowledged_result_across_disconnect_and_restart_until_controller_acks` 覆盖未确认结果在断线与 Node 重启后按原身份重放、生产 Controller 会话接管并确认重放事件，确认后状态查询仍返回 `Completed` 而事件不再重放 | Covered |
 
 决策依据：D1、D3、D5，不变量 1、5、6。
 
@@ -68,17 +67,17 @@
 - **风险**：抽出准入后，某种监听方式绕过了独占规则；WS 的拒绝经代理后被映射为 `502`，与 Node
   不可达无法区分。
 - **前置状态**：Node 以 IPC 或 WS 中的一个入口监听，已有有效会话，并在执行长时间 clone。
-- **触发**：第二条连接直接到达，或经 Sandbox Server 到达；旧会话关闭或超时撤销后重连。
+- **触发**：第二条连接到达；旧会话关闭或超时撤销后重连。
 - **必须成立**：两种入口都拒绝第二会话且不抢占；WS 先 upgrade 再以约定的 close code（`4409`）
-  关闭，经代理后 Controller 能归类为 `Busy`；撤销后旧连接未受理的消息失效。
-- **禁止结果**：最后连接者获胜；WS 用 HTTP 状态拒绝；配置同时启用两个入口。
+  关闭，Controller 能归类为 `Busy`（路由原样转发 close code，这是 D4 选择该方式的前提）；撤销后旧连接未受理的消息失效。
+- **禁止结果**：最后连接者获胜；WS 用 HTTP 状态拒绝；配置同时启用两个入口（`ControlListen`
+  是二选一的 enum，该状态在类型上不可表示，不需要运行时证据）。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| IPC 独占 | `local_ipc_enforces_owner_and_replays_original_clone_after_restart`、`busy_clone_keeps_heartbeats_and_revokes_timed_out_queued_command` 覆盖当前 accept 循环实现；尚缺独立准入对象后的证据 | Partial |
-| WS 独占与 close code 端到端可辨 | 无 | Missing |
-| 监听配置只能二选一 | 无 | Missing |
+| IPC 独占 | `local_ipc_enforces_owner_and_replays_original_clone_after_restart`、`busy_clone_keeps_heartbeats_and_revokes_timed_out_queued_command` 在准入改为对 `Acceptor` 泛型后通过；`connect_classifies_missing_endpoint_and_busy_rejection_closes` 覆盖 IPC 拒绝即关闭 | Covered |
+| WS 独占与 close code 可辨 | `busy_rejection_is_recognizable_close_code` 覆盖 upgrade 后以 `4409` 关闭且可识别；真实 Node 测试在会话存活时验证第二连接收到 `4409` | Covered |
 
 决策依据：D4，不变量 4。
 
@@ -86,17 +85,18 @@
 
 - **风险**：所有连接失败混为一类，日志和后续 Provider 无法区分沙盒不存在、凭据错误与暂时不可达；
   或者某类失败触发了执行失败或重建。
-- **前置状态**：Controller 有待派发或未确认的执行；Sandbox Server 按静态路由表转发。
+- **前置状态**：Controller 有待派发或未确认的执行；路由以原始 HTTP 响应模拟。
 - **触发**：Node 未启动、路由返回 `404`/`403`/`502`/`504`、会话被 `4409` 拒绝、握手身份不符。
-- **必须成立**：分别归类为 `Unreachable`、`NotFound`、`Rejected`、`Busy`、`Protocol`；各类都按
+- **必须成立**：分别归类为 `Connect(Unreachable)`、`Connect(NotFound)`、`Connect(Rejected)`、
+  `Busy`、`Protocol`、`Disconnected`；IPC 无 close code，会话占用归入 `Protocol`；各类都按
   `reconnect_ms` 重试，原执行责任保留。
 - **禁止结果**：因 `NotFound` 或其他失败标记执行失败、改换执行身份或销毁沙盒。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 失败分类 | 无 | Missing |
-| 失败后保留责任 | 本机归属核心用例覆盖 IPC 断连后保留原执行；尚缺 WS 与各分类的证据 | Partial |
+| 失败分类 | `connect_failures_are_classified` 覆盖路由 `404`/`403`/`502`/`504`、错误路径、无监听和非法端点；Controller `connection_failures_are_classified_without_releasing_responsibility` 覆盖 IPC 与 WS 的 `Unreachable`；真实 Node 测试覆盖 `Protocol` 与 `Busy` | Covered |
+| 失败后保留责任 | 同一 Controller 测试在两种连接失败后验证原派发仍待处理且无结果；本机归属核心用例覆盖 IPC 断连后保留原执行 | Covered |
 
 决策依据：D7，不变量 6。
 
@@ -106,14 +106,14 @@
   Node。
 - **前置状态**：WS 端点由部署配置提供 URL 与请求头（如 `ate-target-actor`、平台凭据）。
 - **触发**：更换 atespace、base URL 或请求头；检查 Node 配置与会话代码。
-- **必须成立**：只修改端点配置就能切换本地 Sandbox Server 与平台；传输层把请求头原样发送，不解析
-  其含义；Node 的配置与镜像不含平台凭据；Node 握手只校验 `ControllerId` 归属。
+- **必须成立**：切换路由只需修改端点配置；传输层把请求头原样发送，不解析其含义；Node 握手只校验
+  `ControllerId` 归属。Node 的配置与镜像不含平台凭据是 D6 的部署前提，由部署方保证，不在本文登记
+  测试证据。
 - **禁止结果**：传输或会话代码中出现 `ate-target-actor` 等厂商字段的特殊处理；Node 校验平台凭据。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 端点配置驱动、请求头原样发送 | 无 | Missing |
-| Node 不持有平台凭据 | 无；属于部署前提，需要在 cluster 配置评审或测试中核对 | Missing |
+| 端点配置驱动、请求头原样发送 | `configured_headers_are_sent_verbatim` 验证路由收到原样的路径、query 与 `ate-target-actor`；传输与会话代码不包含厂商字段 | Covered |
 
 决策依据：D3、D6、D8，不变量 7。
