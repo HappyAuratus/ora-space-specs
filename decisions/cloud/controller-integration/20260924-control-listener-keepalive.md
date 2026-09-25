@@ -36,8 +36,11 @@ D5 一致：它表示发送它的 Cloud 实例即将停止，持有者停止对�
 
 - grpc-go 默认策略为 `MinTime = 5min`、`PermitWithoutStream = false`：间隔更短的 PING，或无活动流时的
   PING，各计一次违规；超过两次即以 `GOAWAY(ENHANCE_YOUR_CALM, "too_many_pings")` 关闭整条连接，连接上
-  的 unary 调用与 `Watch` 一并中断。按默认策略，Controller 在空闲 `Watch` 上的 30 秒保活约两分钟后被
-  断开，并在之后反复发生。
+  的 unary 调用与 `Watch` 一并中断；服务端每次写出数据或响应头都会清零违规计数。Controller 的客户端
+  只在连续 30 秒没有读到任何帧时发送 PING，而每 10 秒的续约回复让健康连接上从不出现 PING，所以默认
+  策略在正常运行中不会断开 Controller（以本决策之前的 Cloud 为对端，空闲约三分钟未出现 `GOAWAY`）。
+  PING 只在 Cloud 长时间不写任何帧时出现；此时默认策略会在第三次违规后断开连接，把一次可以恢复的
+  停顿变成连接上全部调用的中断。放宽策略让这种停顿只由客户端的保活超时来判定，是纵深防御。
 - 5 秒低于任何合理的客户端间隔（grpc-go 客户端的下限是 10 秒，Controller 使用 30 秒），为网络抖动留出
   余量，同时仍能拒绝真正的 PING 洪泛。
 - 允许无活动流时 PING：Controller 在 `Watch` 断开后的回退期间同样需要保活，才能在下一个普通调用前
@@ -104,6 +107,8 @@ D5 一致：它表示发送它的 Cloud 实例即将停止，持有者停止对�
   的执行策略；`signals.proto` 的 `Drain` 与 `rpc Watch` 注释写明 D2、D3，`internal/controlpb` 重新生成且
   只有注释变化；`internal/core` 中 `SignalDrain` 的注释与 `internal/controlgrpc` 中英文 README 同步。
 - 与提案一致，没有偏离。
-- 部署约束：Controller 的 30 秒保活
+- 部署顺序：提案阶段认为启用 30 秒保活的 Controller
   （[Controller 消费 Watch 信号流](../../controller/api-boundary/20260924-controller-consumes-watch-signals.md) D5）
-  只能连接包含本决策的 Cloud；更早的 Cloud 会在约两分钟空闲后以 `GOAWAY` 断开该连接。
+  必须在本决策之后部署，否则空闲约两分钟即被 `GOAWAY`。以本决策之前的 Cloud（`7d5f227`）做的手工对照
+  没有复现断开：客户端只在连续 30 秒无入站帧时发 PING，续约回复让健康连接上从不发 PING。本决策仍按
+  纵深防御保留，但不构成部署顺序约束。

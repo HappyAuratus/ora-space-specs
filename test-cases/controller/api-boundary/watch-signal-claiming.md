@@ -1,9 +1,12 @@
 # Controller 消费 Watch 信号流验收
 
 依据[已批准的后续决策](../../../decisions/controller/api-boundary/20260924-controller-consumes-watch-signals.md)。
-决策尚未实现，下列义务的证据均为 `Missing`；表中的"所需直接证据"描述实现时应补的测试，落地后按实际测试名
-更新并核对提交。行为测试以内存假 Cloud（由 `ora-controller-proto` 测试专用 feature 生成的服务端桩托管）为
-对端、以 `ControllerRuntime` 驱动云端持久模式；状态迁移另以对流类型泛型的纯逻辑单元测试逐一覆盖。Cloud 服务端
+证据核对 [desktop#614](https://github.com/ora-space/desktop/pull/614) 的 `95b16bd`（尚未合并），
+`cargo test -p ora-controller` 已在该提交上本地重跑。行为测试位于 `apps/ora-controller/tests/cloud.rs`：以内存假 Cloud
+（`apps/ora-controller/tests/support/fake_cloud.rs`，由 `ora-controller-proto` 的 `test-server` feature 生成的
+服务端桩托管真实契约并记录调用序列）为对端、以 `ControllerRuntime` 驱动云端持久模式。状态迁移由
+`apps/ora-controller/src/cloud/signals.rs` 中对流类型泛型的纯逻辑单元测试逐一覆盖。
+与真实 Cloud（`ora-space/cloud` `34d8067`）的手工端到端验证记录在 desktop#614 的描述中。Cloud 服务端
 一侧的信号、排空与保活证据见
 [Cloud 内部控制契约核心用例](../../cloud/controller-integration/cloud-owned-internal-grpc-contract.md#watch-signals-only-accelerate-claiming)。
 
@@ -23,10 +26,10 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 信号与流建立触发领取 | 以假 Cloud 为对端：`claim_interval_ms` 为 1 小时时，`WorkAvailable` 后迅速完成派发登记；启动前入队的工作在 `Watch` 打开后立即登记 | Missing |
-| 在线时只按信号与兜底领取 | 状态机单元测试：在线状态下领取节拍不产生领取、续约节拍产生一次兜底领取、`NodeAssignment` 不产生领取 | Missing |
-| 断流回退与重开 | 以假 Cloud 为对端：流以错误状态结束后按 `claim_interval_ms` 领取，假 Cloud 重新接受后流重开；状态机单元测试覆盖无流状态两个节拍上的打开与领取 | Missing |
-| 无租约不打开、不领取 | 状态机单元测试：未持有租约时任一状态、任一节拍都不打开流、不领取 | Missing |
+| 信号与流建立触发领取 | `tests/cloud.rs::signals_claim_without_waiting_for_the_claim_interval`（`claim_interval_ms` 为 1 小时，信号后 1 秒内登记，整段调用序列相等）与 `work_accepted_before_the_stream_opens_is_claimed_on_establishment` | Covered |
+| 在线时只按信号与兜底领取 | `signals.rs::ticks_claim_by_stream_state` 与 `stream_events_follow_the_decision_table` 覆盖在线状态下领取节拍不领取、续约节拍兜底领取、`NodeAssignment` 与未知信号不领取；上一行两个测试的完整调用序列证明在线时没有周期领取；10 秒兜底没有端到端测试 | Partial |
+| 断流回退与重开 | `tests/cloud.rs::a_broken_stream_falls_back_to_periodic_claims_and_reopens`：流以错误结束后，无信号的工作由周期领取登记，假 Cloud 重新接受后流重开并按信号登记 | Covered |
+| 无租约不打开、不领取 | `signals.rs::opens_only_under_a_lease_without_a_live_stream` 与 `a_lost_lease_closes_only_a_live_stream`；`tests/cloud.rs::a_stale_stream_open_stops_claims_and_writes` 证明丢弃 epoch 后不再发出调用 | Covered |
 
 决策依据：D1、D2、D6，不变量 2、3。
 
@@ -47,9 +50,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 排空期间不领取、不释放租约 | 以假 Cloud 为对端：`Drain` 后若干个领取节拍内调用序列只有续约与重开，没有 `ClaimWork` 与 `ReleaseLease`；等待时长以节拍倍数表达 | Missing |
-| 恢复后立即领取积压 | 以假 Cloud 为对端：重新接受 `Watch` 后排空期间积压的工作全部登记 | Missing |
-| 按打开结果决定去向 | 状态机单元测试：排空状态下打开成功、`UNAVAILABLE`、超时、资格失效与其他错误分别到达 D3 表中的状态；正常结束与 `Drain` 进入同一状态；以假 Cloud 为对端，排空后以 `UNIMPLEMENTED` 拒绝时恢复周期领取 | Missing |
+| 排空期间不领取、不释放租约 | `tests/cloud.rs::a_drain_pauses_claims_until_a_new_stream_opens`：`Drain` 后至少三次被拒的重开（每次对应一个节拍）之间没有其他调用，全程只在关停时释放一次租约；Node 会话照常只有代码路径保证，没有断言 | Partial |
+| 恢复后立即领取积压 | 同一测试：假 Cloud 重新接受 `Watch` 后，排空期间入队的工作被登记 | Covered |
+| 按打开结果决定去向 | `signals.rs::open_attempts_follow_the_decision_table` 与 `stream_events_follow_the_decision_table` 覆盖 D3 表每一行，以及 `Drain` 与正常结束进入同一状态；`fault.rs::opening_separates_unavailable_from_refusals` 与 `opening_without_headers_times_out_as_unavailable` 覆盖分类；`tests/cloud.rs::a_refused_stream_after_a_drain_resumes_periodic_claims` 覆盖排空后以 `UNIMPLEMENTED` 拒绝时恢复周期领取 | Covered |
 
 决策依据：D3，不变量 3、4。
 
@@ -65,8 +68,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 连续登记到队列为空 | 以假 Cloud 为对端：入队 17 项以上、只发一个信号，全部登记 | Missing |
-| 满批让出与失败即停 | 批量领取的单元测试：满批时报告仍有积压；队头失败时停止且只告警一次 | Missing |
+| 连续登记到队列为空 | `tests/cloud.rs::one_signal_registers_a_backlog_beyond_one_batch`：入队 17 项、只发一个信号，全部按序登记 | Covered |
+| 满批让出与失败即停 | 上一行的测试证明满批后继续领取，但不能区分"让出后继续"与"不分批"；队头失败即停且只告警一次没有直接测试 | Missing |
 
 决策依据：D4，不变量 1、5。
 
@@ -84,14 +87,15 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 资格失效后停止领取与写入 | 以假 Cloud 为对端：打开 `Watch` 被判陈旧后的调用序列不含领取与写入；同时补上[持久协调双适配器核心用例](../persistence/coordination-store-adapters.md#remote-writes-retransmit-lost-replies-under-one-submission-identity)中"资格失效后停止写入"的缺口 | Missing |
-| 关停关闭流并释放租约 | 以假 Cloud 为对端：关停后假 Cloud 观察到流被取消，并收到带正确 epoch 的 `ReleaseLease` | Missing |
+| 资格失效后停止领取与写入 | `tests/cloud.rs::a_stale_stream_open_stops_claims_and_writes`：打开被判陈旧后，六个领取节拍内的完整调用序列只有获取租约与那次打开，没有登记；等待以节拍倍数表达，因为没有租约时循环不发出任何可等待的调用 | Covered |
+| 关停关闭流并释放租约 | `tests/cloud.rs::shutdown_cancels_the_stream_and_releases_the_lease`：假 Cloud 观察到流被取消，最后一次调用是带正确 epoch 的 `ReleaseLease`；"先关流再释放"的先后没有断言 | Partial |
 
 决策依据：D1，不变量 2；持久协调后续决策 D1。
 
 ## Idle Cloud Connections Stay Alive And Lost Ones Fail Over
 
-- **风险**：空闲连接被 Cloud 以 `GOAWAY` 反复断开，或经 NAT 静默失联的连接让 Controller 一直以为流在线。
+- **风险**：经 NAT 或中间设备静默失联的连接让 Controller 一直以为流在线，或保活 PING 被 Cloud 以 `GOAWAY`
+  断开整条连接。
 - **前置状态**：Cloud 监听已放宽 PING 执行策略；Controller 的 Cloud 通道启用 30 秒 / 10 秒、空闲也发送的保活。
 - **触发**：流在线且空闲超过 grpc-go 默认策略下的断开时间；对端停止回应 PING。
 - **必须成立**：空闲连接不被 `GOAWAY`；对端不回应时连接关闭，流以错误结束并进入无流。
@@ -100,7 +104,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 空闲不被断开 | Cloud 侧由[监听保活用例](../../cloud/controller-integration/cloud-owned-internal-grpc-contract.md#controller-keepalive-pings-never-trigger-goaway)证明策略；Controller 侧以真实 Cloud 空闲超过 2 分钟的手工验证 | Missing |
-| 失联后回退 | 以真实 Cloud 或可停止回应 PING 的对端验证流以错误结束并进入无流 | Missing |
+| 空闲不被断开 | Cloud 侧由[监听保活用例](../../cloud/controller-integration/cloud-owned-internal-grpc-contract.md#controller-keepalive-pings-never-trigger-goaway)证明策略；Controller 侧只有 desktop#614 记录的手工验证（真实 Cloud 空闲约三分钟未断开），没有自动化测试 | Missing |
+| 失联后回退 | 只有 desktop#614 记录的手工验证：冻结 Cloud 进程约 33 秒后连接被保活关闭；没有自动化测试。另观察到失联期间流错误要等续约与领取的超时结束后才被处理，状态暂时停留在在线 | Missing |
 
 决策依据：D5，不变量 6。

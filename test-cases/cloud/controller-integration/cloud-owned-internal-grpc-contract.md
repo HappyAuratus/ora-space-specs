@@ -112,8 +112,8 @@
 
 ## Controller Keepalive Pings Never Trigger Goaway
 
-- **风险**：按 grpc-go 默认执行策略，Controller 在空闲连接上的保活 PING 累计违规后被 `GOAWAY(too_many_pings)`
-  断开，连接上的 unary 调用与 `Watch` 一并中断并反复发生。
+- **风险**：按 grpc-go 默认执行策略，Cloud 长时间不写任何帧时，Controller 的保活 PING 累计违规后被
+  `GOAWAY(too_many_pings)` 断开，连接上的 unary 调用与 `Watch` 一并中断。
 - **前置状态**：真实 `controlgrpc` 服务端；一条没有任何活动流的 HTTP/2 连接。
 - **触发**：以略长于 `MinTime`（5 秒）的间隔连续发送 PING，次数超过默认策略下触发 `GOAWAY` 的次数。
 - **必须成立**：每个 PING 都得到 ACK，服务端不发送 `GOAWAY`；放宽的只有 PING 执行策略，服务端不主动发起 PING。
