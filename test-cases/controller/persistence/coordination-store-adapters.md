@@ -38,7 +38,7 @@ SQLite 适配器的原子接受、接管与恢复义务沿用
 |---|---|---|
 | 同身份重传 | `apps/ora-controller/src/cloud/fault.rs::writes_retransmit_only_unknown_outcomes_under_one_identity` | Covered |
 | 分类映射 | `fault.rs::statuses_map_to_contract_classes` | Covered |
-| 资格失效后停止写入 | [Watch 信号流用例](../api-boundary/watch-signal-claiming.md#watch-lives-only-under-the-held-epoch)中的 `tests/cloud.rs::a_stale_stream_open_stops_claims_and_writes`（desktop#614，尚未合并）证明打开 `Watch` 被判陈旧后不再领取与登记；由其他写调用（接管、查询结果）的陈旧裁决触发的路径没有直接测试 | Partial |
+| 资格失效后停止写入 | [Watch 信号流用例](../api-boundary/watch-signal-claiming.md#watch-lives-only-under-the-held-epoch)中的 `tests/cloud.rs::a_stale_stream_open_stops_claims_and_writes`（desktop#614，主干 `03d521b`）证明打开 `Watch` 被判陈旧后不再领取与登记；由其他写调用（接管、查询结果）的陈旧裁决触发的路径没有直接测试 | Partial |
 
 决策依据：D3，不变量 4。
 

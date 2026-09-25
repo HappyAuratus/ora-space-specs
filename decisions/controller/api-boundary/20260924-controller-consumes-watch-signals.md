@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 消费 Watch 信号流：信号驱动领取、断流退回周期领取、`Drain` 暂停领取直到新流建立
@@ -11,7 +11,8 @@ status: approved
 及时发现并退回周期领取。信号仍只是加速器：工作归属继续由 `RecordDispatch` 事务决定，信号丢失只影响
 延迟。
 
-本决策处于 `approved` 状态：方案已通过评审，尚未实现；核心用例登记在
+本决策处于 `implemented` 状态，由 ora-space/desktop#614（主干合并提交 `03d521b`）落地，Cloud 侧配套由
+ora-space/cloud#29 落地；验证证据登记在
 [Watch 信号流核心用例](../../../test-cases/controller/api-boundary/watch-signal-claiming.md)。它是
 [Controller 契约方向后续决策](20260922-cloud-owned-contract-and-controller-dial-out.md)的后续决策，修改
 其 D2 中"当前 Controller 不消费该流，只做周期领取"的约定，以及
@@ -25,7 +26,7 @@ SQLite 模式、Node 会话与部署配置字段都不变。Cloud 监听端为�
 
 ## 背景
 
-现状下 Controller 每 `claim_interval_ms`（minicloud 生成 500 ms）调用一次 `ClaimWork`：空闲时每秒两次
+此前 Controller 每 `claim_interval_ms`（minicloud 生成 500 ms）调用一次 `ClaimWork`：空闲时每秒两次
 PostgreSQL 查询，派发延迟的下限就是这个间隔。Cloud 已按根决策 D5 提供 `Watch`：订阅登记后才发送
 响应头；接受事务提交后发送带 `operation_id` 的 `WorkAvailable`；每个订阅者缓冲 16 条、满时丢弃；关停
 前发送 `Drain` 并正常结束流，排空期间新的 `Watch` 为 `UNAVAILABLE`；打开时只校验一次 epoch。
@@ -115,8 +116,8 @@ Controller 对它的义务"不再领取、不取消用户任务、不销毁沙�
 
 不释放租约：`Drain` 表示发送它的 Cloud 实例即将停止，而不是要求 Controller 让位。租约是 Cloud
 PostgreSQL 中的事实，Cloud 重启后原租约在过期前仍然有效；此时向正在停止的实例发送 `ReleaseLease`
-会被拒绝，即使成功也只会让 Controller 之后以新的 epoch 重新获取。`signals.proto` 中 `Drain` 注释的
-"然后释放租约"与此不一致，由 Cloud 后续决策更正。
+会被拒绝，即使成功也只会让 Controller 之后以新的 epoch 重新获取。`signals.proto` 中 `Drain` 的注释
+已由 Cloud 后续决策改为同样的表述。
 
 暂停而不是继续周期领取：排空后发往该实例的领取只会失败并反复告警；暂停遵守 Cloud 根决策 D5 的
 "不再领取"，而持续的重开尝试保证 Cloud 恢复后第一时间继续。
@@ -157,8 +158,7 @@ Cloud 通道启用 HTTP/2 PING 保活：连续 30 秒没有读到对端的任何
 - 与 Cloud 执行策略的关系：grpc-go 服务端默认要求客户端 PING 间隔不短于 5 分钟，服务端两次写帧之间
   累计三次违规即以 `GOAWAY` 关闭整条连接。由于只有连续 30 秒无入站帧才发 PING，健康连接上不会累计
   违规；只有 Cloud 长时间不写任何帧而连接仍在时，默认策略才会断开连接。Cloud 放宽该策略（Cloud 后续
-  决策）是纵深防御，不是本条的部署前提：以 cloud#29 之前的 Cloud 为对端，空闲约三分钟未出现
-  `GOAWAY`。
+  决策）是纵深防御，不是本条的部署前提。
 
 ### D6：`NodeAssignment` 只记录
 
@@ -198,20 +198,24 @@ Cloud 通道启用 HTTP/2 PING 保活：连续 30 秒没有读到对端的任何
 - 流上的应用层心跳：当前依赖 HTTP/2 保活，契约没有心跳消息；需要穿越不转发 PING 的中间层时再议。
 - Controller 认证与 TLS 不变，仍留给认证 ADR。
 
-## 落地顺序
+## 落地结果
 
-1. Cloud：监听放宽 PING 执行策略，更正 `Drain` 注释、约定 `Watch` 只在排空时正常结束并重新生成（Cloud
-   后续决策）。完成条件：测试证明按新间隔的 PING 不触发 `GOAWAY`。已由 ora-space/cloud#29 完成（主干
-   合并提交 `34d8067`）。
-2. desktop：`ora-controller-proto` 以测试专用 feature 生成服务端桩，`ora-controller` 的测试据此建立
-   内存假 Cloud；Cloud 适配器按 D1–D6 消费 `Watch` 并启用保活；文档中英文同步。完成条件：以假 Cloud 为
-   对端的行为测试覆盖信号触发领取、订阅前积压、断流回退与重开、`Drain` 暂停与恢复、打开时资格失效、
-   关停时关闭流并释放租约；状态迁移有单元测试；以真实 Cloud 为对端手工验证 clone 闭环与 Cloud 重启。
-   实现与本地验证可与步骤 1 并行。原先要求合入在步骤 1 之后，理由是保活会被旧策略断开；手工对照验证
-   表明健康连接上不会发出 PING（D5），该约束并不成立，且步骤 1 已先合入。
-3. desktop：submodule gitlink 移到包含步骤 1 的 Cloud 主干合并提交并重新生成客户端（只有注释变化）。
-   同时更正前序决策中的一处事实：desktop#600 已关闭而未合并，当前 gitlink 仍是 cloud#19 的 PR head
-   `535ca76c`；它可从 Cloud 主干到达，契约内容与主干只有注释差异。
-
-步骤 2 合入之前 Controller 行为与现状一致；从步骤 2 起，云端模式的领取节拍按 D2 改变，本机模式不受
-影响。
+- ora-space/cloud#29（Cloud 主干 `34d8067`）：监听放宽 PING 执行策略，更正 `Drain` 注释并约定 `Watch` 只在
+  排空时正常结束。
+- ora-space/desktop#614（desktop 主干 `03d521b`）：
+  - `third_party/cloud` 移到 `34d8067`，重新生成只有注释变化。这也更正了前序决策中的一处事实：desktop#600
+    已关闭而未合并，此前 gitlink 一直是 cloud#19 的 PR head `535ca76c`。
+  - Cloud 适配器的长驻任务拆为 `cloud/coordinate.rs`（主循环）、`cloud/signals.rs`（三状态机，对流类型泛型的
+    纯逻辑）、`cloud/claim.rs`（批量领取）与只管租约的 `cloud/lease.rs`；`cloud/fault.rs` 区分打开失败中的
+    `UNAVAILABLE`/超时与其他拒绝，状态码仍只在该模块检查。
+  - `ora-controller-proto` 以 `test-server` feature 生成服务端桩，生产构建不编译；Controller 测试据此托管
+    内存假 Cloud。模块尺寸检查不再统计带 `@generated` 标记的生成文件，生成物由漂移检查约束。
+  - `scripts/bash/init-cloud-proto.sh` 在全新 partial clone 后重建子模块索引：pin 恰为 Cloud 默认分支头时，
+    原流程会把全部契约文件报告为已暂存删除。
+  - `docs/controller/local-runtime` 与 `docs/protocols/controller-cloud-contract` 中英文同步。
+- 与本决策一致，没有偏离。已观察到的边界：主循环在处理器内串行等待 RPC，Cloud 停止回应期间，续约与领取
+  依次等满超时，保活已关闭连接后流的错误事件要等这些调用返回才被处理，其间状态停留在"在线"；领取仍受
+  租约与 fencing 约束，不影响正确性。
+- 以真实 Cloud 为对端的手工验证：信号到派发登记约 14 ms；空闲时不再按 `claim_interval_ms` 领取；空闲超过
+  两分钟不断开；SIGTERM 后进入排空且不再产生领取失败，Cloud 重启后下一个节拍重开流；冻结 Cloud 约 33 秒后
+  保活关闭连接，恢复后重新获取租约并重开流。以 cloud#29 之前的 Cloud 为对端，空闲约三分钟未出现 `GOAWAY`。

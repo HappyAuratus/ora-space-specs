@@ -1,8 +1,8 @@
 # Controller 消费 Watch 信号流验收
 
-依据[已批准的后续决策](../../../decisions/controller/api-boundary/20260924-controller-consumes-watch-signals.md)。
-证据核对 [desktop#614](https://github.com/ora-space/desktop/pull/614) 的 `95b16bd`（尚未合并），
-`cargo test -p ora-controller` 已在该提交上本地重跑。行为测试位于 `apps/ora-controller/tests/cloud.rs`：以内存假 Cloud
+依据[已实现的后续决策](../../../decisions/controller/api-boundary/20260924-controller-consumes-watch-signals.md)。
+证据核对 desktop 主干 `03d521b`（含 [desktop#614](https://github.com/ora-space/desktop/pull/614)），
+`cargo test -p ora-controller` 已在该提交上本地重跑，PR CI 在三个平台通过。行为测试位于 `apps/ora-controller/tests/cloud.rs`：以内存假 Cloud
 （`apps/ora-controller/tests/support/fake_cloud.rs`，由 `ora-controller-proto` 的 `test-server` feature 生成的
 服务端桩托管真实契约并记录调用序列）为对端、以 `ControllerRuntime` 驱动云端持久模式。状态迁移由
 `apps/ora-controller/src/cloud/signals.rs` 中对流类型泛型的纯逻辑单元测试逐一覆盖。
