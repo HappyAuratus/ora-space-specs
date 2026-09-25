@@ -13,8 +13,8 @@ close code，使中继与 Controller 能区分进程停止、协议错误、身�
 本决策处于 `proposed` 状态，等待 Eric 在两种方向中确认：本文采用“Controller 上行心跳”，备选
 “Node 只在有未完成请求时施加读超时”见替代方案。它继承
 [帧通道传输决策](20260924-frame-channel-with-ipc-and-websocket.md)，修改其 D5（心跳与连接存活）
-与 D7（会话失败分类）中与 close code 相关的行，其余不变。涉及 `ora-node-protocol` 的
-Controller→Node 消息、Controller 会话、Node 会话读循环和 `ora-node-transport` 的 WS 关闭接口。
+与 D7（会话失败分类）中身份不符、I/O 期限到期和 close code 相关的行，其余不变。涉及 `ora-node-protocol` 的
+Controller→Node 消息、Controller 会话与 `SessionError`、Node 会话读循环和 `ora-node-transport` 的关闭接口。
 协议版本保持 `1`，不支持 Controller 与 Node 混合新旧版本（见 D1）。本文不处理 Node 读循环被
 受理阻塞（问题 2a）和 Git 占用 worker（问题 2b），它们由各自的后续决策或实现负责。
 
@@ -39,7 +39,9 @@ Controller→Node 消息、Controller 会话、Node 会话读循环和 `ora-node
 | D5：两端不主动发 WS ping，只自动回复 | 继承，不变；上行心跳让两个方向都持续有流量 |
 | D5：连接关闭只表示连接不可用，不取消执行、不改身份、不销毁沙盒 | 继承，不变；close code 只用于诊断和分类 |
 | D6：鉴权只在平台层 | 继承，不变 |
-| D7：`Busy` 来自 `4409`，其余非 normal close 归为 `Disconnected` | 修改：`4403`、`1002` 归为 `Protocol`，其余不变（D2） |
+| D7：`Busy` 来自 `4409`，其余非 normal close 归为 `Disconnected` | 修改：`1002` 归为 `Protocol`，`4403` 归为新增的 `Mismatch`，其余不变（D2、D4） |
+| D7：身份或能力不符归为 `Protocol` | 修改：归为新增的 `Mismatch`（D4） |
+| D7：I/O 期限到期归为 `Disconnected` | 修改：归为新增的 `Silent`（D4） |
 | D7：所有分类都按 `reconnect_ms` 重试 | 继承，不变 |
 | 根 D4：会话绑定 `ControllerId` 与 Node 身份 | 继承；上行心跳携带 `ControllerId`，不符即协议错误 |
 
@@ -58,7 +60,7 @@ Controller 会话已有每 `query_interval_ms` 一次的查询节拍。每个节
 Node 收到上行 `Heartbeat` 时：
 
 - 在会话读循环内直接处理，不进入 worker 受理队列，因此不会排在 Git 或 SQLite 之后；
-- `controller_id` 必须等于本 Node 的归属 Controller，否则按协议错误结束会话；
+- `controller_id` 必须等于本 Node 的归属 Controller，否则按身份不符结束会话（WS 上以 `4403` 关闭）；
 - 不回复。Node 自己的 `Heartbeat` 仍按 `heartbeat_ms` 独立发送。
 
 Node 的每帧读期限 `frame_timeout_ms` 不变，语义从“等待下一条命令”变为“Controller 存活期限”：
@@ -81,29 +83,32 @@ Node 的每帧读期限 `frame_timeout_ms` 不变，语义从“等待下一条�
 
 ### D2：WebSocket 会话以约定 close code 结束
 
-WebSocket 会话结束时，结束方尽力发送一个 close frame。发送受该端现有 I/O 期限约束，失败不改变
-会话结果、不影响执行责任，也不阻塞重连。IPC 没有 close frame，照旧直接关闭 socket。
+主动结束一个已建立会话的一端，按结束原因发送 close code；中继原样转发，接收端回复 close，双方都
+不必等待关闭握手超时。发送受该端现有 I/O 期限约束，失败不改变会话结果、不影响执行责任，也不阻塞
+重连。因对端关闭而结束的一端（收到 close、读到 EOF、`Busy`）不再回发带原因的 close，只完成握手。
+IPC 没有 close code：关闭只结束写方向，对端读到 EOF。
 
-| code | 含义 | 发送方与时机 | Controller 分类 |
+| 原因 | code | 发送方与时机 | 接收方 Controller 的分类 |
 |---|---|---|---|
-| `1000` | 正常结束 | 本文不主动使用；收到时与无 code 的 close 一样视为对端正常结束 | `Disconnected` |
-| `1001` | 进程停止 | Controller 或 Node 正常停止时 | `Disconnected` |
-| `1002` | 协议错误 | 收到非法帧或消息、握手顺序错误（如首帧不是 `Hello`） | `Protocol` |
-| `1011` | 内部失败 | 本端持久化失败、受理队列不可用等与对端无关的原因 | `Disconnected` |
-| `4403` | 身份不符 | Node：`ControllerId` 不属于本 Node；Controller：`NodeId` 或能力不符 | `Protocol` |
-| `4408` | 存活超时 | 期限内未收到对端任何帧（含心跳） | `Disconnected` |
-| `4409` | 会话占用 | Node 已有有效会话（传输决策 D4，不变） | `Busy` |
+| 进程停止 | `1001` | Node 正常停止；Controller 运行时停止 | `Disconnected` |
+| 协议错误 | `1002` | 帧解码失败、text message、握手顺序错误（缺少 `Hello` / `HelloAccepted`）、不支持的消息；Node worker 判定的校验失败、身份冲突或非法确认 | `Protocol` |
+| 身份不符 | `4403` | Node：`ControllerId`（含上行 `Heartbeat` 中的）不属于本 Node；Controller：`node_id` 或能力不符 | `Mismatch` |
+| 存活超时 | `4408` | 任一端的读或写 I/O 期限到期（含未在期限内收到心跳） | `Disconnected` |
+| 内部失败 | `1011` | Controller 持久化失败；Node 受理队列不可用、受理期限到期、存储失败 | `Disconnected` |
+| 会话占用 | `4409` | Node 已有有效会话时的新连接（传输决策 D4，不变） | `Busy` |
+
+`1000` 不主动使用；收到 `1000` 或无 code 的 close 时视为对端正常结束。
 
 规则：
 
 - close code 只用于诊断和分类。任何 code 都不取消执行、不改变执行身份、不触发沙盒重建，所有
   分类仍按 `reconnect_ms` 重连（传输决策 D5、D7）。
-- 私有 code 取 `4000–4999` 段，按 HTTP 状态码的后三位命名，便于在中继日志中直接辨认；中继原样
+- 私有 code 取 `4000–4999` 段，后三位沿用对应的 HTTP 状态码，便于在中继日志中直接辨认；中继原样
   转发 close code，这是传输决策 D4 已依赖的前提。
 - 中继自身产生的 `1011 "<side> connection lost"` 继续表示另一段未发送 close 就断开，即真实断线或
   进程被强杀；两端开始发送 close 后，这一行只在真正异常时出现。
-- `4403` 与 `1002` 归为 `Protocol`：它们表示配置或实现错误，重连不会自行恢复，运维需要与连接抖动
-  区分；`4408` 与 `1001`、`1011` 归为 `Disconnected`：它们是暂时状态，重连可能恢复。
+- 收到的 `4408`、`1001`、`1011` 都是暂时状态，重连可能恢复，归为 `Disconnected`；`1002` 与 `4403`
+  表示实现或配置错误，重连不会自行恢复，分别归为 `Protocol` 与 `Mismatch`，便于运维与连接抖动区分。
 
 ### D3：Node 不因 Controller 空闲而把会话判为失败
 
@@ -115,15 +120,29 @@ WebSocket 会话结束时，结束方尽力发送一个 close frame。发送受�
 
 两端都能在一个期限内独立发现对端消失或连接半开，不依赖对端先关闭连接。
 
+### D4：会话失败分类新增 `Mismatch` 与 `Silent`
+
+传输决策 D7 的 `SessionError` 增加两类，其余不变，仍全部按 `reconnect_ms` 重连：
+
+| 分类 | 来源 | 此前归类 |
+|---|---|---|
+| `Mismatch` | Controller 自己发现 `node_id` 或能力不符；收到对端的 `4403` | `Protocol` |
+| `Silent` | Controller 自己的读或写 I/O 期限到期（此时向 Node 发送 `4408`） | `Disconnected` |
+
+身份或能力不符是部署配置错误，与帧格式错误的处置人和排查路径都不同；I/O 期限到期说明对端或
+中间链路沉默，与对端主动关闭或连接被重置不同。拆开后日志可以直接区分“配错了”“对端卡住了”和
+“连接断了”，不需要再读错误文本。
+
 ## 不变量
 
 1. 已建立的 Controller 会话在任意 `query_interval_ms` 节拍内恰好发送一个上行帧：待查派发的
    `GetExecutionStatus`，或 `Heartbeat`。
 2. Node 处理上行 `Heartbeat` 不经过 worker 受理队列，也不产生回复。
-3. 上行 `Heartbeat` 的 `controller_id` 与 Node 归属不符时，会话以协议错误结束。
+3. 上行 `Heartbeat` 的 `controller_id` 与 Node 归属不符时，会话以身份不符结束。
 4. 空闲但两端都存活、且 `query_interval_ms` 小于 `frame_timeout_ms` 的会话，不会因读期限到期而结束。
-5. WebSocket 会话由本端结束时尽力发送 D2 表中对应的 close code；IPC 不受此约束。
+5. WebSocket 会话由本端主动结束时尽力发送 D2 表中对应的 close code；IPC 不受此约束。
 6. 任何 close code 都不改变执行身份、不判定执行失败、不销毁沙盒。
+7. Controller 把身份或能力不符归为 `Mismatch`，把自身 I/O 期限到期归为 `Silent`，两者都不归为 `Protocol` 或 `Disconnected`。
 
 ## 为什么不是这些替代方案
 
@@ -150,8 +169,11 @@ WebSocket 会话结束时，结束方尽力发送一个 close frame。发送受�
    完成条件：Controller 会话单测证明空闲节拍发出 `Heartbeat`、有待查派发时只发查询。
 2. **Node**：读循环就地处理上行心跳并校验 `controller_id`。完成条件：真实 Node 在读期限远小于空闲
    时长的配置下，经 IPC 与 WS 维持单一会话不重建；`controller_id` 不符时断开。
-3. **close code**：`ora-node-transport` 增加带 code 关闭的接口，两端按 D2 发送，Controller 按 D2 分类。
-   可与 1、2 并行实现。
+3. **close code 与分类**：`ora-node-transport` 增加带原因关闭的接口，两端按 D2 发送，Controller 按
+   D2、D4 分类。可与 1、2 并行实现；先合入的一方之后，另一方把上行心跳的身份不符接到 `4403`。
+   完成条件：每种原因经真实传输发送并被对端回复 close，Controller 与真实 Node 各自按表关闭与分类。
 
-步骤 1、2 必须同时发布（混合版本不支持）；步骤 3 独立。从步骤 2 起，空闲会话不再周期性重建；
+步骤 1、2 必须同时发布（混合版本不支持）；步骤 3 独立。核心测试用例（包括
+[传输核心用例](../../../test-cases/node/protocol/frame-channel-transports.md)中身份不符归为 `Protocol` 的
+证据说明）按 specs 约定在本文转为 `approved` 后同步。从步骤 2 起，空闲会话不再周期性重建；
 执行、恢复、重放与确认语义保持不变。
