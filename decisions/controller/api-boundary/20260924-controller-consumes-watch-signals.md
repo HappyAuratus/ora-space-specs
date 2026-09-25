@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 消费 Watch 信号流：信号驱动领取、断流退回周期领取、`Drain` 暂停领取直到新流建立
@@ -11,7 +11,8 @@ status: proposed
 及时发现并退回周期领取。信号仍只是加速器：工作归属继续由 `RecordDispatch` 事务决定，信号丢失只影响
 延迟。
 
-本决策处于 `proposed` 状态，是
+本决策处于 `approved` 状态：方案已通过评审，尚未实现；核心用例登记在
+[Watch 信号流核心用例](../../../test-cases/controller/api-boundary/watch-signal-claiming.md)。它是
 [Controller 契约方向后续决策](20260922-cloud-owned-contract-and-controller-dial-out.md)的后续决策，修改
 其 D2 中"当前 Controller 不消费该流，只做周期领取"的约定，以及
 [持久协调双适配器](../persistence/20260922-coordination-store-with-sqlite-and-cloud-adapters.md) D2 中
@@ -207,4 +208,4 @@ Cloud 通道启用 HTTP/2 PING 保活：间隔 30 秒，等待回应 10 秒，�
    `535ca76c`；它可从 Cloud 主干到达，契约内容与主干只有注释差异。
 
 步骤 2 合入之前 Controller 行为与现状一致；从步骤 2 起，云端模式的领取节拍按 D2 改变，本机模式不受
-影响。核心用例在本文进入 `approved` 后补充。
+影响。

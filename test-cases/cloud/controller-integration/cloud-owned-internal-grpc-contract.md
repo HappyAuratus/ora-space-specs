@@ -1,6 +1,8 @@
 # Cloud 内部控制契约验收
 
-依据[已实现的根决策](../../../decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md)。
+依据[已实现的根决策](../../../decisions/cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md)与
+[已批准的监听保活后续决策](../../../decisions/cloud/controller-integration/20260924-control-listener-keepalive.md)。
+后续决策尚未实现，其新增义务的证据按实际状态标记。
 证据核对 ora-space/cloud#24 栈顶 `9b33596ddee1e59e90f622181fb88e88afa95cdf`（cloud#20–#24 尚未合并，契约本身
 由 cloud#19 合入主干）；下列 PostgreSQL 测试已在该提交上以 `REQUIRE_POSTGRES=1` 本地重跑通过。
 
@@ -95,16 +97,33 @@
 - **风险**：陈旧 Controller 收到信号、信号早于接受事务提交、慢订阅者阻塞接受，或关停时流悬挂。
 - **前置状态**：Controller 持有租约并建立 `Watch`。
 - **触发**：以陈旧 epoch 建立流；接受新 clone 请求；幂等重复提交；订阅者不读取；Cloud 关停。
-- **必须成立**：陈旧 epoch `STALE_CONTROLLER`；接受提交后发送带 `operation_id` 的 `WorkAvailable`；重复提交不发信号；缓冲有界且满时丢弃；`Drain` 后流正常结束，之后的 `Watch` 为 `UNAVAILABLE`。
-- **禁止结果**：信号改变归属、阻塞接受事务、关停后仍接受订阅。
+- **必须成立**：陈旧 epoch `STALE_CONTROLLER`；接受提交后发送带 `operation_id` 的 `WorkAvailable`；重复提交不发信号；缓冲有界且满时丢弃；`Drain` 后流正常结束，之后的 `Watch` 为 `UNAVAILABLE`；`Watch` 只在排空时以 OK 结束，其他结束都是错误状态。
+- **禁止结果**：信号改变归属、阻塞接受事务、关停后仍接受订阅、排空之外以 OK 结束流。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 资格、时机与排空 | `integration.TestControlGRPCWatchDeliversWorkAndDrain` 覆盖陈旧 epoch、提交后 `WorkAvailable`、`Drain` 后 EOF 与关停后拒绝订阅；`integration.TestPublicClonesAcceptOnceAndReflectExecutionFacts` 覆盖重复提交不发信号 | Covered |
 | 有界、不阻塞 | `core.TestControlHubDropsOnFullAndDrainsOnce` 覆盖缓冲上限 16、满时丢弃、重复 `Drain` 只生效一次 | Covered |
+| 只在排空时正常结束 | `integration.TestControlGRPCWatchDeliversWorkAndDrain` 证明排空导致 EOF、订阅被拒为 `UNAVAILABLE`、陈旧 epoch 为错误状态；尚无断言"排空之外不会以 OK 结束"的测试，目前依赖 Watch handler 只在订阅通道关闭时正常返回 | Partial |
 
-决策依据：D5，不变量 7。
+决策依据：D5，不变量 7；监听保活后续决策 D3，不变量 4。
+
+## Controller Keepalive Pings Never Trigger Goaway
+
+- **风险**：按 grpc-go 默认执行策略，Controller 在空闲连接上的保活 PING 累计违规后被 `GOAWAY(too_many_pings)`
+  断开，连接上的 unary 调用与 `Watch` 一并中断并反复发生。
+- **前置状态**：真实 `controlgrpc` 服务端；一条没有任何活动流的 HTTP/2 连接。
+- **触发**：以略长于 `MinTime`（5 秒）的间隔连续发送 PING，次数超过默认策略下触发 `GOAWAY` 的次数。
+- **必须成立**：每个 PING 都得到 ACK，服务端不发送 `GOAWAY`；放宽的只有 PING 执行策略，服务端不主动发起 PING。
+- **禁止结果**：按新间隔保活的连接收到 `GOAWAY`；监听位置或任何 RPC 的消息、状态码、授权随之改变。
+- **验证义务与证据**：
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 空闲连接上的 PING 不计违规 | 计划 `controlgrpc` 包内以裸 HTTP/2 客户端在无流连接上按 `MinTime + 500ms` 发送 4 个 PING，断言 4 个 ACK 且无 `GOAWAY`；去掉策略时同一测试须在第 4 个 PING 收到 `GOAWAY` | Missing |
+
+决策依据：监听保活后续决策 D1，不变量 1、2。
 
 ## Control Errors Carry One Consistent Classification
 

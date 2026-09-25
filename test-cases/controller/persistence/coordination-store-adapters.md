@@ -38,7 +38,7 @@ SQLite 适配器的原子接受、接管与恢复义务沿用
 |---|---|---|
 | 同身份重传 | `apps/ora-controller/src/cloud/fault.rs::writes_retransmit_only_unknown_outcomes_under_one_identity` | Covered |
 | 分类映射 | `fault.rs::statuses_map_to_contract_classes` | Covered |
-| 资格失效后停止写入 | 适配器在陈旧裁决后丢弃 epoch、无租约时拒绝写入，目前没有直接测试 | Missing |
+| 资格失效后停止写入 | 适配器在陈旧裁决后丢弃 epoch、无租约时拒绝写入，目前没有直接测试；计划由 [Watch 信号流用例](../api-boundary/watch-signal-claiming.md#watch-lives-only-under-the-held-epoch)中打开 `Watch` 被判陈旧后的调用序列断言补上 | Missing |
 
 决策依据：D3，不变量 4。
 

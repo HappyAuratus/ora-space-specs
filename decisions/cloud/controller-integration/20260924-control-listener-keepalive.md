@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 控制监听允许 HTTP/2 保活：放宽 PING 执行策略，更正 `Drain` 的持有者义务表述，并约定 `Watch` 只在排空时正常结束
@@ -10,7 +10,8 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 释放租约，也不取消用户任务。`Watch` 以 OK 状态结束成为契约：只在实例排空时发生，其他任何结束都以
 错误状态报告，使持有者可以把正常结束当作排空证据。三项都不改变任何消息、状态码、事务或授权。
 
-本决策处于 `proposed` 状态，是
+本决策处于 `approved` 状态：方案已通过评审，尚未实现；核心用例登记在
+[Cloud 内部控制契约核心用例](../../../test-cases/cloud/controller-integration/cloud-owned-internal-grpc-contract.md#controller-keepalive-pings-never-trigger-goaway)。它是
 [Cloud 拥有 Internal Control gRPC 契约](0-cloud-owned-internal-grpc-contract.md)的后续决策，修改其 D7
 （监听）的传输参数，并澄清 D5 中 `Drain` 的持有者义务与 `Watch` 的结束语义。它只涉及
 `internal/controlgrpc` 的服务端选项与 `proto/ora/cloud/internal/v1/signals.proto` 的注释；Controller 侧的
@@ -107,5 +108,3 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
    订阅为 `UNAVAILABLE`；lint、breaking 与生成漂移检查通过。
 2. desktop 把 submodule 移到包含步骤 1 的主干合并提交，Controller 启用保活（Controller 后续决策）。
    Controller 的保活必须在步骤 1 部署之后才能上线。
-
-核心用例在本文进入 `approved` 后补充。
