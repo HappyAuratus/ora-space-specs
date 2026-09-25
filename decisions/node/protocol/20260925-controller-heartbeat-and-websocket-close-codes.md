@@ -88,6 +88,11 @@ Node 的每帧读期限 `frame_timeout_ms` 不变，语义从“等待下一条�
 重连。因对端关闭而结束的一端（收到 close、读到 EOF、`Busy`）不再回发带原因的 close，只完成握手。
 IPC 没有 close code：关闭只结束写方向，对端读到 EOF。
 
+关闭握手有界且不占用准入：发出 close 的一端排空入站数据直到对端回复，最长等待该端的 I/O 期限；
+Node 因失败关闭时在准入之外完成这一步，立即释放控制槽，关闭后不离开的对端不会让下一次重连收到
+`4409`。Node 正常停止与 Controller 运行时停止则等待 close 发出后再退出，Controller 最多等待
+2 × `io_timeout_ms`。
+
 | 原因 | code | 发送方与时机 | 接收方 Controller 的分类 |
 |---|---|---|---|
 | 进程停止 | `1001` | Node 正常停止；Controller 运行时停止 | `Disconnected` |
