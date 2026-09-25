@@ -231,7 +231,7 @@ Node 主动或被动终止的尝试被当作证据缺失，永久停留在 Unkno
 | 强杀恢复以 `Interrupted` 结束 | `killed_clone_recovers_original_run_without_redispatch` 断言完整 `Interrupted` 终态与单一尝试 | Covered |
 | 证据缺失仍为 Unknown | `guardian_loss_keeps_interrupted_clone_unknown` 覆盖 guardian 丢失；尚缺 host 无法回答 Run 查询的直接测试 | Partial |
 | 一个 Run 只有一种结束事实，终止只支撑 `Interrupted` | `crates/node-db/src/tests/repository.rs` 的 `clone_interruption_requires_recorded_termination`、`clone_exit_code_cannot_back_an_interruption`；`version_four_upgrade_adds_termination_evidence_without_rewriting_clones` 覆盖 v4 升级不改写未完成 clone | Covered |
-| 终态跨边界交付 | `apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返、`api.rs` 的 `interrupted_failure_presents_its_own_reason`、Cloud `integration/clone_api_test.go` 公开 `interrupted`；尚缺经 Controller 会话接管中断终态的端到端测试 | Partial |
+| 终态跨边界交付 | `apps/ora-node/tests/standalone/repository_websocket.rs` 的 `controller_session_takes_over_interrupted_clone_after_node_stop`：生产 Controller 会话经 WebSocket 接管正常停止后的完整中断终态，且不再保留待查询派发；`apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返、`api.rs` 的 `interrupted_failure_presents_its_own_reason`、Cloud `integration/clone_api_test.go` 公开 `interrupted` | Covered |
 
 ### 决策依据
 

@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # clone 尝试被终止且收尾已确认时判为中断失败，不再停留在 Unknown
@@ -10,8 +10,7 @@ Node 受管 clone 的 Git 进程被信号终止，且 host 确认原 Scope 已�
 而不是面对一个永远 `pending` 的操作。
 
 本文继承[最小 clone 执行契约](20260918-minimal-clone-execution-contract.md)，修改其 D6 对“被终止”
-这一类事实的处置，于 2026-09-25 经 Eric 批准，状态为 `approved`；批准不表示已经实现。D4 的持久化方案是
-实现时发现存储层约束后补充的，同日经 Eric 确认。涉及 Node 受管 clone 的收尾判定、Node 数据库 schema（v5）、Node 协议
+这一类事实的处置，2026-09-25 经 Eric 批准并实现，状态为 `implemented`。涉及 Node 受管 clone 的收尾判定、Node 数据库 schema（v5）、Node 协议
 `CloneFailureCode`、Controller 的 minicloud DTO 与 Cloud 映射，以及 Cloud 仓库的
 Controller–Cloud 契约和公开 API 枚举。不改变 Worktree 的恢复语义，不改变 Git 进程的生命周期策略，
 不引入重试、清理或原目录复用。
@@ -112,9 +111,9 @@ Node 强杀后的恢复都会留下永久 Unknown。Unknown 会阻止原目标�
 
 ### D4：终止事实作为 Node 数据库中的持久证据，schema 升至 v5
 
-实现时发现，Node 数据库在写入终态的事务里强制要求已派发的尝试恰好有一条退出码记录，否则拒绝
-任何终态。这是前序 D6“没有进程证据不下结论”在存储层的最后防线，不能在运行时绕过。因此
-“被信号终止且收尾完成”必须成为数据库可核查的证据，而不仅是内存中的判定：
+Node 数据库在写入终态的事务里核查已派发尝试的结束证据，这是前序 D6“没有进程证据不下结论”在
+存储层的最后防线，不能在运行时绕过。因此“被信号终止且收尾完成”是数据库可核查的持久证据，
+而不仅是内存中的判定：
 
 - `ora-node.sqlite3` 新增 `process_terminations`（按 Run 记录终止信号），schema version 从 4 升到 5；
   v4 → v5 只建表，不改写任何已有尝试、结果或事件。
@@ -168,19 +167,14 @@ Node 强杀后的恢复都会留下永久 Unknown。Unknown 会阻止原目标�
 - **`尚未启动` 且收尾完成的尝试** 是否可以判为可重试失败，需要结合派发交接的持久顺序另行确认。
 - **优雅排空** 是否在正常停止时等待进行中的 clone，属于停止策略，另议。
 
-## 落地顺序
+## 落地与验收
 
-1. **Cloud 契约。** Cloud 仓库的 `CloneFailureReason`、公开 API 枚举与前端文案增加中断失败。
-   完成条件：Cloud 能存储并返回 `interrupted`，已有取值不受影响。
-2. **Node 判定与协议。** 统一运行路径和恢复路径的收尾判定（D1），新增 `CloneFailureCode::Interrupted`（D2）与 v5 终止证据（D4），
-   desktop 固定到包含新值的 Cloud 契约版本，同步 Controller 两处映射、minicloud DTO 与 Client。
-   完成条件：用真实 host／guardian 验证正常停止、命令超时和强杀恢复都得到 `Interrupted` 并保留目录、
-   只有一个尝试；收尾未确认或 host 无法回答时仍为 Unknown；Controller 接管该终态并交付到 minicloud
-   与 Cloud。
-3. **联调复核。** 经 cluster Sandbox Server 重复“clone 进行中正常停止 Node”场景，确认 Controller
-   得到终态、不再持续查询。
+按发布顺序落地：Cloud 契约先接受 `CLONE_FAILURE_REASON_INTERRUPTED`，desktop 再固定到该契约版本，
+随后实现 D1、D2 与 D4。Node 主动或被动终止的 clone 尝试从此以 `Interrupted` 结束；成功判定、恢复
+屏障、Worktree 恢复语义和目录保留规则不变。
 
-从第 2 步起，Node 主动或被动终止的 clone 尝试以 `Interrupted` 结束；成功判定、恢复屏障、Worktree
-恢复语义和目录保留规则保持不变。验证义务登记在
-[最小 clone 执行契约核心用例](../../../test-cases/node/repository/minimal-clone-execution.md#terminated-clone-attempt-settles-as-interrupted-failure)，
-当前直接证据均为 Missing。
+验收由真实 host／guardian 测试覆盖正常停止、命令超时、强杀恢复与 guardian 丢失，由 Node 数据库测试
+覆盖结束证据的互斥与 v4 升级，并由生产 Controller 会话经 WebSocket 接管正常停止后的中断终态、
+不再保留待查询派发来覆盖端到端交付。原计划经 cluster Sandbox Server 手动复核，改由该自动化测试
+承担：中继只透传帧，其转发行为已在此前联调中单独验证。验证义务与证据见
+[最小 clone 执行契约核心用例](../../../test-cases/node/repository/minimal-clone-execution.md#terminated-clone-attempt-settles-as-interrupted-failure)。
