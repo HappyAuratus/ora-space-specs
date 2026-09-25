@@ -107,8 +107,10 @@ Controller 对它的义务"不再领取、不取消用户任务、不销毁沙�
 
 流以错误状态结束（传输中断、Cloud 被强制停止、保活超时）时进入"无流"，按周期领取。
 
-正常结束等同 `Drain`：Cloud 只在排空时正常结束 `Watch`（先向订阅者发送 `Drain` 再关闭其通道），而
-`Drain` 消息与其他信号一样可能因缓冲满被丢弃；正常结束不会丢失，是比 `Drain` 消息更可靠的排空证据。
+正常结束等同 `Drain`：Cloud 只在排空时正常结束 `Watch`（先向订阅者发送 `Drain` 再关闭其通道），这由
+[Cloud 后续决策](../../cloud/controller-integration/20260924-control-listener-keepalive.md) D3 约定为契约；
+而 `Drain` 消息与其他信号一样可能因缓冲满被丢弃；正常结束不会丢失，是比 `Drain` 消息更可靠的排空证据。
+即使 Cloud 违反该约定，健康实例上的误判也只让领取暂停到下一个节拍的重开成功为止。
 
 不释放租约：`Drain` 表示发送它的 Cloud 实例即将停止，而不是要求 Controller 让位。租约是 Cloud
 PostgreSQL 中的事实，Cloud 重启后原租约在过期前仍然有效；此时向正在停止的实例发送 `ReleaseLease`
@@ -193,8 +195,8 @@ Cloud 通道启用 HTTP/2 PING 保活：间隔 30 秒，等待回应 10 秒，�
 
 ## 落地顺序
 
-1. Cloud：监听放宽 PING 执行策略，更正 `Drain` 注释并重新生成（Cloud 后续决策）。完成条件：测试证明
-   按新间隔的 PING 不触发 `GOAWAY`。
+1. Cloud：监听放宽 PING 执行策略，更正 `Drain` 注释、约定 `Watch` 只在排空时正常结束并重新生成（Cloud
+   后续决策）。完成条件：测试证明按新间隔的 PING 不触发 `GOAWAY`。
 2. desktop：`ora-controller-proto` 以测试专用 feature 生成服务端桩，`ora-controller` 的测试据此建立
    内存假 Cloud；Cloud 适配器按 D1–D6 消费 `Watch` 并启用保活；文档中英文同步。完成条件：以假 Cloud 为
    对端的行为测试覆盖信号触发领取、订阅前积压、断流回退与重开、`Drain` 暂停与恢复、打开时资格失效、

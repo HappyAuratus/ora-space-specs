@@ -2,17 +2,19 @@
 status: proposed
 ---
 
-# Controller 控制监听允许 HTTP/2 保活：放宽 PING 执行策略，并更正 `Drain` 的持有者义务表述
+# Controller 控制监听允许 HTTP/2 保活：放宽 PING 执行策略，更正 `Drain` 的持有者义务表述，并约定 `Watch` 只在排空时正常结束
 
 Cloud 的 Controller gRPC 监听（`control.grpc_addr`）改为接受客户端的 HTTP/2 PING 保活：两次 PING 间隔
 不短于 5 秒即不计违规，连接上没有活动流时也允许 PING。`signals.proto` 中 `Drain` 的注释改为与根决策
 D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者停止对它领取直到新的 `Watch` 建立，不要求
-释放租约，也不取消用户任务。两项都不改变任何消息、状态码、事务或授权。
+释放租约，也不取消用户任务。`Watch` 以 OK 状态结束成为契约：只在实例排空时发生，其他任何结束都以
+错误状态报告，使持有者可以把正常结束当作排空证据。三项都不改变任何消息、状态码、事务或授权。
 
 本决策处于 `proposed` 状态，是
 [Cloud 拥有 Internal Control gRPC 契约](0-cloud-owned-internal-grpc-contract.md)的后续决策，修改其 D7
-（监听）的传输参数，并澄清 D5 中 `Drain` 的持有者义务。它只涉及 `internal/controlgrpc` 的服务端选项与
-`proto/ora/cloud/internal/v1/signals.proto` 的注释；Controller 侧的消费方式与保活参数见
+（监听）的传输参数，并澄清 D5 中 `Drain` 的持有者义务与 `Watch` 的结束语义。它只涉及
+`internal/controlgrpc` 的服务端选项与 `proto/ora/cloud/internal/v1/signals.proto` 的注释；Controller 侧的
+消费方式与保活参数见
 [Controller 消费 Watch 信号流](../../controller/api-boundary/20260924-controller-consumes-watch-signals.md)。
 
 ## 继承与修改
@@ -20,7 +22,7 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 | 根决策约定 | 本文处理 |
 |---|---|
 | D1：proto 是唯一契约源；`v1` 只接受非破坏性修改；生成物提交并检查漂移 | 继承；注释修改是非破坏性变更，`internal/controlpb` 随之重新生成 |
-| D5：`Watch` 至多一次、不持久化、缓冲有界；关停前 `Drain`，之后流正常结束，新订阅为 `UNAVAILABLE` | 继承，不变 |
+| D5：`Watch` 至多一次、不持久化、缓冲有界；关停前 `Drain`，之后流正常结束，新订阅为 `UNAVAILABLE` | 继承并澄清：正常结束只在排空时发生，其他结束都是错误状态（D3） |
 | D5：持有者收到 `Drain` 后不再领取，不取消用户任务、不销毁沙盒 | 继承并澄清：不再领取持续到新流建立；不要求释放租约（D2） |
 | D7：独立地址监听、不经 Gateway、只能位于回环或私网；`x-ora-controller-id` 声明身份 | 继承，不变 |
 | D7：监听使用 grpc-go 默认传输参数（未明示） | 修改：显式放宽 keepalive 执行策略（D1） |
@@ -56,12 +58,28 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 - 注释是契约的一部分，消费方据此实现；注释与决策不一致会迫使实现者二选一。
 - 多实例下"让位"意义上的排空若有需要，由 scale 决策以新的信号或字段表达，不复用这条注释。
 
+### D3：`Watch` 只在排空时以 OK 状态结束
+
+`Watch` 以 OK 状态结束只有一种原因：发出它的实例正在排空，且已先向该订阅尝试发送 `Drain`。订阅被
+拒绝、传输或内部失败、服务端被强制停止等其他结束方式都以错误状态报告；由调用方取消的流不受此约束，
+调用方本身不会观察到它的结束状态。`signals.proto` 中 `rpc Watch` 的注释写明这一规则。
+
+- 现有实现已经如此：Watch handler 只在排空关闭订阅通道时正常返回，订阅被拒绝返回 `UNAVAILABLE`，
+  epoch 校验失败返回对应裁决。本条把这一行为从实现细节提升为契约，不改变任何代码路径。
+- 持有者依赖它区分"实例即将停止"与"流出错"：`Drain` 消息与其他信号一样可能因订阅缓冲满被丢弃，
+  而正常结束不会丢失，是更可靠的排空证据
+  （[Controller 消费 Watch 信号流](../../controller/api-boundary/20260924-controller-consumes-watch-signals.md) D3）。
+  若服务端在排空之外正常结束 `Watch`（例如为轮换长流主动关闭），持有者会误入排空并暂停领取一个节拍。
+- 今后若需要在排空之外主动结束流，必须以错误状态（例如 `UNAVAILABLE`）结束，或由新的决策定义新的
+  结束语义，不能复用 OK。
+
 ## 不变量
 
 1. 监听接受间隔不短于 5 秒的客户端 PING，包括连接上没有活动流时；按此间隔保活的 Controller 不会被
    `GOAWAY` 断开。
 2. 保活参数不改变任何 RPC 的消息、状态码、事务或授权；监听仍只能位于回环或私网。
 3. `Drain` 只表示发送它的实例即将停止；它不改变归属，不要求释放租约，不取消用户任务。
+4. `Watch` 只在发出它的实例排空时以 OK 状态结束；其他结束对调用方都表现为错误状态。
 
 ## 为什么不是这些替代方案
 
@@ -71,6 +89,7 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 | Controller 只用 TCP keepalive | Cloud 无需改动；但探测的是最近的 TCP 对端，经过代理时不能证明 Cloud 仍在服务 |
 | 服务端同时主动 PING 客户端 | 能更快清理失联订阅；但 TCP keepalive 已保证最终清理，而缓冲有界使失联订阅不影响他人 |
 | `MinTime` 取 10 秒 | 更保守；但与 grpc-go 客户端下限相同，没有余量，一次抖动即可计入违规 |
+| 不约定 `Watch` 的结束语义，持有者只以 `Drain` 消息判断排空 | Cloud 无需新增承诺；但 `Drain` 消息可能因缓冲满丢失，持有者会把实例关停误判为断流并反复领取失败 |
 | 保留 `Drain` 注释中的"释放租约" | 为多实例预留"让位"语义；但与当前唯一的发送时机矛盾，让位应由 scale 决策显式定义 |
 
 ## 本决策未解决的问题
@@ -80,10 +99,12 @@ D5 一致的表述：它表示发送它的 Cloud 实例即将停止，持有者�
 
 ## 落地顺序
 
-1. `internal/controlgrpc` 设置执行策略；`signals.proto` 更正注释并重新生成 `internal/controlpb`；
+1. `internal/controlgrpc` 设置执行策略；`signals.proto` 更正 `Drain` 注释、在 `rpc Watch` 注释中写明
+   D3 的结束语义，并重新生成 `internal/controlpb`；
    `internal/controlgrpc` 的中英文 README 同步。完成条件：测试在无活动流的连接上以略长于 5 秒的间隔
    连续发送 PING，服务端全部回应且不发送 `GOAWAY`（同一测试在默认策略下会在第四次 PING 收到
-   `GOAWAY`）；lint、breaking 与生成漂移检查通过。
+   `GOAWAY`）；现有 `TestControlGRPCWatchDeliversWorkAndDrain` 继续断言 `Drain` 后流以 EOF 结束、之后的
+   订阅为 `UNAVAILABLE`；lint、breaking 与生成漂移检查通过。
 2. desktop 把 submodule 移到包含步骤 1 的主干合并提交，Controller 启用保活（Controller 后续决策）。
    Controller 的保活必须在步骤 1 部署之后才能上线。
 
