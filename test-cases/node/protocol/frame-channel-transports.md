@@ -3,7 +3,7 @@
 依据[已实现的传输决策](../../../decisions/node/protocol/20260924-frame-channel-with-ipc-and-websocket.md)。
 这里登记的是跨传输一致性和 WebSocket 接入的验证义务。握手身份、单会话、持久接管和确认顺序
 这些与传输无关的规则，继续以[本机归属核心用例](../../controller/persistence/local-controller-node-ownership.md)
-为准；本文只要求它们在两种传输下都成立。证据来自 desktop `0d046a57`。经 cluster Sandbox Server
+为准；本文只要求它们在两种传输下都成立。证据来自 desktop `37759e91`。经 cluster Sandbox Server
 或平台路由的联调属于部署验证，不在本文登记。
 
 ## Both Transports Carry Identical Frame Bodies

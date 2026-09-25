@@ -12,7 +12,7 @@ Controller 与 Node 的会话逻辑（握手、身份与能力校验、执行对
 `SandboxProvider`，本文只固定它与传输之间的边界：Provider 产出与厂商无关的 `NodeEndpoint`，
 传输层不认识任何厂商。
 
-本决策处于 `implemented` 状态，由 desktop `0d046a57` 落地。它继承[根决策](0-controller-node-protocol.md)
+本决策处于 `implemented` 状态，由 desktop `37759e91` 落地。它继承[根决策](0-controller-node-protocol.md)
 的协议与传输分离、身份与恢复语义，修改 D3 中“Controller 通过 mTLS 主动拨号 Node”的网络连接方式：
 云端经平台 WebSocket 路由连接，鉴权只由平台层承担。本机 IPC 的归属、单一有效会话与 endpoint 权限
 规则继承[本机 Controller–Node 归属决策](../../controller/persistence/0-local-controller-node-ownership.md)
@@ -213,7 +213,7 @@ Node 的旧 `ipc` 配置段与 Controller 中以字符串表示的 `endpoint` �
 
 ## 落地结果
 
-desktop `0d046a57` 按“帧体拆分 → 帧通道与 IPC 迁移 → WebSocket 接入”三步落地。IPC 的线上字节与
+desktop `37759e91` 按“帧体拆分 → 帧通道与 IPC 迁移 → WebSocket 接入”三步落地。IPC 的线上字节与
 会话行为不变，原有 IPC 测试全部经新接口通过；WebSocket 在进程内由生产 Controller 会话与生产 Node
 验证握手、结果接管、断线与 Node 重启后的重放、确认后停止重放、`4409` 拒绝与身份不符拒绝。与批准
 方案不同的最终决定：不主动发送 WS ping（D5）、IPC 下会话占用归为 `Protocol`（D4、D7）、失败分类
