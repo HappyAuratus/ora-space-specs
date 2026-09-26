@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # clone 的 Git 副作用移出受理 worker：worker 独占 SQLite 与受理，执行器只做 host 交互
@@ -11,7 +11,7 @@ Node 服务中唯一的阻塞 worker 线程目前同时负责 SQLite、会话受
 预留与证据、状态推进和会话受理，从而使受理回复的延迟不再取决于 Git。持久顺序、收尾屏障、
 判定规则和对外协议均不改变。
 
-2026-09-26 经 Eric 评审批准，状态为 `approved`：D1 采用 worker 独占数据库，D4 首版串行，D6 Worktree 恢复留在 worker，执行器形态在实现时选定。涉及 desktop `apps/ora-node` 的 `service`（worker 与
+2026-09-26 经 Eric 评审批准并由 desktop #618 实现，状态为 `implemented`：D1 采用 worker 独占数据库，D4 首版串行，D6 Worktree 恢复留在 worker；执行器采用独立线程。涉及 desktop `apps/ora-node` 的 `service`（worker 与
 会话之间的队列）、`repository.rs` 的 clone 状态机、`managed` 的受管 runner 拆分，以及 Node 文档
 `docs/node/local-ipc.md` 中“worker 繁忙可导致会话关闭”的承诺。不改变 Node 协议消息、Node 数据库
 schema、Controller 行为，也不改变 Git 与 Node 进程同生共死的生命周期策略。
@@ -133,8 +133,10 @@ worker 并落盘后移除。恢复节拍与新受理只驱动不在集合中的�
 行为，不引入新的配置项，也不需要先回答 host 的 Run 数量上限与磁盘、网络争用问题。D3 的在途集合
 已经按执行而不是按全局加锁，将来并行只需要把执行器容量从 1 改为有界 N，不改变本文的不变量。
 
-执行器的形态有两种可选：独立线程加自己的 current-thread runtime，或服务 runtime 上由 `JoinSet`
-持有的异步任务（host 交互本身都是异步 I/O）。评审决定在实现时按代码结构选定，本文不固定；无论哪种，都必须由服务显式持有、在停止时等待其结束（D5），不允许无主任务。
+执行器是 worker 创建并持有的独立线程，带自己的 current-thread runtime。评审时它与“服务 runtime 上
+由 `JoinSet` 持有的异步任务”并列，留到实现时选定；最终选线程，因为 clone 的 host 交互已经封装为
+同步调用（受管 runner 各自持有 runtime），线程可以原样复用，而且由 worker 直接持有，停止时的等待
+（D5）不需要跨越 worker 与服务 runtime 两个所有者。
 
 ### D5：停止与失败
 
@@ -195,15 +197,15 @@ Node 服务的会话拒绝 `EnsureWorktree`／`RemoveWorktree`，服务中不会
 - **执行器并行度**：见 D4。
 - **Worktree 步骤拆分**：见 D6。
 
-## 落地顺序
+## 落地结果
 
-1. **前置：会话读写解耦。** 已由 desktop #616 落地；本文的验收因此可以直接观察“clone 进行中会话
-   不断开”，不被 2a 的症状干扰。
-2. **拆分 `ManagedGitRunner`**：journal 写入与 host 交互分离，行为不变；现有测试全部通过即完成。
-   单独提交，降低第 3 步的评审面。
-3. **clone 步骤机与执行器**：实现 D1–D5，删除 worker 上的同步 Git 调用；补充一个真实 host 测试：
-   clone 的 Git 被阻塞期间，状态查询、确认在 `frame_timeout_ms` 内得到回复，且会话不断开。
-4. **文档与证据**：同步修改 `docs/node/local-ipc.md` 中英文，并更新
-   [受理与 Git 执行核心用例](../../../test-cases/node/repository/admission-and-git-execution.md)的证据状态。
+- **前置**：会话读写解耦（desktop #616）与 Controller 上行心跳（#615）已先落地。
+- **desktop #618**：`ManagedGitRunner` 拆出不持有数据库的 `CloneHost`；clone 状态机改为可续接的步骤
+  （`repository/drive.rs`），进程内的 `submit_clone`／`recover_clones` 在调用线程上驱动同一组步骤；服务
+  增加执行器线程与调度（`service/executor.rs`、`service/clones.rs`）。原计划拆分 runner 与步骤机分两次
+  提交，实际合为一次：两者单独都无法让现有测试说明行为未变，合并后由同一套真实 host 测试验证。
+- **文档与证据**：`docs/node/local-ipc.md` 中英文已改写；证据见
+  [受理与 Git 执行核心用例](../../../test-cases/node/repository/admission-and-git-execution.md)。
+  依赖“受理排在 Git 之后”才能触发的会话撤销测试随之删除，相应证据标为 Partial。
 
-从第 3 步起，受理回复不再等待 Git；持久顺序、判定、终态和协议保持不变。
+受理回复不再等待 Git；持久顺序、判定、终态和协议保持不变。

@@ -1,7 +1,8 @@
 # 受理与 clone 的 Git 执行分离
 
 依据[已批准的受理与 Git 执行分离决策](../../../decisions/node/repository/20260925-clone-git-effects-run-outside-the-admission-worker.md)。
-本文件登记“受理不等待 Git”与“在途执行不被重复驱动”两项承诺。决策尚未实现，证据均为 Missing；
+本文件登记“受理不等待 Git”与“在途执行不被重复驱动”两项承诺，desktop 实现见 `apps/ora-node/src/service/clones.rs`
+与 `repository/drive.rs`；
 clone 的判定、终态与恢复义务仍见[最小 clone 执行契约](minimal-clone-execution.md)，本文不重复登记。
 
 ## Admission Replies Never Wait For Clone Git
@@ -37,8 +38,8 @@ Git 被阻塞期间，Controller 发送该执行的 `GetExecutionStatus`、已�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| Git 阻塞期间受理及时回复且会话不断开 | 真实 host／guardian 与暂停的 HTTPS 远端，生产会话在阻塞超过 `frame_timeout_ms` 期间查询、确认并受理第二个 clone，断言回复时限与会话未关闭 | Missing |
-| 数据库只由 worker 读写 | 执行器接口不接收数据库或 journal 句柄的类型层证据，配合上述测试断言单一已清理尝试与完整终态 | Missing |
+| Git 阻塞期间受理及时回复且会话不断开 | `apps/ora-node/tests/standalone/repository_admission.rs` 的 `paused_clone_git_leaves_admission_prompt_and_dispatches_each_clone_once`：真实 host／guardian 与暂停的 HTTPS，Git 阻塞超过 2 s 受理期限的两倍期间，状态查询与第二个 clone 均在 500 ms 内得到回复，第二个 clone 保持 `Accepted` 直到第一个完成，会话不关闭；尚缺 Git 阻塞期间 `EventAck` 的直接断言 | Partial |
+| 数据库只由 worker 读写 | 类型层：`CloneHost`（`managed/repository.rs`）不持有数据库或 journal，执行器线程只拿到 `CloneHost` 与 `CloneStep`；结束事实与收尾由 worker 的 `resume_clone` 写入。上述测试断言每个 clone 一个已清理尝试与成功终态 | Covered |
 
 ### 决策依据
 
@@ -77,9 +78,9 @@ Git 移出 worker 后，恢复节拍或重复受理在原 Run 仍运行时再次
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 在途执行不被恢复节拍或重传重复驱动 | 小 `recovery_interval_ms` 下阻塞的真实 clone，断言多次节拍与重传后只有一个尝试、完整终态正确 | Missing |
-| 过期结果不落盘 | worker 步骤机单元测试：执行已不在在途集合或 Run 不符时，结果被丢弃且持久进度不变 | Missing |
-| 停止与强杀不产生新派发身份 | 现有 `stopped_node_settles_its_interrupted_clone_before_exit`、`killed_clone_recovers_original_run_without_redispatch` 在新结构下原样通过，另需断言停止时 worker 等待在途步骤后落盘 | Missing |
+| 在途执行不被恢复节拍或重传重复驱动 | `paused_clone_git_leaves_admission_prompt_and_dispatches_each_clone_once` 在 50 ms 恢复节拍下阻塞数秒（上百次节拍），断言两个 clone 各只有一个已清理尝试且均成功；尚缺 Git 阻塞期间同一执行重传 `CloneRepository` 的断言 | Partial |
+| 过期结果不落盘 | 串行执行器下只有一个在途步骤，`service/clones.rs` 丢弃与在途执行不符的结果；该分支无法由外部触发，没有直接测试 | Missing |
+| 停止与强杀不产生新派发身份 | `stopped_node_settles_its_interrupted_clone_before_exit` 在新结构下通过：停止进程自身等待在途步骤并落定 `Interrupted`，单一已清理尝试；`killed_clone_recovers_original_run_without_redispatch` 覆盖强杀后只收尾原 Run | Covered |
 
 ### 决策依据
 
