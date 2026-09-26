@@ -3,8 +3,7 @@
 依据[已批准的 Docker 标签解析决策](../../../decisions/cluster/sandbox-server/0-docker-label-resolver.md)。
 本文件登记 Sandbox Server 把 `ate-target-actor` 解析为 Docker 容器中 Node 地址的承诺；中继的透传、
 close code 与 ping/pong 语义见 cluster `README.md`，Controller 侧的失败分类见
-[传输核心用例](../../node/protocol/frame-channel-transports.md)，本文不重复登记。实现尚未开始，证据均为
-`Missing`。
+[传输核心用例](../../node/protocol/frame-channel-transports.md)，本文不重复登记。证据来自 ora-space/cluster 仓库（cluster#3），路径相对该仓库根目录。
 
 ## Docker Target Resolves To Exactly One Running Node On The Sandbox Network
 
@@ -38,11 +37,11 @@ Controller 以 `ate-target-actor: <atespace>/<sandbox-id>` 发起 WebSocket Upgr
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 唯一匹配解析为沙盒网络 IP 与标签端口 | 以 `httptest` 伪造 Engine API，断言解析结果与请求的 API 路径、标签过滤条件 | Missing |
-| 多个匹配一律拒绝 | 伪造两个同标签容器，断言返回不可用错误且不拨号 | Missing |
-| 不缓存 | 伪造 Engine 在两次请求间改变 IP，断言第二次使用新地址 | Missing |
-| 只读 | 伪造 Engine 记录全部请求，断言解析期间只收到 `GET` | Missing |
-| 真实 Docker 端到端路由 | 真实 Docker 中按标签启动 Node 容器，经 Sandbox Server 完成握手 | Missing |
+| 唯一匹配解析为沙盒网络 IP 与标签端口 | `sandbox-server/internal/route/docker_test.go` 的 `TestDockerResolvesTheSingleRunningContainerOnTheSandboxNetwork`：容器同时接入沙盒网络与其他网络，断言只用沙盒网络 IP 与端口标签；`sandbox-server/internal/docker/docker_test.go` 的 `TestListContainersFiltersByLabelsAndDecodes` 在真实 unix socket 上断言 `/v1.41/containers/json`、`all=true` 与标签过滤条件 | Covered |
+| 多个匹配一律拒绝 | `sandbox-server/internal/route/docker_test.go` 的 `TestDockerResolveFailures` 以两个同标签运行中容器断言 `ErrSandboxUnavailable`；解析失败时 server 在拨号前返回（`sandbox-server/internal/server/server_test.go` 的 `TestDiscoveryFailuresMapToFixedResponses`） | Covered |
+| 不缓存 | `sandbox-server/internal/route/docker_test.go` 的 `TestDockerResolveReflectsEachQuery`：两次解析之间改变 IP，断言第二次返回新地址 | Covered |
+| 只读 | 类型层：`route.NewDocker` 只接受 `ContainerLister`（仅 `ListContainers`），解析无法调用写 API；尚缺记录 Engine 请求方法的直接断言 | Partial |
+| 真实 Docker 端到端路由 | cluster#3 以替身 Node 镜像在真实 dockerd 上手工验收（握手、`404`、`503`），尚无自动化测试 | Missing |
 
 ### 决策依据
 
@@ -80,9 +79,9 @@ Controller 请求的 target 分别处于：无匹配容器；匹配容器未运�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| D3 映射表的每一行 | server 测试以伪造 Engine 覆盖每种状态，断言 HTTP 状态码 | Missing |
-| 响应体不含内部细节 | 同一组测试断言响应体等于固定文本 | Missing |
-| 启动自检 | `cmd` 测试：`_ping` 失败时拒绝启动；`-routes` 与 `-docker-network` 互斥 | Missing |
+| D3 映射表的每一行 | `sandbox-server/internal/route/docker_test.go` 的 `TestDockerResolveFailures` 覆盖无匹配、未运行、不在网络、端口标签非法、多个匹配与 Docker 报错的错误分类；`sandbox-server/internal/server/server_test.go` 的 `TestDiscoveryFailuresMapToFixedResponses` 断言三类错误分别为 `404`／`503`／`502` | Covered |
+| 响应体不含内部细节 | `sandbox-server/internal/server/server_test.go` 的 `TestDiscoveryFailuresMapToFixedResponses`：错误携带容器与网络细节，断言响应体等于固定短语 | Covered |
+| 启动自检 | `cmd/sandbox-server` 已实现 `_ping` 自检与互斥校验，尚无测试 | Missing |
 
 ### 决策依据
 
