@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 运行时 Workspace 生命周期改为适配 desktop Node：沙盒内由 Node clone，丢弃 Project 共享卷与 worktree 维护 Job
@@ -11,10 +11,11 @@ Cloud 运行时 Workspace（表 `workspaces`，不是协作 Space）的操作步
 新增 `clone` 步骤与 `workspace_data_delete` effect。Node 在 Cloud 的登记与心跳改由 Controller 代报，
 Node 本身不与 Cloud 通信。
 
-本 ADR 处于 `approved`，是 `cloud/operation` 的根决策；2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[运行时 Workspace 生命周期核心用例](../../../test-cases/cloud/operation/workspace-runtime-lifecycle.md)，证据均为 `Missing`。它修改
-Cloud 仓库 `docs/core-contract.md`“持久操作和外部副作用”、`docs/execution-contract.md`“存储与挂载”
-“Substrate 最小接口”与 `docs/authentication.md` 中 Node 服务凭据的约定；这些文档目前是阶段一模拟器的
-契约，尚无生产 Substrate 或真实 Node 依赖它们。兼容性边界是 PostgreSQL 中已有的数据与迁移历史：
+本 ADR 处于 `implemented`，是 `cloud/operation` 的根决策；Cloud 侧由 ora-space/cloud#30（迁移
+`0016_workspace_runtime_follows_node.sql`）落地，验证证据见
+[运行时 Workspace 生命周期核心用例](../../../test-cases/cloud/operation/workspace-runtime-lifecycle.md)。Cloud 的
+`docs/core-contract.md`、`docs/execution-contract.md` 已按本文改写。Rust Controller 与 cluster Sandbox Server
+的联调不属于本 ADR 的完成条件，由各自的决策承担。兼容性边界是 PostgreSQL 中已有的数据与迁移历史：
 本文不删除表或列，已有行按 D6 处理。gRPC 契约的具体形状见
 [Controller 接管 Workspace 操作与 Node 上报的契约](../controller-integration/20260926-workspace-operations-and-controller-reported-nodes.md)，
 Controller 侧行为见
@@ -124,7 +125,10 @@ Node（`one_live_node` 不变）；同一 sandbox 出现新 incarnation 时，�
   sandbox 与 generation 的绑定，以及 `node_id` 与 ensure 结果一致；伪造需要攻破 Controller 的服务身份，
   这与 Cloud 已经信任 Controller 对 Substrate 的观察是同一信任边界。
 - 原 Node 服务凭据（`sub` 为 Node UUID、带 `workspaceId`/`sandboxId`/`generation`）与
-  `/internal/v1/nodes/register|status` 不再用于 desktop Node；模拟器可以保留到它被 Rust Controller 取代。
+  `/internal/v1/nodes/register|status` 不再用于 desktop Node；模拟器保留这条路径，直到它被 Rust Controller
+  取代。经这条路径登记的 Node，`node_id` 与 `node_incarnation_id` 都取服务凭据的 subject，仍须等于
+  `sandbox_ensure` 结果中的 `nodeId`。模拟 Substrate 按 sandbox 分配 `nodeId`，只是测试替身的简化，不改变
+  本决策对真实 Node 的要求。
 
 ### D5：quiesce 的 idle 证据由 Controller 依据派发账本给出
 
@@ -147,6 +151,10 @@ desktop Node 只执行 Controller 派发的工作，没有 Cloud 执行票据以
   按新步骤执行。已计划但未对账的 `storage_ensure`/`worktree_ensure` effect 保持原记录。
 - 已经 `ready` 的旧 Workspace（只可能由模拟器创建）在下一次 `start` 时按新步骤运行；它们没有数据卷
   中的 clone，需要重新创建 Workspace 才能得到代码。这是可接受的：阶段一没有生产数据。
+- 迁移时停在 `storage_delete` 步骤、且未终态的 `delete_project` 退回 `cleanup`，按 D3 为每个 Workspace
+  删除数据后完成，而不是以 `failed` 结束：它已越过 sandbox 终止与准入关闭，失败会留下一个已关闭却未删除、
+  也无法重新删除到底的 Project。这是实现时对本节的补充。
+- 数据库触发器拒绝新的退役步骤（`storage`、`worktree`、`storage_delete`）、退役 effect 与旧表新行，旧记录只读保留。
 - 新的迁移是前向、可重试的 SQL 文件，不修改已应用的迁移。
 
 ## 不变量
@@ -178,16 +186,15 @@ desktop Node 只执行 Controller 派发的工作，没有 Cloud 执行票据以
   `requestedRef`；分支创建属于 Node 的 worktree 决策。
 - 生产 Substrate 适配器的服务认证与 `workspace_data_delete` 对应的平台操作。
 - suspend/resume。
+- Workspace 的 `requestedRef` 取自 Project 默认分支；默认分支为 `HEAD` 时 Cloud 原样下发，desktop 的 clone
+  策略是否接受需与 Node 的 clone 决策对齐。
 
-## 落地顺序
+## 落地
 
-1. **契约**：按 controller-integration 后续决策补 proto 与生成物（只增不改），`docs/` 同步改写。
-2. **迁移与事务**：新迁移（`node_instances` 新列、`clone_executions` 的 operation 绑定、在途旧步骤
-   operation 失败）；`internal/core` 的步骤表、`workspace_data_delete` 与 Controller 代报的 Node 事务。
-   完成条件：`task check` 覆盖新步骤、旧步骤迁移与 Node 代报的 fencing。
-3. **模拟器**：Go 模拟 Controller 与 Substrate 按新步骤工作，保持现有集成测试可运行。
-4. **联调**：Rust Controller（Controller 决策）与 cluster Sandbox Server 就位后，从前端创建 Workspace
-   完成 sandbox → node → clone。
+Cloud 侧已在一次变更中完成：proto 与生成物（只增不改）、`docs/` 改写、迁移与 `internal/core` 的步骤表、
+`workspace_data_delete` 与 Controller 代报的 Node 事务，以及 Go 模拟 Controller/Substrate 按新步骤工作
+（模拟 Node 真实 clone）。剩余的联调，即前端创建 Workspace 经 Rust Controller 与 cluster Sandbox Server 完成
+sandbox → node → clone，由 Controller 与 Sandbox Server 的决策承担。
 
 保持不变的行为：租约、epoch、effect plan 与对账、generation fencing、执行准入与 stop 的 quiesce 规则、
-租户级 clone。从第 2 步开始改变的行为：新 Project/Workspace 按新步骤执行，Node 只能由 Controller 登记。
+租户级 clone。已经改变的行为：新 Project/Workspace 按新步骤执行，Controller 可通过 gRPC 登记 Node。

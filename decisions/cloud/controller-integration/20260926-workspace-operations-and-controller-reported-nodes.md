@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Internal Control gRPC 增加 Workspace 操作与 Controller 代报 Node，clone 登记扩展到 Workspace 的 clone 步骤
@@ -10,7 +10,7 @@ Controller 领取并推进运行时 Workspace 操作（替代只有 JSON `/inter
 `RecordDispatch` 等方法不改形状，`operation_id` 可以指向 Workspace 操作，使同一套派发前登记与原子接管
 覆盖 Workspace 的 clone 步骤。
 
-本 ADR 处于 `approved`，2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[Workspace 操作与 Node 上报核心用例](../../../test-cases/cloud/controller-integration/workspace-operations-and-node-reports.md)，证据均为 `Missing`。它是
+本 ADR 处于 `implemented`，由 ora-space/cloud#30 落地（`proto/ora/cloud/internal/v1/operations.proto`、`nodes.proto`），验证证据见[Workspace 操作与 Node 上报核心用例](../../../test-cases/cloud/controller-integration/workspace-operations-and-node-reports.md)。它是
 [Cloud 拥有 Internal Control gRPC 契约](0-cloud-owned-internal-grpc-contract.md)与
 [控制监听器保活](20260924-control-listener-keepalive.md)之后的第三个决策，只描述契约形状与事务边界；
 步骤与语义由[运行时 Workspace 生命周期](../operation/0-workspace-runtime-follows-desktop-node.md)决定。
@@ -35,7 +35,7 @@ Controller 领取并推进运行时 Workspace 操作（替代只有 JSON `/inter
 
 | 方法 | 对应 JSON 动作 | 规则 |
 |---|---|---|
-| `ClaimOperation` | `claim` + `snapshot` | 纯读；返回一个可推进的 operation 及其 Workspace、sandbox、Node、effect 快照；不含 storage/worktree 数据 |
+| `ClaimOperation` | `claim` + `snapshot` | 领取：把可推进的 operation 置为 `running`，同一持有者重新领取时递增 `version`；返回该 operation 及其 Workspace、sandbox、Node、effect 与 clone 执行快照；不含 storage/worktree 数据 |
 | `PlanEffect` | `plan` | 为当前步骤登记 effect plan，返回 effect ID（即 Substrate 幂等键）与请求体 |
 | `RecordEffectResult` | `effect_result` | 登记 Substrate 的观察（含旧 epoch effect 的对账） |
 | `AdvanceOperation` | `advance` | 按生命周期决策 D1 的步骤表推进 |
@@ -43,7 +43,10 @@ Controller 领取并推进运行时 Workspace 操作（替代只有 JSON `/inter
 
 - 事务不重写：每个方法调用 `internal/core` 中与 JSON 动作相同的 `Control` 入口，gRPC 只是另一种表达，
   与根 D2“gRPC 与 JSON 共用同一事务、不存在两套业务规则”一致。
-- 写方法（除 `ClaimOperation`）携带 `submission_id` 与 `epoch`，按根 D3 保存提交记录；`operation` 的
+- `ClaimOperation` 不是纯读：它就是 JSON `claim` 动作，领取本身要写 operation 状态与 `version`，
+  否则无法 fencing 同一持有者重启前的旧快照。它只带 `epoch`，不带 `submission_id`：重复领取返回同一
+  operation 的新 `version`，调用方以最新快照为准。
+- 其余写方法携带 `submission_id` 与 `epoch`，按根 D3 保存提交记录；`operation` 的
   `version` 继续用于 fencing 同一持有者重启前的旧快照。
 - effect 请求与结果在 proto 中是按 `kind` 区分的 oneof，只包含生命周期决策保留的三种 effect 与插件
   effect；不在 proto 中出现 storage/worktree 的消息。
@@ -78,9 +81,10 @@ Controller 领取并推进运行时 Workspace 操作（替代只有 JSON `/inter
 
 ### D4：`Watch` 增加 `OperationAvailable`
 
-Workspace 操作进入 `queued` 或到期 `retry_wait` 的事务提交之后，Cloud 在 `Watch` 流上发送
-`OperationAvailable{operation_id}`，语义与 `WorkAvailable` 相同：至多一次、无历史回放，只影响延迟；
-Controller 在流不可用期间按周期调用 `ClaimOperation`。
+Workspace 操作被创建或重试（进入 `queued`）的事务提交之后，Cloud 在 `Watch` 流上发送
+`OperationAvailable{operation_id}`，语义与 `WorkAvailable` 相同：至多一次、无历史回放，只影响延迟。
+`retry_wait` 到期不是一次事务提交，Cloud 不为它发信号；Controller 按周期调用 `ClaimOperation` 领取到期的
+重试，流不可用期间也靠同一周期兜底。
 
 ## 不变量
 
@@ -108,12 +112,11 @@ Controller 在流不可用期间按周期调用 `ClaimOperation`。
 - JSON `/internal/v1` 与 Go 模拟 Controller 的退役。
 - 多 Controller worker 的分工与 `NodeAssignment`。
 
-## 落地顺序
+## 落地
 
-1. proto 新增服务、方法与字段，重新生成并提交；buf lint/breaking 通过。
-2. `internal/controlgrpc` 实现，映射到 `internal/core` 现有与生命周期决策新增的事务；gRPC 集成测试覆盖
-   每个方法的幂等、冲突与 fencing。
-3. desktop 按 commit 锁定新契约（Controller 决策）。
+proto 新增服务、方法与字段并提交生成物，buf lint/breaking 通过；`internal/controlgrpc` 把每个方法映射到
+`internal/core` 的 `Control` 事务，gRPC 集成测试覆盖幂等、冲突与 fencing。desktop 按 commit 锁定新契约
+由 Controller 决策承担。
 
-保持不变的行为：现有 gRPC 方法、JSON 接口与租户级 clone 闭环。从第 2 步开始，Controller 可以经 gRPC
+保持不变的行为：现有 gRPC 方法、JSON 接口与租户级 clone 闭环。已经改变的行为：Controller 可以经 gRPC
 推进 Workspace 操作与代报 Node。
