@@ -26,7 +26,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 信号与流建立触发领取 | `tests/cloud.rs::signals_claim_without_waiting_for_the_claim_interval`（`claim_interval_ms` 为 1 小时，信号后 1 秒内登记，整段调用序列相等）与 `work_accepted_before_the_stream_opens_is_claimed_on_establishment` | Covered |
+| 信号与流建立触发领取 | `tests/cloud.rs::signals_claim_without_waiting_for_the_claim_interval`（`claim_interval_ms` 为 1 小时，信号后 1 秒内登记，整段调用序列相等）；流建立时领取由 `a_drain_pauses_claims_until_a_new_stream_opens` 证明（排空期间入队、不发信号，流重开后登记）。原 `work_accepted_before_the_stream_opens_is_claimed_on_establishment` 因租户级领取改为以静态 Node 握手为前提（[静态 Node 身份决策](../../../decisions/controller/node-management/20260926-static-node-identity-proven-before-dispatch.md)）更名为 `work_queued_before_the_node_handshake_is_claimed_once_it_completes`，改为证明握手触发领取 | Covered |
 | 在线时只按信号与兜底领取 | `signals.rs::ticks_claim_by_stream_state` 与 `stream_events_follow_the_decision_table` 覆盖在线状态下领取节拍不领取、续约节拍兜底领取、`NodeAssignment` 与未知信号不领取；上一行两个测试的完整调用序列证明在线时没有周期领取；10 秒兜底没有端到端测试 | Partial |
 | 断流回退与重开 | `tests/cloud.rs::a_broken_stream_falls_back_to_periodic_claims_and_reopens`：流以错误结束后，无信号的工作由周期领取登记，假 Cloud 重新接受后流重开并按信号登记 | Covered |
 | 无租约不打开、不领取 | `signals.rs::opens_only_under_a_lease_without_a_live_stream` 与 `a_lost_lease_closes_only_a_live_stream`；`tests/cloud.rs::a_stale_stream_open_stops_claims_and_writes` 证明丢弃 epoch 后不再发出调用 | Covered |
