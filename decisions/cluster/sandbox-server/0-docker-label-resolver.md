@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Sandbox Server 按 Docker 标签发现沙盒 Node，取代静态路由表
@@ -11,7 +11,10 @@ cluster 的 Sandbox Server 目前从静态 JSON 表（`-routes`，示例 `routes
 不创建、不停止、不删除容器；容器由 Compose（后续 T8）或人工按标签约定拉起。Controller 看到的
 寻址方式、HTTP 状态码与 close code 语义不变，只是“未知沙盒”的来源从 JSON 表换成了 Docker。
 
-本 ADR 处于 `proposed`，等待评审纠偏，不维护核心测试用例。涉及 cluster 仓库的
+本 ADR 处于 `approved`：2026-09-26 Eric 确认 D1–D6 全部按建议采纳，并确定了 T8 的部署形态（见
+“对 T8 的约束”）；实现尚未开始，验证义务登记在
+[Docker 标签解析核心用例](../../../test-cases/cluster/sandbox-server/docker-label-resolution.md)，
+证据均为 `Missing`。涉及 cluster 仓库的
 `sandbox-server/internal/route`、`sandbox-server/internal/server` 与 `cmd/sandbox-server`；desktop
 与 cloud 的代码、协议和配置格式不变。兼容性边界只有一条：Controller 经 Sandbox Server 连接 Node
 时可观察的寻址与错误分类（见[传输决策](../../node/protocol/20260924-frame-channel-with-ipc-and-websocket.md)
@@ -67,10 +70,10 @@ Sandbox Server 启动时通过 `-docker-network <name>` 指定沙盒网络。解
 
 - 这是传输 D6 的部署前提在本地的落实：Node 的 WS 入口不做鉴权，只能被 Sandbox Server 访问。
   Node 容器不发布端口；只有 Sandbox Server（与同网络容器）能到达。
-- 因此 Sandbox Server 必须能到达该网络：在 Compose 中作为同网络的容器运行（T8 的默认形态）；
+- 因此 Sandbox Server 必须能到达该网络：在 Compose 中作为同网络的容器运行（T8 采用的形态）；
   在 Linux 上的 Docker Engine（含 WSL2 中安装的 Engine）可以直接从宿主机访问 bridge 网络 IP，
-  `task sandbox:run` 仍可在宿主机运行；Docker Desktop（macOS/Windows）宿主机访问不到容器 IP，只能
-  在容器中运行 Sandbox Server。
+  `task sandbox:run` 仍可在宿主机运行，用于调试；Docker Desktop（macOS/Windows）宿主机访问不到
+  容器 IP，只能在容器中运行 Sandbox Server。
 - 选用 IP 而不是容器 DNS 名：Sandbox Server 在宿主机运行时无法使用 Docker 内置 DNS；IP 来自同一次
   Docker 查询，不会与标签结果不一致。
 - 不支持 `wss://`：本地网络内的明文 WS 与静态表中的本地示例一致；TLS 属于平台路由。
@@ -176,25 +179,40 @@ Docker。两个实现共享 `Resolver` 接口和 server 的错误映射，不共
 
 ## 对 T8（Compose + Taskfile 一键启动）的约束
 
-T8 不属于本决策，但应建立在它之上；以下是本 ADR 为 T8 固定的接口，具体文件结构在 T8 中决定：
+T8 不属于本决策，但建立在它之上。2026-09-26 Eric 确定 T8 的部署形态：
 
-- Compose 定义一个沙盒网络（例如 `ora-sandbox`），Sandbox Server 服务挂载 docker.sock、以
-  `-docker-network` 指向该网络，只把监听端口发布到 `127.0.0.1`。
-- 每个沙盒是一个 Node 服务：带 D1 三个标签，只接入沙盒网络，不发布端口；Node 配置的
-  `control.listen` 为 `websocket`，`bind` 为 `0.0.0.0:<port>`，与 `space.ora.node.port` 一致；Node home
-  使用命名卷，使“Node 重启后重放”场景在容器重建后仍成立。
-- Controller 配置由同一份沙盒清单生成：`node_id` 与 Node 配置一致，`websocket` 端点的 `url` 指向
-  Sandbox Server，请求头 `ate-target-actor: <atespace>/<sandbox-id>` 与标签一致。清单是唯一来源，
-  避免三处手写不一致。
-- Taskfile 提供 `up`/`down`（及按需 `logs`）；`down` 是否删除 Node home 卷应分成两个任务，默认保留。
+| 事项 | 决定 |
+|---|---|
+| Node 镜像 | 由 desktop 提供 Dockerfile，cluster 只引用 |
+| Controller 与 Cloud | 都在 Compose 的容器中运行 |
+| 默认沙盒 | 默认不起沙盒，按前端请求动态创建 |
 
-T8 仍需另行决定：Node 镜像在 cluster 构建还是由 desktop 提供 Dockerfile；Controller（minicloud）
-与 Cloud 在容器中运行还是在宿主机运行；默认沙盒数量。
+由此，本 ADR 为 T8 固定以下接口：
+
+- **两个网络**：沙盒网络（例如 `ora-sandbox`）只接入 Sandbox Server 与 Node 容器；应用网络接入
+  Cloud、Controller 与 Sandbox Server。Controller 经应用网络以服务名访问 Sandbox Server，本身不在
+  沙盒网络上，因此传输 D6 的“Node 只能经路由到达”在 Compose 中由网络拓扑保证，而不只是约定。
+  Sandbox Server 挂载 docker.sock，以 `-docker-network` 指向沙盒网络；只有前端所需的端口发布到
+  宿主机 `127.0.0.1`。
+- **Node 容器**：不在 Compose 文件中静态声明，由沙盒创建时启动（见下）。每个容器带 D1 三个标签，
+  只接入沙盒网络、不发布端口；Node 配置的 `control.listen` 为 `websocket`，`bind` 为
+  `0.0.0.0:<port>`，与 `space.ora.node.port` 一致；Node home 使用按 sandbox ID 命名的卷，使“Node 重启
+  后重放”场景在容器重建后仍成立。
+- **Controller 的端点**：`websocket` 端点的 `url` 指向应用网络上的 Sandbox Server，请求头
+  `ate-target-actor: <atespace>/<sandbox-id>` 与容器标签一致。因为沙盒是动态创建的，端点由创建沙盒
+  的一方交给 Controller，而不是写在启动时的静态配置里。
+
+“按前端请求动态创建”超出了本 ADR：它需要 Sandbox Server 的创建/销毁 API，以及 Controller 侧接收
+新 `NodeTarget` 的入口（传输 D8 的 `SandboxProvider`）。本 ADR 的 D4 不变：Docker Resolver 仍只读，
+生命周期 API 创建的容器只要带 D1 标签，就能被本 Resolver 路由。因此生命周期决策从“未解决的问题”
+变为 T8 的前置，须在本目录追加 ADR（Sandbox Server 一侧）并与 Controller 一侧的 Provider 决策
+一起评审；T8 中与动态沙盒无关的部分（镜像、网络、Cloud/Controller/Sandbox Server 的 Compose 服务、
+Taskfile `up`/`down`）可以先落地。
 
 ## 本决策未解决的问题
 
-- 沙盒生命周期 API 与 `SandboxProvider`：等 Controller 需要动态拉起 Node 时，在本目录追加 ADR
-  （传输 D8）。
+- 沙盒生命周期 API 与 `SandboxProvider`：T8 已确定按前端请求动态创建沙盒，因此这是 T8 的前置，
+  在本目录追加 ADR（传输 D8），不在本文决定。
 - 就绪探测：是否由 Sandbox Server 提供沙盒级就绪查询，属于生命周期 API。
 - 多个 Sandbox Server 共享一个 Docker Engine 时的隔离（例如额外的 `space.ora.sandbox.server` 标签）：
   目前每台开发机只有一个 Sandbox Server，没有需求。
@@ -210,9 +228,9 @@ T8 仍需另行决定：Node 镜像在 cluster 构建还是由 desktop 提供 Do
    覆盖 D3 全表与不变量 1–6，不依赖真实 Docker。
 3. **真实 Docker 验收**：在装有 Docker 的环境中以 `docker run` 按标签启动一个 Node 容器，重跑
    2026-09-25 联调清单中与路由相关的场景（正常路径、未知沙盒、Node 不可达、容器停止、重复标签）。
-   完成条件：结果与静态表一致，另有容器停止 → `503` → `Unreachable`。之后本 ADR 转为 `approved`
-   后的核心用例在此补证据。
-4. **T8** 在第 3 步之后开始。
+   完成条件：结果与静态表一致，另有容器停止 → `503` → `Unreachable`；核心用例中需要真实 Docker
+   的义务在此补证据。
+4. **T8** 与动态沙盒无关的部分在第 3 步之后开始；动态创建等生命周期 ADR 批准后再做。
 
 保持不变的行为：Controller 配置格式、请求头寻址、路径透传、中继的 close code 与 ping/pong 语义，
 以及 `-routes` 的静态表用法。从第 2 步开始改变的行为：Sandbox Server 可以不依赖路由文件、直接
