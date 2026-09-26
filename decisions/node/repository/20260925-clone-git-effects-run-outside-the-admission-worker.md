@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # clone 的 Git 副作用移出受理 worker：worker 独占 SQLite 与受理，执行器只做 host 交互
@@ -11,7 +11,7 @@ Node 服务中唯一的阻塞 worker 线程目前同时负责 SQLite、会话受
 预留与证据、状态推进和会话受理，从而使受理回复的延迟不再取决于 Git。持久顺序、收尾屏障、
 判定规则和对外协议均不改变。
 
-当前 `status: proposed`，待 Eric 评审。涉及 desktop `apps/ora-node` 的 `service`（worker 与
+2026-09-26 经 Eric 评审批准，状态为 `approved`：D1 采用 worker 独占数据库，D4 首版串行，D6 Worktree 恢复留在 worker，执行器形态在实现时选定。涉及 desktop `apps/ora-node` 的 `service`（worker 与
 会话之间的队列）、`repository.rs` 的 clone 状态机、`managed` 的受管 runner 拆分，以及 Node 文档
 `docs/node/local-ipc.md` 中“worker 繁忙可导致会话关闭”的承诺。不改变 Node 协议消息、Node 数据库
 schema、Controller 行为，也不改变 Git 与 Node 进程同生共死的生命周期策略。
@@ -27,7 +27,7 @@ schema、Controller 行为，也不改变 Git 与 Node 进程同生共死的生�
 | 中断失败判定 D4：结束事实先于“收尾完成”落盘 | 继承，不变 |
 | [process integration](../process/integration/0-shared-process-entry-and-resource-handoff.md) D2、D3：变更关联先于派发；恢复先观测原 Scope Closed | 继承，不变 |
 | [传输 ADR](../protocol/20260924-frame-channel-with-ipc-and-websocket.md) D5：应用层心跳与 I/O 期限是存活的唯一依据 | 继承；本文只消除“受理回复被 Git 拖过期限”这一原因，不改期限规则 |
-| Node 服务现状：单一 worker 串行处理受理与 Git，受理回复可能等待整个 clone | 修改：受理回复只等待 SQLite 与本地目录操作（D1、I3） |
+| Node 服务现状：单一 worker 串行处理受理与 Git，受理回复可能等待整个 clone | 修改：受理回复只等待 SQLite 与本地目录操作（D1、不变量 3） |
 
 ## 背景
 
@@ -39,11 +39,12 @@ Node 不读取对端 close，中继关闭 Node 侧要等关闭握手超时；控
 
 问题分两层：
 
-- **2a 会话读写耦合**：读循环等待受理回复时不读帧。由 T2（会话读写解耦）处理，不在本文范围。
+- **2a 会话读写耦合**：读循环等待受理回复时不读帧。已由会话读写解耦（desktop #616）处理：读循环持续读帧，
+  受理回复在各自帧到达后的 `frame_timeout_ms` 内有效，超时以 `InternalError` 关闭会话。不在本文范围。
 - **2b 受理排在 Git 之后**：即使读循环不再阻塞，状态查询的回复本身仍要等 Git 结束，Controller
   得到的仍是超时。只要 Git 在 worker 上同步执行，任何会话侧改动都无法让受理及时回复。本文处理这一层。
 
-现状代码（desktop `9e51ccb`）中的阻塞点：
+现状代码（desktop `767c4ce`，已含 #616）中的阻塞点：
 
 | 位置 | 在 worker 上等待的 host 交互 |
 |---|---|
@@ -132,8 +133,8 @@ worker 并落盘后移除。恢复节拍与新受理只驱动不在集合中的�
 行为，不引入新的配置项，也不需要先回答 host 的 Run 数量上限与磁盘、网络争用问题。D3 的在途集合
 已经按执行而不是按全局加锁，将来并行只需要把执行器容量从 1 改为有界 N，不改变本文的不变量。
 
-执行器的形态（独立线程加 current-thread runtime，或服务 runtime 上由 `JoinSet` 持有的异步任务）
-属于实现选择；无论哪种，都必须由服务显式持有、在停止时等待其结束（D5），不允许无主任务。
+执行器的形态有两种可选：独立线程加自己的 current-thread runtime，或服务 runtime 上由 `JoinSet`
+持有的异步任务（host 交互本身都是异步 I/O）。评审决定在实现时按代码结构选定，本文不固定；无论哪种，都必须由服务显式持有、在停止时等待其结束（D5），不允许无主任务。
 
 ### D5：停止与失败
 
@@ -168,9 +169,9 @@ Node 服务的会话拒绝 `EnsureWorktree`／`RemoveWorktree`，服务中不会
 
 | 方案 | 取舍 |
 |---|---|
-| 执行器持有自己的 SQLite 连接，`drive_clone` 整体搬到执行器 | 代码改动最小，状态机保持“一次跑到底”。但需要把数据库切到 WAL 并处理 `SQLITE_BUSY`，写入顺序的保证从“单线程代码顺序”变为“跨连接事务顺序”，违背 I1 带来的可审查性；worker 与执行器还会同时修改 `NodeState`。若 Eric 更看重改动量，这是可接受的备选，但需要补充数据库并发的证据 |
-| 只做 T2（读写解耦），Git 留在 worker | 读循环能收 close／ping，但状态查询的回复仍要等整个 clone，Controller 仍按 `frame_timeout_ms` 判定超时；问题 2b 不消失 |
-| 状态查询绕过 worker，由会话侧用只读连接直接读库 | 能让查询及时回复，但确认（`EventAck`）和重放仍排在 Git 之后；并且引入第二个线程读库，同样需要 WAL 才能在写事务期间读取。只解决一部分，并破坏 I1 |
+| 执行器持有自己的 SQLite 连接，`drive_clone` 整体搬到执行器 | 代码改动最小，状态机保持“一次跑到底”。但需要把数据库切到 WAL 并处理 `SQLITE_BUSY`，写入顺序的保证从“单线程代码顺序”变为“跨连接事务顺序”，失去不变量 1 带来的可审查性；worker 与执行器还会同时修改 `NodeState`。评审时否决：改动量的节省不抵数据库并发需要补充的证据 |
+| 只做读写解耦（#616），Git 留在 worker | 读循环能收 close／ping，但状态查询的回复仍要等整个 clone，会话仍因受理期限到期而关闭；问题 2b 不消失 |
+| 状态查询绕过 worker，由会话侧用只读连接直接读库 | 能让查询及时回复，但确认（`EventAck`）和重放仍排在 Git 之后；并且引入第二个线程读库，同样需要 WAL 才能在写事务期间读取。只解决一部分，并破坏不变量 1 |
 | 执行器首版就有界并行 | 提高吞吐，但需要先决定容量、host Run 上限和资源争用，超出“受理不被 Git 阻塞”的目标；D3 已为之预留 |
 | Node 重启后重新接管仍在运行的 Run（live-restore） | 见“本决策未解决的问题”；它以本文为前提，不能替代本文 |
 
@@ -179,7 +180,8 @@ Node 服务的会话拒绝 `EnsureWorktree`／`RemoveWorktree`，服务中不会
 - **对外行为**：Node 协议、数据库 schema、判定规则和终态不变。可观察变化只有：clone 进行中的
   状态查询、确认和重放能在 `frame_timeout_ms` 内得到回复；`docs/node/local-ipc.md`（中英）中
   “worker 繁忙可导致会话关闭”的说明需要删除或改写。
-- **单独落地不能让“存活”场景通过**：空闲会话仍需 T1（Controller 上行心跳），读循环仍需 T2。
+- **“存活”场景的其他前提已经落地**：空闲会话由 Controller 上行心跳（desktop #615）处理，读循环由会话读写
+  解耦（#616）处理；本文落地后，clone 进行中的会话也不再因受理期限到期而关闭。
 - **观察落盘窗口**：见 D2。与现状相比，Run 收尾到结束事实落盘之间多一次进程内消息往返。
 - **状态机改写的回归风险**：`drive_clone` 拆成步骤后，现有真实 host／guardian 测试（正常停止、命令
   超时、强杀恢复、guardian 丢失、`Interrupted` 经 WS 接管）必须全部原样通过，作为行为未变的证据。
@@ -195,13 +197,13 @@ Node 服务的会话拒绝 `EnsureWorktree`／`RemoveWorktree`，服务中不会
 
 ## 落地顺序
 
-1. **前置：T2 会话读写解耦先落地。** T2 只改会话层，与本文互不依赖代码，但先完成 T2 可以让本文的
-   验收直接观察到“clone 进行中会话不断开”，不被 2a 的症状干扰。
+1. **前置：会话读写解耦。** 已由 desktop #616 落地；本文的验收因此可以直接观察“clone 进行中会话
+   不断开”，不被 2a 的症状干扰。
 2. **拆分 `ManagedGitRunner`**：journal 写入与 host 交互分离，行为不变；现有测试全部通过即完成。
    单独提交，降低第 3 步的评审面。
 3. **clone 步骤机与执行器**：实现 D1–D5，删除 worker 上的同步 Git 调用；补充一个真实 host 测试：
    clone 的 Git 被阻塞期间，状态查询、确认在 `frame_timeout_ms` 内得到回复，且会话不断开。
-4. **文档与核心用例**：ADR 批准后，在 `test-cases/node/repository/` 增加“受理不等待 Git”与“在途执行
-   不被重复驱动”的核心用例；同步修改 `docs/node/local-ipc.md` 中英文。
+4. **文档与证据**：同步修改 `docs/node/local-ipc.md` 中英文，并更新
+   [受理与 Git 执行核心用例](../../../test-cases/node/repository/admission-and-git-execution.md)的证据状态。
 
 从第 3 步起，受理回复不再等待 Git；持久顺序、判定、终态和协议保持不变。
