@@ -1,6 +1,7 @@
 # 运行时 Workspace 生命周期
 
-依据[已批准的运行时 Workspace 生命周期决策](../../../decisions/cloud/operation/0-workspace-runtime-follows-desktop-node.md)。
+依据[已批准的运行时 Workspace 生命周期决策](../../../decisions/cloud/operation/0-workspace-runtime-follows-desktop-node.md)
+与[具体默认分支决策](../../../decisions/cloud/operation/20260926-require-concrete-default-branch.md)。
 本文件登记 Cloud 运行时 Workspace（表 `workspaces`）按 sandbox → node → clone 推进、丢弃 storage/worktree
 步骤、由 Controller 代报 Node 的承诺；gRPC 形状见
 [Workspace 操作与 Node 上报用例](../controller-integration/workspace-operations-and-node-reports.md)。
@@ -117,3 +118,41 @@ Workspace 有未终止或已终止的 sandbox。
 ### 决策依据
 
 运行时 Workspace 生命周期 D6，不变量 7。
+
+## A Workspace Never Stores HEAD As Its Requested Ref
+
+### 风险
+
+Project 以 `HEAD` 为默认分支被创建，Workspace 的 `requestedRef` 为 `HEAD`，desktop Node 拒绝 clone，operation
+永久阻塞在 clone 步骤而 Project 已经存在。
+
+### 前置状态
+
+租户成员可以创建 Project；已有一个默认分支为 `main` 的 Project，以及一个本规则之前以 `HEAD` 创建的 Project。
+
+### 触发
+
+创建 Project 时 `defaultBranch` 缺省、空白或为 `HEAD`；在两个 Project 下以 `baseRef: HEAD` 创建 isolated Workspace。
+
+### 必须成立
+
+- 缺省、空白或 `HEAD` 的 `defaultBranch` 返回 `400 default_branch_required`，不写入 Project。
+- `baseRef: HEAD` 存为 Project 的默认分支（`main`）。
+- 默认分支仍为 `HEAD` 的旧 Project 拒绝 `baseRef: HEAD`（`400 default_branch_required`）。
+
+### 禁止结果
+
+新建的 Project 或 Workspace 存储 `HEAD`；被拒绝的请求留下记录；Cloud 为解析分支访问远端。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 创建时拒绝 | `integration/default_branch_test.go` `TestProjectsNameAConcreteDefaultBranch`：三种输入均为 `default_branch_required` 且 `projects` 为空 | Covered |
+| `baseRef: HEAD` 的解释 | 同一测试：isolated Workspace 的 `requestedRef` 为 `main`；旧 `HEAD` Project 被拒绝 | Covered |
+| 不访问远端 | 代码中没有远端读取路径，只能由评审保证 | Missing |
+
+### 决策依据
+
+具体默认分支 D1、D2，不变量 1–3。
+
