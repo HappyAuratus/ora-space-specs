@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 上行心跳作为 Node 读期限的存活依据，WebSocket 会话以约定 close code 结束
@@ -10,9 +10,10 @@ Controller 会话在空闲时向 Node 发送应用层 `Heartbeat`，Node 保留�
 close code，使中继与 Controller 能区分进程停止、协议错误、身份不符、存活超时与内部失败，而不是
 一律看到中继代发的 `1011 "<side> connection lost"`。
 
-本决策处于 `approved` 状态：2026-09-26 经 Eric 批准采用“Controller 上行心跳”，备选“Node 只在有
-未完成请求时施加读超时”的否决理由见替代方案。心跳由 desktop#615 实现，close code 与分类由
-desktop#617 实现，两者合入后再转为 `implemented`。验证义务登记在
+本决策处于 `implemented` 状态：2026-09-26 经 Eric 批准采用“Controller 上行心跳”，备选“Node 只在
+有未完成请求时施加读超时”的否决理由见替代方案。上行心跳由 desktop `a767bc7` 落地，close code 与
+`Mismatch`/`Silent` 分类由 desktop `3d819e6` 落地，他人心跳以 `4403` 关闭在两者合并时（`46ce0e0`）
+接通。验证义务登记在
 [传输核心用例](../../../test-cases/node/protocol/frame-channel-transports.md)。它继承
 [帧通道传输决策](20260924-frame-channel-with-ipc-and-websocket.md)，修改其 D5（心跳与连接存活）
 与 D7（会话失败分类）中身份不符、I/O 期限到期和 close code 相关的行，其余不变。涉及 `ora-node-protocol` 的
@@ -45,7 +46,7 @@ Controller→Node 消息、Controller 会话与 `SessionError`、Node 会话读�
 | D7：身份或能力不符归为 `Protocol` | 修改：归为新增的 `Mismatch`（D4） |
 | D7：I/O 期限到期归为 `Disconnected` | 修改：归为新增的 `Silent`（D4） |
 | D7：所有分类都按 `reconnect_ms` 重试 | 继承，不变 |
-| 根 D4：会话绑定 `ControllerId` 与 Node 身份 | 继承；上行心跳携带 `ControllerId`，不符即协议错误 |
+| 根 D4：会话绑定 `ControllerId` 与 Node 身份 | 继承；上行心跳携带 `ControllerId`，不符即身份不符（`4403`） |
 
 ## 决策
 
@@ -170,15 +171,12 @@ Node 因失败关闭时在准入之外完成这一步，立即释放控制槽，
 - `query_interval_ms` 与 `frame_timeout_ms` 的跨进程约束无法自动校验；若将来由 `SandboxProvider`
   同时生成两端配置，再由 Provider 保证。
 
-## 落地顺序
+## 落地结果
 
-1. **协议与 Controller**：`ora-node-protocol` 增加上行 `Heartbeat`；Controller 会话在空闲节拍发送。
-   完成条件：Controller 会话单测证明空闲节拍发出 `Heartbeat`、有待查派发时只发查询。
-2. **Node**：读循环就地处理上行心跳并校验 `controller_id`。完成条件：真实 Node 在读期限远小于空闲
-   时长的配置下，经 IPC 与 WS 维持单一会话不重建；`controller_id` 不符时断开。
-3. **close code 与分类**：`ora-node-transport` 增加带原因关闭的接口，两端按 D2 发送，Controller 按
-   D2、D4 分类。可与 1、2 并行实现；先合入的一方之后，另一方把上行心跳的身份不符接到 `4403`。
-   完成条件：每种原因经真实传输发送并被对端回复 close，Controller 与真实 Node 各自按表关闭与分类。
+- desktop `a767bc7`：`ora-node-protocol` 增加 `ControllerToNodeMessage::Heartbeat`（`ControllerHeartbeat`），
+  Controller 会话在无待查派发的节拍发送，Node 在读循环内就地处理并校验 `controller_id`。
+- desktop `3d819e6`：`ora-node-transport` 增加 `CloseReason` 与带原因关闭，两端按 D2 关闭，Controller
+  增加 `Mismatch`、`Silent` 并在运行时停止时等待 `1001` 发出。
+- desktop `46ce0e0`：合并两者，他人心跳改为以 `4403` 关闭。
 
-步骤 1、2 必须同时发布（混合版本不支持）；步骤 3 独立。核心测试用例已随批准同步。从步骤 2 起，空闲会话不再周期性重建；
-执行、恢复、重放与确认语义保持不变。
+与批准方案一致，没有偏离。执行、恢复、重放与确认语义不变；Controller 与 Node 必须同版本发布。
