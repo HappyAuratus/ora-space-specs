@@ -1,9 +1,9 @@
 # Controller 驱动 Workspace 沙盒
 
-依据[已批准的 Controller 驱动 Workspace 沙盒决策](../../../decisions/controller/node-management/0-controller-drives-workspace-sandboxes.md)。
+依据[已实现的 Controller 驱动 Workspace 沙盒决策](../../../decisions/controller/node-management/0-controller-drives-workspace-sandboxes.md)。
 本文件登记云端 Controller 维护动态 Node 集合、调用 Substrate、代报 Node 与 quiesce 的承诺；Cloud 侧校验见
 [Workspace 操作与 Node 上报用例](../../cloud/controller-integration/workspace-operations-and-node-reports.md)。
-证据来自 `ora-space/desktop` 的 `apps/ora-controller`（desktop#619）。实现与 ADR 的已知偏离：Cloud
+证据来自 `ora-space/desktop` 的 `apps/ora-controller`（desktop#619，已合并）。实现与 approved 方案的偏离已记入 ADR：Cloud
 `ClaimOperation` 一次只交出最早的可运行操作，因此操作依次执行；会话只按领取到的操作快照重建，
 Controller 重启后存活沙盒要等其 Workspace 再被领取操作才恢复会话，待 Cloud 提供只读的存活沙盒列表后补齐。
 

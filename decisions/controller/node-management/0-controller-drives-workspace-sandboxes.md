@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 云端 Controller 驱动 Workspace 沙盒：经 Substrate effects 建删沙盒，动态维护 Node 会话并代报 Cloud
@@ -10,7 +10,7 @@ Substrate 适配器）创建沙盒，成功后按结果动态加入一个 `NodeT
 向 Cloud 登记与上报心跳；clone 阶段向该 Node 派发 clone；terminate 阶段先移除会话再终止沙盒。静态配置的
 Node 只继续服务租户级 clone，Workspace 的 Node 全部来自沙盒。
 
-本 ADR 处于 `approved`，是 `controller/node-management` 的根决策；2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[Controller 驱动 Workspace 沙盒核心用例](../../../test-cases/controller/node-management/workspace-sandbox-driving.md)，证据均为 `Missing`。
+本 ADR 处于 `implemented`，是 `controller/node-management` 的根决策，由 ora-space/desktop#619（2026-09-26）实现；验证义务与证据登记在[Controller 驱动 Workspace 沙盒核心用例](../../../test-cases/controller/node-management/workspace-sandbox-driving.md)。实现相对 approved 方案有三处偏离，均在对应决策中说明：不同 operation 依次推进而非并发（D3）；Node 会话只在领取到 operation 时按其快照重建（D2）；terminate 后的 `EndNode` 由 Cloud 推进时完成（D3）。
 涉及 desktop `apps/ora-controller` 的云端适配器、会话管理与部署配置；Node、协议消息与 SQLite 模式不变。
 它实现[运行时 Workspace 生命周期](../../cloud/operation/0-workspace-runtime-follows-desktop-node.md)中
 Controller 的职责，使用[新增的 gRPC 契约](../../cloud/controller-integration/20260926-workspace-operations-and-controller-reported-nodes.md)，
@@ -60,13 +60,16 @@ Controller 在内存中维护“当前 generation 的沙盒 → `NodeTarget`”�
 | 事件 | Controller 行为 |
 |---|---|
 | `sandbox_ensure` 成功（或领取到已有 sandbox 的 operation） | 以结果 `nodeId` 与 `WsEndpoint{ url: router_url, headers: { ate-target-actor: <atespace>/<externalId> } }` 加入 `NodeTarget`，启动会话 |
-| 进程启动或重新取得租约 | 从 Cloud 快照重建全部未终止 sandbox 的 `NodeTarget`，不依赖本地状态 |
+| 领取到 operation | 按快照中该 Workspace 当前 generation 的 sandbox 补齐或移除 `NodeTarget`，不依赖本地状态 |
 | `terminate` 阶段计划 `sandbox_terminate` 之前 | 停止该 Node 的会话并移除 `NodeTarget`，再调用 Substrate |
 
 - 两种来源分工而不混用：静态 `nodes` 只接收租户级 clone（现有规则，至多一个），沙盒 Node 只接收其
   Workspace 的工作。沙盒的 NodeId 形如 `workspace-<uuid>`（cluster D4），与静态配置冲突时 Controller
   拒绝加入该 `NodeTarget` 并告警，而不是二选一：同一 `NodeId` 两个来源时无法判断哪一个是事实（同双
   适配器决策“不做回退”的理由）。SQLite 模式与 `--single-node` 不变。
+- 重建只随 operation 发生：Cloud 目前没有列出全部存活 sandbox 的只读接口，Controller 重启或换手后，
+  存活沙盒要等其 Workspace 再有 operation 被领取才恢复会话，期间 Cloud 因心跳过期视其不可用。这是
+  相对 approved 方案“启动时重建全部”的偏离，保守且不破坏不变量；补齐留给后续的只读列表接口。
 - 先停会话再终止沙盒：会话仍在时终止，Controller 会把沙盒消失看成断线并按 `reconnect_ms` 重连一个
   注定不存在的目标，还会向 Cloud 报告 `disconnected` 干扰 quiesce 之后的状态。
 - 会话的连接失败分类沿用传输 D7；`NotFound` 在这里有了明确含义：沙盒在 Cloud 看来未终止、Substrate
@@ -81,13 +84,17 @@ Controller 在持有租约时，与 clone 请求并行地领取 Workspace 操作
 |---|---|---|
 | sandbox | `PlanEffect` → Substrate `PUT` → `RecordEffectResult` → 加入 `NodeTarget` | effect 成功 |
 | node | 等待会话握手 → `RegisterNode` → `ReportNodeStatus(connected, initialized)` | Cloud 接受推进（Node 已登记且心跳新鲜） |
-| clone | `RecordDispatch` → 向 Node 派发 `CloneRepository` → 接管结果 | 成功则推进；失败 `DeferOperation`；未知保持 blocked |
+| clone | `RecordDispatch` → 向 Node 派发 `CloneRepository` → 接管结果 | 成功则推进；失败以 `clone_failed` 延后；结果持续未知以 `clone_result_unknown` 阻塞；Node 协议拒绝的 ref（如 `HEAD`）不派发，以 `external_failure` 阻塞 |
 | quiesce | 停止向该 Node 派发新工作 → `ReportNodeIdle` | Cloud 接受 idle 证据 |
-| terminate | 停会话、移除 `NodeTarget` → `PlanEffect` → Substrate `PUT` → `RecordEffectResult` → `EndNode` | 终止被确认 |
+| terminate | 停会话、移除 `NodeTarget` → `PlanEffect` → Substrate `PUT` → `RecordEffectResult` | 终止被确认；Cloud 推进时结束该 sandbox 的 Node 行 |
 | cleanup | `PlanEffect(workspace_data_delete)` → Substrate `PUT` → `RecordEffectResult` | 删除被确认 |
 
-- 同一 operation 串行、不同 operation 并发：Cloud 保证每个 Project 至多一个进行中的 operation，并发只
-  发生在不同 Project 之间。任务的所有权与取消跟随租约：失去租约立即停止全部 operation 任务与由它们
+- operation 依次推进：`ClaimOperation` 每次交出最早的可运行 operation 并提升其版本，Controller 推进完
+  或延后当前 operation 再领取下一个。approved 方案允许不同 Project 的 operation 并发，但在现有领取
+  语义下并发只会互相抢版本，因此实现为串行；需要并发时应先改 Cloud 的领取语义。
+- effect 失败以 `external_failure` 延后，调用超时或结果仍在进行以 `substrate_timeout` 延后，终止未确认
+  以 `termination_unconfirmed` 阻塞；陈旧的 operation 版本（`stale_operation`）按冲突处理，重新领取。
+- 任务的所有权与取消跟随租约：失去租约立即停止全部 operation 任务与由它们
   启动的 Substrate 调用，但不停止 Node 会话（会话的去留由 D2 与新的持有者决定）。
 - 旧 epoch 的 effect 在推进前先按 ID 向 Substrate `GET` 并 `RecordEffectResult`，满足 Cloud 的
   `reconcile_required` 规则。
@@ -97,7 +104,7 @@ Controller 在持有租约时，与 clone 请求并行地领取 Workspace 操作
 - 握手成功后，Controller 用 `hello_accepted` 中的 `node_id` 与 `node_incarnation_id` 调用
   `RegisterNode`；`node_id` 与 `NodeTarget` 不符时握手本身已失败（传输 D3、不变量 5）。
 - 会话存续期间每 10 秒 `ReportNodeStatus(connected)`；Node 发来的应用层心跳与 Controller 的上行心跳
-  共同维持会话，Controller 只在会话确实存活时上报。会话结束时上报 `disconnected`；重连后若
+  共同维持会话，Controller 只在会话确实存活时上报。会话丢失时上报一次 `disconnected`（Controller 为终止而主动停止的会话不上报）；重连后若
   incarnation 变化，先 `EndNode` 旧行再 `RegisterNode` 新行。
 - 上报失败（Cloud 不可达）不影响会话与执行：Cloud 会因心跳过期把 Workspace 视为不可用，这是正确的
   保守结果；Controller 在 Cloud 恢复后继续上报。
@@ -134,18 +141,21 @@ quiesce 阶段 Controller 先把该 Node 标记为“不接受新派发”，再
 ## 本决策未解决的问题
 
 - 任务与交互执行（`execution_tickets`）的派发：Controller 目前只派发 clone。
+- 重启后重建全部存活沙盒的会话：需要 Cloud 提供只读的存活 sandbox 列表（D2）。
+- 不同 operation 的并发推进：需要先改变 `ClaimOperation` 的领取语义（D3）。
+- 默认分支解析：Cloud 需要把 `HEAD` 解析成具体分支后再作为 clone 的 `requestedRef` 下发（D3）。
 - 多 Controller worker 与 `NodeAssignment`。
 - Substrate effects 接口的调用方认证（平台适配器）。
 
 ## 落地顺序
 
-1. **契约锁定与客户端**：锁定包含新服务的 Cloud 契约 commit；实现 gRPC 客户端与 Substrate HTTP 客户端，
+1. **契约锁定与客户端**（已完成，desktop#619）：锁定 Cloud 契约 `c3f1ecc`，实现 Substrate HTTP 客户端，
    配置增加 `substrate` 段。
-2. **动态会话**：D2 的 `NodeTarget` 映射与会话启停，D4 的代报。以伪造 Substrate 与 Cloud 测试会话随
-   sandbox 出现、消失与租约交接。
-3. **操作推进**：D3 的步骤任务与 D5 的 idle；用 Cloud 的 PostgreSQL 集成环境与伪造 Substrate 验证
-   create_workspace、stop、start、delete_workspace 全流程。
-4. **联调**：与 cluster Sandbox Server（Docker）端到端，从 Cloud 前端创建 Workspace 完成 clone。
+2. **动态会话**（已完成，desktop#619）：D2 的 `NodeTarget` 映射与会话启停，D4 的代报。
+3. **操作推进**（已完成，desktop#619）：D3 的步骤与 D5 的 idle，以伪造 Cloud、伪造 Substrate 与伪造 Node
+   验证 create_workspace 与 stop 全流程。
+4. **联调**（未开始）：与 cluster Sandbox Server（Docker）端到端，从 Cloud 前端创建 Workspace 完成 clone；
+   依赖 cluster 侧实现。
 
-保持不变的行为：SQLite 模式、`--single-node`、租户级 clone 闭环（仍派发到静态 Node）、传输与协议。从
-第 3 步开始，配置了 `substrate` 段的云端 Controller 按需创建沙盒。
+保持不变的行为：SQLite 模式、`--single-node`、租户级 clone 闭环（仍派发到静态 Node）、传输与协议。配置了
+`substrate` 段的云端 Controller 按 Cloud 的 operation 创建与终止沙盒。
