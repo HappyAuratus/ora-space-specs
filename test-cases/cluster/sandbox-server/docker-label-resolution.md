@@ -1,0 +1,89 @@
+# Sandbox Server 的 Docker 标签解析
+
+依据[已批准的 Docker 标签解析决策](../../../decisions/cluster/sandbox-server/0-docker-label-resolver.md)。
+本文件登记 Sandbox Server 把 `ate-target-actor` 解析为 Docker 容器中 Node 地址的承诺；中继的透传、
+close code 与 ping/pong 语义见 cluster `README.md`，Controller 侧的失败分类见
+[传输核心用例](../../node/protocol/frame-channel-transports.md)，本文不重复登记。实现尚未开始，证据均为
+`Missing`。
+
+## Docker Target Resolves To Exactly One Running Node On The Sandbox Network
+
+### 风险
+
+解析把连接送到错误的 Node：同一 sandbox ID 的多个容器被任选其一，或者使用宿主机发布端口、其他网络
+上的地址，使不做鉴权的 Node 入口暴露在路由之外；或缓存了容器重建前的旧地址。
+
+### 前置状态
+
+Sandbox Server 以 `-docker-network <沙盒网络>` 运行；Docker 中有带 `space.ora.sandbox.atespace`、
+`space.ora.sandbox.id`、`space.ora.node.port` 标签的 Node 容器。
+
+### 触发
+
+Controller 以 `ate-target-actor: <atespace>/<sandbox-id>` 发起 WebSocket Upgrade。
+
+### 必须成立
+
+- 恰好一个匹配且运行中、已接入沙盒网络、端口标签合法时，Sandbox Server 拨号
+  `ws://<该容器在沙盒网络上的 IP>:<端口>` 加原请求路径与 query。
+- 容器重启或重建导致 IP 变化后，下一次 Upgrade 使用新地址。
+- 解析只调用只读 Docker API。
+
+### 禁止结果
+
+同一 target 匹配多个容器时任选其一；使用宿主机发布端口或其他网络的地址；使用缓存的旧地址；
+解析改变任何容器状态。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 唯一匹配解析为沙盒网络 IP 与标签端口 | 以 `httptest` 伪造 Engine API，断言解析结果与请求的 API 路径、标签过滤条件 | Missing |
+| 多个匹配一律拒绝 | 伪造两个同标签容器，断言返回不可用错误且不拨号 | Missing |
+| 不缓存 | 伪造 Engine 在两次请求间改变 IP，断言第二次使用新地址 | Missing |
+| 只读 | 伪造 Engine 记录全部请求，断言解析期间只收到 `GET` | Missing |
+| 真实 Docker 端到端路由 | 真实 Docker 中按标签启动 Node 容器，经 Sandbox Server 完成握手 | Missing |
+
+### 决策依据
+
+Docker 标签解析 D1–D3、D5，不变量 1、3、4、5；传输 D6。
+
+## Resolution Failures Keep Not Found Distinct From Unavailable
+
+### 风险
+
+容器存在但暂时无法路由时报成 `404`，Controller 与未来的 Provider 会把它当作沙盒已销毁；或者把
+Docker 错误原文、容器 ID、网络名写进响应体，泄露基础设施细节。
+
+### 前置状态
+
+Sandbox Server 以 Docker Resolver 运行。
+
+### 触发
+
+Controller 请求的 target 分别处于：无匹配容器；匹配容器未运行；匹配容器运行中但未接入沙盒网络或
+端口标签非法；多个匹配；Docker API 不可达或报错。
+
+### 必须成立
+
+- 无匹配容器返回 `404`；存在匹配容器但无法路由（含多个匹配）返回 `503`；Docker 自身失败返回
+  `502`。
+- 所有情况都在拨号 Node 前以 HTTP 状态结束，不接受 Controller 的 Upgrade。
+- 响应体是固定的简短原因；详情只进结构化日志。
+- 启动时 Docker 不可达则拒绝启动；运行中 Docker 失联只影响当次请求。
+
+### 禁止结果
+
+容器存在时返回 `404`；响应体包含 Docker 错误原文、容器 ID 或网络名；Docker 失联导致进程退出。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| D3 映射表的每一行 | server 测试以伪造 Engine 覆盖每种状态，断言 HTTP 状态码 | Missing |
+| 响应体不含内部细节 | 同一组测试断言响应体等于固定文本 | Missing |
+| 启动自检 | `cmd` 测试：`_ping` 失败时拒绝启动；`-routes` 与 `-docker-network` 互斥 | Missing |
+
+### 决策依据
+
+Docker 标签解析 D3、D5、D6，不变量 2、6、7；传输 D7。
