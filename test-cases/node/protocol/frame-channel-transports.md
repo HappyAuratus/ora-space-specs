@@ -72,7 +72,8 @@
 - **触发**：第二条连接到达；旧会话关闭或超时撤销后重连。
 - **必须成立**：两种入口都拒绝第二会话且不抢占；WS 先 upgrade 再以约定的 close code（`4409`）
   关闭，Controller 能归类为 `Busy`（路由原样转发 close code，这是 D4 选择该方式的前提）；撤销后旧连接未受理的消息失效。
-- **禁止结果**：最后连接者获胜；WS 用 HTTP 状态拒绝；配置同时启用两个入口（`ControlListen`
+  旧会话的对端结束流或发送 WS close 后，即使执行线程正被 Git 占用，控制槽也立即释放；WS ping 照常应答。
+- **禁止结果**：最后连接者获胜；WS 用 HTTP 状态拒绝；对端已离开的会话因读循环等待受理回复而继续占用控制槽，使重连收到 `4409`；配置同时启用两个入口（`ControlListen`
   是二选一的 enum，该状态在类型上不可表示，不需要运行时证据）。
 - **验证义务与证据**：
 
@@ -80,6 +81,7 @@
 |---|---|---|
 | IPC 独占 | `local_ipc_enforces_owner_and_replays_original_clone_after_restart`、`busy_clone_keeps_heartbeats_and_revokes_timed_out_queued_command` 在准入改为对 `Acceptor` 泛型后通过；`connect_classifies_missing_endpoint_and_busy_rejection_closes` 覆盖 IPC 拒绝即关闭 | Covered |
 | WS 独占与 close code 可辨 | `busy_rejection_is_recognizable_close_code` 覆盖 upgrade 后以 `4409` 关闭且可识别；真实 Node 测试在会话存活时验证第二连接收到 `4409` | Covered |
+| 执行线程繁忙时对端离开即释放 | `ipc_peer_leaving_while_worker_runs_git_releases_the_control_slot` 在 Git 暂停占用执行线程、状态查询未回复时半关闭 IPC，验证远早于受理期限即可重新握手；`websocket_session_answers_ping_and_close_while_worker_runs_git` 在同样状态下验证 ping 得到应答，发送 close 且保持 TCP 不断开后重连不再收到 `4409`；`polling_beyond_the_unanswered_bound_keeps_the_session_while_git_runs` 验证持续读帧后超出未回复上限的轮询不会断开会话 | Covered |
 
 决策依据：D4，不变量 4。
 
