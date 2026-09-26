@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 上行心跳作为 Node 读期限的存活依据，WebSocket 会话以约定 close code 结束
@@ -10,8 +10,10 @@ Controller 会话在空闲时向 Node 发送应用层 `Heartbeat`，Node 保留�
 close code，使中继与 Controller 能区分进程停止、协议错误、身份不符、存活超时与内部失败，而不是
 一律看到中继代发的 `1011 "<side> connection lost"`。
 
-本决策处于 `proposed` 状态，等待 Eric 在两种方向中确认：本文采用“Controller 上行心跳”，备选
-“Node 只在有未完成请求时施加读超时”见替代方案。它继承
+本决策处于 `approved` 状态：2026-09-26 经 Eric 批准采用“Controller 上行心跳”，备选“Node 只在有
+未完成请求时施加读超时”的否决理由见替代方案。心跳由 desktop#615 实现，close code 与分类由
+desktop#617 实现，两者合入后再转为 `implemented`。验证义务登记在
+[传输核心用例](../../../test-cases/node/protocol/frame-channel-transports.md)。它继承
 [帧通道传输决策](20260924-frame-channel-with-ipc-and-websocket.md)，修改其 D5（心跳与连接存活）
 与 D7（会话失败分类）中身份不符、I/O 期限到期和 close code 相关的行，其余不变。涉及 `ora-node-protocol` 的
 Controller→Node 消息、Controller 会话与 `SessionError`、Node 会话读循环和 `ora-node-transport` 的关闭接口。
@@ -178,7 +180,5 @@ Node 因失败关闭时在准入之外完成这一步，立即释放控制槽，
    D2、D4 分类。可与 1、2 并行实现；先合入的一方之后，另一方把上行心跳的身份不符接到 `4403`。
    完成条件：每种原因经真实传输发送并被对端回复 close，Controller 与真实 Node 各自按表关闭与分类。
 
-步骤 1、2 必须同时发布（混合版本不支持）；步骤 3 独立。核心测试用例（包括
-[传输核心用例](../../../test-cases/node/protocol/frame-channel-transports.md)中身份不符归为 `Protocol` 的
-证据说明）按 specs 约定在本文转为 `approved` 后同步。从步骤 2 起，空闲会话不再周期性重建；
+步骤 1、2 必须同时发布（混合版本不支持）；步骤 3 独立。核心测试用例已随批准同步。从步骤 2 起，空闲会话不再周期性重建；
 执行、恢复、重放与确认语义保持不变。

@@ -3,7 +3,9 @@
 依据[已实现的传输决策](../../../decisions/node/protocol/20260924-frame-channel-with-ipc-and-websocket.md)。
 这里登记的是跨传输一致性和 WebSocket 接入的验证义务。握手身份、单会话、持久接管和确认顺序
 这些与传输无关的规则，继续以[本机归属核心用例](../../controller/persistence/local-controller-node-ownership.md)
-为准；本文只要求它们在两种传输下都成立。证据来自 desktop `37759e91`。经 cluster Sandbox Server
+为准；本文只要求它们在两种传输下都成立。证据来自 desktop `37759e91`；上行心跳、close code 与
+`Mismatch`/`Silent` 分类依据[心跳与 close code 决策](../../../decisions/node/protocol/20260925-controller-heartbeat-and-websocket-close-codes.md)，
+证据来自 desktop#615 与 desktop#617，两者合入前以其分支上的测试为准。经 cluster Sandbox Server
 或平台路由的联调属于部署验证，不在本文登记。
 
 ## Both Transports Carry Identical Frame Bodies
@@ -86,19 +88,22 @@
 - **风险**：所有连接失败混为一类，日志和后续 Provider 无法区分沙盒不存在、凭据错误与暂时不可达；
   或者某类失败触发了执行失败或重建。
 - **前置状态**：Controller 有待派发或未确认的执行；路由以原始 HTTP 响应模拟。
-- **触发**：Node 未启动、路由返回 `404`/`403`/`502`/`504`、会话被 `4409` 拒绝、握手身份不符。
+- **触发**：Node 未启动、路由返回 `404`/`403`/`502`/`504`、会话被 `4409` 拒绝、握手身份或能力不符、
+  收到 `4403`、本端 I/O 期限到期。
 - **必须成立**：分别归类为 `Connect(Unreachable)`、`Connect(NotFound)`、`Connect(Rejected)`、
-  `Busy`、`Protocol`、`Disconnected`；IPC 无 close code，会话占用归入 `Protocol`；各类都按
-  `reconnect_ms` 重试，原执行责任保留。
+  `Busy`、`Mismatch`、`Silent`、`Protocol`、`Disconnected`；身份或能力不符（本端发现或收到 `4403`）
+  归为 `Mismatch` 而不是 `Protocol`，本端 I/O 期限到期归为 `Silent` 而不是 `Disconnected`；IPC 无
+  close code，会话占用归入 `Protocol`；各类都按 `reconnect_ms` 重试，原执行责任保留。
 - **禁止结果**：因 `NotFound` 或其他失败标记执行失败、改换执行身份或销毁沙盒。
 - **验证义务与证据**：
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 失败分类 | `connect_failures_are_classified` 覆盖路由 `404`/`403`/`502`/`504`、错误路径、无监听和非法端点；Controller `connection_failures_are_classified_without_releasing_responsibility` 覆盖 IPC 与 WS 的 `Unreachable`；真实 Node 测试覆盖 `Protocol` 与 `Busy` | Covered |
+| `Mismatch` 与 `Silent` | desktop#617：`node_identity_close_is_a_mismatch` 覆盖收到 `4403` 归为 `Mismatch`，`controller_closes_with_the_reason_code` 覆盖本端发现 Node 不符时归为 `Mismatch`；本端 I/O 期限到期归为 `Silent` 没有直接断言 | Partial |
 | 失败后保留责任 | 同一 Controller 测试在两种连接失败后验证原派发仍待处理且无结果；本机归属核心用例覆盖 IPC 断连后保留原执行 | Covered |
 
-决策依据：D7，不变量 6。
+决策依据：传输决策 D7，不变量 6；心跳与 close code 决策 D4，不变量 7。
 
 ## Transport Layer Stays Vendor Neutral
 
@@ -117,3 +122,44 @@
 | 端点配置驱动、请求头原样发送 | `configured_headers_are_sent_verbatim` 验证路由收到原样的路径、query 与 `ate-target-actor`；传输与会话代码不包含厂商字段 | Covered |
 
 决策依据：D3、D6、D8，不变量 7。
+
+## Idle Controller Keeps Its Session Through Heartbeats
+
+- **风险**：Controller 空闲时没有上行帧，Node 的每帧读期限到期后反复断开并重建会话；或为了避免
+  断开而取消 Node 读期限，使半开连接长期占住控制槽，代理恢复后首次重连收到 `4409`。
+- **前置状态**：会话已建立，Controller 没有待确认的派发；Node 的 `frame_timeout_ms` 远小于空闲时长，
+  `query_interval_ms` 小于其一半。
+- **触发**：长时间空闲；空闲期间收到 `controller_id` 不属于本 Node 的上行 `Heartbeat`。
+- **必须成立**：Controller 每个查询节拍恰好发送一个上行帧，无待查派发时为 `Heartbeat`；Node 在读循环
+  内处理心跳、不进入 worker 受理队列，空闲会话持续存活并保有准入；`controller_id` 不符时会话以身份
+  不符结束并释放准入。
+- **禁止结果**：空闲会话因读期限到期而结束；上行心跳排在 Git 或 SQLite 之后；Node 取消读期限；
+  其他 Controller 的心跳被接受。
+- **验证义务与证据**：
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 上行心跳线上形状 | desktop#615：`ora-node-protocol` 会话切片的 `controller_heartbeat` 线上 fixture 经 `round_trips_messages`、`preserves_wire_shapes`、`rejects_versions_directions_and_payloads` 与 `rejects_missing_and_empty_fields` 覆盖形状、方向、版本与空 `controller_id` 拒绝 | Covered |
+| Controller 空闲节拍发送心跳 | desktop#615：`idle_session_sends_one_heartbeat_per_query_tick` 验证无待查派发时每个节拍恰好收到一个携带 `controller_id` 的 `Heartbeat`；`uncertain_execution_retransmits_at_most_once_per_connection` 验证有待查派发时只发查询 | Covered |
+| Node 以心跳维持空闲会话并校验归属 | desktop#615：`controller_heartbeats_keep_idle_session_and_foreign_heartbeat_ends_it` 让真实 Node 以 1 s 读期限经 IPC 空闲 3 s 仍保有准入，其后他人心跳结束会话并释放准入；WS 由同一份会话代码处理，没有单独的 WS 空闲测试 | Covered |
+
+决策依据：心跳与 close code 决策 D1、D3，不变量 1–4。
+
+## Deliberate Session End Carries A Close Code
+
+- **风险**：会话由一端主动结束时不发 close，中继一律代发 `1011 "<side> connection lost"`，日志无法区分
+  正常停止、协议错误、身份不符、存活超时与真实断线；或关闭握手占用 Node 准入，使下一次重连收到 `4409`。
+- **前置状态**：WS 会话已建立，可能经过原样转发 close code 的路由。
+- **触发**：Node 或 Controller 正常停止；非法帧；身份或能力不符；I/O 期限到期；本端持久化或受理失败。
+- **必须成立**：结束方按原因发送 `1001`/`1002`/`4403`/`4408`/`1011`，对端回复 close，双方不等待握手
+  超时；关闭握手受 I/O 期限约束，Node 因失败关闭时不占用准入；任何 close code 都不改变执行责任。
+- **禁止结果**：主动结束时不发 close；关闭后不离开的对端让下一次重连收到 `4409`；因 close code 判定
+  执行失败或销毁沙盒。
+- **验证义务与证据**：
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 每种原因的 code 与关闭握手 | desktop#617：`deliberate_close_carries_reason_and_is_answered` 对每种原因验证 code 送达且对端回复 close；`close_connection_finishes_with_the_close_handshake` 覆盖排空至握手完成；IPC `deliberate_close_is_a_clean_end_of_stream` 覆盖 IPC 关闭即 EOF | Covered |
+| 真实两端按原因关闭 | desktop#617：`node_closes_sessions_with_the_reason_code` 覆盖真实 Node 的 `4403`、`1002` 与 SIGTERM 下的 `1001`；`controller_closes_with_the_reason_code` 覆盖 Controller 的 `4403`、`1002` 与停止时 `1001`；两端以 `4408`、`1011` 关闭没有直接测试 | Partial |
+
+决策依据：心跳与 close code 决策 D2，不变量 5、6。
