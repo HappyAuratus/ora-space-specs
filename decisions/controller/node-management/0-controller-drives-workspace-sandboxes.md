@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 云端 Controller 驱动 Workspace 沙盒：经 Substrate effects 建删沙盒，动态维护 Node 会话并代报 Cloud
@@ -10,7 +10,7 @@ Substrate 适配器）创建沙盒，成功后按结果动态加入一个 `NodeT
 向 Cloud 登记与上报心跳；clone 阶段向该 Node 派发 clone；terminate 阶段先移除会话再终止沙盒。静态配置的
 Node 只继续服务租户级 clone，Workspace 的 Node 全部来自沙盒。
 
-本 ADR 处于 `proposed`，是 `controller/node-management` 的根决策，等待评审纠偏，不维护核心测试用例。
+本 ADR 处于 `approved`，是 `controller/node-management` 的根决策；2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[Controller 驱动 Workspace 沙盒核心用例](../../../test-cases/controller/node-management/workspace-sandbox-driving.md)，证据均为 `Missing`。
 涉及 desktop `apps/ora-controller` 的云端适配器、会话管理与部署配置；Node、协议消息与 SQLite 模式不变。
 它实现[运行时 Workspace 生命周期](../../cloud/operation/0-workspace-runtime-follows-desktop-node.md)中
 Controller 的职责，使用[新增的 gRPC 契约](../../cloud/controller-integration/20260926-workspace-operations-and-controller-reported-nodes.md)，

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 运行时 Workspace 生命周期改为适配 desktop Node：沙盒内由 Node clone，丢弃 Project 共享卷与 worktree 维护 Job
@@ -11,7 +11,7 @@ Cloud 运行时 Workspace（表 `workspaces`，不是协作 Space）的操作步
 新增 `clone` 步骤与 `workspace_data_delete` effect。Node 在 Cloud 的登记与心跳改由 Controller 代报，
 Node 本身不与 Cloud 通信。
 
-本 ADR 处于 `proposed`，是 `cloud/operation` 的根决策，等待评审纠偏，不维护核心测试用例。它修改
+本 ADR 处于 `approved`，是 `cloud/operation` 的根决策；2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[运行时 Workspace 生命周期核心用例](../../../test-cases/cloud/operation/workspace-runtime-lifecycle.md)，证据均为 `Missing`。它修改
 Cloud 仓库 `docs/core-contract.md`“持久操作和外部副作用”、`docs/execution-contract.md`“存储与挂载”
 “Substrate 最小接口”与 `docs/authentication.md` 中 Node 服务凭据的约定；这些文档目前是阶段一模拟器的
 契约，尚无生产 Substrate 或真实 Node 依赖它们。兼容性边界是 PostgreSQL 中已有的数据与迁移历史：

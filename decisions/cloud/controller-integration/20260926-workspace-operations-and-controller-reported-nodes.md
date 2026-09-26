@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Internal Control gRPC 增加 Workspace 操作与 Controller 代报 Node，clone 登记扩展到 Workspace 的 clone 步骤
@@ -10,7 +10,7 @@ Controller 领取并推进运行时 Workspace 操作（替代只有 JSON `/inter
 `RecordDispatch` 等方法不改形状，`operation_id` 可以指向 Workspace 操作，使同一套派发前登记与原子接管
 覆盖 Workspace 的 clone 步骤。
 
-本 ADR 处于 `proposed`，等待评审纠偏，不维护核心测试用例。它是
+本 ADR 处于 `approved`，2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[Workspace 操作与 Node 上报核心用例](../../../test-cases/cloud/controller-integration/workspace-operations-and-node-reports.md)，证据均为 `Missing`。它是
 [Cloud 拥有 Internal Control gRPC 契约](0-cloud-owned-internal-grpc-contract.md)与
 [控制监听器保活](20260924-control-listener-keepalive.md)之后的第三个决策，只描述契约形状与事务边界；
 步骤与语义由[运行时 Workspace 生命周期](../operation/0-workspace-runtime-follows-desktop-node.md)决定。

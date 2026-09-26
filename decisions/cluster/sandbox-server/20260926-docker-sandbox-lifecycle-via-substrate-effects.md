@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Sandbox Server 用 Docker 实现 Cloud 的 Substrate effects 接口，按 Workspace 创建与终止沙盒
@@ -12,7 +12,7 @@ status: proposed
 下一代沙盒以同一 Node 身份继续使用。仓库由 Node 经 Controller–Node 协议 clone，Sandbox Server 不做
 任何 Git 操作。
 
-本 ADR 处于 `proposed`，等待评审纠偏，不维护核心测试用例。涉及 cluster 仓库的 Sandbox Server；它与
+本 ADR 处于 `approved`，2026-09-26 Eric 确认评审要点全部按建议采纳（Node 由 Controller 代报、NodeId 与数据卷按 Workspace 固定、迁移保留旧表并失败在途旧步骤、租户级 clone 保留、不定义 SandboxProvider trait）；实现尚未开始，验证义务登记在[Docker 沙盒生命周期核心用例](../../../test-cases/cluster/sandbox-server/docker-sandbox-lifecycle.md)，证据均为 `Missing`。涉及 cluster 仓库的 Sandbox Server；它与
 同一变更中的三份决策一起评审（见“相关决策”）。兼容性边界：Cloud 的 Substrate 接口语义
 （`docs/execution-contract.md`“Substrate 最小接口”）以 Cloud 为准，本文只实现、不修改；根决策的标签、
 地址与状态码规则不变。本文不设计 suspend/resume、资源配额与镜像拉取。
