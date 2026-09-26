@@ -1,9 +1,11 @@
 # Controller 驱动 Workspace 沙盒
 
-依据[已批准的 Controller 驱动 Workspace 沙盒决策](../../../decisions/controller/node-management/0-controller-drives-workspace-sandboxes.md)。
+依据[已实现的 Controller 驱动 Workspace 沙盒决策](../../../decisions/controller/node-management/0-controller-drives-workspace-sandboxes.md)。
 本文件登记云端 Controller 维护动态 Node 集合、调用 Substrate、代报 Node 与 quiesce 的承诺；Cloud 侧校验见
 [Workspace 操作与 Node 上报用例](../../cloud/controller-integration/workspace-operations-and-node-reports.md)。
-实现尚未开始，证据均为 `Missing`。
+证据来自 `ora-space/desktop` 的 `apps/ora-controller`（desktop#619，已合并）。实现与 approved 方案的偏离已记入 ADR：Cloud
+`ClaimOperation` 一次只交出最早的可运行操作，因此操作依次执行；会话只按领取到的操作快照重建，
+Controller 重启后存活沙盒要等其 Workspace 再被领取操作才恢复会话，待 Cloud 提供只读的存活沙盒列表后补齐。
 
 ## Dynamic Node Targets Follow Cloud Sandboxes Only
 
@@ -38,10 +40,10 @@ NodeId 与静态 Node 冲突。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 目标来源与重建 | 伪造 Cloud 与 Substrate，重启 Controller 后断言 `NodeTarget` 集合等于快照中的未终止 sandbox | Missing |
-| 先停会话再终止 | 记录会话结束与 Substrate `PUT` 的顺序 | Missing |
+| 目标来源与重建 | 伪造 Cloud 与 Substrate，重启 Controller 后断言 `NodeTarget` 集合等于快照中的未终止 sandbox | Partial：`src/cloud/fleet.rs` `sandbox_targets_come_from_the_router_and_the_ensure_evidence` 只证明端点与目标来自路由与 ensure 结果；重启后按快照重建尚无证据 |
+| 先停会话再终止 | 记录会话结束与 Substrate `PUT` 的顺序 | Covered：`apps/ora-controller/tests/workspaces.rs` `create_and_stop_drive_the_workspace_sandbox_and_its_node` |
 | 不自行重建 | 路由返回 `404` 时断言没有 Substrate 写调用 | Missing |
-| 超时后查询 | 伪造 Substrate 超时，断言下一次调用是同 ID 的 `GET` | Missing |
+| 超时后查询 | 伪造 Substrate 超时，断言下一次调用是同 ID 的 `GET` | Covered：`src/cloud/substrate.rs` `a_timed_out_effect_is_queried_by_the_same_id` |
 
 ### 决策依据
 
@@ -76,8 +78,8 @@ Controller 执行 quiesce；同时有新的 clone 待派发；会话在上报周
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 停派发与 idle 的顺序 | 同步 quiesce 与新 clone 的开始，断言所有允许的交错下 idle 后无派发 | Missing |
-| 未知执行阻止 idle | 构造状态未知的派发，断言上报 `idle=false` | Missing |
-| 连接状态与 incarnation | 断开会话与以新 incarnation 重连，断言上报序列 | Missing |
+| 未知执行阻止 idle | 构造状态未知的派发，断言上报 `idle=false` | Partial：`apps/ora-controller/tests/workspaces.rs` `quiesce_reports_busy_while_a_dispatch_has_no_result` 只覆盖尚无结果的派发，未构造状态未知的执行 |
+| 连接状态与 incarnation | 断开会话与以新 incarnation 重连，断言上报序列 | Partial：`apps/ora-controller/tests/workspaces.rs` `create_and_stop_drive_the_workspace_sandbox_and_its_node` 断言登记先于 clone、主动停止不上报 `disconnected`；断线与新 incarnation 重连尚无证据 |
 
 ### 决策依据
 
