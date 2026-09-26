@@ -5,7 +5,7 @@
 这些与传输无关的规则，继续以[本机归属核心用例](../../controller/persistence/local-controller-node-ownership.md)
 为准；本文只要求它们在两种传输下都成立。证据来自 desktop `37759e91`；上行心跳、close code 与
 `Mismatch`/`Silent` 分类依据[心跳与 close code 决策](../../../decisions/node/protocol/20260925-controller-heartbeat-and-websocket-close-codes.md)，
-证据来自 desktop#615 与 desktop#617，两者合入前以其分支上的测试为准。经 cluster Sandbox Server
+证据来自 desktop `a767bc7`、`3d819e6` 与 `46ce0e0`。经 cluster Sandbox Server
 或平台路由的联调属于部署验证，不在本文登记。
 
 ## Both Transports Carry Identical Frame Bodies
@@ -102,7 +102,7 @@
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 失败分类 | `connect_failures_are_classified` 覆盖路由 `404`/`403`/`502`/`504`、错误路径、无监听和非法端点；Controller `connection_failures_are_classified_without_releasing_responsibility` 覆盖 IPC 与 WS 的 `Unreachable`；真实 Node 测试覆盖 `Protocol` 与 `Busy` | Covered |
-| `Mismatch` 与 `Silent` | desktop#617：`node_identity_close_is_a_mismatch` 覆盖收到 `4403` 归为 `Mismatch`，`controller_closes_with_the_reason_code` 覆盖本端发现 Node 不符时归为 `Mismatch`；本端 I/O 期限到期归为 `Silent` 没有直接断言 | Partial |
+| `Mismatch` 与 `Silent` | `node_identity_close_is_a_mismatch` 覆盖收到 `4403` 归为 `Mismatch`，`controller_closes_with_the_reason_code` 覆盖本端发现 Node 不符时归为 `Mismatch`；本端 I/O 期限到期归为 `Silent` 没有直接断言 | Partial |
 | 失败后保留责任 | 同一 Controller 测试在两种连接失败后验证原派发仍待处理且无结果；本机归属核心用例覆盖 IPC 断连后保留原执行 | Covered |
 
 决策依据：传输决策 D7，不变量 6；心跳与 close code 决策 D4，不变量 7。
@@ -141,9 +141,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 上行心跳线上形状 | desktop#615：`ora-node-protocol` 会话切片的 `controller_heartbeat` 线上 fixture 经 `round_trips_messages`、`preserves_wire_shapes`、`rejects_versions_directions_and_payloads` 与 `rejects_missing_and_empty_fields` 覆盖形状、方向、版本与空 `controller_id` 拒绝 | Covered |
-| Controller 空闲节拍发送心跳 | desktop#615：`idle_session_sends_one_heartbeat_per_query_tick` 验证无待查派发时每个节拍恰好收到一个携带 `controller_id` 的 `Heartbeat`；`uncertain_execution_retransmits_at_most_once_per_connection` 验证有待查派发时只发查询 | Covered |
-| Node 以心跳维持空闲会话并校验归属 | desktop#615：`controller_heartbeats_keep_idle_session_and_foreign_heartbeat_ends_it` 让真实 Node 以 1 s 读期限经 IPC 空闲 3 s 仍保有准入，其后他人心跳结束会话并释放准入；WS 由同一份会话代码处理，没有单独的 WS 空闲测试 | Covered |
+| 上行心跳线上形状 | `ora-node-protocol` 会话切片的 `controller_heartbeat` 线上 fixture 经 `round_trips_messages`、`preserves_wire_shapes`、`rejects_versions_directions_and_payloads` 与 `rejects_missing_and_empty_fields` 覆盖形状、方向、版本与空 `controller_id` 拒绝 | Covered |
+| Controller 空闲节拍发送心跳 | `idle_session_sends_one_heartbeat_per_query_tick` 验证无待查派发时每个节拍恰好收到一个携带 `controller_id` 的 `Heartbeat`；`uncertain_execution_retransmits_at_most_once_per_connection` 验证有待查派发时只发查询 | Covered |
+| Node 以心跳维持空闲会话并校验归属 | `controller_heartbeats_keep_idle_session_and_foreign_heartbeat_ends_it` 让真实 Node 以 1 s 读期限经 IPC 空闲 3 s 仍保有准入，其后他人心跳结束会话并释放准入；WS 上他人心跳以 `4403` 关闭由 `node_closes_sessions_with_the_reason_code` 覆盖，WS 空闲保活由同一份会话代码处理，没有单独测试 | Covered |
 
 决策依据：心跳与 close code 决策 D1、D3，不变量 1–4。
 
@@ -161,7 +161,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 每种原因的 code 与关闭握手 | desktop#617：`deliberate_close_carries_reason_and_is_answered` 对每种原因验证 code 送达且对端回复 close；`close_connection_finishes_with_the_close_handshake` 覆盖排空至握手完成；IPC `deliberate_close_is_a_clean_end_of_stream` 覆盖 IPC 关闭即 EOF | Covered |
-| 真实两端按原因关闭 | desktop#617：`node_closes_sessions_with_the_reason_code` 覆盖真实 Node 的 `4403`、`1002` 与 SIGTERM 下的 `1001`；`controller_closes_with_the_reason_code` 覆盖 Controller 的 `4403`、`1002` 与停止时 `1001`；两端以 `4408`、`1011` 关闭没有直接测试 | Partial |
+| 每种原因的 code 与关闭握手 | `deliberate_close_carries_reason_and_is_answered` 对每种原因验证 code 送达且对端回复 close；`close_connection_finishes_with_the_close_handshake` 覆盖排空至握手完成；IPC `deliberate_close_is_a_clean_end_of_stream` 覆盖 IPC 关闭即 EOF | Covered |
+| 真实两端按原因关闭 | `node_closes_sessions_with_the_reason_code` 覆盖真实 Node 的 `4403`（握手与他人心跳）、`1002` 与 SIGTERM 下的 `1001`；`controller_closes_with_the_reason_code` 覆盖 Controller 的 `4403`、`1002` 与停止时 `1001`；两端以 `4408`、`1011` 关闭没有直接测试 | Partial |
 
 决策依据：心跳与 close code 决策 D2，不变量 5、6。
