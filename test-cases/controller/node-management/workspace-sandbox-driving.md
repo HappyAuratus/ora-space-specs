@@ -4,8 +4,9 @@
 本文件登记云端 Controller 维护动态 Node 集合、调用 Substrate、代报 Node 与 quiesce 的承诺；Cloud 侧校验见
 [Workspace 操作与 Node 上报用例](../../cloud/controller-integration/workspace-operations-and-node-reports.md)。
 证据来自 `ora-space/desktop` 的 `apps/ora-controller`（desktop#619，已合并）。实现与 approved 方案的偏离已记入 ADR：Cloud
-`ClaimOperation` 一次只交出最早的可运行操作，因此操作依次执行；会话只按领取到的操作快照重建，
-Controller 重启后存活沙盒要等其 Workspace 再被领取操作才恢复会话，待 Cloud 提供只读的存活沙盒列表后补齐。
+`ClaimOperation` 一次只交出最早的可运行操作，因此操作依次执行。重启后的会话重建由
+[按存活沙盒列表重建会话决策](../../../decisions/controller/node-management/20260926-rebuild-sessions-from-live-sandbox-list.md)
+补齐（desktop#621，使用 cloud#31 的 `ListLiveSandboxes`）。
 
 ## Dynamic Node Targets Follow Cloud Sandboxes Only
 
@@ -26,7 +27,7 @@ NodeId 与静态 Node 冲突。
 ### 必须成立
 
 - `NodeTarget` 只来自 Cloud 快照与 `sandbox_ensure` 结果，端点为 `router_url` 加
-  `ate-target-actor: <atespace>/<externalId>`；重启后从快照重建。
+  `ate-target-actor: <atespace>/<externalId>`；取得租约后先按 Cloud 的存活沙盒列表重建，之后由快照校正。
 - 计划 `sandbox_terminate` 之前已停止该 Node 的会话并移除 `NodeTarget`。
 - 路由 `404` 只记录告警并重连，不创建沙盒。
 - 与静态 Node 冲突的沙盒 NodeId 被拒绝加入并告警；静态 Node 只接收租户级 clone。
@@ -40,14 +41,14 @@ NodeId 与静态 Node 冲突。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 目标来源与重建 | 伪造 Cloud 与 Substrate，重启 Controller 后断言 `NodeTarget` 集合等于快照中的未终止 sandbox | Partial：`src/cloud/fleet.rs` `sandbox_targets_come_from_the_router_and_the_ensure_evidence` 只证明端点与目标来自路由与 ensure 结果；重启后按快照重建尚无证据 |
+| 目标来源与重建 | 伪造 Cloud 与 Substrate，重启 Controller 后断言按 Cloud 的存活沙盒列表重连，且不依赖领取 operation | Covered：`src/cloud/fleet.rs` `sandbox_targets_come_from_the_router_and_the_ensure_evidence` 证明端点来自路由与 ensure 结果；`apps/ora-controller/tests/workspaces.rs` `a_restarted_controller_reconnects_live_sandboxes_without_an_operation` 重启后先列出存活沙盒、再重新登记同一 Node，期间没有领取任何 operation。列表之外的会话被停止的分支尚无直接测试，只由 `live.rs` 代码路径保证 |
 | 先停会话再终止 | 记录会话结束与 Substrate `PUT` 的顺序 | Covered：`apps/ora-controller/tests/workspaces.rs` `create_and_stop_drive_the_workspace_sandbox_and_its_node` |
 | 不自行重建 | 路由返回 `404` 时断言没有 Substrate 写调用 | Missing |
 | 超时后查询 | 伪造 Substrate 超时，断言下一次调用是同 ID 的 `GET` | Covered：`src/cloud/substrate.rs` `a_timed_out_effect_is_queried_by_the_same_id` |
 
 ### 决策依据
 
-Controller 驱动 Workspace 沙盒 D1、D2，不变量 1–4、7。
+Controller 驱动 Workspace 沙盒 D1、D2，不变量 1–4、7；按存活沙盒列表重建会话 D1、D2。
 
 ## Controller Reports Idle Only After Stopping Dispatch
 
