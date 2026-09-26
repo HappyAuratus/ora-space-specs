@@ -1,8 +1,8 @@
 # 静态 Node 先证明身份再领取租户级 clone
 
-依据[静态 Node 身份决策](../../../decisions/controller/node-management/20260926-static-node-identity-proven-before-dispatch.md)。
+依据[已实现的静态 Node 身份决策](../../../decisions/controller/node-management/20260926-static-node-identity-proven-before-dispatch.md)。
 本文件登记云端 Controller 只在静态 Node 握手证明身份后才领取租户级 clone 的承诺。证据来自 `ora-space/desktop`
-的 `apps/ora-controller`（desktop#620）：`tests/cloud.rs` 以内存假 Cloud（真实契约的测试桩）与经 IPC 的假静态
+的 `apps/ora-controller`（desktop#620，已合并，主干 `0e7e840`）：`tests/cloud.rs` 以内存假 Cloud（真实契约的测试桩）与经 IPC 的假静态
 Node 驱动运行时，假 Node 的身份可在运行中切换。
 
 ## Tenant Work Is Registered Only After The Static Node Proves Its Identity

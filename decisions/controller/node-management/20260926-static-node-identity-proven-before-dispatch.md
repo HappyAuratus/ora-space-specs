@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 静态 Node 先经握手证明身份，再领取租户级 clone：配错 `node_id` 时工作留在 Cloud 队列，而不是永久挂起
@@ -9,7 +9,7 @@ status: approved
 已被 Cloud 接受的工作留在 Cloud 的队列里，不登记到任何 Node。这样，把 `node_id` 配错（联调问题 5）不再
 留下永久 `pending` 的派发：改正配置或 Node 之后，排队的工作照常派发到正确的 Node。
 
-本 ADR 处于 `approved`（Eric 于 2026-09-26 评审通过）；实现为 desktop#620，合并后转为 `implemented`。验证义务与证据登记在
+本 ADR 处于 `implemented`：Eric 于 2026-09-26 评审通过，由 ora-space/desktop#620（合并提交 `0e7e840`）实现，实现与决策一致。验证义务与证据登记在
 [静态 Node 身份核心用例](../../../test-cases/controller/node-management/static-node-identity-before-dispatch.md)。涉及 desktop
 `apps/ora-controller` 的云端适配器（`cloud/claim.rs`、`cloud/coordinate.rs`）与运行时的静态会话；Cloud
 契约、Node、协议消息、SQLite 模式与 Workspace 沙盒路径都不变。兼容性边界：Cloud 中已登记的派发记录，
@@ -102,12 +102,9 @@ Cloud 中尚未派发的队列项，任何一个 Node 身份正确的 Controller
 
 ## 落地顺序
 
-1. **云端领取前置条件**（desktop#620）：静态会话在握手成功时通知持久适配器；云端适配器在领取前
-   检查标记，第一次证明时立即领取；以内存假 Cloud 与经 IPC 的假静态 Node 测试“身份不符时不领取，改正后
-   立即领取”，并调整既有领取测试，让 Node 握手成为领取的前提。完成条件：`cargo test -p ora-controller`、
-   clippy 与格式检查通过。
-2. **评审通过**（已完成）：状态改为 `approved`，核心用例与证据登记在 `test-cases/controller/node-management/`；
-   desktop#620 合并后改为 `implemented`。
+1. **云端领取前置条件**（已完成，desktop#620）：静态会话在握手成功时通知持久适配器；云端适配器在领取前
+   检查证明，第一次证明时立即领取；以内存假 Cloud 与经 IPC 的假静态 Node 验证“身份不符时不领取，改正后
+   立即领取”，既有领取测试改为以 Node 握手为前提。
 
-保持不变的行为：Workspace 沙盒路径、SQLite 模式与 JSON 表面、Cloud 契约、Node 与协议。从第 1 步起改变
-的行为：云端 Controller 在静态 Node 握手成功之前不领取租户级 clone。
+保持不变的行为：Workspace 沙盒路径、SQLite 模式与 JSON 表面、Cloud 契约、Node 与协议。改变的行为：
+云端 Controller 在静态 Node 握手成功之前不领取租户级 clone。
