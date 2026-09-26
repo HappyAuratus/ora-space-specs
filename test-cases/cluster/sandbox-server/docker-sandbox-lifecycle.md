@@ -3,7 +3,8 @@
 依据[已批准的 Docker 沙盒生命周期决策](../../../decisions/cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md)。
 本文件登记 Sandbox Server 以 Cloud 的 Substrate effects 接口创建、终止沙盒与删除 Workspace 数据的承诺；
 标签路由见[Docker 标签解析用例](docker-label-resolution.md)，Cloud 侧步骤见
-[运行时 Workspace 生命周期用例](../../cloud/operation/workspace-runtime-lifecycle.md)。实现尚未开始，证据均为 `Missing`。
+[运行时 Workspace 生命周期用例](../../cloud/operation/workspace-runtime-lifecycle.md)。证据来自 ora-space/cluster 仓库
+（cluster#3），路径相对该仓库根目录；Docker 行为由内存替身 Engine 模拟，真实 Docker 仅手工验收。
 
 ## Sandbox Ensure Creates At Most One Container Per Effect And Per Workspace
 
@@ -40,11 +41,12 @@ Controller 以 effect ID `E` 发送 `PUT /effects/E`（`sandbox_ensure`，Worksp
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| journal 先于 Docker 写入、幂等与 `409` | 测试替身后端记录调用顺序，断言重发与不同请求的响应 | Missing |
-| 崩溃恢复不重复创建 | 在 journal `running` 后丢弃进程状态重建服务，重发 `PUT`，断言只有一次创建且结果成功 | Missing |
-| 同名冲突与 Workspace 唯一性 | 伪造 Engine 返回名称冲突、已有同 Workspace 容器，断言分别继续与失败 | Missing |
-| 容器规格 | 伪造 Engine 捕获创建请求，断言名称、标签、网络、端口、卷与配置 | Missing |
-| `unsupported_kind` | 发送 storage/worktree/plugin effect，断言 `400` 且无 journal 文件 | Missing |
+| journal 先于 Docker 写入、幂等与 `409` | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestJournalIsWrittenBeforeDocker` 在每次 Docker 调用前检查 journal 文件已存在；`TestEnsureIsIdempotentAndRejectsChangedRequest` 断言键序不同的同请求返回同一条目且无新 Docker 调用，不同请求 `409` | Covered |
+| 崩溃恢复不重复创建 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureRecoversAfterCrashWithoutDuplicate`：容器已创建而 journal 仍为 `running`，重建服务后 `GET` 据实提升、重发 `PUT` 接管已停止容器，始终只有一个容器；`TestConcurrentEnsureOfOneEffectCreatesOneContainer` 断言并发同 ID `PUT` 只创建一次 | Covered |
+| 同名冲突与 Workspace 唯一性 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureAdoptsNameConflict` 与 `TestEnsureRefusesSecondContainerForWorkspace` | Covered |
+| 容器规格 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureCreatesLabelledContainer` 断言名称、五个标签、网络、镜像、卷挂载与完整 `ORA_NODE_CONFIG`，并以 Docker Resolver 解析到该容器；`sandbox-server/internal/docker/docker_test.go` 的 `TestCreateContainerSendsSpecWithoutPublishedPorts` 断言 Engine 请求体不含端口发布 | Covered |
+| `unsupported_kind` | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestRejectedRequestsWriteNothing` 以 `worktree_ensure`、`storage_delete` 等请求断言 `400`、无 journal 文件且无 Docker 调用 | Covered |
+| `GET` 不创建、`running` 据实返回 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestGetUnknownEffectIs404AndCreatesNothing`（`404`，无 journal、无容器）与 `TestReconcileLeavesUnprovenEnsureRunning`（无容器证明时保持 `running`，无写调用） | Covered |
 
 ### 决策依据
 
@@ -81,8 +83,8 @@ Controller 发送 `sandbox_terminate`（`sandboxInstanceId = E`）；可能与 `
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 以容器不存在为终止证据 | 伪造 Engine 在删除失败、超时与成功时分别断言结果 | Missing |
-| 墓碑阻止迟到 ensure | 同步 ensure 与 terminate 的开始顺序，断言所有允许的交错下终止后无容器 | Missing |
+| 以容器不存在为终止证据 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestTerminateReportsOnlyWhatDockerConfirms`（删除失败为 `failed`、重试成功）、`TestTerminateRemovesContainerAndBlocksLateEnsure`（成功且卷保留）、`TestReconcilePromotesTerminateOnlyWhenContainerGone`；尚缺停止超时的单独断言 | Partial |
+| 墓碑阻止迟到 ensure | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestTerminateRemovesContainerAndBlocksLateEnsure` 与 `TestTerminateOfUnknownSandboxSucceedsAndTombstones` 顺序断言终止后的 ensure 以 `sandbox_terminated` 失败；尚缺并发交错的断言 | Partial |
 | 真实 Docker 停止 | 真实 Docker 中 clone 进行时终止，断言 Node 记录中断失败且卷中数据保留 | Missing |
 
 ### 决策依据
@@ -116,8 +118,8 @@ Controller 发送 `workspace_data_delete`（Workspace `W`）。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 有容器时拒绝 | 伪造 Engine 返回同 Workspace 容器，断言失败且未调用卷删除 | Missing |
-| 幂等删除 | 卷存在与不存在两种情况均返回 `removed: true` | Missing |
+| 有容器时拒绝 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestDataDeleteWaitsForContainersAndIsIdempotent`：容器存在时为 `workspace_sandbox_live` 且卷保留 | Covered |
+| 幂等删除 | 同一测试在卷存在与已删除两种情况下断言 `removed: true` | Covered |
 
 ### 决策依据
 
