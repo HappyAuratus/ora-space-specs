@@ -2,7 +2,7 @@
 
 依据[已批准的 Workspace 操作与 Node 上报契约决策](../../../decisions/cloud/controller-integration/20260926-workspace-operations-and-controller-reported-nodes.md)。
 本文件登记 gRPC 新增方法的授权、fencing 与 Node 身份承诺；步骤语义见
-[运行时 Workspace 生命周期用例](../operation/workspace-runtime-lifecycle.md)。实现尚未开始，证据均为 `Missing`。
+[运行时 Workspace 生命周期用例](../operation/workspace-runtime-lifecycle.md)。证据来自 `ora-space/cloud` 的 `integration` 包（bufconn 上的真实 gRPC 服务 + PostgreSQL）。
 
 ## Only The Lease Holder Can Report Nodes For The Current Generation
 
@@ -36,9 +36,9 @@ Controller 调用 `RegisterNode`、`ReportNodeStatus`、`EndNode`、`ReportNodeI
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| epoch 与 generation fencing | gRPC 集成测试覆盖上述每种调用方状态，断言状态码与数据库不变 | Missing |
-| 单一活 incarnation | 未结束旧 incarnation 时登记新 incarnation，断言冲突；`EndNode` 后成功 | Missing |
-| 提交身份 | 写入后丢弃响应重传，断言返回原结果 | Missing |
+| epoch 与 generation fencing | `integration/workspace_operations_grpc_test.go` `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：`RegisterNode` 的陈旧 epoch（`STALE_CONTROLLER`）、错误 `node_id`、错误 generation 均被拒且不写 Node；sandbox 终止后 `ReportNodeStatus` 与 `RegisterNode` 被拒且数据库不变。`EndNode`/`ReportNodeIdle` 的陈旧 epoch 只由共享事务间接覆盖 | Partial |
+| 单一活 incarnation | `integration/workspace_operations_grpc_test.go` `TestGRPCNodeIncarnationIsReplacedOnlyAfterEnd`：未结束时登记新 incarnation 为 `CONFLICT`，`EndNode` 幂等，之后新 incarnation 为新记录且只有一个未结束 | Covered |
+| 提交身份 | `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：同 `submission_id` 重传 `RegisterNode` 返回原 incarnation，同身份换 incarnation 为 `CONFLICT` | Covered |
 
 ### 决策依据
 
@@ -73,8 +73,8 @@ Node 不是当前 generation。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 输入与 Node 校验 | gRPC 集成测试覆盖每种不符，断言 `CONFLICT` | Missing |
-| 恢复读取覆盖两类执行 | 同时存在租户级与 Workspace clone 时断言 `ListPendingDispatches` 与 `ClaimWork` 的结果 | Missing |
+| 输入与 Node 校验 | `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：仓库不符、分支不符、Node 不是当前 Node、已有进行中执行时再登记，均为 `CONFLICT` | Covered |
+| 恢复读取覆盖两类执行 | `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：租户级请求与 Workspace clone 并存时 `ClaimWork` 只返回租户请求，`ListPendingDispatches` 返回两者 | Covered |
 
 ### 决策依据
 
