@@ -36,8 +36,8 @@ Controller–Node 真实通信证据。当前已有真实本机 IPC 与持久接
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 单会话及撤销边界 | `local_ipc_enforces_owner_and_replays_original_clone_after_restart` 覆盖重复连接拒绝；`busy_clone_keeps_heartbeats_and_revokes_timed_out_queued_command` 在 HTTPS 暂停期间令排队 clone 超时，验证新会话查询仍为 Unknown 且原已接受 clone 完成 | Covered |
-| 有界收发与执行解耦 | `repository_session.rs` 的真实 socket 测试覆盖长 clone 心跳、排队受理超时、半帧超时、持续查询但不读取回复造成背压后的断连与原结果重放 | Covered |
+| 单会话及撤销边界 | `local_ipc_enforces_owner_and_replays_original_clone_after_restart` 覆盖重复连接拒绝。原先由 HTTPS 暂停令排队 clone 受理超时的撤销测试已随 clone Git 移出受理 worker 删除：受理不再排在 Git 之后，外部无法再令受理超时，撤销后未受理消息失效尚缺直接证据 | Partial |
+| 有界收发与执行解耦 | `repository_session.rs` 的真实 socket 测试覆盖半帧超时、持续查询但不读取回复造成背压后的断连与原结果重放；`repository_admission.rs` 覆盖长 clone 期间受理与会话不受 Git 影响 | Covered |
 | endpoint 文件保护 | `ora-utils/tests/local_ipc.rs` 覆盖普通文件、符号链接、活动 socket 拒绝及失效 socket 恢复；Node IPC 重启测试覆盖部署调用 | Covered |
 
 决策依据：D2，不变量 1、2。
