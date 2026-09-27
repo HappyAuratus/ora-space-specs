@@ -4,6 +4,8 @@ status: implemented
 
 # 每个可见协作空间对应一个租户，以租户成员身份授权
 
+> 待评审关联：[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)、[独占操作准入](../execution-admission/20260927-exclusive-runtime-control.md)与[凭据连续性](../project/20260927-repository-credential-continuity.md)拟回答本文保留的协作边界，均为 `proposed`；本文身份、成员规则和实现状态保持不变。
+
 本决策继承 `0-self-serve-tenant-provisioning.md` 的已验证身份自助创建、原子建立首位管理员和空间、创建幂等性以及最后管理员保护；修改其「租户是隐式容器、可以再建多个空间、前端只取首个租户」的约定。用户可创建和加入多个独立空间，并明确切换。当前只有测试数据且没有独立 API 客户端；旧迁移保持不可变，新规则已通过前向迁移和同步更新的 v1 契约落地。
 
 ## 继承与修改

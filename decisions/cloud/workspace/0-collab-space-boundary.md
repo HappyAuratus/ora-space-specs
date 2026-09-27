@@ -4,6 +4,8 @@ status: implemented
 
 # 协作 Space 是租户内的共享、可见性与授权边界
 
+> 待评审关联：[运行时使用权限提案](20260927-runtime-workspace-use-permissions.md)拟增加创建者/管理员使用权限；目前为 `proposed`，不改变本文状态或当前实现。
+
 > 历史决策：下文记录 0006/0007 阶段的模型。当前一租户一空间、租户成员唯一授权、无独立空间成员和空间 owner，由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代；本页保留旧迁移的决策背景。
 
 Cloud 在 Tenant 之下新增协作 Space（产品 UI 称为 Workspace，表 `collab_workspaces`）作为多人

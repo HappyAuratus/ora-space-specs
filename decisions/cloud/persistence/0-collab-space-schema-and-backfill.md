@@ -4,6 +4,8 @@ status: implemented
 
 # 协作 Space 的 Schema、确定性回填与迁移不可变性
 
+> 待评审关联：[运行时使用权限提案](../workspace/20260927-runtime-workspace-use-permissions.md)定义创建者回填及未知归属边界；目前为 `proposed`，不得改写本文历史迁移或提前执行新迁移。
+
 > 历史决策：本页记录不可变迁移 0006/0007。前向迁移 0017 按 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 删除独立空间成员表、约束一租户一空间和全局 slug 唯一；旧迁移文件未改写。
 
 新增 migration 0006（`collab_workspaces` + `collab_workspace_members`）与 0007
