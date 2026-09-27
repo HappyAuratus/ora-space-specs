@@ -14,6 +14,16 @@
 - 验证义务与证据：**Covered** — `integration TestProjectSpaceScopingAndRoleGates` 断言
   member 创建 202、列表 1 项且 spaceId 与 Space 一致。
 
+## Members create and list independent runtimes in a shared project
+
+- 风险：将操作发起者误当成持久资源所有者导致外键失败；运行时列表仍依赖已停用的工作树表而漏项。
+- 前置状态：项目由 alice 创建，bob 是同租户普通成员，主运行时已就绪。
+- 触发：bob 创建独立运行时，Controller 完成 Node 克隆，随后 bob 查询项目运行时列表。
+- 必须成立：持久归属沿用项目所有者，操作发起者为 bob；双方能查看操作；列表包含主运行时与独立运行时，均就绪且提交标识正确。
+- 禁止结果：拒绝合法成员创建、资源归属被改写、列表为空或重新插入旧存储/工作树记录。
+- 验证义务与证据：**Covered** — `integration.TestDifferentMemberCanCreateRuntimeInSharedProject` 验证以上完整链路；`TestConcurrentMembersCannotStartTwoProjectOperations` 验证同项目生命周期操作的竞争结果恰为一成功、一冲突。
+- 决策依据：一租户一空间 D1，以及上游每个运行时独立克隆的生命周期约束。
+
 ## Non-members cannot read a project or its runtime workspace
 
 - 风险：仅凭 Project UUID 绕过 Space 边界读取内容或运行时状态。

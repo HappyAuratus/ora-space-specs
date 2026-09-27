@@ -1,6 +1,18 @@
 # 协作 Space Schema 回填与单空间迁移
 
-0006/0007 的默认空间回填仍是不可变的历史步骤；0008 收紧为单空间租户和全局 slug。当前只有测试数据，多个租户共用 `default` slug 或一个租户含多个空间的旧测试库需重建，不能静默拆分。
+0006/0007 的默认空间回填仍是不可变的历史步骤；0017 收紧为单空间租户和全局 slug。当前只有测试数据，多个租户共用 `default` slug 或一个租户含多个空间的旧测试库需重建，不能静默拆分。
+
+0014–0016 分别由上游克隆协调、插件市场和独立运行时使用；租户迁移顺延为 0017，历史 SQL 内容不变。曾应用本 PR 旧编号租户迁移的测试库须重建。
+
+## Tenant migration preserves upstream runtime clone and plugin facts
+
+- 风险：合并上游后迁移编号重复，或成员模型变更误改运行记录、插件选择与资源归属。
+- 前置状态：已应用上游 0001–0016；一个同名租户与空间，已有项目、独立运行时、克隆请求和插件安装记录。
+- 触发：运行最新迁移两次，并检查迁移版本与校验和。
+- 必须成立：0017 成功应用，项目空间关联必填，旧空间成员表移除；运行、克隆、插件和租户成员记录完整保留，包含版本、时间及归属字段。
+- 禁止结果：重写已应用 SQL、数据丢失、权限仍有两份来源、重新创建旧存储卷或工作树。
+- 验证义务与证据：**Covered** — `integration.TestTenantMigrationFrom0016PreservesRuntimeCloneAndPlugins` 逐行完整快照比较并重复迁移；`TestMigration0016RetiresStorageAndWorktreeStepsKeepingHistory` 保留上游旧运行记录与拒绝新增旧流程的断言。
+- 决策依据：一租户一空间 D1/D2，以及运行时遵循 Node 的迁移边界。
 
 决策依据：[协作 Space 的 Schema、确定性回填与迁移不可变性](../../../decisions/cloud/persistence/0-collab-space-schema-and-backfill.md)。
 以下用例通过真实 PostgreSQL 集成测试（`integration/cloud_test.go`）验证。
@@ -10,28 +22,28 @@
 - 风险：0007 回填遗漏 Project，或回填顺序错误导致 NOT NULL 收紧失败、升级中断。
 - 前置状态：0001–0003 建库并灌入 tenant、admin membership、active Project、workspace、
   sandbox、node、ticket、operation、effect 种子数据。
-- 触发：`store.Migrate` 升级到最新（含 0006–0008）并 `CheckSchema`，随后校验兼容行保真。
+- 触发：`store.Migrate` 升级到最新（含 0006–0017）并 `CheckSchema`，随后校验兼容行保真。
 - 必须成立：升级成功；外部 effect 意图与 ticket tenant 回填保持；既有业务行不重建。
 - 禁止结果：迁移失败（NOT NULL 收紧即证明回填覆盖全部 Project）、checksum 不符、历史数据丢失。
 - 验证义务与证据：**Covered** — `integration TestMigrateUpgradesPreviousSchemaAndData`
-  以旧 schema 种子数据升级到最新（含 0008）并通过 checksum 与数据校验。
+  以旧 schema 种子数据升级到最新（含 0017）并通过 checksum 与数据校验。
 
 ## Previous space schema upgrades only when tenant and space agree
 
-- 风险：0008 静默把旧空间名称改为租户名称，或在失败时留下部分 schema 变更和错误的 migration 记录。
+- 风险：0017 静默把旧空间名称改为租户名称，或在失败时留下部分 schema 变更和错误的 migration 记录。
 - 前置状态：0001–0007 已应用，租户有一个旧空间和独立空间成员关系。
-- 触发：分别以同名和不同名的租户/空间运行 0008，再重复兼容库的迁移。
+- 触发：分别以同名和不同名的租户/空间运行 0017，再重复兼容库的迁移。
 - 必须成立：兼容库保留身份、slug 和租户管理员，删除旧空间成员表，重复迁移安全；不兼容库明确失败，原空间与迁移历史不变。
-- 禁止结果：静默覆盖名称、失败后记录 0008 已应用、旧成员表继续作为第二权限来源。
+- 禁止结果：静默覆盖名称、失败后记录 0017 已应用、旧成员表继续作为第二权限来源。
 - 验证义务与证据：**Covered** — `integration TestMigrateFromPreviousSpaceSchemaPreservesCompatibleTenant`、`TestMigrateRejectsIncompatiblePreviousSpaceNames`。
 
 ## Default-space backfill is deterministic and needs no online IDaaS
 
 - 风险：回填依赖外部身份服务或非确定性排序，导致不可重入或各 tenant 结果不一致。
-- 前置状态：0007 升级前的历史数据；0008 之后该数据形状只允许全局唯一 slug。
+- 前置状态：0007 升级前的历史数据；0017 之后该数据形状只允许全局唯一 slug。
 - 触发：重复执行回填路径；观察 created_by 与成员映射。
-- 必须成立：0007 历史回填为每 tenant 创建默认 Space，并按当时规则映射成员；0008 不重新解释这些已应用迁移，只对兼容数据收紧唯一约束。
-- 禁止结果：重复执行产生第二个 Space、在 0008 静默删除或改写不兼容历史行。
+- 必须成立：0007 历史回填为每 tenant 创建默认 Space，并按当时规则映射成员；0017 不重新解释这些已应用迁移，只对兼容数据收紧唯一约束。
+- 禁止结果：重复执行产生第二个 Space、在 0017 静默删除或改写不兼容历史行。
 - 验证义务与证据：**Partial** — 单 tenant 升级路径由
   `TestMigrateUpgradesPreviousSchemaAndData` 覆盖；多 tenant 与 created_by 回退分支的自动化
   断言缺失（手动 psql 检查见 test.md 2.4 节）。

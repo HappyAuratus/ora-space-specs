@@ -1,8 +1,10 @@
 # 最小 clone 执行契约
 
-依据[已批准的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)。
+依据[已批准的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
+以及修改其 D6 的[中断失败判定](../../../decisions/node/repository/20260925-terminated-clone-attempt-fails-as-interrupted.md)。
 本文件登记首版行为义务。协议、schema v3 和 Linux 受管 clone 已接通，已有真实 HTTPS／SSH 与恢复证据；
-已有 Worktree／process 测试不替代这些业务证据。端到端职责另见[结果边界](clone-and-result-boundaries.md)。
+已有 Worktree／process 测试不替代这些业务证据。端到端职责另见[结果边界](clone-and-result-boundaries.md)；
+clone 的 Git 移出受理 worker 后的受理与在途义务见[受理与 Git 执行分离](admission-and-git-execution.md)。
 
 ## Clone Input And Authentication Stay Noninteractive
 
@@ -171,6 +173,7 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 - 尚未派发且前置有效时继续原执行／目标；旧尝试成功且收尾、checkout 证据完整时只补交原成功。
 - 已知命令失败且收尾确认才保存失败与残留说明，不自动重跑或清理；用户重试使用新执行和新目录。
 - 清理或目录／成功证据不足时保持 Unknown 与预留，查询恢复仍可用；数据库锁或超时不代替证据。
+  被信号终止且收尾已确认不属于证据不足，按下一个用例以 `Interrupted` 结束。
 - Unknown 不允许复用原目标；不共享可写资源的独立新目标不被一概阻塞。
 
 ### 禁止结果
@@ -186,7 +189,54 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 
 ### 决策依据
 
-执行契约 D3、D6，不变量 1、2、3。
+执行契约 D3、D6，不变量 1、2、3；中断失败判定 D1。
+
+## Terminated Clone Attempt Settles As Interrupted Failure
+
+### 风险
+
+Node 主动或被动终止的尝试被当作证据缺失，永久停留在 Unknown，调用方一直看到 `pending`；或者反过来，
+收尾未确认就给出结论，在旧进程仍可能写入时解读目录。
+
+### 前置状态
+
+执行已派发，受管 Git 正在获取；host／guardian 可用，或被制造为不可用、无法回答。
+
+### 触发
+
+- Node 正常停止，Git 超过 `shutdown_grace_ms` 后被收尾；
+- Git 超过 `command_timeout_ms` 后被收尾；
+- 强杀 Node，guardian 按 owner 退出终止 Git，随后重启 Node 恢复；
+- 以上任一情况下 host 的收尾或退出观察缺失。
+
+### 必须成立
+
+- Node 只在观测到原 Scope 已 Closed 之后解读原 Run 的结束事实或读取目标目录。
+- 被信号终止且收尾完成时，执行以 `Interrupted` 失败结束，残留为 `Retained`，只有一个尝试；
+  运行路径在本进程内落定该终态，恢复路径对同一观察得出相同结果。
+- Git 在终止前已以退出码结束时，按退出码处理（0 则核实仓库），不被判为中断。
+- 收尾未确认、退出结果未知、尚未启动或 host 无法回答时保持 Unknown 与预留。
+- `Interrupted` 是不可变终态：原执行重传只重放它；用户重试使用新执行和新目录。
+- 终态经 Controller 接管后，以 `interrupted` 交付到 minicloud API 与 Cloud 契约。
+
+### 禁止结果
+
+被终止的尝试停留在 Unknown、被判为成功、被自动重跑或在原目录续传；收尾未确认时给出 `Interrupted`；
+删除保留目录。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 正常停止与命令超时以 `Interrupted` 结束 | `apps/ora-node/tests/standalone/repository_recovery.rs` 的 `stopped_node_settles_its_interrupted_clone_before_exit`（停止进程自身落定终态，不经恢复）与 `command_deadline_settles_clone_as_interrupted`，真实 host／guardian 与暂停的 HTTPS，检查完整终态、`Retained`、单一已清理尝试 | Covered |
+| 强杀恢复以 `Interrupted` 结束 | `killed_clone_recovers_original_run_without_redispatch` 断言完整 `Interrupted` 终态与单一尝试 | Covered |
+| 证据缺失仍为 Unknown | `guardian_loss_keeps_interrupted_clone_unknown` 覆盖 guardian 丢失；尚缺 host 无法回答 Run 查询的直接测试 | Partial |
+| 一个 Run 只有一种结束事实，终止只支撑 `Interrupted` | `crates/node-db/src/tests/repository.rs` 的 `clone_interruption_requires_recorded_termination`、`clone_exit_code_cannot_back_an_interruption`；`version_four_upgrade_adds_termination_evidence_without_rewriting_clones` 覆盖 v4 升级不改写未完成 clone | Covered |
+| 终态跨边界交付 | `apps/ora-node/tests/standalone/repository_websocket.rs` 的 `controller_session_takes_over_interrupted_clone_after_node_stop`：生产 Controller 会话经 WebSocket 接管正常停止后的完整中断终态，且不再保留待查询派发；`apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返、`api.rs` 的 `interrupted_failure_presents_its_own_reason`、Cloud `integration/clone_api_test.go` 公开 `interrupted` | Covered |
+
+### 决策依据
+
+中断失败判定 D1–D4，不变量 1–6；执行契约 D6；process integration D3。
 
 ## Clone Capability Coexists With Historical Worktree State
 
