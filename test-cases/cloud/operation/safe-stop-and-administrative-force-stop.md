@@ -9,8 +9,11 @@
 - 触发：创建者和管理员普通停止、重启、删除独立运行时或删除项目，与新准入并发。
 - 必须成立：普通操作检查使用权限、独占和活动；活动/未知/他人占用返回冲突，无部分删除。关闭准入后原子确认 idle；重启使用同一持久意图，停止确认后才启动；main 不可单独删除。
 - 禁止结果：管理员普通操作绕过占用、前端拼接停止与启动、idle 与 terminate 间插入新执行。
-- 验证义务与证据：**Missing** — 需真实 PostgreSQL 生命周期/准入竞争及执行端 idle 证据；项目删除覆盖全部运行时并断言无部分副作用。
+- 验证义务与证据：**Partial** — 需真实 PostgreSQL 生命周期/准入竞争及执行端 idle 证据；项目删除覆盖全部运行时并断言无部分副作用。
 - 决策依据：D1，不变量 1。
+
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 的持久 restart 不 clone；[cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 包含错误 SID、管理员不能夺取有效会话及项目删除原子保护。
+- 仍缺：完整界面与实际生命周期/活动竞争故障矩阵尚缺。
 
 ## Administrative Force Stop Is Explicit Audited And Scoped To One Runtime
 
@@ -19,8 +22,11 @@
 - 触发：强停请求、并发重复请求、同键不同输入；原发起管理员离开或关闭页面。
 - 必须成立：只有目标租户当前管理员可接受新强停，要求原因、目标版本和幂等键；界面明确全部目标工作及未落盘风险。接受后持久记录独立终止责任，撤回普通资格；仅终止目标，已有责任不随发起人离开丢失。
 - 禁止结果：普通成员强停、跨租户终止、改写任务 actor、依赖弹窗授权、关闭页面取消责任、改变旧 administrative_stop 语义。
-- 验证义务与证据：**Missing** — 需真实 HTTP、数据库、前端及两运行时进程测试，完整检查审计和重试只有同一责任。
+- 验证义务与证据：**Partial** — 需真实 HTTP、数据库、前端及两运行时进程测试，完整检查审计和重试只有同一责任。
 - 决策依据：D2、D5，不变量 2、6。
+
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 的管理员/原因/影响确认、在途记录及幂等；cluster docs/runtime-control.md 记录真实目标终止与卷保留。
+- 仍缺：脚本已通过强停幂等、只终止目标、保留目标卷和另一运行时内容；完整界面与联合故障矩阵尚缺。
 
 ## Force Stop Can Be Accepted During Inflight Work Without Reviving Old Resources
 
@@ -29,8 +35,11 @@
 - 触发：登记强停，丢失 ensure/terminate 响应，重启 Controller，再交付迟到成功和旧控制指令。
 - 必须成立：强停意图可登记，不删除或伪造在途记录；目标不再派发普通新动作。按稳定身份恢复并覆盖可能晚到的旧资源；仅目标被终止，其他运行时 operation 不被中断。
 - 禁止结果：腾空项目唯一约束、重执行未知动作、晚到结果重新开放准入、旧 ensure 恢复可写实例。
-- 验证义务与证据：**Missing** — 需真实 Controller/Substrate 的终止与 ensure 竞争、崩溃恢复和磁盘写入检查；Cloud simulator 不构成生产边界证明。
+- 验证义务与证据：**Partial** — 需真实 Controller/Substrate 的终止与 ensure 竞争、崩溃恢复和磁盘写入检查；Cloud simulator 不构成生产边界证明。
 - 决策依据：D3、D4，不变量 3、4、6。
+
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go)；[cluster lifecycle](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/sandbox-server/internal/lifecycle/runtime_fence_test.go) 的持久 generation fence、旧 ensure 与进程重开；真实在途 create 强停记录见 cluster 文档。
+- 仍缺：真实迟到 ensure/终止同时间竞争、响应丢失与崩溃磁盘矩阵仍缺。
 
 ## Unconfirmed Termination Blocks Handoff And Persistent Data Survives Stop
 
@@ -39,5 +48,9 @@
 - 触发：普通停止、强停、重启、接管、删除数据；恢复后查询原终止 effect 并重新启动。
 - 必须成立：未确认时处于终止中/待对账，禁止重启、交接和删数据。确认后保留代码及执行引用，已完成结果原样保留、被中断结果有明确证据；新启动挂载同一数据。显式删除在终止后执行，审计与清理引用保留。
 - 禁止结果：仅超时就 stopped、凭新 generation 允许同目录并行写入、强停删卷、承诺内存或磁盘损坏无损恢复。
-- 验证义务与证据：**Missing** — 需真实沙盒/持久卷、进程及 PostgreSQL 的停止/强停/启动/删除与节点不可达测试，分别检查业务状态、磁盘和进程。
+- 验证义务与证据：**Partial** — 需真实沙盒/持久卷、进程及 PostgreSQL 的停止/强停/启动/删除与节点不可达测试，分别检查业务状态、磁盘和进程。
 - 决策依据：D4、D5，不变量 4、5。
+
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 与 Sandbox Server 持久 tombstone；真实强停目标不存在且卷保留的记录。
+- 仍缺：Node 不可达、停止/删除/重启及未确认终止的真实联合故障矩阵仍缺。
+
