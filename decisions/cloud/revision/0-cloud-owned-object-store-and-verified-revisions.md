@@ -44,15 +44,16 @@ Cloud 配置新增 `object_store` 段，均可由 `CLOUD_OBJECT_STORE_*` 环境�
 
 ### D2：对象键由 Cloud 按运行决定，Node 不能选择写入位置
 
-每次交付执行对应一组固定对象键：
+每个交付工作项（一次交付尝试）对应一组固定对象键：
 
 ```text
-revisions/{tenantId}/{runId}/{deliveryExecutionId}/revision.bundle
-revisions/{tenantId}/{runId}/{deliveryExecutionId}/session.jsonl
+revisions/{tenantId}/{runId}/{deliveryWorkId}/revision.bundle
+revisions/{tenantId}/{runId}/{deliveryWorkId}/session.jsonl
 ```
 
-- 键在交付执行登记时由 Cloud 生成并随执行输入下发；包含执行 ID，使重试的交付不会覆盖上一次尝试的对象，
-  失败尝试的残留对象可按前缀清理。
+- 键在 Cloud 放出交付工作项时生成并写入工作项的输入（[controller-integration D6](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)
+  的 `execution_work`）。此时执行 ID 尚不存在（它由 Controller 在 `RecordDispatch` 时生成），所以键使用
+  工作项 ID；每次重试是新的工作项，不会覆盖上一次尝试的对象，失败尝试的残留对象可按前缀清理。
 - 预签名 URL 只对单个键、`PUT` 方法和 `upload_grant_ttl` 有效，并要求 `x-amz-checksum-sha256` 头，
   由 S3 在写入时校验内容与 Node 声明的摘要一致。
 
@@ -93,7 +94,7 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
 ## 不变量
 
 1. 对象存储凭据只在 Cloud 进程内；Controller、Node、数据库与日志中没有对象存储凭据，也不持久化上传授权。
-2. Node 只能写入 Cloud 为本次交付执行指定的对象键。
+2. Node 只能写入 Cloud 为本次交付尝试（交付工作项）指定的对象键。
 3. Revision 只在 Cloud 亲自校验对象存在且 SHA-256 一致后登记。
 4. 同一交付执行的输入在授权刷新后不变。
 5. 无改动的运行也有 Revision 记录，且没有 bundle。

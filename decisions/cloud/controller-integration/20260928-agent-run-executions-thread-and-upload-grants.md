@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Internal Control gRPC 增加插件、Agent 会话与 Revision 交付三类执行，新增 AgentRunService 承载 Thread 事件、Thread 命令与上传授权
@@ -10,7 +10,7 @@ status: proposed
 `ClaimThreadCommands`/`RecordThreadCommandDelivered` 把用户消息与结束请求交给 Controller，
 `GrantRevisionUpload` 签发上传授权。`Watch` 增加 `ThreadCommandAvailable`。
 
-本 ADR 处于 `proposed`，继承 [gRPC 契约根决策](0-cloud-owned-internal-grpc-contract.md)、
+本 ADR 处于 `approved`（已评审，待实现），继承 [gRPC 契约根决策](0-cloud-owned-internal-grpc-contract.md)、
 [控制监听器保活](20260924-control-listener-keepalive.md)、[Workspace 操作与 Node 代报](20260926-workspace-operations-and-controller-reported-nodes.md)
 与 [ListLiveSandboxes](20260926-list-live-sandboxes.md)。业务语义分别由
 [IssueRun](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)、
@@ -39,8 +39,8 @@ status: proposed
 
 | 执行 | 输入 | 终态结果 | 如何领取 |
 |---|---|---|---|
-| 插件安装/移除 | `InstallPlugins`/`RemovePlugins`（插件载荷列表） | `PluginsResult{items[]}` | `ClaimOperation`，处于 `plugin` 步骤的 operation |
-| Agent 会话 | `AgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn{turn_id, content}}` | `AgentSessionEnded{reason, stop_detail}` | `ClaimWork` |
+| 插件安装/移除 | `InstallPlugins`/`RemovePlugins`（插件载荷列表） | `PluginsResult{items[]}`；执行整体无法运行时 `PluginsFailed{plugin_root_unavailable \| interrupted}` | `ClaimOperation`，处于 `plugin` 步骤的 operation |
+| Agent 会话 | `AgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn{turn_id, content}}` | `AgentSessionEnded{reason, detail}` | `ClaimWork` |
 | Revision 交付 | `DeliverRevision{session_execution_id, checkout_execution_id, base_commit, revision_ref, bundle_key, history_key}` | `RevisionDelivered`/`RevisionUnchanged`/`RevisionFailed` | `ClaimWork` |
 
 - `WorkItem` 增加 `target{workspace_id, sandbox_instance_id, node_id}`：会话与交付的目标 Node 由 Cloud 按运行
@@ -49,10 +49,13 @@ status: proposed
   新执行（IssueRun D5）。
 - `checkout_execution_id` 引用运行 Workspace 的 clone 执行：Node 由自己的账本解析 checkout 路径，Controller
   与 Cloud 不传递 Node 本地路径（协议根不变量 5、6）。
+- `OperationSnapshot` 增加 `plugin_input`（进入 `plugin` 步骤时固定的 `InstallPlugins`/`RemovePlugins` 输入，
+  集合为空时不设置）与 `plugin_executions`（该步骤已登记的执行）；`DeferReason` 增加
+  `PLUGIN_EXECUTION_FAILED`（重试新执行）与 `PLUGIN_RESULT_UNKNOWN`（保持 `blocked`），与 clone 的两个原因对称。
+- `RevisionFailed.reason` 另有 `VERIFICATION_FAILED`，只由 Cloud 在对象校验失败时记录，Node 不会报告。
 - `ClaimWork` 仍是纯读，返回最早的可领取工作项；归属由 `RecordDispatch` 决定。
-- 执行登记的持久化由 Cloud 实现决定（可新增通用执行表，`clone_executions` 保持原义）；本文要求的是
-  规则：派发前登记、输入与目标由 Cloud 校验、结果冲突不覆盖、恢复读取（`GetDispatch`、
-  `ListPendingDispatches`）覆盖全部新种类。
+- 新种类的登记存放在通用执行表中（D6），`clone_executions` 保持原义；规则与 clone 相同：派发前登记、
+  输入与目标由 Cloud 校验、结果冲突不覆盖、恢复读取（`GetDispatch`、`ListPendingDispatches`）覆盖全部新种类。
 
 ### D2：Thread 事件按序批量接管
 
@@ -92,6 +95,47 @@ status: proposed
 命令写入事务提交后发送，语义同其他信号；会话与交付工作项沿用 `WorkAvailable{operation_id = run_id}`。
 Controller 在流不可用时按周期调用 `ClaimThreadCommands` 兜底。
 
+### D6：Cloud 内的持久化与事务边界
+
+Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工作与 Node 的证据”，只在 internal control 动作与
+下表列出的业务事务中写入；**业务表**承载 IssueRun、Thread、Agent 等领域状态，只在业务转换中写入。两类表
+之间只通过下面的命名函数交互，函数都在调用方的事务内执行，不开启自己的事务。
+
+| 表 | 类别 | 内容 |
+|---|---|---|
+| `execution_work` | 控制面 | `id uuid`、`run_id`、`kind`（`agent_session \| deliver_revision`）、`input jsonb`、`target jsonb`、`available_at`、`execution_id`（登记后写入）。同一运行同时至多一个未登记的工作项（部分唯一索引） |
+| `node_executions` | 控制面 | 新种类的执行登记：`execution_id`、`kind`、`operation_id`（operation 或 IssueRun）、`work_id`（可空）、`node_id`、`input`、`result`、`dispatched_epoch`、`last_event_sequence` |
+| `node_event_receipts` | 控制面 | `(execution_id, sequence)` 主键与原始事件；Thread 事件与终态事件共用，是确认的唯一依据 |
+| `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、`delivered_at`、`delivered_execution_id` |
+| `revisions` | 控制面 | 见 [Revision D4](../revision/0-cloud-owned-object-store-and-verified-revisions.md) |
+| `issue_runs` 新列、`space_agents`、`thread_entries`、`users` 的 git 身份列 | 业务 | 见 IssueRun、Thread、git 身份决策 |
+
+控制面提供给业务转换调用的函数：
+
+| 函数 | 作用 | 提交后 |
+|---|---|---|
+| `enqueueExecutionWork(t, run, kind, input, target, availableAt)` | 放出会话或交付工作项；输入在此固定 | `WorkAvailable` |
+| `enqueueThreadCommand(t, run, command)` | 放出 `SubmitUserTurn`/`EndSession`，返回 `command_id` | `ThreadCommandAvailable` |
+| `createRunWorkspace(t, run)` / `deleteRunWorkspace(t, run)` | 以 `(issue_run_id, kind)` 幂等地创建运行 Workspace 及其 operation；Project 忙时返回 `busy` 值而不是错误，事务照常提交 | `OperationAvailable` |
+
+业务提供给控制面事务调用的钩子：
+
+| 钩子 | 在哪个控制面事务中调用 | 业务上做什么 |
+|---|---|---|
+| `runWorkspaceSettled(t, run, ready \| failed)` | 运行 Workspace 的 `create_workspace` 进入终态的事务 | `starting` 或按 IssueRun D3 进入 `releasing` |
+| `threadEventsTakenOver(t, run, execution, events)` | `TakeOverThreadEvents`，在收据写入之后 | 分配 `seq` 写 `thread_entries`、推进 `thread_state`、把轮次标为 `delivered`、`running` |
+| `sessionEnded(t, run, execution, ended)` | 会话终态的 `TakeOverNodeEvent` | Thread `ended`、排队轮次 `discarded`、进入 `delivering` 并放出交付工作项 |
+| `deliverySettled(t, run, execution, saved(revisionId) \| unchanged(revisionId) \| failed(reason))` | 交付终态的接管事务（`revisions` 行已写入之后） | 进入 `releasing` 或按 IssueRun D5 退避放出新交付 |
+| `runWorkspaceDeleted(t, run)` | 运行 Workspace 的 `delete_workspace` 成功的事务 | `done` |
+
+- 顺序、重放与冲突只由控制面判断：钩子只收到按序号连续、首次接管的事件；重放不会再次调用钩子。
+- 钩子返回错误时整个事务回滚，Controller 不确认事件，Node 会重放；因此钩子必须对同一事件集合是确定的。
+- 业务表的 `seq`、`thread_state` 与阶段只由钩子与业务 API 写；控制面代码不直接写业务表，反之亦然。
+
+为什么用命名函数而不是共享表：Thread 的顺序规则（连续序号、重放）与业务规则（轮次状态、空闲判定）由
+不同的人演进，若双方都直接写同一张表，任何一侧改动都可能破坏另一侧的不变量；函数边界让每张表只有一个
+写入者，事务仍然只有一个。
+
 ## 不变量
 
 1. `v1` 已发布的消息与方法不变。
@@ -100,6 +144,7 @@ Controller 在流不可用时按周期调用 `ClaimThreadCommands` 兜底。
 4. 任何 `EventAck` 都晚于对应事件的 Cloud 提交。
 5. Thread 命令在 Cloud 持久化后才可领取；重复投递不改变 Node 状态。
 6. 上传授权不在 Cloud、Controller 或 Node 持久化。
+7. 每张表只有一类写入者：控制面表只由控制面代码写，业务表只由业务转换写；二者只经 D6 的函数与钩子交互，且都在同一事务内。
 
 ## 为什么不是这些替代方案
 
@@ -114,6 +159,7 @@ Controller 在流不可用时按周期调用 `ClaimThreadCommands` 兜底。
 
 - Thread 事件接管的限速与单运行的事件量上限。
 - 多 Controller worker 时命令投递的分区。
+- `node_executions` 是否在后续把 clone 并入（本文保持 `clone_executions` 不变）。
 
 ## 落地
 
