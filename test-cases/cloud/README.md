@@ -30,3 +30,12 @@
 | cluster | 3ce153f322ca31dd402cb1704d5d01e3dcc86d7e | [#6](https://github.com/ora-space/cluster/pull/6) | 管理认证、迟到创建屏障、真实 Git/进程/存储验收 |
 
 集成顺序为 Cloud 契约及数据库 → desktop Controller/Node → cluster 部署，再核查本库证据。三个实现 PR 分别面向上游 main；不直接合并 specs #56。真实验收八组检查已通过，定位信息和可重跑脚本在 cluster docs/runtime-control.md。完整测试的最终结果与环境限制在各实现 PR 更新。
+
+## 最终门禁
+
+- Cloud fe33eb4：本机 Linux 使用真实 PostgreSQL 完整 check/race/build、官方前端生成/check/check:diff 通过；[后端 CI](https://github.com/ora-space/cloud/actions/runs/36435316523/job/108971606116)、[前端 CI](https://github.com/ora-space/cloud/actions/runs/36435316560/job/108971606485) 通过。
+- desktop 9b788efb：[完整 CI](https://github.com/ora-space/desktop/actions/runs/36435361097) 全部通过，包括 Linux/Windows/macOS test:crates、前端、test:tauri、test:e2e。已核对 Linux、Tauri、e2e 的具体测试步骤为 success，未跳过。
+- 本机 WSL 访问 Windows 文件系统时曾有前端 worker 启动超时与 Rust 并发时限失败；全部前端迁至 Linux 原生源码目录通过。保留失败记录，未改断言、期限、线程数或 stderr 门禁；完整 Rust/桌面验证以对应提交的成功 CI 为直接证据，停止额外复制/重跑。
+- cluster 3ce153f：完整 Go race、格式/vet、真实公共 TLS Git 夹具及八组真实 Compose 验收通过。cluster 没有对应的 CI check-run，不能把本机结果写成 CI 通过。
+
+这些门禁不补齐未实现执行器或完整故障/升级矩阵，六份 ADR 仍为 approved，各用例证据继续 Partial/Missing。
