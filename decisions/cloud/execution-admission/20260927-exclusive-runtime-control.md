@@ -6,7 +6,7 @@ status: approved
 
 运行时以 PostgreSQL 中的权威状态决定谁可以操作；有使用权限不意味着可以在占用时操作。每个运行时至多一个有效操作会话，同一会话也不能让互相冲突的写活动并行。断线、租约到期或成员停用只撤回新的操作资格，已开始任务按生命周期收尾；确认旧入口失效且无未完成执行后才交接。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现。它定义 Cloud 的业务独占与准入，不把数据库到期、浏览器关闭或 Controller 单连接当作真实进程停止的证据。Node 执行约束以[跨进程交付决策](../controller-integration/20260927-fenced-runtime-control-delivery.md)为共同生效条件。核心用例见[独占与安全交接](../../../test-cases/cloud/execution-admission/exclusive-runtime-control.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，整体实施与验收尚未完成。它定义 Cloud 的业务独占与准入，不把数据库到期、浏览器关闭或 Controller 单连接当作真实进程停止的证据。Node 执行约束以[跨进程交付决策](../controller-integration/20260927-fenced-runtime-control-delivery.md)为共同生效条件。核心用例见[独占与安全交接](../../../test-cases/cloud/execution-admission/exclusive-runtime-control.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与继承
 

@@ -6,7 +6,7 @@ status: approved
 
 普通停止、重启和删除拒绝打断运行任务；管理员强制停止另设明确入口，允许中断目标运行时中的全部工作，但必须保存原因、关闭新准入并确认实际终止。强停保留运行时持久数据，不自动重启、接管或删除。不能以“Cloud 已标记 stopped”代替执行端终止证据。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；涉及 Cloud 生命周期、Ora 前端、Controller 与 Substrate。当前 `administrative_stop` 是有活动保护的行政停止，并非强停；本决策不静默改变它的既有语义。核心用例见[安全停止与强停](../../../test-cases/cloud/operation/safe-stop-and-administrative-force-stop.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，整体实施与验收尚未完成；涉及 Cloud 生命周期、Ora 前端、Controller 与 Substrate。当前 `administrative_stop` 是有活动保护的行政停止，并非强停；本决策不静默改变它的既有语义。核心用例见[安全停止与强停](../../../test-cases/cloud/operation/safe-stop-and-administrative-force-stop.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与继承
 

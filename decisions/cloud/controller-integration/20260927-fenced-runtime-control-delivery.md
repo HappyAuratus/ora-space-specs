@@ -6,7 +6,7 @@ status: approved
 
 Cloud 的独占状态必须成为真实执行入口的约束：Controller 只派发当前被批准并持久登记的工作，Node 在执行入口核验控制绑定，关闭旧入口并确认未完成执行后才允许交接。控制代次是单调递增的操作资格版本；拒绝旧代次新写入称为 fencing，本文使用“旧操作资格隔离”说明其含义。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；是本批跨仓库协议与交付义务的权威定义。业务权限与独占状态分别由[使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)、[独占准入](../execution-admission/20260927-exclusive-runtime-control.md)拥有，本文不复制角色策略。公开字段与协议示例表达已批准语义，尚不是已发布接口。核心用例见[真实执行约束与恢复](../../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，整体实施与验收尚未完成；是本批跨仓库协议与交付义务的权威定义。业务权限与独占状态分别由[使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)、[独占准入](../execution-admission/20260927-exclusive-runtime-control.md)拥有，本文不复制角色策略。公开字段与协议示例表达已批准语义，尚不是已发布接口。核心用例见[真实执行约束与恢复](../../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与继承
 

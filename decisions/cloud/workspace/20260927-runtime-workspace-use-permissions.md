@@ -6,7 +6,7 @@ status: approved
 
 项目继续由协作空间成员共享；运行时工作区增加独立的使用权限。第一阶段普通成员只能使用自己创建的运行时，当前有效管理员可以使用同协作空间全部运行时。获得使用权限只是必要条件，任何会改变运行时的普通操作还须取得[独占操作权](../execution-admission/20260927-exclusive-runtime-control.md)。管理员不能因为角色更高就同时写入他人正在使用的目录。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`；规则进入开发依据，尚未实现。涉及 Cloud、Ora 前端及执行入口；第一阶段不建立运行时授权关系、授予或撤销接口、授权界面，也不实现实时共同编辑。后续显式共享必须另行批准，不能以预留能力为由开放访问。核心用例见[运行时使用权限](../../../test-cases/cloud/workspace/runtime-workspace-use-permissions.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`；规则进入开发依据，整体实施与验收尚未完成。涉及 Cloud、Ora 前端及执行入口；第一阶段不建立运行时授权关系、授予或撤销接口、授权界面，也不实现实时共同编辑。后续显式共享必须另行批准，不能以预留能力为由开放访问。核心用例见[运行时使用权限](../../../test-cases/cloud/workspace/runtime-workspace-use-permissions.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与依据
 

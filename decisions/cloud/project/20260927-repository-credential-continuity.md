@@ -6,7 +6,7 @@ status: approved
 
 项目共享与 Git 平台访问是两种权限。Ora 管理仓库访问凭据的引用及其可用状态，真实凭据仍由部署侧保管。优先绑定团队凭据；关联个人或归属未知的成员离开后，拒绝新增使用该凭据的远程仓库操作，保留项目、本地代码、历史引用和已开始任务。管理员显式绑定并验证团队凭据后，才能恢复受影响的新远程操作。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；涉及 Cloud、Controller、Node 与部署凭据提供方。不自动转移项目 owner、个人 Git 身份或密钥，不代替 GitHub/企业 Git 的授权，也不承诺撤销用户在外部 Git 平台的个人账号权限。核心用例见[仓库凭据连续性](../../../test-cases/cloud/project/repository-credential-continuity.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，整体实施与验收尚未完成；涉及 Cloud、Controller、Node 与部署凭据提供方。不自动转移项目 owner、个人 Git 身份或密钥，不代替 GitHub/企业 Git 的授权，也不承诺撤销用户在外部 Git 平台的个人账号权限。核心用例见[仓库凭据连续性](../../../test-cases/cloud/project/repository-credential-continuity.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与继承
 

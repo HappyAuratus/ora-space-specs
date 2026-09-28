@@ -6,7 +6,7 @@ status: approved
 
 插件选择仍属于协作空间，即用户可见的租户；安装状态属于该空间各项目下的运行时工作区。第一阶段只有管理员可以修改空间插件选择，普通成员可查看。安装和移除的真实副作用必须等待目标运行时空闲并取得维护独占权，不能借空间级配置绕过运行时占用。
 
-本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；修改 Cloud 插件权限和调度语义，不把插件改为成员私有或逐运行时独立选配，也不宣称现有 Node 已有真实插件执行器。核心用例见[管理员选择与空闲维护](../../../test-cases/cloud/plugin-marketplace/admin-selection-and-idle-maintenance.md)，新保障的直接证据为 `Missing`。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，整体实施与验收尚未完成；修改 Cloud 插件权限和调度语义，不把插件改为成员私有或逐运行时独立选配，也不宣称现有 Node 已有真实插件执行器。核心用例见[管理员选择与空闲维护](../../../test-cases/cloud/plugin-marketplace/admin-selection-and-idle-maintenance.md)，新保障的直接证据按核心用例逐项登记为 `Partial` / `Missing`。
 
 ## 现状与继承
 

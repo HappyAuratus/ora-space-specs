@@ -20,3 +20,13 @@
 | project | [凭据连续性](project/repository-credential-continuity.md) | 成员离开、受控团队绑定、静态回退、历史引用 |
 
 真实端到端证据采用 cluster Compose 或等价真实部署链路，遵守 minicloud 与 Controller 过渡监听退役。核心用例使用英文二级标题作为稳定代码引用，实施时按义务逐项补充直接测试和对应仓库提交。
+
+## 本轮提交与依赖
+
+| 仓库 | 提交 | PR | 交付职责 |
+| --- | --- | --- | --- |
+| Cloud | fe33eb49633028f3fd466de966d3a5754d126557 | [#37](https://github.com/ora-space/cloud/pull/37) | PostgreSQL 权威、使用权限、控制、强停、pending 与凭据冻结 |
+| desktop | 9b788efbaa388908e4068e6f92a3da48439d4ec0 | [#632](https://github.com/ora-space/desktop/pull/632) | 精确锁定 Cloud；Controller 派发、Rust Node 持久绑定及权限隔离 |
+| cluster | 3ce153f322ca31dd402cb1704d5d01e3dcc86d7e | [#6](https://github.com/ora-space/cluster/pull/6) | 管理认证、迟到创建屏障、真实 Git/进程/存储验收 |
+
+集成顺序为 Cloud 契约及数据库 → desktop Controller/Node → cluster 部署，再核查本库证据。三个实现 PR 分别面向上游 main；不直接合并 specs #56。真实验收八组检查已通过，定位信息和可重跑脚本在 cluster docs/runtime-control.md。完整测试的最终结果与环境限制在各实现 PR 更新。
