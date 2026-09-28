@@ -94,6 +94,44 @@ acme-plugins.3f9a1c2d/image-tools
 source URL 的等价写法可以归一化到同一个 source 身份，但 URL 写法的变化不能改写已经落盘的
 canonical Plugin ID。
 
+## Agent Issue Run
+
+### Agent Run（Agent 运行）
+
+在 Issue 评论中 @ 一个 Agent 并给出任务所产生的 IssueRun（`executor_type = agent`）。它由 Cloud 编排，
+拥有一个运行专属的 isolated Workspace，经过 `provisioning → starting → running → delivering → releasing → done`
+阶段；执行结果（`status`）与成果保存（Revision）分别记录。
+
+### Run Workspace（运行 Workspace）
+
+为一次 Agent Run 创建、只属于该运行的 isolated Workspace。它由 Cloud 以系统身份建删，公开 API 不能操作；
+Revision 登记后删除，释放沙盒与数据。
+
+### Thread
+
+一次 Agent Run 中 Agent 会话的对话记录，也是用户与 Agent 对话的入口。Thread 条目是 Ora 会话记录
+（`ora-history` 的定型记录）的在线副本，另有用户轮次；会话 JSONL 是随 Revision 保存的归档。
+
+### User Turn（用户轮次）
+
+Thread 中交给 Agent 执行的一条用户输入，身份 `turn_id` 由 Cloud 生成。首条 prompt 由 Cloud 按 Issue
+上下文渲染，后续轮次由用户在 Thread 中追加；状态为 `queued → delivered`，会话结束时未执行的为 `discarded`。
+
+### Revision
+
+一次运行结束时保存的成果：最终提交（Agent 提交之后可能追加的内部快照提交）、相对 clone 基础提交的
+增量 bundle 与会话 JSONL。没有改动时也有 Revision，但没有 bundle。
+
+### Internal Snapshot（内部快照）
+
+Node 用临时 index、`write-tree`、`commit-tree` 为剩余未提交改动创建的提交，不运行提交钩子、不改动工作区、
+暂存区与分支；它是平台的成果保存机制，不代表项目校验通过。
+
+### Upload Grant（上传授权）
+
+Cloud 为一次交付执行签发的、针对固定对象键和限定时长的预签名上传请求。它是短期持有者凭据，不属于执行
+输入，任何一方都不持久化。
+
 ## Node Worktree
 
 ### Workspace
