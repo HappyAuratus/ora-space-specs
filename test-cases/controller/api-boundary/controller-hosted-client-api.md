@@ -4,7 +4,7 @@
 [Cloud 拥有契约的后续决策](../../../decisions/controller/api-boundary/20260922-cloud-owned-contract-and-controller-dial-out.md)与
 [过渡 JSON 接口退役决策](../../../decisions/controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)。
 Cloud 契约的消费与调用方向证据核对 desktop 主干 `aa635a12`（含 desktop#598、#601、#602）；监听器退役后的证据
-核对 [desktop#627](https://github.com/ora-space/desktop/pull/627)（尚未合并）的 `remove-minicloud` 分支，`cargo test -p ora-controller` 与 Node standalone 测试已在该分支上本地重跑。
+核对 [desktop#627](https://github.com/ora-space/desktop/pull/627)（已合并），`cargo test -p ora-controller` 与 Node standalone 测试已在该 PR 的提交上本地重跑。
 Cloud 服务端一侧的证据见
 [Cloud 内部控制契约核心用例](../../cloud/controller-integration/cloud-owned-internal-grpc-contract.md)。
 

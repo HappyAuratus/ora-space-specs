@@ -16,7 +16,7 @@ Controller；本机工作由内嵌 Controller 的调用方经 `ControllerHandle`
 [可执行入口组合决策](../lifecycle/0-executable-composition-and-single-node.md)中涉及 API 的约定，并与
 [minicloud 退役决策](../../minicloud/runtime/20260928-retire-minicloud.md)一起落地。影响范围是
 `apps/ora-controller`、`crates/contracts` 与 `packages/contracts`。Controller–Node 协议、Cloud 契约与
-SQLite 布局都不变。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（尚未合并）。
+SQLite 布局都不变。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（已合并）。
 
 ## 问题
 

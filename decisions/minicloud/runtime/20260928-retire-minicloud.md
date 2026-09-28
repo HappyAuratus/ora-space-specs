@@ -14,7 +14,7 @@ Sandbox Server → Node。minicloud 只服务开发，没有生产用户，不�
 [Controller 承载 server 的后续决策](20260921-controller-hosted-server.md)与
 [云端形态的后续决策](20260922-cloud-hosted-clone-loop.md)。它与
 [Controller 过渡 JSON 接口退役决策](../../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)
-一起落地，该决策负责 Controller 一侧的接口、监听器与 DTO。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（尚未合并）。
+一起落地，该决策负责 Controller 一侧的接口、监听器与 DTO。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（已合并）。
 
 ## 问题
 
