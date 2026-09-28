@@ -1,8 +1,9 @@
 # Node Agent 会话执行
 
 依据[已批准的 agent-runtime 根决策](../../../decisions/node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)。
-证据预期来自 `ora-agent-runtime` 测试与 `apps/ora-node` 以 echo agent 夹具的测试；Node 会话执行尚未实现，
-全部为 `Missing`。
+证据来自 `ora-agent-runtime` 单元测试与 `apps/ora-node/tests/agent_session.rs`：后者通过 `SessionHost` 驱动真实的
+echo agent 插件进程，以内存 `SessionLedger`、固定 checkout 与计数租约的插件目录代替账本、clone 账本与插件安装。
+账本持久化、协议接线与 Node 启动时的恢复调用尚未实现，相关义务不由这些测试证明。
 
 ## Session Records Reach JSONL Before The Thread
 
@@ -32,8 +33,8 @@ Thread 有 JSONL 中不存在的记录；重启后恢复出运行中的会话。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 记录顺序 | Node 测试：内存 `SessionLedger` 记录的每条事件都能在 JSONL 中找到且顺序一致 | Missing |
-| 崩溃窗口 | Node 测试：注入崩溃后重启，`recover_interrupted` 返回 `interrupted`，JSONL 比 Thread 多至多一条 | Missing |
+| 记录顺序 | `records_reach_the_thread_as_history_lines_attributed_to_their_turns`：Thread 记录逐条等于 JSONL 行、顺序一致，用户消息的 `messageId` 与事件 `turn_id` 等于轮次 ID；`ora-agent-runtime` 的 `settled_lines_reach_the_host_exactly_as_the_file_holds_them` 证明回调行与文件一致 | Covered |
+| 崩溃窗口 | `a_crash_before_the_thread_append_leaves_the_history_one_line_ahead`：在 Thread 追加处阻塞模拟崩溃点，JSONL 恰比 Thread 多一行；新的 `AgentSessions`（模拟重启）`recover_interrupted` 返回 `interrupted`，`sealed_history` 返回该 JSONL | Partial：崩溃与重启在进程内模拟，Node 启动时对未终态会话调用 `recover_interrupted` 的接线尚未实现 |
 
 ### 决策依据
 
@@ -67,9 +68,48 @@ Workspace 插件根装有 agent 插件与其他插件。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 插件选择 | Node 测试：版本不符时不启动任何插件进程并以 `agent_plugin_unavailable` 结束 | Missing |
-| git 身份隔离 | Node 测试：echo agent 提交后 author/committer 为输入身份，`.git/config` 未变化 | Missing |
+| 插件选择 | `a_plugin_of_another_version_ends_the_session_without_starting_it`：目录无该版本、或插件根中的包不在该版本目录时，以 `agent_plugin_unavailable` 结束，没有插件进程启动，租约已释放 | Covered |
+| git 身份隔离 | `agent_commits_carry_the_session_identity_without_touching_git_config`：经宿主 `ora/childprocess/spawn` 与插件直接派生的两次提交，author/committer 都是输入身份，`.git/config` 逐字节不变 | Covered |
+| 租约 | `ending_cancels_the_running_turn_and_discards_queued_turns` 等：会话结束后租约计数归零、插件进程均已退出 | Covered |
+| 执行进程 scope | 插件进程与 Agent CLI 纳入该执行的 host/guardian 进程 scope | Missing：第二步直接启动插件进程（见 ADR D2 落地差异） |
 
 ### 决策依据
 
 agent-runtime D2、D4、D7，不变量 3、5、8。
+
+## Session Commands Run Once In Acceptance Order And An End Discards The Queue
+
+### 风险
+
+用户轮次乱序、重复执行或被遗漏；`EndSession` 等到排队轮次跑完才生效，或结束后仍有轮次运行、命令未结算。
+
+### 前置状态
+
+Node 运行 echo agent 的会话执行，首个轮次尚未结束或正在运行。
+
+### 触发
+
+在首个轮次运行期间受理多个 `SubmitUserTurn`，并多次唤醒会话；或在轮次运行期间先后受理 `SubmitUserTurn` 与
+`EndSession`。
+
+### 必须成立
+
+- 用户轮次在当前轮次结束后按受理顺序执行，每个命令恰好结算一次为 `executed`，重复唤醒不重复执行。
+- `EndSession` 立即取消进行中的轮次（记录 `TurnEnded{cancelled}`），排在它之前的用户轮次结算为 `discarded` 且不运行，
+  自身结算为 `executed`；终态为请求的原因，插件进程退出、租约释放后才写入终态。
+
+### 禁止结果
+
+结束后仍有轮次运行；同一命令被结算两次；轮次顺序与受理顺序不同。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 顺序与至多一次 | `queued_turns_run_once_each_in_acceptance_order`：三个轮次的用户消息按受理顺序出现，每个命令只有一次 `executed` | Covered |
+| 结束 | `ending_cancels_the_running_turn_and_discards_queued_turns`：进行中的轮次以 `cancelled` 结束，排队轮次 `discarded` 且无记录，`EndSession` `executed`，插件进程退出、租约归零 | Covered |
+| 规划规则 | `apps/ora-node` 的 `an_end_anywhere_in_the_queue_takes_precedence`：队列中任意位置的 `EndSession` 优先并只丢弃其前的轮次 | Covered |
+
+### 决策依据
+
+agent-runtime D6、D7；协议后续决策 D4，不变量 4。

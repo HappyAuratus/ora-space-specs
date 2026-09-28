@@ -57,11 +57,19 @@ Desktop 中先完成并验证。
 - 插件进程与 Agent CLI 都在该执行的进程 scope 内，受 Node 的 host/guardian 纳管；会话结束或 Node 停止时
   整个 scope 被清理。
 
+落地差异（第二步）：guardian 当前不提供 stdin 与插件协议流（[process/io 根决策](../process/io/0-bounded-output-and-fenced-input.md)），
+而 Deno 插件依赖 stdio 上的 JSON-RPC，因此第二步中 Node 与 Desktop 一样用 `ora-process` 直接启动插件进程
+（进程组整树终止）：会话结束与 Node 正常停止时整树清理并等待退出；Node 崩溃时插件因 stdio 关闭而退出，忽略
+这一点的后代进程不被回收。纳入执行的进程 scope 由后续 process I/O 决策承担。每个会话执行组合自己的插件生命
+周期，只含其指定插件并以其 Git 身份启动。
+
 ### D3：会话执行的记录同时进入 JSONL 与 Thread 事件
 
 - Ora Session ID 由会话执行 ID 确定（同一 UUID），会话 JSONL 位于 Node home 下 `ora-history` 规定的路径，
   随 Workspace 数据卷存在，交付时上传。
-- 每条定型记录先追加到 JSONL，再以 Thread 事件写入 Node 账本并发送。二者之间崩溃时，最后一条记录可能只在
+- 每条定型记录先追加到 JSONL，再以 Thread 事件写入 Node 账本并发送。运行时逐行追加 JSONL，每行写入后、
+  下一行写入前同步回调宿主（`RuntimeEvents::record_settled`），因此“至多缺最后一条”按行成立，而不是按一次
+  flush 的整批记录。二者之间崩溃时，最后一条记录可能只在
   JSONL 中；此时会话按协议 D6 以 `interrupted` 结束，Thread 缺少的最后一条仍随 Revision 的 JSONL 保存。
   选择这个顺序是为了让 JSONL 作为完整归档，Thread 最多缺尾部而不会有 JSONL 中不存在的条目。
 - 首条 prompt 来自执行输入的 `initial_turn`，后续轮次来自 `SubmitUserTurn`，写入 JSONL 的用户消息记录都带
@@ -110,8 +118,8 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 | 方法 | 承诺 |
 |---|---|
 | `append_thread_event(execution, turn_id?, record, truncated) -> Sequence` | 分配下一个序号并持久化后返回；发送、在途窗口与重放由协议侧负责 |
-| `end_session(execution, AgentSessionEnded) -> Sequence` | 写入终态结果与终态事件；之后同一执行的任何追加都失败 |
-| `next_command(execution) -> Option<(CommandId, SessionCommand)>` | 按受理顺序返回最早的 `queued` 命令 |
+| `end_session(execution, AgentSessionEnded) -> Sequence` | 写入终态结果与终态事件；之后同一执行的任何追加都失败；此时仍排队的命令一并结算为 `discarded` |
+| `queued_commands(execution) -> Vec<(CommandId, SessionCommand)>` | 按受理顺序返回全部 `queued` 命令（落地时由 `next_command` 改来：轮次进行中必须看见排在用户轮次之后的 `EndSession`） |
 | `settle_command(execution, command_id, executed \| discarded)` | 命令至多结算一次 |
 
 **会话执行一侧提供给协议处理的接口**（`SessionHost`）
