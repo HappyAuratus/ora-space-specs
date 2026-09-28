@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 插件安装与移除由 Node 执行，新建 Workspace 自动补装 Space 插件
@@ -10,7 +10,7 @@ status: proposed
 期望的全部插件，补上根决策中留给后续 phase 的“新建 workspace 自动补装”。agent 类插件收敛为 `installed`
 时同时维护 Space 的 Agent 行。
 
-本 ADR 处于 `proposed`，继承 [插件市场根决策](0-plugin-marketplace.md)。步骤表见
+本 ADR 处于 `approved`（已评审，待实现），继承 [插件市场根决策](0-plugin-marketplace.md)。步骤表见
 [operation 后续决策](../operation/20260928-plugin-step-and-run-workspace-release.md)；Node 上的安装语义见
 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-installs-plugins-into-workspace-home.md)；
 Agent 行见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D1。

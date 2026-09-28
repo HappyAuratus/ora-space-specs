@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Agent 运行的对话记为 Thread：Node 的会话记录逐条持久流入 Cloud，用户可追加消息，空闲或用户结束后收尾
@@ -10,7 +10,7 @@ status: proposed
 作为命令经 Controller 交给 Node 排队执行；Agent 完成当前轮次后 Thread 进入空闲，用户结束或空闲期满时
 Cloud 请求结束会话，进入 Revision 交付。
 
-本 ADR 处于 `proposed`，是新建领域 `cloud/thread` 的根决策。运行阶段由
+本 ADR 处于 `approved`（已评审，待实现），是新建领域 `cloud/thread` 的根决策。运行阶段由
 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)承担；事件与命令的线上
 形状由 [gRPC 后续决策](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)
 与 [Node 协议后续决策](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md)承担；
@@ -54,7 +54,8 @@ Thread 以外的交互式聊天（`chat` 页）。
 - **追加消息**：`POST /api/v1/tenants/{tid}/issues/{iid}/runs/{rid}/thread/messages`（必须带
   `Idempotency-Key`，body `{content: [{type: "text", text}]}`，文本合计 ≤ 64 KiB）。Thread 状态为
   `pending | active | idle` 时接受；Cloud 写入 `source = user`、`kind = user_turn` 条目（状态 `queued`）
-  并放出 Thread 命令 `SubmitUserTurn{turn_id, content}`。`ending | ended` 时返回 `409 thread_closed`。
+  并在同一事务中经 `enqueueThreadCommand` 放出 Thread 命令 `SubmitUserTurn{turn_id, content}`（命令表与事务边界见
+  [controller-integration D6](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)）。`ending | ended` 时返回 `409 thread_closed`。
 - Node 执行某个用户轮次时写入的用户消息记录携带同一 `turn_id`；Cloud 接管到它时把对应 `user_turn`
   条目标为 `delivered`。前端据此区分“已发送、排队中”与“Agent 已接收”。
 - Agent 正在执行上一轮时，新消息在 Node 上按接收顺序排队（[Node 协议](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md) D4），不打断当前轮次。
@@ -76,7 +77,7 @@ Thread 以外的交互式聊天（`chat` 页）。
 | 用户点击“结束”、`idle` 超过空闲窗口、或运行被取消 | `ending`，放出 `EndSession{reason}` 命令 |
 | 会话执行终态被接管 | `ended` |
 
-- 空闲窗口是 Cloud 配置 `issue_runs.thread_idle_timeout`，proposed 默认 15 分钟；由 Cloud 的派发循环
+- 空闲窗口是 Cloud 配置 `issue_runs.thread_idle_timeout`，第一版默认 15 分钟；由 Cloud 的派发循环
   按数据库时间判断，不依赖 Controller 或 Node 的时钟。
 - `reason` 为 `user_ended | idle_timeout | cancelled`；Node 对三者都停止 Agent、完成会话记录后以终态结束
   会话执行，区别只影响 IssueRun 的 `status`（[IssueRun D4](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)）。

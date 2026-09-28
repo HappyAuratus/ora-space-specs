@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Workspace 创建与启动增加 plugin 步骤并由 Node 执行；IssueRun 的运行 Workspace 由 Cloud 发起建删
@@ -9,7 +9,7 @@ status: proposed
 结果逐个写回 `workspace_plugin_instances`。插件步骤不再计划 Substrate effect。IssueRun 的运行 Workspace
 （isolated）复用 `create_workspace`/`delete_workspace`，由 Cloud 以系统身份发起，不能被公开 API 操作。
 
-本 ADR 处于 `proposed`，继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)
+本 ADR 处于 `approved`（已评审，待实现），继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)
 与 [具体默认分支决策](20260926-require-concrete-default-branch.md)。插件目录、选择状态与 fan-out 的修改
 见 [plugin-marketplace 后续决策](../plugin-marketplace/20260928-node-executes-plugin-installs.md)，
 运行 Workspace 的业务语义见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)。

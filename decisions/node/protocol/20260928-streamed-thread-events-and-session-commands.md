@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 协议增加插件、Agent 会话与 Revision 交付执行：会话执行发出有序的非终态 Thread 事件，并接受会话命令
@@ -9,7 +9,7 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
 这些事件与终态事件共享同一执行内的序号空间、同样持久保留直到确认。会话执行在运行期间接受
 `SubmitUserTurn`、`EndSession` 两种命令，Node 持久受理后回复确认。上传授权是唯一不持久化的消息。
 
-本 ADR 处于 `proposed`，继承 [协议根决策](0-controller-node-protocol.md)、
+本 ADR 处于 `approved`（已评审，待实现），继承 [协议根决策](0-controller-node-protocol.md)、
 [FrameChannel 传输](20260924-frame-channel-with-ipc-and-websocket.md) 与
 [Controller 心跳与 close code](20260925-controller-heartbeat-and-websocket-close-codes.md)。执行的业务语义由
 [plugin-runtime](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)、

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 以执行的方式把 Cloud 指定的插件安装到 Workspace 数据中的插件目录，复用 desktop 安装器
@@ -9,7 +9,7 @@ Node 收到 `InstallPlugins`/`RemovePlugins` 执行后，用 desktop 已有的 `
 不启动插件进程——进程由使用方（第一版只有 Agent 会话）按需启动。安装与移除是幂等的：同版本已装好直接
 成功，不存在的插件移除直接成功。
 
-本 ADR 处于 `proposed`，是 `node/plugin-runtime` 的根决策（本目录范围：“Plugin 安装、启动、停止、运行和
+本 ADR 处于 `approved`（已评审，待实现），是 `node/plugin-runtime` 的根决策（本目录范围：“Plugin 安装、启动、停止、运行和
 本地状态”；第一版只承担安装与移除，运行由 [agent-runtime 根决策](../agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)
 按需启动 agent 插件）。消息见 [Node 协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)；
 载荷来源见 [Cloud plugin-marketplace 后续决策](../../cloud/plugin-marketplace/20260928-node-executes-plugin-installs.md)。

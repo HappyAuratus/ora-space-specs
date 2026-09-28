@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # ACP Agent 运行时抽成共享 crate `ora-agent-runtime`，由 Desktop Backend 与 Node 各自提供适配器；Node 以会话执行运行 Agent 插件
@@ -11,7 +11,7 @@ Desktop Backend 中的 ACP Agent 运行时（`crates/backend/src/agent_runtime`�
 的 agent 插件，以 checkout 为 `cwd`，以环境变量注入 git 身份，把每条定型记录同时写入会话 JSONL 与 Thread
 事件。
 
-本 ADR 处于 `proposed`，是 `node/agent-runtime` 的根决策（本目录范围：“Agent 进程、ACP 转发、会话连接和
+本 ADR 处于 `approved`（已评审，待实现），是 `node/agent-runtime` 的根决策（本目录范围：“Agent 进程、ACP 转发、会话连接和
 运行恢复”）。协议消息见 [Node 协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)；
 插件安装位置见 [plugin-runtime 根决策](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)；
 git 身份来源见 [Cloud git 身份决策](../../cloud/identity-access/20260928-user-git-commit-identity.md)。
@@ -91,6 +91,51 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 | agent 插件不可用或熔断打开 | 记录说明后结束 | `agent_failed` |
 | Node 重启 | 见协议 D6 | `interrupted` |
 
+### D7：Node 内会话执行与账本、插件目录、clone 账本之间的边界
+
+会话执行（本文）与协议执行、插件安装、交付（[协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)、
+[plugin-runtime](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)、[revision](../revision/0-internal-snapshot-and-incremental-bundle-upload.md)）
+在 Node 进程内只经下列接口交互。接口以 trait 定义在 `ora-node` 中，名称与签名是评审用的示例，语义是承诺。
+
+**Node 账本（`ora-node-db`）新增的持久结构**
+
+| 表 | 内容 |
+|---|---|
+| `node_executions` | 四个新种类的执行：`execution`、`operation`、`kind`、`input`、`state`（`accepted \| running \| completed`）、`result`、`last_sequence`；`execution_identities.kind` 增加对应取值 |
+| `execution_events` | `(execution, sequence)` 主键与事件 JSON；多事件 outbox，确认后删除。`last_sequence` 保证删除后序号不回退 |
+| `session_commands` | `(execution, command_id)` 主键、命令 JSON、受理顺序、`state`（`queued \| executed \| discarded`） |
+
+**账本一侧提供给会话执行的接口**（`SessionLedger`）
+
+| 方法 | 承诺 |
+|---|---|
+| `append_thread_event(execution, turn_id?, record, truncated) -> Sequence` | 分配下一个序号并持久化后返回；发送、在途窗口与重放由协议侧负责 |
+| `end_session(execution, AgentSessionEnded) -> Sequence` | 写入终态结果与终态事件；之后同一执行的任何追加都失败 |
+| `next_command(execution) -> Option<(CommandId, SessionCommand)>` | 按受理顺序返回最早的 `queued` 命令 |
+| `settle_command(execution, command_id, executed \| discarded)` | 命令至多结算一次 |
+
+**会话执行一侧提供给协议处理的接口**（`SessionHost`）
+
+| 方法 | 调用时机 | 承诺 |
+|---|---|---|
+| `start(execution, AgentSessionSpec)` | 执行输入已持久化之后 | 按 D2 启动插件并送出首个轮次；立即返回，不等待会话 |
+| `command_arrived(execution)` | 命令已持久化并回复受理之后 | 唤醒该会话读取 `next_command`；丢失唤醒不丢命令 |
+| `recover_interrupted(execution) -> AgentSessionEnded` | Node 启动时，对没有终态的会话执行 | 关闭进程 scope、封口会话记录，返回 `interrupted` 结果由账本写入 |
+| `sealed_history(execution) -> path` | 交付执行开始时 | 仅当会话已结束且记录已封口时返回 JSONL 路径，否则 `history_unavailable` |
+
+**其他两个边界**
+
+- `CheckoutResolver::checkout(clone_execution) -> path | checkout_unavailable`：由 clone 账本提供，会话与交付共用；
+  调用方不自行拼接路径。
+- `PluginCatalog::installed(plugin_id, version) -> 安装目录 | 无` 与 `PluginCatalog::lease(plugin_id) -> 使用租约`：
+  由插件安装一侧提供。会话在启动插件前取得租约、结束后释放；安装与移除在租约存在时返回 `plugin_in_use`。
+
+顺序与崩溃：会话执行先追加 JSONL，再调用 `append_thread_event`（D3）；协议侧在 `append_thread_event` 返回之后才发送。
+Node 启动时先由协议侧恢复账本，再对未终态的会话调用 `recover_interrupted`，最后才接受新的会话命令。
+
+为什么在这里固定：会话执行与账本、插件目录由不同的人同时实现。先固定接口，会话一侧可以用内存实现独立测试，
+账本一侧可以用假 `SessionHost` 测试恢复与重放，而不必等待对方完成。
+
 ## 不变量
 
 1. Desktop 在抽取前后的 Agent 行为与会话 JSONL 格式不变。
@@ -99,6 +144,8 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 4. Thread 事件中的记录都存在于同一会话的 JSONL 中。
 5. git 身份只经环境变量进入 Agent 进程树，Node 不修改 git 配置。
 6. 模型凭据不经过 Cloud、Controller 或 Controller–Node 协议。
+7. 会话执行只经 D7 的接口读写 Node 账本、插件目录与 clone 账本；Thread 事件在账本持久化之后才会发送。
+8. 插件在被会话使用期间不会被安装或移除替换。
 
 ## 为什么不是这些替代方案
 
