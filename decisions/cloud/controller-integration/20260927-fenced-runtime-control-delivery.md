@@ -1,32 +1,32 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 运行时独占必须贯穿 Cloud、Controller 与 Node，控制身份和旧执行隔离共同验收
 
 Cloud 的独占状态必须成为真实执行入口的约束：Controller 只派发当前被批准并持久登记的工作，Node 在执行入口核验控制绑定，关闭旧入口并确认未完成执行后才允许交接。控制代次是单调递增的操作资格版本；拒绝旧代次新写入称为 fencing，本文使用“旧操作资格隔离”说明其含义。
 
-本 ADR 为 `proposed`，是本批跨仓库协议与交付义务的权威定义。业务权限与独占状态分别由[使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)、[独占准入](../execution-admission/20260927-exclusive-runtime-control.md)拥有，本文不复制角色策略。公开字段与协议示例只用于评审语义，尚不是已发布接口。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；是本批跨仓库协议与交付义务的权威定义。业务权限与独占状态分别由[使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)、[独占准入](../execution-admission/20260927-exclusive-runtime-control.md)拥有，本文不复制角色策略。公开字段与协议示例表达已批准语义，尚不是已发布接口。核心用例见[真实执行约束与恢复](../../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)，新保障的直接证据为 `Missing`。
 
 ## 现状与继承
 
-本叶子承接[Cloud gRPC 根契约](0-cloud-owned-internal-grpc-contract.md)、[Workspace 操作与 Node 代报](20260926-workspace-operations-and-controller-reported-nodes.md)和[存活沙盒查询](20260926-list-live-sandboxes.md)，保留[保活与 Watch 规则](20260924-control-listener-keepalive.md)。
+本叶子承接[Cloud gRPC 根契约](0-cloud-owned-internal-grpc-contract.md)、[Workspace 操作与 Node 代报](20260926-workspace-operations-and-controller-reported-nodes.md)和[存活沙盒查询](20260926-list-live-sandboxes.md)，保留[保活与 Watch 规则](20260924-control-listener-keepalive.md)。批准时同步 specs 上游 `e2c8dce`，继承[Controller 过渡 JSON 接口与监听器退役](../../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)及[minicloud 退役](../../minicloud/runtime/20260928-retire-minicloud.md)：Controller 继续只拨出，不恢复监听；真实云端端到端验收使用 cluster Compose 链路，不使用已退役入口。原代码链接为最初核查基线，开发前仍需检查最新实现。
 
 | 已核查事实 | 当前证据与限制 |
 | --- | --- |
 | Cloud gRPC holder 为调用者声明的 ControllerId | [server.go](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/internal/controlgrpc/server.go)明确没有认证；私网/loopback 是现有部署边界，metadata 不是服务身份验证 |
 | Rust Controller 已执行 sandbox、Node、clone、quiesce 与 terminate 协调 | [operations/steps.rs](https://github.com/ora-space/desktop/blob/652af715cbca5f50c892299ea815a08896f41b35/apps/ora-controller/src/cloud/operations/steps.rs)；不是 Cloud 模拟器等同于生产 |
-| Node 有 Controller 会话与 clone/worktree 消息 | [message.rs](https://github.com/ora-space/desktop/blob/652af715cbca5f50c892299ea815a08896f41b35/crates/node-protocol/src/message.rs)、[session.rs](https://github.com/ora-space/desktop/blob/652af715cbca5f50c892299ea815a08896f41b35/apps/ora-node/src/service/session.rs)；单 Controller 连接不等于单用户写者，尚无本提案的用户控制代次 |
+| Node 有 Controller 会话与 clone/worktree 消息 | [message.rs](https://github.com/ora-space/desktop/blob/652af715cbca5f50c892299ea815a08896f41b35/crates/node-protocol/src/message.rs)、[session.rs](https://github.com/ora-space/desktop/blob/652af715cbca5f50c892299ea815a08896f41b35/apps/ora-node/src/service/session.rs)；单 Controller 连接不等于单用户写者，尚无本决策的用户控制代次 |
 | 本机进程宿主有持久宿主代次 | [进程控制 ADR](../../node/process/control/0-authorized-generations-and-leases.md)仅批准可信本机会话控制，不是 Controller 授权、用户租约或旧业务进程已结束证明 |
 | Substrate 有容器与持久卷生命周期约定 | [cluster ADR](../../cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md)；此次未核查 cluster 实现，不能登记为真实边界验收 |
 
-| 前序约定 | 本提案处理 |
+| 前序约定 | 本决策处理 |
 | --- | --- |
 | Cloud 是云端业务权威，Controller 不访问 PostgreSQL | 继承，不变 |
 | proto 属于 Cloud，消费方锁定 commit 并生成客户端 | 继承；新增破坏性要求使用并列版本或明确拒绝旧能力，不能静默重解释 v1 |
 | 持久登记后派发，同次提交与执行重试保留身份 | 继承，不变 |
 | Node 事件在 Cloud 接管后才确认 | 继承，不变；撤权后仍可回报既有事实 |
-| 仅自报 ControllerId、部署内网保护 | 提议修改：云端新控制能力要求可验证的服务身份与范围绑定 |
+| 仅自报 ControllerId、部署内网保护 | 修改：云端新控制能力要求可验证的服务身份与范围绑定 |
 | Node 会话与宿主代次隔离旧连接 | 继承，但增加独立的运行时控制绑定；不将旧机制重命名为用户独占 |
 
 ## 决策
@@ -45,11 +45,11 @@ Controller 消费 Cloud 已限定范围的工作，不复制租户角色判断�
 
 ### D2：控制通道验证服务身份，工作负载不能伪造管理消息
 
-本次提议云端 Cloud–Controller 与网络 Controller–Node 管理通道使用部署提供的双向 TLS 身份验证，将可信服务身份绑定到获准的 Controller/Node 及目标运行实例。声明的 ControllerId、NodeId 只作绑定和关联，不能自行建立信任。服务凭据通过部署引用加载，不进入前端、Git、业务表或日志；轮换后重新认证，失效身份不能建立新控制会话。
+云端 Cloud–Controller 与网络 Controller–Node 管理通道使用部署提供的双向 TLS 身份验证，将可信服务身份绑定到获准的 Controller/Node 及目标运行实例。声明的 ControllerId、NodeId 只作绑定和关联，不能自行建立信任。服务凭据通过部署引用加载，不进入前端、Git、业务表或日志；轮换后重新认证，失效身份不能建立新控制会话。
 
-此项明确修改当前私网自报身份边界，须随 ADR 评审；不能称已有实现满足该要求。浏览器不直接连接 Node 或 Substrate。Substrate 仍需独立受限服务身份及 effect/目标范围校验。
+此项已随 ADR 批准，明确修改当前私网自报身份边界；批准不表示已有实现满足该要求。浏览器不直接连接 Node 或 Substrate。Substrate 仍需独立受限服务身份及 effect/目标范围校验。
 
-执行用户代码的身份不得读取管理凭据、写控制代次日志或调用管理端点。云端部署应将可信管理程序与工作负载分成不同的操作系统权限域，控制数据放在工作负载不可写目录；网络可达性也须限制。若现有 Node home 布局或同用户进程模型不满足，则该执行能力不能按本提案开放，必须交付相应部署隔离。
+执行用户代码的身份不得读取管理凭据、写控制代次日志或调用管理端点。云端部署应将可信管理程序与工作负载分成不同的操作系统权限域，控制数据放在工作负载不可写目录；网络可达性也须限制。若现有 Node home 布局或同用户进程模型不满足，则该执行能力不能按本决策开放，必须交付相应部署隔离。
 
 这不恢复此前延期的整套本机秘密令牌、guardian 租约或跨机器宿主授权方案；可信 Node 到本机 host 的既有信任边界不因本文自动改变。部署管理员、宿主 root 和已被攻陷的管理程序不在此业务权限防护范围内，但普通运行时成员不能被默认视为管理程序。
 
@@ -115,4 +115,4 @@ Cloud PostgreSQL 保存权威业务状态；Node 本地日志承担真实执行�
 
 ## 落地顺序与后续边界
 
-本 ADR 及其引用的业务决策批准后才开发。各仓库 PR 明确契约 commit、先后依赖和真实验收范围，不能仅 Cloud 先合入就宣布多人控制完成。第一阶段覆盖已经存在的真实执行路径；尚无完整云端文件/PTY/Agent 产品入口的部分保持不可用。实时共同编辑、跨宿主无损恢复及重建完整本机信任体系不是本次隐含任务。
+本 ADR 及其引用的同批业务决策已批准，并已建立核心用例，可进入开发。各仓库 PR 明确契约 commit、先后依赖和真实验收范围，不能仅 Cloud 先合入就宣布多人控制完成。第一阶段覆盖已经存在的真实执行路径；尚无完整云端文件/PTY/Agent 产品入口的部分保持不可用。实时共同编辑、跨宿主无损恢复及重建完整本机信任体系不是本次隐含任务。

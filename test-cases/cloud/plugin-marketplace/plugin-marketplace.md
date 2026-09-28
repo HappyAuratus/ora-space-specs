@@ -3,6 +3,8 @@
 决策依据:[插件市场:cloud 权威选择状态、目录快照与自闭合 effect 载荷](../../../decisions/cloud/plugin-marketplace/0-plugin-marketplace.md)。
 以下用例通过真实 PostgreSQL 集成测试(`integration/plugins_*.go`)验证。
 
+后续已批准的[管理员选择与空闲维护](admin-selection-and-idle-maintenance.md)收紧修改权限，并将忙时整体冲突改为持久等待。下列证据按原固定版本、隔离、effect 和聚合义务保留；新管理员门控、维护独占与真实执行器证据另为 `Missing`。
+
 ## Tenant membership grants plugin access and revocation rejects new reads
 
 - 风险：插件仍依赖已删除的空间成员表，或错误复用另一个租户的空间权限。
@@ -30,11 +32,9 @@
 - 风险:同 Key 重放重复 fan-out;同 project 并发 install 违反 `one_project_operation`。
 - 前置状态:已安装插件(operation 在途)。
 - 触发:同 Key 重放 POST;新 Key 重装同版本;operation 未 drain 时安装第二个插件。
-- 必须成立:重放返回原响应;重装同版本不新增 operation;在途 project 的第二个安装 409
-  `operation_in_progress`。
-- 禁止结果:重复实例/operation、跨 project 串行失败(不同 project 可并行)。
-- 验证义务与证据:**Covered** — `TestPluginInstallAPI`(IT-3.4)、
-  `TestPluginIsolationSerializationAndRecovery`(IT-5.2)。
+- 必须成立:重放返回原响应;重装同版本不重复实例执行，但已有待办仍继续；管理员的新期望持久保存，在途 project 的实例维护等待 operation 槽位和独占条件，不要求再次点击。
+- 禁止结果:重复实例/operation、忙时丢弃已接受的期望、跨 project 串行失败(不同 project 可并行)。
+- 验证义务与证据:**Partial** — `TestPluginInstallAPI`(IT-3.4)、`TestPluginIsolationSerializationAndRecovery`(IT-5.2)证明前序幂等/项目串行；旧整体 409 断言须按新语义调整，持久等待及自动继续为 `Missing`，见新增核心用例。
 
 ## plugin_ensure payload is self-contained and the digest is mandatory
 

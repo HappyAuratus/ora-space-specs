@@ -25,11 +25,13 @@ Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node �
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他
 层引用，不复制成多份权威规则。
 
-## 多人协作运行时控制提案（2026-09-27）
+## 已批准的多人协作运行时控制（2026-09-28）
 
-以下六份 ADR 均为 `proposed`，本次只交付规格供评审，不表示新权限或并发控制已实现。先评审并修正决策，明确标记 `approved` 后再维护核心测试用例和开始开发；实现与真实边界验收完成后才标记 `implemented`。
+以下六份 ADR 于 2026-09-28 经用户明确批准，均为 `approved`，可以作为跨仓库开发依据。已补充核心用例，新保障的直接证据均为 `Missing`；批准不表示新权限或并发控制已经实现。实现与真实边界验收完成后才标记 `implemented`。
 
-基线：Cloud main `67dcbf9`（PR #33 已合并）；desktop `652af71`；specs main `459b43d`，本批建立在仍为 Open 的 [PR #55](https://github.com/ora-space/specs/pull/55) `a81c263` 上。PR #55 的成员管理规则是依赖，不能据此认为多人操作控制已完成。新 PR 面向 main，评审时须区分依赖变更与本次新增提案。
+最初核查基线：Cloud main `67dcbf9`（PR #33 已合并）、desktop `652af71`、specs PR #55 `a81c263`。批准时 [PR #55](https://github.com/ora-space/specs/pull/55) 已合并，本分支已同步 specs 上游 `e2c8dce`；[PR #56](https://github.com/ora-space/specs/pull/56)仍面向 main，不直接合并。成员管理与多人操作控制分别验收，历史代码链接不能证明新增保障已落地。
+
+上游已合入 [Controller 过渡 JSON 接口与监听器退役](../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)及[minicloud 退役](../minicloud/runtime/20260928-retire-minicloud.md)，由 desktop #627 落地。开发继续遵守 Controller 只拨出和浏览器经 Cloud 接入；真实端到端联调由 cluster Compose 栈承担，不恢复旧监听、DTO 或 minicloud。
 
 | 建议阅读顺序 | ADR | 决策归属 |
 | --- | --- | --- |
@@ -40,10 +42,10 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 | 5 | [空间插件维护](plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md) | 管理员选择、逐运行时维护独占与持久等待 |
 | 6 | [仓库凭据连续性](project/20260927-repository-credential-continuity.md) | 团队/个人/未知引用、成员离开、验证重绑与执行端依赖 |
 
-### 评审边界与默认值
+### 实施边界与默认值
 
 - 本批采用“普通成员使用自己的运行时、管理员使用同空间全部运行时；操作仍需独占”的第一阶段方案，不建立成员授权关系或授予/撤销功能，不实现实时共同编辑。
-- 60 秒独占有效期、20 秒续期，以及云端管理通道双向 TLS 和管理/工作负载权限隔离，是本次提出的技术默认值与交付要求，随 ADR 评审，不伪称已有决策或现状。
+- 60 秒独占有效期、20 秒续期，以及云端管理通道双向 TLS 和管理/工作负载权限隔离，已随本批 ADR 批准；执行端、协议和部署仍需实现与验证。
 - 当前没有完整云端文件/终端/Agent 使用入口；Substrate 此次只有规格核查、真实插件执行器与按项目凭据解析也有实现缺口。具体能力须在执行端和部署配套完成后开放。
-- 各 ADR 的“预期验收”用于评审系统承诺，不是正式核心用例或通过证据。批准后才在既有镜像领域目录维护核心用例，新保障没有直接证据时标为 `Missing`。
-- 旧 ADR 的关联提示不改变其状态和当前规则；本批未重命名旧文件、未改写迁移、未修改任何产品仓库代码。
+- 各 ADR 的验收要求已落实到[核心用例索引](../../test-cases/cloud/README.md)。按可独立判断的义务维护 `Covered`、`Partial`、`Missing`，既有成员或 clone 测试不作为新独占保障的完整证据。
+- 旧 ADR 保留原状态；本批的继承表明确修改后的目标规则。产品实现尚未同步，原测试证据的适用边界需单独保留；本次未重命名旧文件、未改写迁移、未修改任何产品仓库代码。

@@ -23,7 +23,7 @@ Server 场景中由管理节点 API Server 负责租户隔离、认证和权威�
 Node 的实际文件、Git、Agent、Plugin 和资源操作放在 `specs/decisions/node/`；API Server 的
 具体租户模型和公开 API 实现不在本目录建立领域决策。
 
-## 待评审的跨仓库依赖
+## 已批准的跨仓库依赖
 
-[运行时控制同步交付提案](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `proposed`，定义 Cloud 场景下 Controller 的服务身份、派发许可、旧执行对账及强停协调义务。业务权限由 Cloud 决策拥有；本文仅导航，不建立第二份权限规则，也不改变现有已批准协议。批准前不开始对应实现。
+[运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `approved`，定义 Cloud 场景下 Controller 的服务身份、派发许可、旧执行对账及强停协调义务，可进入开发。业务权限由 Cloud 决策拥有；本文仅导航，不建立第二份权限规则。继续遵守只拨出和过渡监听退役；新协议尚未交付，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。
 

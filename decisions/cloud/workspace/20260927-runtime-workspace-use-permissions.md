@@ -1,16 +1,16 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 共享项目下按运行时创建者限制使用权限，管理员操作也遵守独占规则
 
 项目继续由协作空间成员共享；运行时工作区增加独立的使用权限。第一阶段普通成员只能使用自己创建的运行时，当前有效管理员可以使用同协作空间全部运行时。获得使用权限只是必要条件，任何会改变运行时的普通操作还须取得[独占操作权](../execution-admission/20260927-exclusive-runtime-control.md)。管理员不能因为角色更高就同时写入他人正在使用的目录。
 
-本 ADR 为 `proposed`，记录待评审规则，不改变现有授权承诺。涉及 Cloud、Ora 前端及执行入口；第一阶段不建立运行时授权关系、授予或撤销接口、授权界面，也不实现实时共同编辑。后续显式共享必须另行批准，不能以预留能力为由开放访问。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`；规则进入开发依据，尚未实现。涉及 Cloud、Ora 前端及执行入口；第一阶段不建立运行时授权关系、授予或撤销接口、授权界面，也不实现实时共同编辑。后续显式共享必须另行批准，不能以预留能力为由开放访问。核心用例见[运行时使用权限](../../../test-cases/cloud/workspace/runtime-workspace-use-permissions.md)，新保障的直接证据为 `Missing`。
 
 ## 现状与依据
 
-核查基线为 Cloud `67dcbf95b408559acd5680cf36e84f30e4caad4a`、desktop `652af715cbca5f50c892299ea815a08896f41b35`、specs PR #55 `a81c263`。Cloud PR #33 已合入；本提案依赖 #55 的一租户一空间及成员规则，不能把尚未进入 specs main 的依赖省略。
+最初代码核查基线为 Cloud `67dcbf95b408559acd5680cf36e84f30e4caad4a`、desktop `652af715cbca5f50c892299ea815a08896f41b35`、specs PR #55 `a81c263`。批准时 Cloud PR #33 与 specs PR #55 均已合入；本决策继承 #55 的一租户一空间及成员规则。specs 已同步上游 `e2c8dce`，并继承 Controller 过渡监听及 minicloud 退役规则；历史核查链接不表示最新代码已经提供本决策能力。
 
 - [Cloud workspace 查询](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/internal/core/store.go)与[执行准入](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/internal/core/node.go)按活动租户成员身份放行，没有运行时创建者权限或操作者独占权。
 - [创建流程](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/internal/core/public.go)让运行时继承项目 `owner_user_id`，另以 operation 的 actor 记录请求者；不能将继承的 owner 当成实际运行时创建者。
@@ -20,7 +20,7 @@ status: proposed
 
 本叶子继承[协作空间根决策](0-collab-space-boundary.md)，当前成员规则以[一租户一空间](../tenancy/20260923-one-space-per-tenant.md)为准。
 
-| 前序约定 | 本提案处理 |
+| 前序约定 | 本决策处理 |
 | --- | --- |
 | 一个租户恰有一个可见协作空间，租户成员关系是唯一角色与状态来源 | 继承，不变；不恢复独立空间成员表或空间 owner |
 | 活动成员访问共享项目及创建运行时 | 继承，不变；其他成员仍可在共享项目创建自己的运行时 |
@@ -108,4 +108,4 @@ main 运行时不因名称而向所有成员开放，也仍不能单独删除。
 
 ## 落地顺序与后续边界
 
-先评审本 ADR 与同批独占、执行和生命周期提案；批准后建立核心用例，再联合交付迁移、服务端授权、接口契约和前端。只有真实执行入口通过跨仓库验证后才可开放相应操作。实时共同编辑、显式成员授权、创建者转让及完整云端终端/Agent 产品体验留待后续决策。
+本 ADR 与同批独占、执行和生命周期决策已批准，并已建立核心用例；接下来联合交付迁移、服务端授权、接口契约和前端。只有真实执行入口通过跨仓库验证后才可开放相应操作。实时共同编辑、显式成员授权、创建者转让及完整云端终端/Agent 产品体验留待后续决策。

@@ -4,7 +4,7 @@ status: approved
 
 # 当前信任本机 Node，宿主代次只用于旧会话失效
 
-> 待评审关联：[云端运行时控制同步交付提案](../../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)明确区分宿主代次与用户控制代次，并提出云端管理/工作负载权限隔离；目前为 `proposed`，不恢复本文延期的完整信任体系，也不改变本文状态。
+> 后续已批准决策：[云端运行时控制同步交付](../../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)区分宿主代次与用户控制代次，要求云端管理/工作负载权限隔离，状态为 `approved`，尚未实现。不恢复本文延期的完整信任体系，本文保留原状态。
 
 当前不使用密钥、秘密令牌、Controller 授权或租约。可信 Node 通过受限本机端点请求 host；
 host 在稳定锁保护下持久推进宿主代次，guardian 使旧宿主会话失效。

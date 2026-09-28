@@ -4,7 +4,7 @@ status: implemented
 
 # 插件市场:cloud 权威选择状态、目录快照与自闭合 effect 载荷
 
-> 待评审关联：[管理员选择与空闲维护提案](20260927-admin-selection-and-idle-maintenance.md)拟限制空间插件修改并让实例维护持久等待独占资格；目前为 `proposed`，不改变本文实现状态或提前宣称真实执行器已接线。
+> 后续已批准决策：[管理员选择与空闲维护](20260927-admin-selection-and-idle-maintenance.md)限制空间插件修改并让实例维护持久等待独占资格，状态为 `approved`。目标规则以其继承表为准；本文保留原实现状态，新增规则和真实执行器尚需交付。
 
 cloud 自己维护插件市场目录快照(每 5 分钟 git fetch + 扫描 `registry/**/orax.toml`,单事务整源
 替换 `plugin_catalog_entries`,读取永远不出网);插件选择状态挂在工作区

@@ -1,18 +1,18 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 普通停止保留活动保护，管理员强停使用独立意图并等待真实终止
 
 普通停止、重启和删除拒绝打断运行任务；管理员强制停止另设明确入口，允许中断目标运行时中的全部工作，但必须保存原因、关闭新准入并确认实际终止。强停保留运行时持久数据，不自动重启、接管或删除。不能以“Cloud 已标记 stopped”代替执行端终止证据。
 
-本 ADR 为 `proposed`，涉及 Cloud 生命周期、Ora 前端、Controller 与 Substrate。当前 `administrative_stop` 是有活动保护的行政停止，并非强停；本提案不静默改变它的既有语义。
+本 ADR 于 2026-09-28 经用户明确批准，状态为 `approved`，尚未实现；涉及 Cloud 生命周期、Ora 前端、Controller 与 Substrate。当前 `administrative_stop` 是有活动保护的行政停止，并非强停；本决策不静默改变它的既有语义。核心用例见[安全停止与强停](../../../test-cases/cloud/operation/safe-stop-and-administrative-force-stop.md)，新保障的直接证据为 `Missing`。
 
 ## 现状与继承
 
 本叶子依次继承[独立运行时生命周期](0-workspace-runtime-follows-desktop-node.md)与[具体默认分支](20260926-require-concrete-default-branch.md)。[Cloud 当前实现](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/internal/core/public.go)对 stop/delete 检查活动；[执行契约](https://github.com/ora-space/cloud/blob/67dcbf95b408559acd5680cf36e84f30e4caad4a/docs/execution-contract.md)要求终止确认后才删除数据或更换运行代次。
 
-| 前序约定 | 本提案处理 |
+| 前序约定 | 本决策处理 |
 | --- | --- |
 | 具体分支、每运行时独立 clone，start 不重新 clone | 继承，不变 |
 | stop / administrative_stop 经关闭准入、idle、terminate | 继承，并检查使用权限与独占权 |
@@ -45,7 +45,7 @@ status: proposed
 
 不能删除在途记录、抢改为成功、伪造失败或将未知执行重试一遍来腾出项目唯一约束。若当前普通 operation 属于同项目另一个运行时，强停仅针对本次目标，不中断另一个运行时的工作。新的普通项目生命周期仍按原串行规则处理。
 
-迟到的 sandbox ensure、clone 结果或旧控制指令必须按原稳定身份对账。强停完成条件包括：目标代次的已知或可能迟到资源均已被终止规则覆盖，不会因晚到 ensure 再创建可写旧实例。具体外部终止与禁止重新创建旧实例的责任参见[跨进程交付提案](../controller-integration/20260927-fenced-runtime-control-delivery.md)。
+迟到的 sandbox ensure、clone 结果或旧控制指令必须按原稳定身份对账。强停完成条件包括：目标代次的已知或可能迟到资源均已被终止规则覆盖，不会因晚到 ensure 再创建可写旧实例。具体外部终止与禁止重新创建旧实例的责任参见[跨进程交付决策](../controller-integration/20260927-fenced-runtime-control-delivery.md)。
 
 ### D4：强停状态与失败恢复
 
@@ -89,4 +89,4 @@ status: proposed
 
 ## 落地顺序与后续边界
 
-批准后建立核心用例，先交付持久强停意图及冲突仲裁，再对接真实 Controller/Substrate，最后开放前端强停。外部实现若不能证明旧代次不可写，功能保持不可用或待对账，不用模拟器结果代替生产验收。跨宿主存储迁移、备份及自动灾难恢复不在本提案中承诺。
+核心用例已建立；先交付持久强停意图及冲突仲裁，再对接真实 Controller/Substrate，最后开放前端强停。外部实现若不能证明旧代次不可写，功能保持不可用或待对账，不用模拟器结果代替生产验收。跨宿主存储迁移、备份及自动灾难恢复不在本决策中承诺。
