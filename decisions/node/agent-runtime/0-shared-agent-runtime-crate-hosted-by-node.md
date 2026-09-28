@@ -1,0 +1,127 @@
+---
+status: proposed
+---
+
+# ACP Agent 运行时抽成共享 crate `ora-agent-runtime`，由 Desktop Backend 与 Node 各自提供适配器；Node 以会话执行运行 Agent 插件
+
+Desktop Backend 中的 ACP Agent 运行时（`crates/backend/src/agent_runtime`，约一万行：连接监管、会话 actor、
+路由与背压、prompt 无活动重试、会话记录、切换与 handoff）抽成独立 crate `ora-agent-runtime`，Backend 专属
+的依赖（SQLite 仓储、应用事件、插件 API、Session MCP 解析、Task/Workspace 目录解析、设置）改为该 crate
+定义的接口，由 Backend 实现，Desktop 行为不变。Node 以同一 crate 运行 Agent 会话执行：只启动本次会话需要
+的 agent 插件，以 checkout 为 `cwd`，以环境变量注入 git 身份，把每条定型记录同时写入会话 JSONL 与 Thread
+事件。
+
+本 ADR 处于 `proposed`，是 `node/agent-runtime` 的根决策（本目录范围：“Agent 进程、ACP 转发、会话连接和
+运行恢复”）。协议消息见 [Node 协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)；
+插件安装位置见 [plugin-runtime 根决策](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)；
+git 身份来源见 [Cloud git 身份决策](../../cloud/identity-access/20260928-user-git-commit-identity.md)。
+Desktop 侧已有的 Session MCP 决策（`desktop/core/agent/session/mcp/`）继续约束 Backend 适配器，本文不改变。
+兼容性边界：Desktop 的 SQLite 数据、会话 JSONL 格式（`ora-history` 所有）与前端契约不变；本地文件布局不变。
+
+## 背景
+
+- Agent 运行时的全部行为（见 desktop `docs/agent-runtime.md`）已经在 Desktop 中验证，Node 需要的是同一套
+  ACP 会话语义：一个 Agent 插件进程、会话 actor、prompt 重试、记录与封口。
+- 运行时对 Backend 的耦合集中在少数边界：`ora_db::SqliteSessionRepository`、`AppEventPublisher`、
+  `PluginApi::attach_agent`、`session_setup`（MCP Snapshot）、`task::resolve_workspace_cwd`、设置读取。
+- Node 目前只运行 Git，没有插件生命周期与 Deno 运行时；Node 镜像也没有 Deno。
+
+## 决策
+
+### D1：`ora-agent-runtime` 拥有会话语义，宿主提供五个适配接口
+
+| 接口 | 职责 | Desktop 实现 | Node 实现 |
+|---|---|---|---|
+| `SessionStore` | Ora Session 行的读写（状态、binding、标题） | SQLite 仓储 | Node 账本中的会话表 |
+| `AgentAttach` | 按 canonical 插件 ID 附着 agent 插件进程并取得 ACP 帧通道 | `PluginApi` | Node 的插件生命周期（D2） |
+| `SessionSetup` | 为 `session/new`/`session/load` 解析 `mcpServers` | Session MCP Snapshot | 第一版返回空集合（D5） |
+| `RuntimeEvents` | 发布会话生命周期与标题等应用事件 | `AppEventHub` | 丢弃（Node 以 Thread 事件对外） |
+| `WorkspaceDirectory` | 把会话的工作区解析为 `cwd` | Task → Workspace → worktree | checkout 执行 → clone 路径 |
+
+- 接口在 crate 内定义、以泛型参数注入（优先静态分发）；crate 不依赖 `ora-backend`、`ora-db` 或任何
+  Tauri 代码。会话记录仍由 `ora-history` 所有，crate 增加一个“记录已定型”回调点，供 Node 生成 Thread 事件。
+- 抽取是**行为不变的重构**：先移动代码与测试，再替换 Backend 中的具体依赖；Backend 现有测试在抽取前后都必须
+  通过，`docs/agent-runtime*.md` 相应改为描述 crate 与适配器。
+
+为什么抽 crate 而不是在 Node 里另写一个最小 ACP 客户端：prompt 无活动重试、取消收敛、背压、封口与 handoff
+都是踩过坑后的规则，最小客户端会重新遇到同样的问题，并让两处 Agent 行为分叉。代价是一次大的重构，需要在
+Desktop 中先完成并验证。
+
+### D2：Node 只运行本次会话需要的 agent 插件
+
+- Node 引入插件生命周期（`ora-plugin-lifecycle`、`ora-plugin-runtime`）与 Deno 运行时；Node 镜像增加固定
+  版本的 Deno。插件包来自 [plugin-runtime 根决策](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)
+  的安装目录。
+- 会话执行开始时，Node 按 `agent_plugin_id` 与版本找到已安装的插件，只启动这一个插件进程；未安装或版本
+  不符时以 `AgentSessionEnded{agent_failed, detail: agent_plugin_unavailable}` 结束，不启动 Agent。
+- 插件进程与 Agent CLI 都在该执行的进程 scope 内，受 Node 的 host/guardian 纳管；会话结束或 Node 停止时
+  整个 scope 被清理。
+
+### D3：会话执行的记录同时进入 JSONL 与 Thread 事件
+
+- Ora Session ID 由会话执行 ID 确定（同一 UUID），会话 JSONL 位于 Node home 下 `ora-history` 规定的路径，
+  随 Workspace 数据卷存在，交付时上传。
+- 每条定型记录先追加到 JSONL，再以 Thread 事件写入 Node 账本并发送。二者之间崩溃时，最后一条记录可能只在
+  JSONL 中；此时会话按协议 D6 以 `interrupted` 结束，Thread 缺少的最后一条仍随 Revision 的 JSONL 保存。
+  选择这个顺序是为了让 JSONL 作为完整归档，Thread 最多缺尾部而不会有 JSONL 中不存在的条目。
+- 首条 prompt 来自执行输入的 `initial_turn`，后续轮次来自 `SubmitUserTurn`，写入 JSONL 的用户消息记录都带
+  `turn_id`。
+
+### D4：git 身份只注入 Agent 进程树的环境
+
+Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironmentProvider`）为该会话的插件进程及其派生的
+全部子进程设置 `GIT_AUTHOR_NAME`、`GIT_AUTHOR_EMAIL`、`GIT_COMMITTER_NAME`、`GIT_COMMITTER_EMAIL`；
+不修改 checkout 的 `.git/config`、不写全局配置。Node 自身执行的 Git（clone、Revision 快照）不使用这组变量，
+它们有各自决策规定的身份。
+
+### D5：第一版的运行时输入与权限
+
+- 权限请求沿用 Desktop 的自动批准（运行时没有人工审批路径）；Thread 中可见工具调用结果。
+- 不注入 MCP 服务（`SessionSetup` 返回空集合）：MCP 插件的配置与密钥下发尚无决策。
+- 模型选择使用 Agent 默认值。
+- Agent 调用模型所需的凭据由沙盒部署以环境变量提供（本地由 Sandbox Server 的 Node 配置注入），不经过 Cloud、
+  Controller 或协议消息。这是第一版的部署约定，不是凭据模型的最终决策。
+
+### D6：结束与失败
+
+| 情况 | Node 行为 | 终态 |
+|---|---|---|
+| `EndSession` | 取消当前轮次，丢弃排队轮次，`session/close`（支持时），停止插件 scope，封口记录 | `AgentSessionEnded{reason}` |
+| Agent 轮次失败、超时、连接丢失 | 按运行时既有规则记录 `TurnEnded`；会话保持，等待用户下一轮或结束命令 | 无 |
+| agent 插件不可用或熔断打开 | 记录说明后结束 | `agent_failed` |
+| Node 重启 | 见协议 D6 | `interrupted` |
+
+## 不变量
+
+1. Desktop 在抽取前后的 Agent 行为与会话 JSONL 格式不变。
+2. `ora-agent-runtime` 不依赖 Backend、SQLite 实现或 Tauri。
+3. Node 的一个会话执行只启动其指定版本的 agent 插件，且在该执行的进程 scope 内。
+4. Thread 事件中的记录都存在于同一会话的 JSONL 中。
+5. git 身份只经环境变量进入 Agent 进程树，Node 不修改 git 配置。
+6. 模型凭据不经过 Cloud、Controller 或 Controller–Node 协议。
+
+## 为什么不是这些替代方案
+
+| 方案 | 取舍 |
+|---|---|
+| Node 内写最小 ACP 客户端 | 快；重走 Desktop 已解决的重试、取消、背压问题，行为分叉（D1） |
+| Node 直接依赖 `ora-backend` | 无需抽取；把 SQLite、Tauri 相关依赖和整个 Desktop 应用层拖进沙盒镜像 |
+| Node 启动全部已安装插件 | 与 Desktop 一致；运行 Workspace 只服务一个 Agent，其余插件进程是浪费且扩大攻击面 |
+| git 身份写入仓库配置 | 见 Cloud git 身份决策 |
+| 模型凭据经 Cloud 下发 | 可按用户或 Space 计费与隔离；需要凭据模型与加密传递，超出本轮范围 |
+
+## 本决策未解决的问题
+
+- 模型凭据的最终来源（按用户、按 Space、平台托管）。
+- MCP 与 Skill 插件在 Node 会话中的配置与注入。
+- 权限请求的人工审批。
+- Node 重启后恢复会话。
+
+## 落地顺序
+
+1. Desktop：抽取 `ora-agent-runtime`，定义五个接口，Backend 提供实现；全部既有测试通过，文档更新。
+2. Node：插件生命周期与 Deno 接入；以 echo agent 插件（测试夹具）运行会话执行，测试覆盖记录顺序、命令排队、
+   结束与中断。
+3. Node 镜像加入 Deno；cluster 联调接入真实 agent 插件。
+
+保持不变：Desktop 的 Agent 行为、数据与前端。开始改变：Node 能运行 Agent 会话。

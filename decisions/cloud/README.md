@@ -20,6 +20,9 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
+| `issue-run` | Issue 上 @Agent 的运行编排：运行 Workspace、阶段状态机、取消、交付与释放 |
+| `thread` | Agent 运行的对话记录：Thread 条目、用户追加消息、结束条件与实时刷新 |
+| `revision` | 对象存储配置、上传授权、Revision 校验与登记 |
 
 Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node 的 Git、文件、进程、Agent、
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他
