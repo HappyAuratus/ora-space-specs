@@ -13,6 +13,7 @@
 | `filesystem` | Node 文件系统访问、路径边界和 Workspace 文件操作 |
 | [process](process/README.md) | 进程运行宿主、控制权、生命周期、纳管、I/O 与恢复；当前根决策不包含运行配额 |
 | `protocol` | Node Protocol 消息、握手、事件、重放和 Transport 边界 |
+| `revision` | 运行成果的内部快照、增量 bundle 与对象存储上传 |
 | `lifecycle` | Node 启动、注册、Ready、Draining、停止和恢复 |
 
 目录是职责导航，不预先决定 crate 名称或进程拆分。跨能力的决策放在最小共同边界上；只有确实
