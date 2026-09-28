@@ -12,7 +12,7 @@
 是对应包的单元测试。Controller 侧客户端、适配器与跨仓库链路的证据见
 [API 边界核心用例](../../controller/api-boundary/controller-hosted-client-api.md#generated-cloud-contracts-preserve-the-boundary)、
 [持久协调双适配器核心用例](../../controller/persistence/coordination-store-adapters.md)与
-[minicloud 云端形态核心用例](../../minicloud/runtime/cloud-hosted-clone-loop.md)。
+[经 Cloud 的 clone 闭环核心用例](../../minicloud/runtime/cloud-hosted-clone-loop.md)（原 minicloud 云端形态，现由 cluster 承担）。
 
 ## Contract Changes Stay Additive And Generated Code Never Drifts
 
