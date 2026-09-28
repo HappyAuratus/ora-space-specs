@@ -1,43 +1,8 @@
-# Agent 运行时抽取与 Node 会话执行
+# Node Agent 会话执行
 
 依据[已批准的 agent-runtime 根决策](../../../decisions/node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)。
-证据预期来自 desktop Backend 既有测试、`ora-agent-runtime` 测试与 `apps/ora-node` 以 echo agent 夹具的测试；
-实现尚未开始，全部为 `Missing`。
-
-## Extracting The Runtime Leaves Desktop Behaviour Unchanged
-
-### 风险
-
-抽取共享 crate 时改变 Desktop 的 Agent 行为或会话 JSONL 格式，破坏已有会话的读取。
-
-### 前置状态
-
-抽取前的 Backend 测试全部通过。
-
-### 触发
-
-把 `crates/backend/src/agent_runtime` 移入 `ora-agent-runtime`，Backend 改为实现五个宿主接口。
-
-### 必须成立
-
-- Backend 既有 Agent 运行时测试在抽取前后都通过，不删除、不弱化。
-- `ora-agent-runtime` 不依赖 Backend、SQLite 实现或 Tauri。
-- 会话 JSONL 格式不变，抽取前写入的记录可被抽取后读取。
-
-### 禁止结果
-
-为通过编译删除或放宽测试；crate 依赖 `ora-backend`/`ora-db`。
-
-### 验证义务与证据
-
-| 义务 | 所需直接证据 | 状态 |
-|---|---|---|
-| 行为不变 | Backend 既有测试集在抽取 PR 前后同一集合全部通过 | Missing |
-| 依赖边界 | 依赖检查：`cargo tree -p ora-agent-runtime` 不含 Backend、`ora-db`、Tauri | Missing |
-
-### 决策依据
-
-agent-runtime D1，不变量 1、2。
+证据预期来自 `ora-agent-runtime` 测试与 `apps/ora-node` 以 echo agent 夹具的测试；Node 会话执行尚未实现，
+全部为 `Missing`。
 
 ## Session Records Reach JSONL Before The Thread
 
