@@ -36,7 +36,7 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
 
 | 能力 | Controller → Node | Node → Controller 终态事件 |
 |---|---|---|
-| `plugin_install` | `InstallPlugins`、`RemovePlugins` | `PluginsResult{items[]}` |
+| `plugin_install` | `InstallPlugins`、`RemovePlugins` | `PluginsResult`：`plugins_completed{items[]}` 或 `plugins_failed{plugin_root_unavailable \| interrupted}` |
 | `agent_session` | `StartAgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn}` | `AgentSessionEnded{reason, detail}` |
 | `revision_delivery` | `DeliverRevision{session_execution_id, checkout_execution_id, base_commit, revision_ref, bundle_key, history_key}` | `RevisionResult{delivered \| unchanged \| failed}` |
 
