@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 退役 Controller 过渡 JSON 接口与监听器：可执行入口在任何形态下都不开监听，本机受理只经内嵌句柄
@@ -10,13 +10,13 @@ Transport、`--transport`／`--host`／`--port`／`--socket` 参数、部署配�
 持久模式下都不打开任何监听。SQLite 持久适配器与 `CloneIntake` 保留，因为 Desktop 本机模式需要本地
 Controller；本机工作由内嵌 Controller 的调用方经 `ControllerHandle` 受理。
 
-本决策处于 `approved` 状态，基于[根决策](0-controller-hosted-client-api.md)、
+本决策处于 `implemented` 状态，基于[根决策](0-controller-hosted-client-api.md)、
 [Cloud 拥有契约与 Controller 拨出的后续决策](20260922-cloud-owned-contract-and-controller-dial-out.md)与
 [Watch 信号决策](20260924-controller-consumes-watch-signals.md)。它同时修改
 [可执行入口组合决策](../lifecycle/0-executable-composition-and-single-node.md)中涉及 API 的约定，并与
 [minicloud 退役决策](../../minicloud/runtime/20260928-retire-minicloud.md)一起落地。影响范围是
 `apps/ora-controller`、`crates/contracts` 与 `packages/contracts`。Controller–Node 协议、Cloud 契约与
-SQLite 布局都不变。实现见 desktop 分支 `remove-minicloud`。
+SQLite 布局都不变。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（尚未合并）。
 
 ## 问题
 
@@ -94,14 +94,13 @@ OpenAPI，不从本仓库生成。
 - Desktop 本机模式如何承载或连接本地 Controller，以及那时的受理入口，留给 Desktop 集成决策。
 - `--single-node` 在 minicloud 删除后主要服务测试与未来的本机部署，是否保留另行讨论，本文不改变它。
 
-## 落地顺序
+## 落地结果
 
-1. desktop：删除 `api.rs`、`transport.rs`、监听参数、`api` 段、`controller_api` DTO 与生成的 TypeScript；
-   `tests/api.rs` 中与 HTTP 无关的组合拒绝与独占所有者检查改为 `tests/service.rs`；可执行入口与 Node standalone
-   测试改为经 `SqliteStore` 受理与读取。完成条件：`cargo test -p ora-controller`、Node standalone 测试、
-   `task check:contracts` 与前端 lint 通过。
-2. desktop：同步 `docs/controller/local-runtime`、`docs/node/minimal-loop` 与 `docs/protocols/controller-cloud-contract`。
-3. specs：同步 API 边界与组合核心用例。
-
-从第 1 步起，可执行入口拒绝 `--transport`／`--host`／`--port`／`--socket` 与 `api` 段，不再监听；已接受工作的
-派发、接管和恢复行为不变。
+- desktop#627 删除了 `api.rs`、`transport.rs`、监听参数、`api` 段、`ora_contracts::controller_api` 与生成的
+  TypeScript。`tests/api.rs` 中与 HTTP 无关的组合拒绝与独占所有者检查移到 `tests/service.rs`；可执行入口与 Node
+  standalone 测试改为经 `SqliteStore` 受理与读取。
+- `cargo test -p ora-controller`、Node standalone 测试、`task check:contracts` 与前端 lint 通过，证据登记在
+  [API 边界核心用例](../../../test-cases/controller/api-boundary/controller-hosted-client-api.md)与
+  [组合核心用例](../../../test-cases/controller/lifecycle/executable-composition-and-single-node.md)。
+- 与决策一致，没有偏离：可执行入口拒绝旧监听参数（未知参数）与 `api` 段（未知字段），不再监听；已接受工作的
+  派发、接管和恢复行为不变。

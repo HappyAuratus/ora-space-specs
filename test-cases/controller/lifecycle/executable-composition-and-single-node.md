@@ -2,8 +2,8 @@
 
 依据[已批准 ADR](../../../decisions/controller/lifecycle/0-executable-composition-and-single-node.md)，
 其中涉及 API 的约定已由[过渡 JSON 接口退役决策](../../../decisions/controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)
-修改：可执行入口不再监听，就绪后报告组合完成，关停不再有 API 受理阶段。证据核对 desktop 分支
-`remove-minicloud`，Linux 进程测试已在该分支上本地重跑。
+修改：可执行入口不再监听，就绪后报告组合完成，关停不再有 API 受理阶段。证据核对 [desktop#627](https://github.com/ora-space/desktop/pull/627)（尚未合并）的
+`remove-minicloud` 分支，Linux 进程测试已在该分支上本地重跑。
 `apps/ora-controller/tests/composition.rs` 以子进程 Node 替身（正常监听／永不就绪／忽略 SIGTERM）
 在可执行入口层复现真实 Node 难以稳定制造的异常路径；托管真实 Node 的证据仍来自
 `apps/ora-node/tests/standalone/repository_single_node.rs`。

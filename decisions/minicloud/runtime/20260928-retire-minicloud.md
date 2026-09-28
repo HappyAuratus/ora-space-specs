@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # minicloud 退役：本机联调改由 cluster Compose 栈承担，删除 minicloud 全部形态
@@ -10,11 +10,11 @@ status: approved
 Sandbox Server → Node。minicloud 只服务开发，没有生产用户，不承担迁移义务；启动器留在
 `~/.ora/minicloud/` 与 `~/.ora/cloud/` 下的状态不删除、不迁移。
 
-本决策处于 `approved` 状态，基于[根决策](0-local-web-client-embedded-controller.md)、
+本决策处于 `implemented` 状态，基于[根决策](0-local-web-client-embedded-controller.md)、
 [Controller 承载 server 的后续决策](20260921-controller-hosted-server.md)与
 [云端形态的后续决策](20260922-cloud-hosted-clone-loop.md)。它与
 [Controller 过渡 JSON 接口退役决策](../../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)
-一起落地，该决策负责 Controller 一侧的接口、监听器与 DTO。实现见 desktop 分支 `remove-minicloud`。
+一起落地，该决策负责 Controller 一侧的接口、监听器与 DTO。由 [desktop#627](https://github.com/ora-space/desktop/pull/627) 实现（尚未合并）。
 
 ## 问题
 
@@ -83,11 +83,9 @@ minicloud 的前提是：浏览器可以直接调用 Controller 承载的接口�
 
 - cluster 链路的自动化端到端测试：需要在不本地构建镜像的约束下决定运行环境（例如 CI），另行设计。
 
-## 落地顺序
+## 落地结果
 
-1. desktop：删除 minicloud 的代码、任务、文档与测试（D1）。完成条件：前端 lint、工具测试与 Node standalone
-   测试通过，仓库中不再有 minicloud 引用。
-2. desktop：退役 Controller 过渡 JSON 接口与监听器，见对应决策。
-3. specs：同步核心用例的证据与缺口。
-
-从第 1 步起，`task run:minicloud` 与 `task test:minicloud` 不再存在；Controller 与 Node 的行为不变。
+- desktop#627 的 `chore: remove minicloud` 删除了 D1 列出的全部代码、任务、文档与测试；
+  `repository_single_node.rs` 自带可执行入口启动函数。前端 lint、工具测试与 Node standalone 测试通过。
+- 从该提交起，`task run:minicloud` 与 `task test:minicloud` 不再存在；Controller 与 Node 的行为不变。
+- cluster 链路的自动化端到端测试仍缺失，登记在[核心用例](../../../test-cases/minicloud/runtime/cloud-hosted-clone-loop.md)中。
