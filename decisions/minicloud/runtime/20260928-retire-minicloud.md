@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # minicloud 退役：本机联调改由 cluster Compose 栈承担，删除 minicloud 全部形态
@@ -10,7 +10,7 @@ status: proposed
 Sandbox Server → Node。minicloud 只服务开发，没有生产用户，不承担迁移义务；启动器留在
 `~/.ora/minicloud/` 与 `~/.ora/cloud/` 下的状态不删除、不迁移。
 
-本决策处于 `proposed` 状态，基于[根决策](0-local-web-client-embedded-controller.md)、
+本决策处于 `approved` 状态，基于[根决策](0-local-web-client-embedded-controller.md)、
 [Controller 承载 server 的后续决策](20260921-controller-hosted-server.md)与
 [云端形态的后续决策](20260922-cloud-hosted-clone-loop.md)。它与
 [Controller 过渡 JSON 接口退役决策](../../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)

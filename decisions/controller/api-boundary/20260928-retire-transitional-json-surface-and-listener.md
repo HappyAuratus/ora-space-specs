@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 退役 Controller 过渡 JSON 接口与监听器：可执行入口在任何形态下都不开监听，本机受理只经内嵌句柄
@@ -10,7 +10,7 @@ Transport、`--transport`／`--host`／`--port`／`--socket` 参数、部署配�
 持久模式下都不打开任何监听。SQLite 持久适配器与 `CloneIntake` 保留，因为 Desktop 本机模式需要本地
 Controller；本机工作由内嵌 Controller 的调用方经 `ControllerHandle` 受理。
 
-本决策处于 `proposed` 状态，基于[根决策](0-controller-hosted-client-api.md)、
+本决策处于 `approved` 状态，基于[根决策](0-controller-hosted-client-api.md)、
 [Cloud 拥有契约与 Controller 拨出的后续决策](20260922-cloud-owned-contract-and-controller-dial-out.md)与
 [Watch 信号决策](20260924-controller-consumes-watch-signals.md)。它同时修改
 [可执行入口组合决策](../lifecycle/0-executable-composition-and-single-node.md)中涉及 API 的约定，并与
