@@ -4,6 +4,8 @@ status: implemented
 
 # Project 归属 Space：以成员身份取代个人所有作为可见与授权边界
 
+> 历史决策：空间归属与项目持久外键保留；下文关于独立空间成员授权、空间 owner 和租户内多个空间的规则，已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前项目访问按活动租户成员身份判定。
+
 `projects.space_id` 成为必填字段，复合外键 `(space_id, tenant_id) → collab_workspaces(id, tenant_id)`
 在 SQL 级杜绝跨租户归属。Project 的可见性与授权从 `owner_user_id` 个人所有改为 Space 成员身份：
 active Space member 可以读取与修改业务内容，删除与敏感操作要求 `admin/owner`。实体路由从

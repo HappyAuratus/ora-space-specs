@@ -3,6 +3,16 @@
 决策依据:[插件市场:cloud 权威选择状态、目录快照与自闭合 effect 载荷](../../../decisions/cloud/plugin-marketplace/0-plugin-marketplace.md)。
 以下用例通过真实 PostgreSQL 集成测试(`integration/plugins_*.go`)验证。
 
+## Tenant membership grants plugin access and revocation rejects new reads
+
+- 风险：插件仍依赖已删除的空间成员表，或错误复用另一个租户的空间权限。
+- 前置状态：用户是租户普通成员，部署已有插件目录，另有独立租户及空间。
+- 触发：读取目录和选择列表，使用当前租户路径请求另一个空间，再停用成员后重试读取。
+- 必须成立：有效成员可读；错误租户与空间组合返回 404；停用后新请求返回 403。不同空间的选择状态仍隔离，跨空间并发安装可分别完成。
+- 禁止结果：要求第二份空间成员关系、跨租户泄漏、停用后继续读取。
+- 验证义务与证据：**Covered** — `TestPluginCatalogAPIAndGating`、`TestPluginIsolationSerializationAndRecovery`、`TestPluginConcurrentInstallsAcrossSpaces`；隔离测试中的每个空间现在对应独立租户。
+- 决策依据：插件市场的选择隔离，以及一租户一空间 D1。
+
 ## Install writes authoritative state and fans out one instance plus one operation per live workspace
 
 - 风险:desired 与执行事实分裂提交,或 fan-out 遗漏 live workspace,聚合永远到不了终态。
