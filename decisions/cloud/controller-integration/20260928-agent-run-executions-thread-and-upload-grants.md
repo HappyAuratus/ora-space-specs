@@ -39,8 +39,8 @@ status: proposed
 
 | 执行 | 输入 | 终态结果 | 如何领取 |
 |---|---|---|---|
-| 插件安装/移除 | `InstallPlugins`/`RemovePlugins`（插件载荷列表） | `PluginsResult{items[]}` | `ClaimOperation`，处于 `plugin` 步骤的 operation |
-| Agent 会话 | `AgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn{turn_id, content}}` | `AgentSessionEnded{reason, stop_detail}` | `ClaimWork` |
+| 插件安装/移除 | `InstallPlugins`/`RemovePlugins`（插件载荷列表） | `PluginsResult{items[]}`；执行整体无法运行时 `PluginsFailed{plugin_root_unavailable \| interrupted}` | `ClaimOperation`，处于 `plugin` 步骤的 operation |
+| Agent 会话 | `AgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn{turn_id, content}}` | `AgentSessionEnded{reason, detail}` | `ClaimWork` |
 | Revision 交付 | `DeliverRevision{session_execution_id, checkout_execution_id, base_commit, revision_ref, bundle_key, history_key}` | `RevisionDelivered`/`RevisionUnchanged`/`RevisionFailed` | `ClaimWork` |
 
 - `WorkItem` 增加 `target{workspace_id, sandbox_instance_id, node_id}`：会话与交付的目标 Node 由 Cloud 按运行
@@ -49,6 +49,10 @@ status: proposed
   新执行（IssueRun D5）。
 - `checkout_execution_id` 引用运行 Workspace 的 clone 执行：Node 由自己的账本解析 checkout 路径，Controller
   与 Cloud 不传递 Node 本地路径（协议根不变量 5、6）。
+- `OperationSnapshot` 增加 `plugin_input`（进入 `plugin` 步骤时固定的 `InstallPlugins`/`RemovePlugins` 输入，
+  集合为空时不设置）与 `plugin_executions`（该步骤已登记的执行）；`DeferReason` 增加
+  `PLUGIN_EXECUTION_FAILED`（重试新执行）与 `PLUGIN_RESULT_UNKNOWN`（保持 `blocked`），与 clone 的两个原因对称。
+- `RevisionFailed.reason` 另有 `VERIFICATION_FAILED`，只由 Cloud 在对象校验失败时记录，Node 不会报告。
 - `ClaimWork` 仍是纯读，返回最早的可领取工作项；归属由 `RecordDispatch` 决定。
 - 执行登记的持久化由 Cloud 实现决定（可新增通用执行表，`clone_executions` 保持原义）；本文要求的是
   规则：派发前登记、输入与目标由 Cloud 校验、结果冲突不覆盖、恢复读取（`GetDispatch`、

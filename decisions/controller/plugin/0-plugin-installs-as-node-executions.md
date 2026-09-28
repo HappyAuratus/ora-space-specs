@@ -24,10 +24,11 @@ Node 语义见 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-
 | 快照中该 operation 没有插件执行，或最近一次已失败 | `RecordDispatch` 新执行（输入 = `request.plugins`，目标 = 当前 Node），然后派发 |
 | 有尚无结果的执行 | 查询 Node 状态；有结果则接管，未知则按恢复规则等待或重发原执行 |
 | 结果已接管、全部插件有逐项结果 | `AdvanceOperation`（单项失败不阻止推进） |
-| 执行失败（`Interrupted`、Node 不可达超过期限） | `DeferOperation(retry_wait)` |
-| 执行结果未知 | `DeferOperation(blocked)`，不自动重试 |
+| 执行失败（`plugins_failed`、Node 不可达超过期限） | `DeferOperation(retry_wait, PLUGIN_EXECUTION_FAILED)` |
+| 执行结果未知 | `DeferOperation(blocked, PLUGIN_RESULT_UNKNOWN)`，不自动重试 |
 
 - 目标 Node 没有会话时按 `NODE_UNAVAILABLE` defer，与 clone 步骤一致。
+- 执行输入取自快照的 `plugin_input`，已登记的执行取自 `plugin_executions`；快照没有 `plugin_input` 时直接推进。
 - Controller 删除 `substrate` 客户端中插件 effect 的请求与证据映射；遇到历史快照中已计划的插件 effect，
   只做对账读取，不再执行。
 
