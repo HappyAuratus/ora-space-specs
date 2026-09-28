@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Issue 上 @Agent 的 IssueRun 由 Cloud 编排：每次运行一个一次性 isolated Workspace，成果保存为 Revision 后释放
@@ -10,7 +10,7 @@ status: proposed
 Thread 中继续对话；会话结束后 Node 保存 git 变更与会话记录为 **Revision**，Cloud 校验并登记后删除该
 Workspace，释放沙盒与数据。整条编排的权威状态在 Cloud，Controller 与 Node 只执行 Cloud 放出的工作。
 
-本 ADR 处于 `proposed`，是新建领域 `cloud/issue-run` 的根决策，承担“一次 Agent 运行从哪里开始、经过哪些
+本 ADR 处于 `approved`（已评审，待实现），是新建领域 `cloud/issue-run` 的根决策，承担“一次 Agent 运行从哪里开始、经过哪些
 阶段、何时结束和释放”的业务不变量。其他环节分别由下列决策承担，本文只引用：
 
 | 环节 | 决策 |
@@ -120,7 +120,7 @@ IssueRun 的最终 `status` 只表达执行结果；成果保存状态由 Revisi
 - 交付执行失败（上传失败、校验失败、Node 报告失败）时，Cloud 以指数退避（30 秒起、上限 10 分钟）
   放出新的交付执行，运行保持 `delivering`，沙盒保持运行。
 - 交付连续失败超过 2 小时、或运行 Workspace 已不可达（Node 状态未知超过 30 分钟）时，Cloud 以
-  `deliveryState = failed` 放弃交付并进入 `releasing`。这个上限是 proposed 值，用来防止沙盒无限期占用；
+  `deliveryState = failed` 放弃交付并进入 `releasing`。这两个上限是第一版默认值（Cloud 配置项），用来防止沙盒无限期占用；
   放弃意味着本轮未保存的修改丢失，这是 Revision 方案“第一版故障边界”已接受的代价。
 
 ### D6：取消与结束是请求，由会话收尾后生效
