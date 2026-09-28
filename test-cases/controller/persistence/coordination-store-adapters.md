@@ -11,8 +11,9 @@ SQLite 适配器的原子接受、接管与恢复义务沿用
 
 - **风险**：Cloud 不可用时退回本地写入形成第二个权威，云端部署残留本地状态，或配置组合出不可用的接口。
 - **前置状态**：`persistence` 分别为 `sqlite` 与 `cloud` 的部署配置；Cloud 不可达。
-- **触发**：以另一种适配器打开配置；云端配置含多个 Node、非法地址或 `api` 段；以云端模式启动、运行并停止。
-- **必须成立**：每个适配器只接受自己的持久模式；云端模式只允许一个 Node、拒绝 `api` 段与监听参数；
+- **触发**：以另一种适配器打开配置；云端配置含多个 Node 或非法地址；以云端模式启动、运行并停止。
+- **必须成立**：每个适配器只接受自己的持久模式；云端模式只允许一个 Node；可执行入口在任何模式下都不监听
+  （[过渡 JSON 接口退役决策](../../../decisions/controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)）；
   云端模式从不创建 `home_directory`、数据库或租约文件；Cloud 不可达时进程保持运行且无写资格。
 - **禁止结果**：云端配置打开 SQLite、Cloud 不可达时本地接受或派发、云端部署组合出 JSON 接口。
 - **验证义务与证据**：
@@ -20,7 +21,7 @@ SQLite 适配器的原子接受、接管与恢复义务沿用
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 适配器互不替代 | `apps/ora-controller/tests/runtime.rs::embedded_owner_reopens_original_operations_and_rejects_overlap` 验证两种适配器互拒对方配置、云端拒绝两个 Node 与非法地址，且云端运行时运行后不创建本地目录 | Covered |
-| 云端部署的可执行入口 | `composition.rs::cloud_persistence_serves_no_surface_and_creates_no_local_state` 验证拒绝 `--port`、不监听、Cloud 不可达时记录"lease not acquired"并保持运行，全程无本地状态；尚缺云端配置含 `api` 段被拒的测试 | Partial |
+| 云端部署的可执行入口 | `composition.rs::cloud_persistence_serves_no_surface_and_creates_no_local_state` 验证 Cloud 不可达时记录"lease not acquired"并保持运行，全程无本地状态；监听参数的拒绝见 [Controller API 边界核心用例](../api-boundary/controller-hosted-client-api.md#controller-executable-opens-no-listener) | Covered |
 
 决策依据：D1、D2，不变量 2、6。
 
