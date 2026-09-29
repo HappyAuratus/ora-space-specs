@@ -113,6 +113,12 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 | `execution_events` | `(execution, sequence)` 主键与事件 JSON；多事件 outbox，确认后删除。`last_sequence` 保证删除后序号不回退 |
 | `session_commands` | `(execution, command_id)` 主键、命令 JSON、受理顺序、`state`（`queued \| executed \| discarded`） |
 
+schema v8 的第一步只将会话放入 `node_executions`；schema v7 已落地的 plugin 表及旧执行表继续保留，
+交付执行留待对应决策落地。operation 的唯一事实仍在 `execution_identities`，不在会话表重复存储。
+`session_commands` 用受理顺序作物理主键，并以 `UNIQUE(execution, command_id)` 保证上述命令身份语义。
+`ora-node-db::SessionJournal` 共享 Node 的独占租约；应用层为它实现下面的 trait，避免数据库反向依赖应用。
+这些账本实现不代表生产协议、在途窗口与启动恢复接线完成，本文状态不因这一局部实现改变。
+
 **账本一侧提供给会话执行的接口**（`SessionLedger`）
 
 | 方法 | 承诺 |
