@@ -3,7 +3,8 @@
 依据[已批准的 agent-runtime 根决策](../../../decisions/node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)。
 证据来自 `ora-agent-runtime` 单元测试与 `apps/ora-node/tests/agent_session.rs`：后者通过 `SessionHost` 驱动真实的
 echo agent 插件进程，以内存 `SessionLedger`、固定 checkout 与计数租约的插件目录代替账本、clone 账本与插件安装。
-账本持久化、协议接线与 Node 启动时的恢复调用尚未实现，相关义务不由这些测试证明。
+账本持久化另由 `crates/node-db/src/tests/session.rs`、`session/recovery.rs` 与
+`apps/ora-node/tests/session_ledger.rs` 的真实 SQLite 测试证明；生产协议接线与 Node 启动时的恢复调用尚未实现。
 
 ## Session Records Reach JSONL Before The Thread
 
@@ -113,3 +114,47 @@ Node 运行 echo agent 的会话执行，首个轮次尚未结束或正在运行
 ### 决策依据
 
 agent-runtime D6、D7；协议后续决策 D4，不变量 4。
+
+## Durable Session Ledger Preserves Events Commands And Terminal State
+
+### 风险
+
+ACK 后复用事件序号，重启丢失命令，或终态只提交了一部分，导致继续执行已经结束的会话。
+
+### 前置状态
+
+Node 使用真实 SQLite，会话已受理或正在运行，存在待确认事件和排队命令。
+
+### 触发
+
+追加事件、乱序或重复 ACK、重复命令、结束会话、注入 outbox 写入失败，以及关闭数据库后重新打开。
+
+### 必须成立
+
+- 序号由事务分配并在提交后返回；ACK 只删除对应事件，保留序号和终态事实。
+- 命令按受理顺序完整返回，同 ID 不同输入被拒绝；结算不可改变，重发不重新入队。
+- 终态、最后一个事件和排队命令的丢弃原子提交；与结束并发的受理只能被丢弃或被拒绝。
+- 句柄共享 Node 租约，多个 actor 连接不分配重复序号；v7 升级保留历史事实。
+- checkout 只来自成功完成的 clone 账本，受控会话启动须重新检查 runtime 权限。
+
+### 禁止结果
+
+事件删除导致序号回退；结束后仍追加事件或留下 queued 命令；新句柄成为第二个 Node 权威；恢复时自动重启 Agent。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 持久序号与精确 ACK | `exact_ack_and_sequence_survive_reopen`：乱序 ACK 不删除其他事件，全部 ACK 后重开仍递增，终态保留 | Covered |
+| 命令队列与终态 | `commands_are_ordered_deduplicated_and_discarded_at_end`、`terminal_write_serializes_with_command_admission`：持久顺序、单向结算、终态拒绝与受理竞态 | Covered |
+| 事务回滚 | `failed_event_rolls_back_all_session_effects`：outbox 失败时状态、队列、序号均不改变 | Covered |
+| 并发与租约 | `concurrent_journals_share_sequences_and_owner_lease`：独立连接的序号连续无重复，最后句柄释放前不能另开 Node | Covered |
+| v7 兼容 | `migrates_v7_without_losing_existing_executions`：保留 plugin 终态、事件、Controller 归属并可新增会话；已有旧版迁移测试继续保留 | Covered |
+| runtime 隔离 | `controlled_sessions_respect_closure_and_incarnation`：拒绝无 permit 入口、未完成责任冲突，关闭或换 incarnation 后不能启动 | Covered |
+| checkout 来源 | `checkout_requires_a_successful_clone`、`checkout_rejects_unknown_and_failed_clone`：不存在、未完成、失败及非 clone 不提供路径，成功 clone 的原始目标在重开后保留 | Covered |
+| 运行时接口 | `runtime_ports_use_durable_ledger`：通过生产 `SessionLedger`/`CheckoutResolver` trait 调用 SQLite，实现排队、结算、追加与终态 | Covered |
+| 生产启动恢复 | 由生产 Node 启动遍历未终态、调用 `recover_interrupted` 并在新命令前持久化 | Missing：后续协议接线负责 |
+
+### 决策依据
+
+agent-runtime D7；协议后续决策 D2、D3、D4、D6。
