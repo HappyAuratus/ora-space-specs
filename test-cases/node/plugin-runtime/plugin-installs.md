@@ -1,7 +1,7 @@
 # Node 插件安装
 
 依据[已批准的 Node plugin-runtime 根决策](../../../decisions/node/plugin-runtime/0-node-installs-plugins-into-workspace-home.md)。
-证据预期来自 `apps/ora-node` 以本地 HTTP 服务提供 release 的测试；实现尚未开始，全部为 `Missing`。
+证据来自 desktop 的实际包、本地 HTTP、Node 进程与 SQLite 测试。状态按直接覆盖范围维护；跨仓库 M1 联调不由这些测试替代。
 
 ## Plugins Appear Only After Digest And Package Verification
 
@@ -31,8 +31,9 @@ Workspace 插件根可写；本地 HTTP 服务提供 release。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| D2 表逐项 | Node 测试：每种情况的逐项结果与插件根内容 | Missing |
-| 使用中保护 | Node 测试：持有 `PluginCatalog` 租约时安装与移除均为 `plugin_in_use` | Missing |
+| D2 表逐项 | `apps/ora-node/tests/plugins.rs`：`install_retry_upgrade_and_remove_respect_use_leases`、`invalid_packages_leave_no_discoverable_installation`、`unmatched_target_never_downloads`、`http_installation_and_three_failed_attempts_have_bounded_results`；覆盖有效包、摘要、版本身份、无 target、三次 HTTP 失败；原生 target 成功与原子发布边界故障注入仍缺少直接证据 | Partial |
+| 使用中保护 | `apps/ora-node/tests/plugins.rs::install_retry_upgrade_and_remove_respect_use_leases`：持有实际 catalog 租约拒绝升级／移除，释放后升级和移除成功并保留 data | Covered |
+| 根目录隔离 | `apps/ora-node/tests/plugins.rs::linked_plugin_root_fails_the_execution_without_following_it`：符号链接根整体失败，外部目录无写入 | Covered |
 
 ### 决策依据
 
@@ -54,18 +55,22 @@ Node 重启。
 
 ### 必须成立
 
-- 恢复时清理临时下载目录，按原输入重新运行，最终只发出一个终态事件。
-- 重跑结果与一次执行相同。
+- 本地未围栏执行恢复时清理临时下载目录，按原输入重跑，最终只发出一个终态事件。
+- 云端旧 incarnation 不复用旧许可；未完成执行以 `interrupted` 结算，新的尝试必须取得新许可。
+- 已完成事件保持原执行身份，重启不改变结果。
 
 ### 禁止结果
 
-两个终态事件；残留临时目录；因重启报告 `interrupted` 而不重跑。
+两个终态事件；残留临时目录；云端旧 incarnation 绕过许可自动重跑。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 重启重跑 | Node 测试：在下载后、原子替换前注入停止，重启后得到同一结果与单个终态事件 | Missing |
+| 本地重跑与临时清理 | `apps/ora-node/tests/standalone/repository_plugins.rs::killed_download_recovers_original_input_and_cleans_temporary_package`：阻塞下载时查询 Running，杀死真实进程，重启不重发命令即可完成原执行并清理临时目录；下载完成后、发布前的精确故障点仍缺证据 | Partial |
+| 云端旧许可隔离 | `crates/node-db/src/tests/plugin.rs::controlled_plugin_start_requires_current_open_incarnation`：真实 SQLite 重开、关闭及换 incarnation 后拒绝开始；完整云端进程恢复结果还需联调 | Partial |
+| 终态与回传原子性 | `crates/node-db/src/tests/plugin.rs::terminal_fact_cannot_commit_without_its_event`：outbox 写失败回滚终态 | Covered |
+| 原事件重放、准确 ACK 与查询 | `apps/ora-node/tests/standalone/repository_plugins.rs::plugin_result_replays_after_restart_until_exact_ack_and_remains_queryable`；`crates/node-db/src/tests/plugin.rs::input_result_and_exact_event_survive_restart_and_acknowledgement` | Covered |
 
 ### 决策依据
 

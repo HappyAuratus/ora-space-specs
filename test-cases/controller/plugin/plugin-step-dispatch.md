@@ -1,7 +1,7 @@
 # plugin 步骤的派发
 
 依据[已批准的 Controller plugin 根决策](../../../decisions/controller/plugin/0-plugin-installs-as-node-executions.md)。
-证据预期来自 desktop `apps/ora-controller` 以假 Cloud（`test-server`）与假 Node 的测试；实现尚未开始，全部为 `Missing`。
+证据来自 desktop `apps/ora-controller/tests/workspaces/plugins.rs`，使用假 Cloud gRPC（`test-server`）与假 Node WebSocket；不替代真实 Cloud 投影及跨仓库联调。
 
 ## Plugin Step Dispatches Cloud's Input To A Capable Node
 
@@ -33,8 +33,8 @@ Cloud 的 operation 快照处于 `plugin` 步骤，带 `plugin_input`。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 五种快照情况 | 假 Cloud + 假 Node 测试：逐一断言 Controller 的 gRPC 调用序列 | Missing |
-| 能力门槛 | 测试：Node 握手不含 `plugin_install` 时无派发并 `blocked` | Missing |
+| 快照派发与结果推进 | `plugin_step_preserves_input_and_advances_only_after_terminal_items`：原样登记输入，成功／逐项失败均在结果接管后推进并开放 admission，无 Substrate 插件写入；`interrupted_plugin_execution_defers_the_operation`：整次中断进入 retry_wait；无输入、复用未完成快照、已接管快照和持续 Unknown 的直接场景仍缺少 | Partial |
+| 能力门槛 | `missing_capability_blocks_without_opening_admission`：握手不含 `plugin_install`，无插件派发、operation blocked、admission 关闭 | Covered |
 
 ### 决策依据
 

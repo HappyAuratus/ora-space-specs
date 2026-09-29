@@ -54,3 +54,14 @@ Node 语义见 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-
 
 替换 `steps.rs` 的 `plugin` 步骤实现与 `substrate.rs` 的插件映射；以假 Cloud 与假 Node 的测试覆盖表中五种
 情况与能力缺失。
+
+## 运行控制接线（随实现同步）
+
+插件执行继承当前 clone 的 runtime control 围栏：云端使用 `ControlledPlugins` 携带原始插件命令和
+Cloud 为该 execution 签发的短期许可；接受与开始落盘前分别校验。未携带许可的插件命令仅用于未启用
+runtime control 的本地入口，不能绕过已持久化的围栏。插件执行计入未完成责任，阻止提前报告 idle。
+
+Node 在同一进程内按已接受责任完成安装；本地未围栏执行重启后清理临时目录并重跑。云端 Node 重启后，
+旧 incarnation 的许可不授权新的安装变更，因此该执行以 `plugins_failed{interrupted}` 收尾，Cloud
+按既有失败重试规则登记新执行并签发新许可。此处收窄原先无条件“重启重跑”的承诺，防止自动恢复绕过
+后来引入的运行控制关闭与 incarnation 隔离。
