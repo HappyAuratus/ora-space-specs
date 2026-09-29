@@ -1,7 +1,7 @@
 # 插件由 Node 执行安装
 
 依据[已批准的 plugin-marketplace 后续决策](../../../decisions/cloud/plugin-marketplace/20260928-node-executes-plugin-installs.md)。
-既有 fan-out 与聚合用例见 [plugin-marketplace.md](plugin-marketplace.md)。实现尚未开始，全部为 `Missing`。
+既有 fan-out 与聚合用例见 [plugin-marketplace.md](plugin-marketplace.md)。Node 执行结果的接管由 `ora-space/cloud` 的 `integration` 包覆盖。
 
 ## Plugin Instance State Is Written Only From Node Execution Results
 
@@ -31,9 +31,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 版本证据校验 | 集成测试：`installed` 版本与计划不同，结果被拒绝且实例不变 | Missing |
-| Agent 行跟随 Space 选择 | 集成测试：安装 agent 插件后出现 Agent 行；一个 Workspace 实例失败不影响；移除后为 `retired` | Missing |
-| 新 Workspace 补装 | 集成测试：新建 Workspace 的 plugin 步骤输入包含 Space 全部 `installed` 插件 | Missing |
+| 版本证据校验 | `integration.TestPluginEffectChainAndEvidence`：版本不符被拒绝，实例仍为 `installing` | Covered |
+| Agent 行跟随 Space 选择 | `integration.TestRunWorkspaceAndPluginStep`：安装后为 `active`；另一个 Workspace 失败不改变它；移除后为 `retired` | Covered |
+| 新 Workspace 补装 | 同上：新建 Workspace 的插件执行针对已经安装的 agent 插件，额外插件输入被拒绝 | Covered |
 
 ### 决策依据
 

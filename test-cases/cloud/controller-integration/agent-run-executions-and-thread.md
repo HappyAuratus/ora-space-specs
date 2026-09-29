@@ -1,8 +1,8 @@
 # Agent 运行执行、Thread 与上传授权的 gRPC 契约
 
 依据[已批准的 controller-integration 后续决策](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
-proto 已在 `ora-space/cloud` 合并（cloud#35）；服务端实现尚未开始。证据预期来自 `integration` 包中经真实 gRPC 的
-PostgreSQL 集成测试。
+proto 已在 `ora-space/cloud` 合并（cloud#35）。服务端登记、Thread 接管、命令与上传授权由 `ora-space/cloud`
+的 `integration` 包覆盖；对象存储的 HEAD 校验仍随 revision 决策留在后续。
 
 ## Session And Delivery Work Is Registered On Its Cloud-Chosen Node
 
@@ -32,8 +32,8 @@ Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 目标与输入校验 | 集成测试：错误 `node_id` 或输入被拒绝，正确登记幂等 | Missing |
-| 恢复读取 | 集成测试：未有结果的会话与交付执行出现在 `ListPendingDispatches` | Missing |
+| 目标与输入校验 | `integration.TestSessionWorkIsRegisteredOnTheCloudChosenNode` | Covered |
+| 恢复读取 | 同上：`ListPendingDispatches` 含已登记、尚无结果的会话执行 | Covered |
 
 ### 决策依据
 
@@ -67,8 +67,8 @@ Controller 在 Cloud 提交前确认事件，Node 删除后 Cloud 回滚，Threa
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 批次原子与顺序 | 集成测试：含缺口的批次整体拒绝，之后补齐的批次成功 | Missing |
-| 终态顺序 | 集成测试：序号 5 未接管时接管序号 6 的终态返回 `CONFLICT` | Missing |
+| 批次原子与顺序 | `integration.TestThreadEventsAreTakenOverInOrder`：缺口批次不写收据，随后补齐成功；重放不再次调用钩子 | Covered |
+| 终态顺序 | 同上：序号 3 未接管时接管序号 4 的终态返回 `CONFLICT`，补齐后才接受 | Covered |
 
 ### 决策依据
 
@@ -102,8 +102,8 @@ Cloud 有未投递的 Thread 命令；运行处于 `delivering`，交付执行�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 命令至少投递一次 | 集成测试：领取、不登记、再次领取得到同一命令；登记后为空 | Missing |
-| 授权不持久化 | 集成测试：签发授权后扫描全部表不含 URL 签名；已结束交付返回拒绝 | Missing |
+| 命令至少投递一次 | `integration.TestThreadCommandsAndUploadGrantsAreNotLostOrStored` | Covered |
+| 授权不持久化 | 同上：签发后扫描当前 schema 全部 text/jsonb 列不含 `X-Amz-Signature`；已有结果的交付被拒绝 | Covered |
 
 ### 决策依据
 
