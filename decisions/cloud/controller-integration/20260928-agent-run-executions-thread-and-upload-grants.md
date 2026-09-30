@@ -106,7 +106,7 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 | `execution_work` | 控制面 | `id uuid`、`run_id`、`kind`（`agent_session \| deliver_revision`）、`input jsonb`、`target jsonb`、`available_at`、`execution_id`（登记后写入）。同一运行同时至多一个未登记的工作项（部分唯一索引） |
 | `node_executions` | 控制面 | 新种类的执行登记：`execution_id`、`kind`、`operation_id`（operation 或 IssueRun）、`work_id`（可空）、`node_id`、`input`、`result`、`dispatched_epoch`、`last_event_sequence` |
 | `node_event_receipts` | 控制面 | `(execution_id, sequence)` 主键与原始事件；Thread 事件与终态事件共用，是确认的唯一依据 |
-| `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、`delivered_at`、`delivered_execution_id` |
+| `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、单调 `queue_sequence`、`delivered_at`、`delivered_execution_id`。同事务的 created_at 相同，领取按 queue_sequence 保持接受顺序；升级保留旧 created_at/id 顺序 |
 | `revisions` | 控制面 | 见 [Revision D4](../revision/0-cloud-owned-object-store-and-verified-revisions.md) |
 | `issue_runs` 新列、`space_agents`、`thread_entries`、`users` 的 git 身份列 | 业务 | 见 IssueRun、Thread、git 身份决策 |
 
@@ -131,6 +131,16 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 - 顺序、重放与冲突只由控制面判断：钩子只收到按序号连续、首次接管的事件；重放不会再次调用钩子。
 - 钩子返回错误时整个事务回滚，Controller 不确认事件，Node 会重放；因此钩子必须对同一事件集合是确定的。
 - 业务表的 `seq`、`thread_state` 与阶段只由钩子与业务 API 写；控制面代码不直接写业务表，反之亦然。
+
+运行 Workspace 初始化成功后，生命周期 maintenance operation 交接为该 IssueRun 的 maintenance binding，
+提升 control epoch，Node 确认后才签发会话或交付许可。这个占用持续到运行 Workspace 释放，不占
+`one_project_operation`；用户操作会话与系统运行互斥。许可仍校验当前 Node/sandbox、运行和执行身份、
+epoch、触发者权限及仓库凭据可用性。触发者来自同租户同 Issue 的 `run.enqueued` 用户证据，固定为
+Workspace creator；不能改用 Issue 创建者。缺失或歧义证据返回 `run_actor_required`，交给业务侧补齐。
+
+控制面提供上述五个命名钩子的同事务接缝；业务实现必须使用调用方事务，不能在钩子里再次调用会
+开启事务的 Store 包装方法。`deliverySettled(saved/unchanged)` 仍须在 Revision 校验登记完成之后调用；
+仅接管 Node 上传成功声明不能触发成功业务转换。cloud#41 目前覆盖 failed 分支，成功分支留待 M3。
 
 为什么用命名函数而不是共享表：Thread 的顺序规则（连续序号、重放）与业务规则（轮次状态、空闲判定）由
 不同的人演进，若双方都直接写同一张表，任何一侧改动都可能破坏另一侧的不变量；函数边界让每张表只有一个
