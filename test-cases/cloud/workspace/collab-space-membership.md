@@ -25,6 +25,6 @@
 - 风险：租户成员加入后仍被旧空间级成员逻辑拒绝。
 - 前置状态：已有空间及共享项目，管理员添加普通成员。
 - 触发：成员读取空间、项目和运行时 workspace；未加入租户的用户尝试同样操作。
-- 必须成立：有效成员可以读取，非成员被拒；停用后立即拒绝新访问。
+- 必须成立：有效成员可以读取空间、共享项目与运行时安全概况，非成员被拒；停用后立即拒绝新访问。内容及操作还需[创建者/管理员使用权限](runtime-workspace-use-permissions.md)，成员身份不直接授予此权限。
 - 禁止结果：依赖已删除的空间成员表、跨租户可见。
-- 验证义务与证据：**Covered** — `integration.TestIdentityConcurrencyMembershipAndIsolation`、`integration.TestInvitationRedeemsOnceAndRemovalImmediatelyRevokesAccess`。
+- 验证义务与证据：**Covered** — `integration.TestIdentityConcurrencyMembershipAndIsolation`、`integration.TestInvitationRedeemsOnceAndRemovalImmediatelyRevokesAccess` 直接证明本文成员门槛；新增运行时内容权限的完整义务另为 `Missing`，不据此宣称实现。

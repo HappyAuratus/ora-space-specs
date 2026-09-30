@@ -18,3 +18,7 @@
 
 目录是职责导航，不预先决定 crate 名称或进程拆分。跨能力的决策放在最小共同边界上；只有确实
 拥有 Node 特有不变量的内容才放入对应子目录。
+
+## 已批准的跨仓库依赖
+
+[运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `approved`，要求 Cloud 执行入口以持久控制绑定约束迟到指令、交互输入和恢复，并验证管理程序与工作负载的权限隔离，可进入开发。Node 单连接、心跳及宿主代次不是用户独占证明；本决策不自动恢复进程控制领域此前延期的完整信任体系。新能力尚未交付，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。

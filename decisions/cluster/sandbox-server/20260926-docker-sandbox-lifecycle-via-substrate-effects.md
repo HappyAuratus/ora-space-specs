@@ -4,6 +4,8 @@ status: approved
 
 # Sandbox Server 用 Docker 实现 Cloud 的 Substrate effects 接口，按 Workspace 创建与终止沙盒
 
+> 后续已批准决策：[普通停止与管理员强停](../../cloud/operation/20260927-safe-stop-and-administrative-force-stop.md)及[运行时控制同步交付](../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)要求真实终止和旧实例禁止重建的证据，均为 `approved`，尚未实现。本文保留原状态，不据规格宣称 cluster 新增保障已验收。
+
 本地 cluster 不再预先启动 Node：Cloud 的 Workspace 操作走到 sandbox 阶段时，Controller 以 Cloud
 已有的 Substrate 最小接口（`GET/PUT /effects/{effectId}`）请求 Sandbox Server；Sandbox Server 用 Docker
 为该 Workspace 创建一个运行 `ora-node` 的容器，并带上[根决策](0-docker-label-resolver.md) D1 的路由

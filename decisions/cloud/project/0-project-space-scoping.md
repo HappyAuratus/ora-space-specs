@@ -4,6 +4,8 @@ status: implemented
 
 # Project 归属 Space：以成员身份取代个人所有作为可见与授权边界
 
+> 后续已批准决策：[仓库凭据连续性](20260927-repository-credential-continuity.md)保留项目归属外键并处理创建者离开后的凭据使用；[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)收紧运行时内容与操作。两者均为 `approved`，目标规则以其继承表为准；本文保留原状态，新增保障尚未实现。
+
 > 历史决策：空间归属与项目持久外键保留；下文关于独立空间成员授权、空间 owner 和租户内多个空间的规则，已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前项目访问按活动租户成员身份判定。
 
 `projects.space_id` 成为必填字段，复合外键 `(space_id, tenant_id) → collab_workspaces(id, tenant_id)`
