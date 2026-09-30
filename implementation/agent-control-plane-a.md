@@ -4,12 +4,17 @@
 
 来源：[分工 specs#58](https://github.com/ora-space/specs/pull/58)、[Cloud #41](https://github.com/ora-space/cloud/pull/41)、[原证据 specs#66](https://github.com/ora-space/specs/pull/66)、[cluster#5](https://github.com/ora-space/cluster/issues/5)、[cluster#7](https://github.com/ora-space/cluster/issues/7)。#41/#66 已合并，后续提交/配套 PR 在原 PR 描述关联。
 
+本轮审查修复为 [Cloud `9ed8414`](https://github.com/ora-space/cloud/commit/9ed841474076831c8ae7444942f1ab1b87df81ee)，包含先前 `5e7c63f`，desktop 配套固定同一提交。后续 Cloud 分支尚未进入 main；直接证据针对该固定依赖。
+
 ## 实际实现及差异
 
 | 接缝 | 实际行为 |
 |---|---|
 | 对象键 | enqueue 时由 Cloud 按 tenant/run/work 固定 bundle/history 键；同 work 重试不变，失败后新 work 使用新键 |
 | v1 上传请求 | 新增可选 `GrantRevisionUploadRequest.checksums`（field 3），map 的键为固定对象键，值为小写 SHA-256；缺省保留旧请求。checksum 被签入临时 PUT 头，不改变持久输入。Go/Rust 同源生成，Buf breaking 与旧 wire 兼容测试 |
+| 对象不可覆盖 | 所有 PUT（包括旧请求）签入 `If-None-Match: *`；仍有效授权不能改写已验证对象。412 仅说明首次对象存在，Cloud 仍校验声明大小和摘要 |
+| 取消与插件恢复 | Controller 生命周期取消不落交付终态；单项插件失败释放原维护绑定，旧选择的迟到失败恢复最新 pending 且清除旧错误 |
+| 部分上传恢复 | Go Node 替身在首次 PUT 前持久固定 bundle/JSONL 字节与声明；取消和双替身重启重用原内容，终态证据持久化后清理对象副本。兼容旧 pending 日志的 `Result: null`，授权仍不落盘 |
 | 校验范围 | 按最新草案分工，Cloud 在事务外对私网 S3 HEAD 检查存在、Content-Length、存储 SHA-256；Git bundle 与 JSONL 语义由 Node 承担，Cloud 不下载解释 |
 | 原 Node 证据 | 成功声明保留原样；明确对象不匹配另记 Cloud verification_failed，无 Revision；网络故障不接管、不 ACK，可重放 |
 | 原子接管 | 外部校验后重查租约、身份、固定输入、运行状态、maintenance binding、准入和当前 Node；原结果、收据、Revision、业务写同事务。已提交重放不重新访问 S3 |
@@ -24,9 +29,13 @@
 | 义务 | 代表性证据 | 状态 |
 |---|---|---|
 | changed/unchanged、缺失/摘要/大小错误、回滚与重复接管 | `TestRevisionS3VerificationAndAtomicTakeover`，真实 PostgreSQL/RustFS | Covered |
+| 已登记对象拒绝 checksum/旧版有效授权覆盖、移除条件不能绕过签名 | `TestRevisionStoredObjectsRejectLiveGrantOverwrite`，真实 PostgreSQL/RustFS | Covered |
 | 网络故障不 ACK、I/O 后租约与状态围栏 | `TestRevisionNetworkFailureRemainsReplayable`、`TestRevisionLeaseAndStateAreRecheckedAfterExternalVerification`，真实 PG + 故障注入 HTTP | Covered |
 | 错误 checksum、过期拒绝、同键刷新 | `TestS3RejectsIncorrectChecksumAndExpiredGrant`，真实 RustFS | Covered |
-| Go 替身交付、授权刷新、双重启、原证据重放、释放后 Revision 保留 | `TestSimulatorDeliversRevisionToS3AcrossRestart`，真实 gRPC/PG/Git/RustFS | Covered |
+| Go 替身交付、首对象真实 PUT 后取消、部分上传后双重启重用快照、授权刷新、事务回滚后终态重放、释放后 Revision 保留 | `TestSimulatorDeliversRevisionToS3AcrossRestart`，真实 gRPC/PG/Git/RustFS；重启前改变 checkout 内容以检出重新生成快照 | Covered |
+| 旧 pending 日志仍可重放 | `TestAgentJournalWithoutTerminalResultRemainsPending`，原磁盘日志 `Result: null` 读回 | Covered |
+| 上传响应丢失后的条件重试 | `TestRevisionUploadReconcilesAnAmbiguousCreatedObject` 直接覆盖 503 后 412 的上传流程；真实对象保护与不匹配拒绝分别由上述 RustFS 集成测试覆盖 | Covered |
+| 单项失败后新选择收敛 | `TestPluginFailedResultReleasesMaintenanceForNewSelection`，真实 PostgreSQL + Node 证据替身，覆盖失败前/后移除期望 | Covered |
 | 公网地址对 sandbox 可达、私网校验、授权不入库 | `TestS3PublicGrantIsUsableFromSandboxNetwork`，独立 sandbox 网络 PUT | Covered |
 | 五钩子同事务成功/失败/重复/回滚，无存储 skipped | Thread、Revision、`agent_hook_atomicity_test.go`、`agent_workspace_failure_hook_test.go` | Covered |
 | 新库及 0023/0024/0026 升级、重复迁移 | `agent_plugin_upgrade_test.go`、`agent_control_upgrade_test.go`、`revision_upgrade_test.go` | Covered |

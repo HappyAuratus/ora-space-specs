@@ -52,7 +52,10 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 ### D4：上传与摘要
 
 - 会话 JSONL 在会话结束时已封口；Node 读取完整文件。bundle 与 JSONL 分别先在本地计算大小与 SHA-256，
-  再以授权 `PUT` 上传，请求携带 `x-amz-checksum-sha256`。
+  在首个 PUT 前按执行持久固定对象字节、最终提交、对象键、大小及 SHA-256，再以授权 `PUT` 上传。
+  请求原样携带签名头，包括 `x-amz-checksum-sha256` 与 `If-None-Match: *`；对象只能首次创建。
+- 首次 PUT 的回复丢失后，重复 PUT 的 412 只说明对象已存在。Node 重放原声明，由 Cloud 核对对象大小与摘要，
+  不能只凭状态码推断成功。上传授权不持久化，恢复时重新请求。
 - 授权缺失或过期时发送 `UploadGrantNeeded` 等待；单个对象上传失败重试 3 次，仍失败则
   `failed{upload_failed}`。
 - 成功结果：`delivered{final_commit, base_commit, revision_ref, bundle{key, size, sha256}, history{key, size, sha256}}`
@@ -69,8 +72,10 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 | `history_unavailable` | 会话 JSONL 不存在或无法读取 |
 | `upload_failed` | 上传重试耗尽 |
 
-交付执行在 Node 重启后可以从头重跑：快照只追加对象、移动内部 ref，不改工作区；重跑可能得到时间戳不同的
-快照提交，结果以最后一次成功为准，旧快照提交成为不可达对象。Cloud 的重试是新的交付执行，行为相同。
+首次上传前未持久固定内容的执行可以重新准备快照；首次上传后，Controller/Node 重启必须继续同一执行的
+持久对象字节和元数据，不能重新生成带不同时间戳的快照或重新打包 bundle。原声明和对象内容保留至终态证据
+持久化，此后保留可重放的终态证据直至 Cloud 接管。Controller 生命周期取消不生成 Node 交付失败终态。
+需要改变交付内容时由 Cloud 新建交付工作项与执行，使用新对象键，不能覆盖原执行的首次对象。
 
 ## 不变量
 
@@ -80,6 +85,7 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 4. bundle 只相对 clone 基础提交生成，且在上传前通过 `git bundle verify`。
 5. 上传的每个对象都带本地计算的 SHA-256 校验。
 6. 没有改动时不生成 bundle，结果明确为 `unchanged`。
+7. 同一执行在部分上传后重启仍使用相同对象字节与声明，且不持久保存上传授权。
 
 ## 为什么不是这些替代方案
 

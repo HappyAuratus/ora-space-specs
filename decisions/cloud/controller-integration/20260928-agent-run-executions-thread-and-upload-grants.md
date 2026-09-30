@@ -94,6 +94,10 @@ status: approved
 键。Cloud 将摘要签入 `x-amz-checksum-sha256`，返回请求键的授权；不提供 map 的旧请求仍返回两个输入键的
 授权。摘要与授权均不是执行输入，刷新不改变登记。旧 wire/decoder 与 Buf breaking 有直接证据。
 
+所有返回的 PUT 头都包含签名的 `If-None-Match: *`，禁止覆盖同键对象；Controller 必须原样转交该条件。
+412 后提交原元数据声明供 Cloud HEAD 校验，不能将状态码单独当作交付成功证据。Controller 生命周期取消
+不构成 Node 终态，应保留已登记执行供重启继续。
+
 ### D5：`Watch` 增加 `ThreadCommandAvailable{run_id}`
 
 命令写入事务提交后发送，语义同其他信号；会话与交付工作项沿用 `WorkAvailable{operation_id = run_id}`。

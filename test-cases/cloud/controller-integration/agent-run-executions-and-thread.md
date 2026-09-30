@@ -33,7 +33,7 @@ Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 目标与输入校验 | `integration/agent_run_control_test.go` 的 `TestSessionWorkIsRegisteredOnTheCloudChosenNode`；`agent_run_boundary_test.go` 的 `TestRunTargetIncludesTheCurrentSandbox`、`TestExecutionIdentityCannotCrossRegistries`：错误 Node、sandbox、输入和跨表身份冲突被拒绝 | Covered |
-| 恢复读取 | `TestSessionWorkIsRegisteredOnTheCloudChosenNode` 覆盖会话 pending；Revision 测试公共 `registeredDelivery` 直接断言交付在 pending 列表中、原输入不变 | Covered |
+| 恢复读取 | `TestSessionWorkIsRegisteredOnTheCloudChosenNode` 覆盖会话 pending；Revision 测试公共 `registeredDelivery` 对 pending 与 `GetDispatch` 返回的完整输入作 protobuf 等值比较 | Covered |
 | 运行独占许可 | `TestRunExecutionPermitRetainsScopeAndChecksCurrentPermission`：初始化后保留运行 maintenance epoch，不占 Project operation；旧 epoch、权限撤销拒绝 | Covered |
 | 触发者身份 | `TestRunWorkspaceUsesTheTriggerActorAndRequiresEvidence`：Issue 作者与触发者不同，Workspace creator/operation actor 来自 run.enqueued；缺失证据拒绝，Project durable owner 保留 | Covered |
 

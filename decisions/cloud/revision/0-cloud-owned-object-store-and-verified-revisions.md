@@ -56,6 +56,9 @@ revisions/{tenantId}/{runId}/{deliveryWorkId}/session.jsonl
   工作项 ID；每次重试是新的工作项，不会覆盖上一次尝试的对象，失败尝试的残留对象可按前缀清理。
 - 预签名 URL 只对单个键、`PUT` 方法和 `upload_grant_ttl` 有效，并要求 `x-amz-checksum-sha256` 头，
   由 S3 在写入时校验内容与 Node 声明的摘要一致。
+- 所有 PUT 授权（含旧版请求）将 `If-None-Match: *` 签入请求，只能首次创建对象；不能移除该条件或用
+  尚未过期的另一张授权覆盖已验证对象。重复 PUT 返回 412 时仍须将原声明交由 Cloud 校验大小和摘要，
+  不能凭状态码推断相同内容。这样外部 HEAD 与 SQL 提交之间及提交之后的对象均不会被上传能力改写。
 
 ### D3：上传授权不属于执行输入，可以随时重新申请
 
