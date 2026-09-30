@@ -1,6 +1,6 @@
 # A 控制面实现与直接验收记录
 
-本记录反映 2026-09-30 的实际实现，不改变任何 ADR 的 proposed/approved/implemented 状态。用户明确授权按当前草案开发。对已批准契约更新原核心用例；Revision 草案的直接证据在此记录，不新建其核心用例。
+本记录反映 2026-10-01 的实际实现，不改变任何 ADR 的 proposed/approved/implemented 状态。用户明确授权按当前草案开发。对已批准契约更新原核心用例；Revision 草案的直接证据在此记录，不新建其核心用例。
 
 来源：[分工 specs#58](https://github.com/ora-space/specs/pull/58)、[Cloud #41](https://github.com/ora-space/cloud/pull/41)、[原证据 specs#66](https://github.com/ora-space/specs/pull/66)、[cluster#5](https://github.com/ora-space/cluster/issues/5)、[cluster#7](https://github.com/ora-space/cluster/issues/7)。#41/#66 已合并，后续提交/配套 PR 在原 PR 描述关联。
 
@@ -44,3 +44,5 @@
 | D 真实 Agent/插件运行与产物 | Go echo/Git 替身仅证明 A；真实 Agent 未验收 | Partial |
 
 cluster 的 `task agent:acceptance` 强制 PostgreSQL、S3 和 sandbox 网络，不能跳过或用内存成功结果通过。完整 Go 格式/lint、PG+S3 测试、race、构建、协议及 OpenAPI/前端检查的最终输出在配套 PR 记录。未关闭或合并 cluster#5/#7；A 的直接闭环不等于 M1–M4 整体完成。
+
+2026-10-01 对固定 Cloud `9ed8414` 的最终门禁均通过：`task check`（lint 0 issues；integration 273.840s）、`task test:race`（integration 574.014s）、`task build`；真实存储与 sandbox 网络下的 `task agent:acceptance`（integration 73.742s）通过，无跳过、失败或 race 报告。desktop `63132df9` 的协议三项兼容测试、clippy 与两消费端全目标构建通过，完整 [CI](https://github.com/ora-space/desktop/actions/runs/36741470877) 的 Windows/Linux/macOS Rust、frontend、Tauri、e2e 和 ci-ok 均通过。
