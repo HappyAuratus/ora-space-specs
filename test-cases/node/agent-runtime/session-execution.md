@@ -4,7 +4,8 @@
 证据来自 `ora-agent-runtime` 单元测试与 `apps/ora-node/tests/agent_session.rs`：后者通过 `SessionHost` 驱动真实的
 echo agent 插件进程，以内存 `SessionLedger`、固定 checkout 与计数租约的插件目录代替账本、clone 账本与插件安装。
 账本持久化另由 `crates/node-db/src/tests/session.rs`、`session/recovery.rs` 与
-`apps/ora-node/tests/session_ledger.rs` 的真实 SQLite 测试证明；生产协议接线与 Node 启动时的恢复调用尚未实现。
+`apps/ora-node/tests/session_ledger.rs` 的真实 SQLite 测试证明；生产服务接线与启动恢复由 `apps/ora-node/tests/standalone/agent_sessions.rs` 及子模块的真实 Node 进程测试验证。
+强杀后任意后代进程的 scope 清理仍受 ADR D2 落地差异限制。
 
 ## Session Records Reach JSONL Before The Thread
 
@@ -35,7 +36,7 @@ Thread 有 JSONL 中不存在的记录；重启后恢复出运行中的会话。
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 记录顺序 | `records_reach_the_thread_as_history_lines_attributed_to_their_turns`：Thread 记录逐条等于 JSONL 行、顺序一致，用户消息的 `messageId` 与事件 `turn_id` 等于轮次 ID；`ora-agent-runtime` 的 `settled_lines_reach_the_host_exactly_as_the_file_holds_them` 证明回调行与文件一致 | Covered |
-| 崩溃窗口 | `a_crash_before_the_thread_append_leaves_the_history_one_line_ahead`：在 Thread 追加处阻塞模拟崩溃点，JSONL 恰比 Thread 多一行；新的 `AgentSessions`（模拟重启）`recover_interrupted` 返回 `interrupted`，`sealed_history` 返回该 JSONL | Partial：崩溃与重启在进程内模拟，Node 启动时对未终态会话调用 `recover_interrupted` 的接线尚未实现 |
+| 崩溃窗口 | `a_crash_before_the_thread_append_leaves_the_history_one_line_ahead`：在 Thread 追加处阻塞模拟崩溃点，JSONL 恰比 Thread 多一行；新的 `AgentSessions`（模拟重启）`recover_interrupted` 返回 `interrupted`，`sealed_history` 返回该 JSONL | Partial：`killed_session_replays_and_ends_before_accepting_commands` 已覆盖真实 Node 强杀、原始事件重放和新命令前中断结算；任意后代的 scope 清理仍未接入 |
 
 ### 决策依据
 
@@ -71,7 +72,7 @@ Workspace 插件根装有 agent 插件与其他插件。
 |---|---|---|
 | 插件选择 | `a_plugin_of_another_version_ends_the_session_without_starting_it`：目录无该版本、或插件根中的包不在该版本目录时，以 `agent_plugin_unavailable` 结束，没有插件进程启动，租约已释放 | Covered |
 | git 身份隔离 | `agent_commits_carry_the_session_identity_without_touching_git_config`：经宿主 `ora/childprocess/spawn` 与插件直接派生的两次提交，author/committer 都是输入身份，`.git/config` 逐字节不变 | Covered |
-| 租约 | `ending_cancels_the_running_turn_and_discards_queued_turns` 等：会话结束后租约计数归零、插件进程均已退出 | Covered |
+| 租约 | `ending_cancels_the_running_turn_and_discards_queued_turns` 验证结束后租约归零；`session_commands_use_the_production_ledger_and_installer_catalog` 验证生产安装器与会话共享租约，活跃插件移除返回 `plugin_in_use` | Covered |
 | 执行进程 scope | 插件进程与 Agent CLI 纳入该执行的 host/guardian 进程 scope | Missing：第二步直接启动插件进程（见 ADR D2 落地差异） |
 
 ### 决策依据
@@ -107,8 +108,8 @@ Node 运行 echo agent 的会话执行，首个轮次尚未结束或正在运行
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 顺序与至多一次 | `queued_turns_run_once_each_in_acceptance_order`：三个轮次的用户消息按受理顺序出现，每个命令只有一次 `executed` | Covered |
-| 结束 | `ending_cancels_the_running_turn_and_discards_queued_turns`：进行中的轮次以 `cancelled` 结束，排队轮次 `discarded` 且无记录，`EndSession` `executed`，插件进程退出、租约归零 | Covered |
+| 顺序与至多一次 | `queued_turns_run_once_each_in_acceptance_order` 验证轮次顺序；`session_commands_use_the_production_ledger_and_installer_catalog` 验证生产 IPC 重发同一命令只运行一次；`failed_command_settlement_never_runs_the_queued_turn` 验证 Executed 写入失败时不提交 prompt | Covered |
+| 结束 | `ending_cancels_the_running_turn_and_discards_queued_turns` 验证取消、丢弃与租约释放；`service_shutdown_stops_the_active_agent_and_persists_its_end` 验证真实 Node 正常停止清理活跃 echo 插件后留下终态 | Covered |
 | 规划规则 | `apps/ora-node` 的 `an_end_anywhere_in_the_queue_takes_precedence`：队列中任意位置的 `EndSession` 优先并只丢弃其前的轮次 | Covered |
 
 ### 决策依据
@@ -153,7 +154,7 @@ Node 使用真实 SQLite，会话已受理或正在运行，存在待确认事�
 | runtime 隔离 | `controlled_sessions_respect_closure_and_incarnation`：拒绝无 permit 入口、未完成责任冲突，关闭或换 incarnation 后不能启动 | Covered |
 | checkout 来源 | `checkout_requires_a_successful_clone`、`checkout_rejects_unknown_and_failed_clone`：不存在、未完成、失败及非 clone 不提供路径，成功 clone 的原始目标在重开后保留 | Covered |
 | 运行时接口 | `runtime_ports_use_durable_ledger`：通过生产 `SessionLedger`/`CheckoutResolver` trait 调用 SQLite，实现排队、结算、追加与终态 | Covered |
-| 生产启动恢复 | 由生产 Node 启动遍历未终态、调用 `recover_interrupted` 并在新命令前持久化 | Missing：后续协议接线负责 |
+| 生产启动恢复 | `killed_session_replays_and_ends_before_accepting_commands`：真实 Node 强杀后，原始事件重放且只补一个 interrupted 终态，新命令被拒绝，echo 插件不重启 | Partial：echo 插件退出已证明，忽略 stdio 关闭的后代回收仍缺失 |
 
 ### 决策依据
 

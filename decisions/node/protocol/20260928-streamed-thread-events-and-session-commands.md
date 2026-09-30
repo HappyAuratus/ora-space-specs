@@ -46,6 +46,13 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
   找不到时以 `checkout_unavailable` 失败，不猜测路径。
 - `AgentSessionEnded.reason`：`user_ended | idle_timeout | cancelled | agent_failed | interrupted`。
 
+生产接线沿用已有 `RuntimeControl` 的受控执行入口：`ControlledStartAgentSession{binding, command}`
+绑定已登记的会话输入及精确的 Node、incarnation、operation/execution 身份。受控部署拒绝裸
+`StartAgentSession`；Node 在持久化与实际启动前检查许可，重复输入不重新启动 Agent。
+`SubmitUserTurn` / `EndSession` 使用既有消息形状，由当前绑定验证原执行的 control scope 和 incarnation；
+同一 control epoch 可刷新许可，关闭、过期或 scope 改变后不能受理新命令。已终态的命令仍返回
+`session_ended`，不复活执行。Controller 身份与执行归属检查先于上述入口。
+
 ### D2：会话执行的非终态 Thread 事件
 
 `ThreadEvent{operation_id, execution_id, sequence, turn_id?, record}`：
