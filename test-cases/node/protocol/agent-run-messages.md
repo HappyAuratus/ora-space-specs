@@ -35,7 +35,7 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 |---|---|---|
 | 线上形状与记录上限 | `agent_session.rs` `thread_events_round_trip_and_bound_the_record`：非对象记录解码失败，超过 `MAX_THREAD_RECORD_BYTES` 被双向拒绝 | Partial |
 | 终态在结果族中可区分 | `agent_session.rs` `session_end_round_trips_as_event_and_completed_status`：终态事件与 Completed 查询都解码为会话结果族，自由文本 `detail` 被拒绝 | Partial |
-| 持久化、窗口与重放 | `ora-node-db` 的 `exact_ack_and_sequence_survive_reopen`、`failed_event_rolls_back_all_session_effects` 证明落盘、精确 ACK 和重开序号；生产发送、256 窗口和重连接线尚未实现 | Partial |
+| 持久化、窗口与重放 | `exact_ack_and_sequence_survive_reopen`、`failed_event_rolls_back_all_session_effects` 证明账本事务；`window_bounds_delivery_without_blocking_queries_and_reconnect_replays_exactly` 通过真实 Node 验证 256 窗口、重复 ACK 不多释放位置、窗口满仍响应查询、重开按原内容重放到终态 | Covered |
 
 ### 决策依据
 
@@ -70,7 +70,8 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 命令与回复形状 | `agent_session.rs` `session_commands_and_replies_round_trip`：四种消息往返，`command_id` 必填且非空 | Partial |
-| 去重、顺序与终态拒绝 | `ora-node-db` 的 `commands_are_ordered_deduplicated_and_discarded_at_end` 证明持久队列规则；实际协议受理回复、唤醒与拒绝回复尚未接线 | Partial |
+| 去重、顺序与终态拒绝 | `commands_are_ordered_deduplicated_and_discarded_at_end` 证明持久队列规则；`session_commands_use_the_production_ledger_and_installer_catalog` 通过真实 IPC 验证重复受理回复只执行一次、终态后回复拒绝及 JSONL 与 Thread 一致 | Covered |
+| 运行许可与关闭 | `controlled_session_start_round_trips_and_binds_exact_identity` 验证许可身份；`controlled_start_and_command_closure_use_original_runtime_authority` 验证真实 Node 受控启动及关闭后拒绝命令；`session_command_authority_expires_and_closes_without_losing_existing_work` 验证账本过期、刷新与 incarnation 隔离 | Covered |
 
 ### 决策依据
 
