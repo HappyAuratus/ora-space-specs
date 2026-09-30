@@ -1,7 +1,8 @@
 # 插件由 Node 执行安装
 
 依据[已批准的 plugin-marketplace 后续决策](../../../decisions/cloud/plugin-marketplace/20260928-node-executes-plugin-installs.md)。
-既有 fan-out 与聚合用例见 [plugin-marketplace.md](plugin-marketplace.md)。实现尚未开始，全部为 `Missing`。
+既有 fan-out 与聚合用例见 [plugin-marketplace.md](plugin-marketplace.md)。以下证据来自
+[cloud#41](https://github.com/ora-space/cloud/pull/41)，真实插件目录的落盘仍需 M1 联调。
 
 ## Plugin Instance State Is Written Only From Node Execution Results
 
@@ -31,9 +32,10 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 版本证据校验 | 集成测试：`installed` 版本与计划不同，结果被拒绝且实例不变 | Missing |
-| Agent 行跟随 Space 选择 | 集成测试：安装 agent 插件后出现 Agent 行；一个 Workspace 实例失败不影响；移除后为 `retired` | Missing |
-| 新 Workspace 补装 | 集成测试：新建 Workspace 的 plugin 步骤输入包含 Space 全部 `installed` 插件 | Missing |
+| 版本证据校验 | `integration/plugins_effect_test.go` 的版本不符结果测试；`agent_run_boundary_test.go` `TestPluginEvidenceMustCoverThePlanExactly` 验证集合完整且种类一致，拒绝时实例不变 | Covered |
+| Agent 行跟随 Space 选择 | `TestRunWorkspaceAndPluginStep` 覆盖 installed、单实例失败及 retired；`TestAgentSelectionSurvivesCatalogRemoval` 覆盖空 Space 选中和目录消失后移除 | Covered |
+| 新 Workspace 补装 | `TestRunWorkspaceAndPluginStep`：选中 agent 后新 Workspace 固定 plugin 输入含该插件；尚需多插件完整集合与真实 Node 目录证据 | Partial |
+| 插件执行运行许可 | `TestPluginExecutionReceivesAFencedRuntimePermit`：当前执行取得许可，旧 epoch 与已终态拒绝 | Covered |
 
 ### 决策依据
 

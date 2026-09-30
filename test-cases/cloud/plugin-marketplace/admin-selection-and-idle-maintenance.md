@@ -31,13 +31,13 @@
 ## Changed Plugin Intent And Unknown Results Reconcile Without Duplicate Execution
 
 - 风险：安装/卸载并行、结果丢失后重新执行，或删除实例被等待队列重新恢复。
-- 前置状态：原期望待派发或已派发，effect 结果未知；实例可在等待期间被删除。
-- 触发：幂等重放、管理员按版本更改期望、恢复查询原 effect、删除目标；原管理员离开。
+- 前置状态：原期望待派发或已派发，Node execution 结果未知；实例可在等待期间被删除。
+- 触发：幂等重放、管理员按版本更改期望、恢复查询原 execution、删除目标；原管理员离开。
 - 必须成立：未派发按新期望计划，已派发先核对原结果再收敛最新期望；同实例不并发安装卸载。删除保留清理引用并退出候选，接受的维护不随管理员离开消失。无真实执行器时能力不开放、不报告成功。
-- 禁止结果：换 effect ID 重试未知结果、旧验证结果覆盖新期望、恢复已删除运行时、隐式加入新运行时自动补装或自动升级。
+- 禁止结果：换 execution ID 重试未知结果、旧验证结果覆盖新期望、恢复已删除运行时、隐式自动升级。新 Workspace 补装选中插件的批准后续规则见 [Node 插件安装](node-executed-plugin-installs.md)。
 - 验证义务与证据：**Partial** — 需持久待办/版本/删除竞争与真实执行器幂等恢复测试；模拟器 effect journal 只作为前序证据。
 - 决策依据：D3、D4，不变量 3–5。
 
-- 本次直接证据：**Partial** — [Cloud integration/plugin_intent_recovery_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/plugin_intent_recovery_test.go) 的 TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval：真实 PostgreSQL + 显式模拟执行器，核对旧期望未知结果、新移除期望等待、稳定 effect 重放和唯一后续维护。
+- 本次直接证据：**Partial** — cloud#41 的 `integration/plugin_intent_recovery_test.go` `TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval`：真实 PostgreSQL + 显式 Node 执行替身，核对旧期望未知结果、新移除期望等待、稳定执行重放和唯一后续维护。原 effect journal 是前序规则证据，不证明新的 Node 安装路径。
 - 仍缺：真实插件旧期望/迟到结果、下载/进程/丢失响应矩阵仍缺；代码或状态本身不是直接验收。
 

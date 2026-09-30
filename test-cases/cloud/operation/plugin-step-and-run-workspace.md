@@ -2,7 +2,7 @@
 
 依据[已批准的 operation 后续决策](../../../decisions/cloud/operation/20260928-plugin-step-and-run-workspace-release.md)。
 本文件登记 Workspace 在插件安装后才开放准入、插件不再经 Substrate、运行 Workspace 只由 IssueRun 建删的承诺。
-证据预期来自 `ora-space/cloud` 的 `integration` 包；实现尚未开始，全部为 `Missing`。
+直接证据来自 [cloud#41](https://github.com/ora-space/cloud/pull/41) 的 `integration` 包；真实 Node 插件落盘仍需 M1 联调。
 
 ## Workspace Opens Admission Only After The Plugin Step
 
@@ -33,10 +33,10 @@ Space 有 `desired_state = installed` 的插件，其中一个的 release 无法
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 步骤表与准入时机 | 集成测试：clone 成功后准入仍关闭，插件执行结果接管后才开放 | Missing |
-| 单项失败不阻塞 | 集成测试：一项 `failed{checksum_mismatch}`，Workspace 仍 `ready`，实例记录失败原因 | Missing |
-| 输入固定 | 集成测试：进入步骤后新增 Space 插件，`plugin_input` 不变，登记不同输入返回 `CONFLICT` | Missing |
-| 不再计划插件 effect | 集成测试：`PlanEffect` 插件 kind 被拒绝；迁移把在途插件 operation 退回 `plugin` 步骤开始 | Missing |
+| 步骤表与准入时机 | `integration/agent_run_control_test.go` `TestRunWorkspaceAndPluginStep`：clone 后 plugin 未完成不开放准入，接管结果后 ready；非空插件 start 故障尚需验收 | Partial |
+| 单项失败不阻塞 | `TestRunWorkspaceAndPluginStep`：checksum_mismatch 保存在实例，Workspace ready，Space Agent 仍 active；`TestPluginEvidenceMustCoverThePlanExactly` 拒绝重复、缺失及种类不符的结果 | Covered |
+| 输入固定 | `TestRunWorkspaceAndPluginStep` 拒绝额外插件输入；尚未直接证明快照后新增 Space 插件不改变输入 | Partial |
+| 不再计划插件 effect | `TestRunWorkspaceAndPluginStep` 拒绝新 PlanEffect，控制面也拒绝历史插件 effect 上报；尚缺带在途旧插件 effect 的 0023 升级证据 | Partial |
 
 ### 决策依据
 
@@ -70,8 +70,8 @@ operation 后续决策 D1、D2、D3，不变量 1–4。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 公开 API 不可见 | 集成测试：start/stop/delete 与列表对运行 Workspace 均为 `404`/不可见 | Missing |
-| 幂等建删 | 集成测试：派发事务重放两次只有一个 Workspace 与一个 `create_workspace` | Missing |
+| 公开 API 不可见 | `TestRunWorkspaceAndPluginStep` 覆盖 GET 与列表隐藏；start/stop/delete 共用过滤，尚缺直接断言 | Partial |
+| 幂等建删 | `TestRunWorkspaceAndPluginStep` 重复创建只有一行 Workspace/create operation、忙时删除返回 busy；`TestSimulatorServicesEndCommandsWhileRunDeletionIsQueued` 覆盖运行结束后删除与重复删除仅一个 operation | Covered |
 
 ### 决策依据
 

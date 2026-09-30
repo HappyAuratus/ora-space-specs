@@ -1,8 +1,8 @@
 # Agent 运行执行、Thread 与上传授权的 gRPC 契约
 
 依据[已批准的 controller-integration 后续决策](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
-proto 已在 `ora-space/cloud` 合并（cloud#35）；服务端实现尚未开始。证据预期来自 `integration` 包中经真实 gRPC 的
-PostgreSQL 集成测试。
+proto 已在 `ora-space/cloud` 合并（cloud#35）；服务端证据来自 [cloud#41](https://github.com/ora-space/cloud/pull/41)
+中经真实 gRPC 的 PostgreSQL 集成测试。以下覆盖控制面；真实 Node、业务投影及 Revision 对象校验仍需各自验收。
 
 ## Session And Delivery Work Is Registered On Its Cloud-Chosen Node
 
@@ -32,8 +32,10 @@ Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 目标与输入校验 | 集成测试：错误 `node_id` 或输入被拒绝，正确登记幂等 | Missing |
-| 恢复读取 | 集成测试：未有结果的会话与交付执行出现在 `ListPendingDispatches` | Missing |
+| 目标与输入校验 | `integration/agent_run_control_test.go` 的 `TestSessionWorkIsRegisteredOnTheCloudChosenNode`；`agent_run_boundary_test.go` 的 `TestRunTargetIncludesTheCurrentSandbox`、`TestExecutionIdentityCannotCrossRegistries`：错误 Node、sandbox、输入和跨表身份冲突被拒绝 | Covered |
+| 恢复读取 | `TestSessionWorkIsRegisteredOnTheCloudChosenNode` 覆盖会话 pending；交付登记有测试，但尚缺直接断言交付 pending 列表 | Partial |
+| 运行独占许可 | `TestRunExecutionPermitRetainsScopeAndChecksCurrentPermission`：初始化后保留运行 maintenance epoch，不占 Project operation；旧 epoch、权限撤销拒绝 | Covered |
+| 触发者身份 | `TestRunWorkspaceUsesTheTriggerActorAndRequiresEvidence`：Issue 作者与触发者不同，Workspace creator/operation actor 来自 run.enqueued；缺失证据拒绝，Project durable owner 保留 | Covered |
 
 ### 决策依据
 
@@ -67,8 +69,9 @@ Controller 在 Cloud 提交前确认事件，Node 删除后 Cloud 回滚，Threa
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 批次原子与顺序 | 集成测试：含缺口的批次整体拒绝，之后补齐的批次成功 | Missing |
-| 终态顺序 | 集成测试：序号 5 未接管时接管序号 6 的终态返回 `CONFLICT` | Missing |
+| 批次原子与顺序 | `TestThreadEventsAreTakenOverInOrder`：含合法前缀及后续缺口的批次全部回滚，补齐后成功 | Covered |
+| 终态顺序 | `TestThreadEventsAreTakenOverInOrder`：缺少前序记录时终态拒绝；`TestThreadBusinessHookSharesTheTakeoverTransaction`：终态后重放旧记录幂等，第二个新终态拒绝 | Covered |
+| 业务与收据同事务 | `TestThreadBusinessHookSharesTheTakeoverTransaction`：钩子经调用方 sql.Tx 写业务证据，失败后业务行、收据和水位一起回滚；重放不再次调用 | Covered |
 
 ### 决策依据
 
@@ -102,8 +105,11 @@ Cloud 有未投递的 Thread 命令；运行处于 `delivering`，交付执行�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 命令至少投递一次 | 集成测试：领取、不登记、再次领取得到同一命令；登记后为空 | Missing |
-| 授权不持久化 | 集成测试：签发授权后扫描全部表不含 URL 签名；已结束交付返回拒绝 | Missing |
+| 命令至少投递一次 | `TestThreadCommandsAndUploadGrantsAreNotLostOrStored`：未登记会话时保留；领取后重领、重复登记和投递后为空 | Covered |
+| 命令与模拟器恢复 | `TestThreadCommandsPreserveOrderWithinOneBusinessTransaction` 保持同事务顺序；`TestSimulatorRelaysEchoTurnsAcrossControllerRestart` 重开磁盘日志后追加并结束同一会话；`TestSimulatorServicesEndCommandsWhileRunDeletionIsQueued` 防止 quiesce 饿死命令。尚无真实 Controller/Node 恢复验收 | Partial |
+| 授权不持久化 | `TestThreadCommandsAndUploadGrantsAreNotLostOrStored` 扫描全部文本/JSON 列无签名，已结束交付拒绝；未覆盖生产 Controller/Node 日志与真实 S3 上传 | Partial |
+| 前版升级 | `integration/agent_control_upgrade_test.go` 的 `TestAgentControlUpgradePreservesPendingCommandOrder`：从 0024 升级并重复迁移，既有次序保留，新序号连续 | Covered |
+| 成功交付等待 Cloud 验证 | `TestThreadCommandsAndUploadGrantsAreNotLostOrStored`：未验证的 unchanged 声明拒绝，result 与 ACK 收据均未落库；成功验证/登记仍待 M3 | Partial |
 
 ### 决策依据
 
