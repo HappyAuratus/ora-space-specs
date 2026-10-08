@@ -33,10 +33,10 @@ Space 有 `desired_state = installed` 的插件，其中一个的 release 无法
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 步骤表与准入时机 | `integration/agent_run_control_test.go` `TestRunWorkspaceAndPluginStep`：clone 后 plugin 未完成不开放准入，接管结果后 ready；非空插件 start 故障尚需验收 | Partial |
+| 步骤表与准入时机 | `TestRunWorkspaceAndPluginStep`：clone 后 plugin 未完成不开放准入，接管结果后 ready；`TestStartPluginPlanSurvivesSelectionChangesAndExecutionFailures`：非空 start 失败保持关闭、新执行重试，未知结果 blocked、不重新派发 | Covered |
 | 单项失败不阻塞 | `TestRunWorkspaceAndPluginStep`：checksum_mismatch 保存在实例，Workspace ready，Space Agent 仍 active；`TestPluginEvidenceMustCoverThePlanExactly` 拒绝重复、缺失及种类不符的结果 | Covered |
-| 输入固定 | `TestRunWorkspaceAndPluginStep` 拒绝额外插件输入；尚未直接证明快照后新增 Space 插件不改变输入 | Partial |
-| 不再计划插件 effect | `TestRunWorkspaceAndPluginStep` 拒绝新 PlanEffect，控制面也拒绝历史插件 effect 上报；尚缺带在途旧插件 effect 的 0023 升级证据 | Partial |
+| 输入固定 | `TestRunWorkspaceAndPluginStep` 拒绝额外输入；`TestStartPluginPlanSurvivesSelectionChangesAndExecutionFailures` 在快照后新增 Space 插件，深比较原执行输入与失败重试输入不变 | Covered |
+| 不再计划插件 effect | `TestRunWorkspaceAndPluginStep` 拒绝新 PlanEffect/旧插件上报；`TestAgentUpgradeRetainsHistoricalPluginEffectsAndRestartsNodeStep` 从真实 0023 升级并重复迁移，保留在途旧 effect 与请求，重置 plugin 步骤，新插件 effect 数据库写入拒绝 | Covered |
 
 ### 决策依据
 
@@ -70,8 +70,9 @@ operation 后续决策 D1、D2、D3，不变量 1–4。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 公开 API 不可见 | `TestRunWorkspaceAndPluginStep` 覆盖 GET 与列表隐藏；start/stop/delete 共用过滤，尚缺直接断言 | Partial |
+| 公开 API 不可见 | `TestRunWorkspaceAndPluginStep` 直接断言 GET/list 隐藏及 POST start/stop、DELETE 返回 404 | Covered |
 | 幂等建删 | `TestRunWorkspaceAndPluginStep` 重复创建只有一行 Workspace/create operation、忙时删除返回 busy；`TestSimulatorServicesEndCommandsWhileRunDeletionIsQueued` 覆盖运行结束后删除与重复删除仅一个 operation | Covered |
+| 业务与控制证据同事务 | `TestWorkspaceReadyAndDeletedHooksShareTheOperationTransaction`、`TestWorkspaceFailedHookAndForceEvidenceCommitTogether`：ready/failed/deleted 钩子使用调用方 sql.Tx，故障使业务与控制证据共同回滚，重放只生效一次 | Covered |
 
 ### 决策依据
 

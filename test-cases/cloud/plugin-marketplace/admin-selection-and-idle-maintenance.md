@@ -40,4 +40,5 @@
 
 - 本次直接证据：**Partial** — cloud#41 的 `integration/plugin_intent_recovery_test.go` `TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval`：真实 PostgreSQL + 显式 Node 执行替身，核对旧期望未知结果、新移除期望等待、稳定执行重放和唯一后续维护。原 effect journal 是前序规则证据，不证明新的 Node 安装路径。
 - 仍缺：真实插件旧期望/迟到结果、下载/进程/丢失响应矩阵仍缺；代码或状态本身不是直接验收。
+- 失败终态的直接证据：`TestPluginFailedResultReleasesMaintenanceForNewSelection` 覆盖失败后移除、移除先于旧执行失败、维护绑定释放与最新期望收敛；整体仍为 `Partial`，不替代真实插件执行器证据。
 

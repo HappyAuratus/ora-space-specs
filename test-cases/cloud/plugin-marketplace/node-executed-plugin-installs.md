@@ -22,6 +22,8 @@
 
 - 实例状态只在接管执行结果的事务中写入；`installed` 的版本不等于计划版本时以 `invalid_plugin_evidence` 拒绝整个结果。
 - 失败原因为有界错误码，写入 `install_error`。
+- 单项失败也是本次执行的终态，释放该实例的维护绑定；旧选择的迟到失败只结清原责任，最新期望恢复
+  `pending` 且不保留旧错误。之后的移除或新版本维护能继续收敛。
 - agent 插件聚合为 `installed` 时同一事务创建或恢复 `space_agents` 行；移除时置为 `retired`，不删除。
 
 ### 禁止结果
@@ -33,6 +35,7 @@
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 版本证据校验 | `integration/plugins_effect_test.go` 的版本不符结果测试；`agent_run_boundary_test.go` `TestPluginEvidenceMustCoverThePlanExactly` 验证集合完整且种类一致，拒绝时实例不变 | Covered |
+| 失败后选择继续收敛 | `TestPluginFailedResultReleasesMaintenanceForNewSelection`：真实 PostgreSQL 分别覆盖失败后移除与移除期望先于迟到失败，维护绑定释放且旧错误不污染最新期望 | Covered |
 | Agent 行跟随 Space 选择 | `TestRunWorkspaceAndPluginStep` 覆盖 installed、单实例失败及 retired；`TestAgentSelectionSurvivesCatalogRemoval` 覆盖空 Space 选中和目录消失后移除 | Covered |
 | 新 Workspace 补装 | `TestRunWorkspaceAndPluginStep`：选中 agent 后新 Workspace 固定 plugin 输入含该插件；尚需多插件完整集合与真实 Node 目录证据 | Partial |
 | 插件执行运行许可 | `TestPluginExecutionReceivesAFencedRuntimePermit`：当前执行取得许可，旧 epoch 与已终态拒绝 | Covered |
