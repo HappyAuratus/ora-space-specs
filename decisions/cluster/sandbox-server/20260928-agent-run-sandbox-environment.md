@@ -6,8 +6,8 @@ status: proposed
 
 为了在本地跑通 Agent 运行，Sandbox Server 创建沙盒容器时增加一份由部署提供的环境变量文件，
 把其中的变量原样注入 Node 容器（用于 Agent 调用模型的凭据，例如 `ANTHROPIC_API_KEY`）；沙盒网络保持
-可出网，供插件下载与模型调用；cluster Compose 增加 MinIO 作为 Cloud 的对象存储，并同时接入沙盒网络，
-使 Node 能用 Cloud 签发的预签名 URL 直接上传。
+可出网，供插件下载与模型调用；cluster Compose 增加 S3 兼容对象存储（当前按用户指定使用 RustFS）作为
+Cloud 的对象存储，并同时接入沙盒网络，使 Node 能用 Cloud 签发的预签名 URL 直接上传。
 
 本 ADR 处于 `proposed`，继承 [Docker 沙盒生命周期决策](20260926-docker-sandbox-lifecycle-via-substrate-effects.md)
 与其根决策 [Docker 标签解析](0-docker-label-resolver.md)。它落实
@@ -42,12 +42,19 @@ D1 的 `public_endpoint`。只适用于本地联调，不代表生产 Substrate 
 `ora-sandboxes` 保持为非 internal 的 bridge 网络，沙盒可以访问插件 release 地址与模型 API。第一版不做出网
 白名单。
 
-### D3：MinIO 同时接入 Compose 默认网络与沙盒网络
+### D3：RustFS 同时接入 Compose 默认网络与沙盒网络
 
-- Compose 增加 `minio` 服务与一次性建桶任务；Cloud 的 `object_store.endpoint` 为 Compose 网络内地址，
-  `public_endpoint` 为 MinIO 在沙盒网络上的地址，预签名 URL 使用后者。
-- MinIO 是 cluster 中除 Sandbox Server 外唯一接入沙盒网络的服务；Node 能访问的只有它的 S3 端口，
+- Compose 增加 `objectstore` 服务（镜像 `rustfs/rustfs:latest`）、一次性凭据生成任务与一次性建桶任务；
+  凭据与对象数据都放在持久卷，重复启动不重置凭据，重复建桶不清空已有对象。Cloud 的
+  `object_store.endpoint` 为 Compose 网络内地址，`public_endpoint` 为 RustFS 在沙盒网络上的别名地址
+  （默认 `ora-revisions`），预签名 URL 使用后者。
+- 存储管理员凭据只挂载给建桶任务与 Cloud 等可信服务；Node 不持有凭据，只使用 Cloud 签发的预签名 URL。
+- RustFS 是 cluster 中除 Sandbox Server 外唯一接入沙盒网络的服务；Node 能访问的只有它的 S3 端口，
   Controller 与 Cloud 仍不在沙盒网络上。
+
+选择 RustFS 而不是 MinIO 是用户指定的部署选择；决策只依赖 S3 兼容接口（预签名 PUT、HEAD、
+path-style 寻址），换用其他 S3 兼容服务不改变本决策的网络与凭据边界。`latest` 标签会变化，验收时记录
+实际镜像摘要以便追溯。
 
 ## 不变量
 
@@ -60,10 +67,11 @@ D1 的 `public_endpoint`。只适用于本地联调，不代表生产 Substrate 
 | 方案 | 取舍 |
 |---|---|
 | 凭据放进 `ORA_NODE_CONFIG` | 少一个参数；Node 配置被 journal 与日志视为非敏感内容，混入凭据会泄露 |
-| MinIO 只在 Compose 默认网络，Cloud 代理上传 | 沙盒网络更封闭；但 Cloud 要中转大文件，违背 Revision 直传的决策 |
+| 对象存储只在 Compose 默认网络，Cloud 代理上传 | 沙盒网络更封闭；但 Cloud 要中转大文件，违背 Revision 直传的决策 |
 | 沙盒网络设为 internal、经代理出网 | 更接近生产隔离；本地联调没有需要，另作安全决策 |
 
 ## 落地
 
-Sandbox Server 增加参数与注入（单元测试覆盖变量名校验与不写 journal）；Compose 增加 MinIO、建桶任务、
-env 示例与 Cloud 配置；README 更新。
+Sandbox Server 增加参数与注入（单元测试覆盖变量名校验与不写 journal）；Compose 增加 RustFS、凭据与建桶
+任务、env 示例与 Cloud 配置；README 更新。其中 RustFS、凭据、建桶与 Cloud `object_store` 配置已由
+cluster#8 落地；`-node-env-file` 与 `compose/node.env.example` 尚未实现。
