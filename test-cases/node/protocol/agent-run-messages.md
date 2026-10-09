@@ -105,9 +105,9 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 授权脱敏与形状 | `revision.rs` `upload_grants_round_trip_without_exposing_the_url` | Partial |
+| 授权脱敏与形状 | `revision.rs` `upload_grants_round_trip_without_exposing_the_url`；`UploadGrantNeeded` 的 checksums 必须非空、键规范、摘要为小写规范形式（同文件 upload grant needed 用例），`ControlledDeliverRevision` 的许可必须精确对应执行、node operation 与 Node（`controlled_delivery_requires_a_matching_runtime_permit`）；desktop `apps/ora-controller/tests/workspaces/deliveries.rs::delivery_waits_for_its_permit_and_relays_checksum_bound_grants_unlogged` 以作用域内的记录型 subscriber 捕获 Controller 全部日志，断言其中没有存储主机与签名；Node 侧日志尚无同等断言 | Partial |
 | ref 与对象键校验 | `revision.rs` `deliver_revision_rejects_refs_keys_and_commits_outside_the_contract`、`revision_results_round_trip_and_keep_commits_consistent` | Covered |
-| 授权不落盘、过期重请求 | Node 测试：账本与日志中无授权；过期后发送 `UploadGrantNeeded` | Missing |
+| 授权不落盘、过期重请求 | desktop `apps/ora-node/tests/standalone/agent_sessions/delivery.rs::ended_session_is_delivered_with_requested_grants`：真实 Node 二进制完成交付后，账本文件字节中不含签名 URL；`apps/ora-node/src/revision/tests/upload.rs::grant_requests_carry_frozen_checksums_and_headers_travel_verbatim`：过期授权被丢弃并以冻结的 checksums 重新请求，`forbidden_grant_is_replaced`：403 后重新请求；Node 日志无授权尚未直接断言，Controller 重启后由 Node 在新连接上重发请求尚无真实重连测试 | Partial |
 
 ### 决策依据
 

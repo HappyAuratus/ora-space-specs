@@ -113,6 +113,10 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
 `GET .../runs/{rid}` 的结果中包含 Revision 元数据（最终 commit、是否有改动、对象大小、`deliveryState`）；
 第一版不提供下载或 diff 预览接口，对象 URL 不出现在公开 API 中。
 
+当前实现（2026-10-09）：运行的单个与列表读取都带 `revision{id, baseCommit, finalCommit, changed, bundleSize, historySize, createdAt}`，
+未登记时为 `null`；对象键、ref 与摘要同样不公开。`deliveryState` 与 `revisionId` 在运行的 `result` 中。Issue 页的 Agent
+会话面板据此显示保存结果。
+
 ## 不变量
 
 1. 对象存储凭据只在 Cloud 进程内；Controller、Node、数据库与日志中没有对象存储凭据，也不持久化上传授权。
