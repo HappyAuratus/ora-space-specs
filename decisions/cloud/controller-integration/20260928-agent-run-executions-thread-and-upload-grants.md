@@ -85,10 +85,18 @@ status: approved
 
 ### D4：上传授权
 
-`AgentRunService.GrantRevisionUpload{epoch, execution_id}` 返回
+`AgentRunService.GrantRevisionUpload{epoch, execution_id, checksums?}` 返回
 `grants[{object_key, url, method, headers, expires_at}]`：只对处于登记状态、尚无结果的交付执行签发，
 对象键必须是该执行输入中的键。它不是写提交，不携带 `submission_id`，也不在 Cloud 留下记录；重复调用签发
 新的授权。授权内容不得写入 Controller 日志。
+
+兼容实现说明（2026-09-30）：可选 `checksums` 是对象键到小写 SHA-256 的 map（v1 field 3），只允许固定输入中的
+键。Cloud 将摘要签入 `x-amz-checksum-sha256`，返回请求键的授权；不提供 map 的旧请求仍返回两个输入键的
+授权。摘要与授权均不是执行输入，刷新不改变登记。旧 wire/decoder 与 Buf breaking 有直接证据。
+
+所有返回的 PUT 头都包含签名的 `If-None-Match: *`，禁止覆盖同键对象；Controller 必须原样转交该条件。
+412 后提交原元数据声明供 Cloud HEAD 校验，不能将状态码单独当作交付成功证据。Controller 生命周期取消
+不构成 Node 终态，应保留已登记执行供重启继续。
 
 ### D5：`Watch` 增加 `ThreadCommandAvailable{run_id}`
 
@@ -106,15 +114,16 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 | `execution_work` | 控制面 | `id uuid`、`run_id`、`kind`（`agent_session \| deliver_revision`）、`input jsonb`、`target jsonb`、`available_at`、`execution_id`（登记后写入）。同一运行同时至多一个未登记的工作项（部分唯一索引） |
 | `node_executions` | 控制面 | 新种类的执行登记：`execution_id`、`kind`、`operation_id`（operation 或 IssueRun）、`work_id`（可空）、`node_id`、`input`、`result`、`dispatched_epoch`、`last_event_sequence` |
 | `node_event_receipts` | 控制面 | `(execution_id, sequence)` 主键与原始事件；Thread 事件与终态事件共用，是确认的唯一依据 |
-| `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、`delivered_at`、`delivered_execution_id` |
+| `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、单调 `queue_sequence`、`delivered_at`、`delivered_execution_id`。同事务的 created_at 相同，领取按 queue_sequence 保持接受顺序；升级保留旧 created_at/id 顺序 |
 | `revisions` | 控制面 | 见 [Revision D4](../revision/0-cloud-owned-object-store-and-verified-revisions.md) |
+| `revision_verifications`、`revision_delivery_skips` | 控制面 | Cloud 对象校验结论与未配置存储的幂等跳过记录；原 Node 声明不改写，业务 phase 由 hook 维护 |
 | `issue_runs` 新列、`space_agents`、`thread_entries`、`users` 的 git 身份列 | 业务 | 见 IssueRun、Thread、git 身份决策 |
 
 控制面提供给业务转换调用的函数：
 
 | 函数 | 作用 | 提交后 |
 |---|---|---|
-| `enqueueExecutionWork(t, run, kind, input, target, availableAt)` | 放出会话或交付工作项；输入在此固定 | `WorkAvailable` |
+| `enqueueExecutionWork(t, run, kind, input, target, availableAt)` | 放出会话或交付工作项；输入在此固定；无对象存储时交付返回 skipped 并同事务调用结算钩子 | 实际放出工作项才发 `WorkAvailable` |
 | `enqueueThreadCommand(t, run, command)` | 放出 `SubmitUserTurn`/`EndSession`，返回 `command_id` | `ThreadCommandAvailable` |
 | `createRunWorkspace(t, run)` / `deleteRunWorkspace(t, run)` | 以 `(issue_run_id, kind)` 幂等地创建运行 Workspace 及其 operation；Project 忙时返回 `busy` 值而不是错误，事务照常提交 | `OperationAvailable` |
 
@@ -125,12 +134,24 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 | `runWorkspaceSettled(t, run, ready \| failed)` | 运行 Workspace 的 `create_workspace` 进入终态的事务 | `starting` 或按 IssueRun D3 进入 `releasing` |
 | `threadEventsTakenOver(t, run, execution, events)` | `TakeOverThreadEvents`，在收据写入之后 | 分配 `seq` 写 `thread_entries`、推进 `thread_state`、把轮次标为 `delivered`、`running` |
 | `sessionEnded(t, run, execution, ended)` | 会话终态的 `TakeOverNodeEvent` | Thread `ended`、排队轮次 `discarded`、进入 `delivering` 并放出交付工作项 |
-| `deliverySettled(t, run, execution, saved(revisionId) \| unchanged(revisionId) \| failed(reason))` | 交付终态的接管事务（`revisions` 行已写入之后） | 进入 `releasing` 或按 IssueRun D5 退避放出新交付 |
+| `deliverySettled(t, run, execution, saved(revisionId) \| unchanged(revisionId) \| failed(reason) \| skipped(reason))` | 交付终态接管事务（成功时 `revisions` 行已写入）；无存储 skipped 在 enqueue 的调用方事务中，以空 execution 调用一次 | 进入 `releasing` 或按 IssueRun D5 退避放出新交付 |
 | `runWorkspaceDeleted(t, run)` | 运行 Workspace 的 `delete_workspace` 成功的事务 | `done` |
 
 - 顺序、重放与冲突只由控制面判断：钩子只收到按序号连续、首次接管的事件；重放不会再次调用钩子。
 - 钩子返回错误时整个事务回滚，Controller 不确认事件，Node 会重放；因此钩子必须对同一事件集合是确定的。
 - 业务表的 `seq`、`thread_state` 与阶段只由钩子与业务 API 写；控制面代码不直接写业务表，反之亦然。
+
+运行 Workspace 初始化成功后，生命周期 maintenance operation 交接为该 IssueRun 的 maintenance binding，
+提升 control epoch，Node 确认后才签发会话或交付许可。这个占用持续到运行 Workspace 释放，不占
+`one_project_operation`；用户操作会话与系统运行互斥。许可仍校验当前 Node/sandbox、运行和执行身份、
+epoch、触发者权限及仓库凭据可用性。触发者来自同租户同 Issue 的 `run.enqueued` 用户证据，固定为
+Workspace creator；不能改用 Issue 创建者。缺失或歧义证据返回 `run_actor_required`，交给业务侧补齐。
+
+控制面提供上述五个命名钩子的同事务接缝；业务实现必须使用调用方事务，不能在钩子里再次调用会
+开启事务的 Store 包装方法。`deliverySettled(saved/unchanged)` 仍须在 Revision 校验登记完成之后调用；
+仅接管 Node 上传成功声明不能触发成功业务转换。cloud#41 原分支后续提交已直接验收 saved/unchanged、failed、
+skipped 及同事务回滚/重放；生产 B 的 phase 投影与 C/D relay/Agent 仍需跨仓验收，详见
+[实现记录](../../../implementation/agent-control-plane-a.md)。本 ADR 保留 approved 状态，不据替身验收宣称整体现实运行已完成。
 
 为什么用命名函数而不是共享表：Thread 的顺序规则（连续序号、重放）与业务规则（轮次状态、空闲判定）由
 不同的人演进，若双方都直接写同一张表，任何一侧改动都可能破坏另一侧的不变量；函数边界让每张表只有一个

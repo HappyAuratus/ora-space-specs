@@ -2,7 +2,7 @@
 
 依据[已批准的运行时 Workspace 生命周期决策](../../../decisions/cloud/operation/0-workspace-runtime-follows-desktop-node.md)
 与[具体默认分支决策](../../../decisions/cloud/operation/20260926-require-concrete-default-branch.md)。
-本文件登记 Cloud 运行时 Workspace（表 `workspaces`）按 sandbox → node → clone 推进、丢弃 storage/worktree
+本文件登记 Cloud 运行时 Workspace（表 `workspaces`）按 sandbox → node → clone → plugin 推进、丢弃 storage/worktree
 步骤、由 Controller 代报 Node 的承诺；gRPC 形状见
 [Workspace 操作与 Node 上报用例](../controller-integration/workspace-operations-and-node-reports.md)。
 证据来自 `ora-space/cloud` 的 `integration` 包（PostgreSQL 集成测试）。
@@ -27,10 +27,11 @@ Workspace 标为 ready。
 
 - sandbox 阶段只计划 `sandbox_ensure`（请求不含仓库字段），成功证据 `sandboxInstanceId` 等于 effect ID。
 - node 阶段要求当前 generation 的 Node 已由 Controller 登记、initialized、30 秒内心跳。
-- clone 成功后写入基线提交、`admission_open = true`、Workspace `ready`；失败进入 `retry_wait`/`blocked`
+- clone 成功后写入基线提交并进入 plugin；固定插件集合为空或全部逐项结果已接管后才开放准入并 ready。
+  plugin 的直接证据见 [插件步骤用例](plugin-step-and-run-workspace.md)。clone 失败进入 `retry_wait`/`blocked`
   且保留执行记录；未知保持 `blocked`，不自动重试。
 - 一个 operation 的 clone 阶段至多一个进行中的执行；重试是新执行。
-- `start` 走 sandbox → node → done，不再 clone。
+- `start` 走 sandbox → node → plugin → done，不再 clone。
 
 ### 禁止结果
 
@@ -42,7 +43,7 @@ clone 未成功时开放准入；计划 `storage_ensure`、`worktree_ensure`、`
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 新步骤表与只计划保留的 effect | `integration/workspace_lifecycle_test.go` `TestWorkspaceStepsPlanOnlyRetainedEffects`：create_project、create_workspace、stop、start 各自计划的 effect 种类与 clone 执行数；计划退役 kind 返回 `invalid_step`，数据库拒绝退役行 | Covered |
-| clone 成功才开放准入 | `integration/workspace_operations_grpc_test.go` `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：Node 已连接、进入 clone 步骤时执行准入返回 `execution_closed`，clone_ready 后才写入 `baseCommitId` 并开放准入 | Covered |
+| clone 成功才开放准入 | `integration/workspace_operations_grpc_test.go` `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：空插件集合时 clone_ready 后写入基线并开放准入；非空集合由 `TestRunWorkspaceAndPluginStep` 证明 plugin 完成前仍关闭 | Covered |
 | clone 失败与未知的处理 | `integration/workspace_lifecycle_test.go` `TestCloneFailureRetriesAsNewExecutionAndUnknownBlocks`：失败进入 `retry_wait`/`clone_failed` 并保留执行记录、准入保持关闭、重试为第二个执行；未知结果阻止登记第二个执行、不能推进，`blocked` 后不再被领取 | Covered |
 
 ### 决策依据

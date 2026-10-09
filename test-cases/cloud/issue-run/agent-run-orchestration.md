@@ -2,8 +2,17 @@
 
 依据[已批准的 IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md)，
 事务边界见 [controller-integration D6](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
-本文件登记 Agent IssueRun 从评论触发到释放运行 Workspace 的阶段承诺。证据预期来自 `ora-space/cloud` 的
-`integration` 包（PostgreSQL 集成测试）；实现尚未开始，全部为 `Missing`。
+本文件登记 Agent IssueRun 从评论触发到释放运行 Workspace 的阶段承诺。证据来自 `ora-space/cloud` 的 `integration` 包
+（真实 HTTP/gRPC 与 PostgreSQL，部分以 simulator 扮演 Controller/Node）和 `internal/core` 包（白盒 PostgreSQL 测试，经生产
+钩子驱动结算、派发与释放）。
+
+跨仓库真实链路证据来自 cluster 的 M2 验收（`task agent:session:acceptance` 与 `task agent:session:browser`，见
+[agent-session-acceptance](https://github.com/ora-space/cluster/blob/main/docs/agent-session-acceptance.md)）：真实
+Gateway/Cloud/Controller/Node 与 Deno 运行的 echo agent 上，@agent 评论创建运行；Thread 依次出现 `meta`、echo 回复与
+`turnEnded` 并进入 `idle`；订阅者收到 SSE `issue_run.thread_appended`；追加的用户轮次变为 `delivered` 并得到回复；结束会话后
+`threadState` 为 `ended`，会话结果为 `agent_session_ended/user_ended`；未配置对象存储时交付记为 `skipped`，运行 Workspace
+被删除，运行以 `phase = done` 完成。该验收发现并修复了（ora-space/cloud#46）Cloud 把同一轮里 agent 的记录当作回显丢弃的问题。
+验收失败只能说明端到端链路断开，不能单独定位到下列某条义务，因此只作为补充引用，不据此标记 `Covered`。
 
 ## Agent Target Requires A Project
 
@@ -32,8 +41,8 @@ Task Mode 评论的 `targets` 含该 Agent。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 无 Project 时整条评论拒绝 | 集成测试：无 `project_ref` 时评论返回 `issue_project_required`，评论与运行计数不变 | Missing |
-| 运行输入固定插件版本 | 集成测试：创建运行后升级 Space 插件版本，运行输入与后续会话工作项中的版本不变 | Missing |
+| 无 Project 时整条评论拒绝 | `integration/agent_target_project_gate_test.go::TestAgentTargetMissingProjectAtomicRollback`：无 `project_ref` 时返回 `409 issue_project_required`，评论、运行、交互与 Timeline 活动都为 0；`::TestAgentTargetNonexistentProjectRejected`：不存在的 Project 同样整条拒绝；`::TestAgentTargetResolvesAndSnapshots`：有 Project 时创建运行并固定插件 ID 与版本 | Covered |
+| 运行输入固定插件版本 | `integration/agent_target_project_gate_test.go::TestAgentRunSnapshotPinsPluginVersion`：升级 Space 插件到 2.0.0 后，已有运行输入仍为 1.0.0，新运行为 2.0.0；`integration/agent_run_control_test.go::TestSessionWorkIsRegisteredOnTheCloudChosenNode`：登记会话执行时改写 `agentPluginVersion` 的输入以 `CONFLICT` 拒绝。缺口：没有测试在升级后经会话启动扫描生成会话工作项，断言其中的版本仍取运行输入（后者的输入是手写的）。M2 真实链路验收也只断言运行输入固定插件 ID 与版本 | Partial |
 
 ### 决策依据
 
@@ -68,10 +77,10 @@ IssueRun D1、D2，不变量 6、7。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 完整阶段链 | 集成测试：以 simulator 扮演 Controller/Node 驱动一次运行到 `done`，逐步断言阶段、`status` 与放出的工作 | Missing |
-| Project 忙时排队 | 集成测试：同一 Project 已有进行中的 operation，运行保持 `queued`，operation 结束后派发循环创建运行 Workspace | Missing |
-| 建 Workspace 失败 | 集成测试：`create_workspace` 失败后运行进入 `releasing`/`failed` 并创建 `delete_workspace` | Missing |
-| 钩子失败回滚 | 集成测试：注入业务钩子错误，控制面收据与业务阶段都未写入，重放后成功 | Missing |
+| 完整阶段链 | `integration/agent_run_delivery_test.go::TestFullLifecycleSessionEndToDoneSkipsNoPhase`：从 `starting` 依次经过 `running → delivering → releasing → done`，终态为 `done/completed/ended`、Revision 已登记、恰好一个成功的 delete；`internal/core/agent_run_settle_db_test.go::TestPhase2ASettleReady`：`create_workspace` 成功把 `provisioning` 推进到 `starting`；`integration/agent_run_thread_events_test.go::TestOnlyTheFirstRecordAdvancesRunning`：声明会话、POST、命令登记都不推进，只有首条 Node 记录进入 `running`；`integration/agent_run_session_end_test.go::TestSessionEndedEndsThreadDiscardsQueuedAndReleasesDelivery`：终态接管恰好放出一个未登记的交付工作项。缺口：没有一个测试从 `queued` 经 `provisioning` 连续驱动到 `done`；“`starting` 放出恰好一个会话工作项”只在测试辅助函数里以“存在工作项”检查，没有计数断言；Agent 会话不占用 operation 没有直接断言。M2 真实链路验收以真实 Controller/Node 把一次运行从评论驱动到 `done`（交付 `skipped`） | Partial |
+| Project 忙时排队 | 缺口：派发器在 `createRunWorkspace` 返回 `busy` 时保持 `queued`（`internal/core/agent_run_dispatcher.go`），但没有测试以忙 Project 调用派发并断言运行保持 `queued`、operation 结束后再创建运行 Workspace；`seedDispatchScene` 支持 busy 参数但没有测试使用。`TestRunWorkspaceAndPluginStep` 的 busy 只针对删除，不是本义务 | Missing |
+| 建 Workspace 失败 | `internal/core/agent_run_settle_db_test.go::TestPhase2ASettleWorkspaceFailure`：`failed` 结果使运行进入 `releasing`、`status = failed`、`failure_reason = workspace_unavailable`，为该运行 Workspace 恰好声明一个 delete，并写一条 `run.failed`；`integration/agent_workspace_failure_hook_test.go::TestWorkspaceFailedHookAndForceEvidenceCommitTogether`：失败钩子与控制面证据同事务提交。缺口：`blocked` 超过 30 分钟进入失败没有测试 | Partial |
+| 钩子失败回滚 | `integration/agent_hook_atomicity_test.go::TestSessionEndedHookRollsBackAndReplaysOnce`：注入会话结束钩子错误，收据、执行结果与钩子写入全部回滚，重放后成功且钩子只执行一次；`::TestWorkspaceReadyAndDeletedHooksShareTheOperationTransaction`：就绪与删除钩子失败时准入与删除都不提交，重放后成功一次；`integration/agent_run_boundary_test.go::TestThreadBusinessHookSharesTheTakeoverTransaction`：Thread 接管钩子失败时收据与序号都不写入，重放后成功一次；`integration/agent_run_session_end_test.go::TestSessionEndedHookFailureRollsBackTheWholeTakeover`：生产钩子失败时收据、序号、Thread、轮次状态、交付工作与阶段都不变 | Covered |
 
 ### 决策依据
 
@@ -106,9 +115,9 @@ Revision 未登记就删除运行 Workspace，Agent 的修改丢失；或交付�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 未结算不释放 | 集成测试：交付失败时运行保持 `delivering`、无 `delete_workspace`，新交付工作项的 `available_at` 符合退避 | Missing |
-| 放弃上限 | 集成测试：以注入时钟推进 2 小时，运行进入 `releasing` 且 `deliveryState = failed` | Missing |
-| 取消是请求 | 集成测试：`running` 时取消只放出 `EndSession{cancelled}`，会话结束并交付后以 `cancelled` 结束；`starting` 时取消直接进入 `releasing`、`deliveryState = skipped` | Missing |
+| 未结算不释放 | `integration/agent_run_delivery_test.go::TestFailedDeliveryKeepsDeliveringAndReleasesOneBackoffRetry`：交付失败后运行保持 `delivering/running`、没有 delete，恰好放出一个 30 秒退避、尚不可领取的新交付工作项；`internal/core/agent_run_release_db_test.go::TestDeliveryRetryBackoffFollowsD5sNumbers`：退避 30 秒起、翻倍、10 分钟封顶；`integration/agent_run_delivery_test.go::TestRevisionVerificationFailureIsCloudsOwnVerdict`：对象校验不符时由 Cloud 判定失败，不登记 Revision | Covered |
+| 放弃上限 | `integration/agent_run_delivery_test.go::TestDeliveryGiveUpReleasesTheRunWithD5StateAndD4Status`：连续失败窗口与 Node 不可达窗口到期都使运行进入 `releasing`、`deliveryState = failed`、`revisionId` 为 null，`status` 取自会话结束原因，恰好一个 delete；`::TestGiveUpStaleDeliveriesPassReleasesOnItsOwnClock`：无 Node 上报时放弃扫描按 Cloud 时钟释放，重复扫描不再写入。缺口：测试把窗口配置为 1ns 或回拨心跳，默认值 2 小时/30 分钟（`internal/config/config.go`）没有测试断言 | Partial |
+| 取消是请求 | `internal/core/agent_run_thread_end_db_test.go::TestCancelWithASessionEndsTheThread`：已声明会话（`starting` 的 `pending`、`active`、`idle`）时取消只把 Thread 置为 `ending` 并放出一个 `EndSession{cancelled}`，阶段不变；`::TestCancelWithoutASessionReleasesTheRun`：尚无会话时取消直接进入 `releasing/cancelled`、`deliveryState = skipped` 并声明一个 delete；`::TestCancelDuringProvisioningIsLeftToSettlement`：`provisioning` 的取消留给建 Workspace 结算，不声明 delete；`integration/agent_run_release_giveup_test.go::TestG032_8_BusinessStatusMatrixSurvivesTheGiveUp`（cancelled 子用例）：以 `cancelled` 结束的会话经交付后 `status = cancelled` | Covered |
 
 ### 决策依据
 

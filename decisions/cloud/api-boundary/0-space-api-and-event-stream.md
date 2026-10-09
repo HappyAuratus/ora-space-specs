@@ -4,6 +4,8 @@ status: implemented
 
 # Space API 与 Space 级失效事件流：REST 为权威，SSE 只做失效通知
 
+> 后续已批准决策：[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)区分概况与受限内容，并约束详情、重试和事件入口，状态为 `approved`。本文保留原状态；接口实现及生成契约尚需同步。
+
 > 历史决策：REST 为权威、SSE 只做失效通知仍适用；下文的空间创建、归档及空间成员写 API 已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前使用租户级成员管理和一租户一空间接口。
 
 Cloud 公开 API 新增 `/api/v1/tenants/:tid/spaces` 路由族（Space CRUD、成员 upsert、Space 作用域

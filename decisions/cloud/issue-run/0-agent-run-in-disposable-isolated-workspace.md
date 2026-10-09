@@ -62,9 +62,11 @@ CRUD，前端 agents 页继续用 mock，直到另立决策。
 - Task Mode 选择 `agent` 目标时，Issue 必须已设置 `project_ref`，否则评论以 `409 issue_project_required`
   拒绝，整条评论不写入。拒绝而不是排队，是因为没有 Project 就没有仓库，运行永远无法开始，
   `queued` 会误导用户。
-- 每个 Agent IssueRun 恰好对应一个运行 Workspace：`kind = isolated`，owner 为触发用户，`requestedRef`
+- 每个 Agent IssueRun 恰好对应一个运行 Workspace：`kind = isolated`，运行创建者与操作 actor 为触发用户，`requestedRef`
   为 Project 默认分支（[默认分支决策](../operation/20260926-require-concrete-default-branch.md) D2）。
   `issue_runs` 新增 `workspace_id`，`workspaces` 新增 `issue_run_id`，两者互相唯一引用。
+  此处触发用户对应已有运行时权限模型的不可变 `creator_user_id` 与 operation actor；历史
+  `owner_user_id` 继续遵循 Project durable owner 复合外键，不因运行触发而重写。
 - 运行 Workspace 不出现在用户的 Workspace 列表中，只能经 IssueRun 访问；它不接受其他 IssueRun 或交互式会话。
 
 一次运行一个 Workspace 延续 Revision 方案的“同一 Workspace 内执行串行、并行任务独立 Workspace”：

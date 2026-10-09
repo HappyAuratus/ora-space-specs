@@ -25,10 +25,10 @@ Cloud 配置新增 `object_store` 段，均可由 `CLOUD_OBJECT_STORE_*` 环境�
 
 | 字段 | 含义 |
 |---|---|
-| `endpoint` | S3 兼容端点 URL（本地为 cluster 中的 MinIO） |
+| `endpoint` | S3 兼容端点 URL（当前 cluster 按用户指定使用 RustFS） |
 | `region` | 签名区域 |
 | `bucket` | Revision 对象所在的桶 |
-| `path_style` | 是否使用 path-style 寻址（MinIO 需要） |
+| `path_style` | 是否使用 path-style 寻址（当前 RustFS 联调开启） |
 | `access_key_id_file`、`secret_access_key_file` | 凭据文件路径；凭据值不进入配置文件、日志或数据库 |
 | `upload_grant_ttl` | 单个上传授权的有效期，proposed 默认 15 分钟 |
 | `public_endpoint` | 可选；签发给 Node 的 URL 所用端点，用于 Node 与 Cloud 看到的地址不同的部署 |
@@ -56,11 +56,16 @@ revisions/{tenantId}/{runId}/{deliveryWorkId}/session.jsonl
   工作项 ID；每次重试是新的工作项，不会覆盖上一次尝试的对象，失败尝试的残留对象可按前缀清理。
 - 预签名 URL 只对单个键、`PUT` 方法和 `upload_grant_ttl` 有效，并要求 `x-amz-checksum-sha256` 头，
   由 S3 在写入时校验内容与 Node 声明的摘要一致。
+- 所有 PUT 授权（含旧版请求）将 `If-None-Match: *` 签入请求，只能首次创建对象；不能移除该条件或用
+  尚未过期的另一张授权覆盖已验证对象。重复 PUT 返回 412 时仍须将原声明交由 Cloud 校验大小和摘要，
+  不能凭状态码推断相同内容。这样外部 HEAD 与 SQL 提交之间及提交之后的对象均不会被上传能力改写。
 
 ### D3：上传授权不属于执行输入，可以随时重新申请
 
 - 上传授权（URL、需要附带的头、过期时间）由 Controller 在向 Node 下发交付执行之后调用
-  `GrantRevisionUpload(execution_id)` 获取，并以非持久消息交给 Node；Node 过期后可请求新的授权。
+  `GrantRevisionUpload(execution_id, checksums?)` 获取，并以非持久消息交给 Node；Node 过期后可请求新的授权。
+- 当前实现以可选 checksum map 接收 Node 预先算出的对象 SHA-256，签入 PUT 头；map 只含固定输入中的键，
+  属于本次授权请求，不属于持久执行输入。旧 v1 请求仍可解码且保留缺省授权响应。
 - 授权不写入执行登记、提交记录、Node 账本或日志；它是短期持有者凭据。执行输入只包含对象键，因此同一
   执行重传时输入不变，幂等规则不受授权刷新影响。
 - 只有交付执行尚无结果、且运行处于 `delivering` 时 Cloud 才签发授权；否则 `FAILED_PRECONDITION`
@@ -71,10 +76,17 @@ revisions/{tenantId}/{runId}/{deliveryWorkId}/session.jsonl
 Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, size, sha256}, history{key, size, sha256}}`
 或 `unchanged{...}` 或 `failed{reason}`）后，Cloud 按以下顺序处理：
 
-1. 事务外：对每个声明的对象调用 `HEAD`（带 checksum 模式），确认存在、大小与 SHA-256 与声明一致。
-2. 事务内：接管交付事件（收据规则同 clone），写入 `revisions` 行，运行进入 `releasing`。
-3. 校验不一致或对象不存在：接管事件，但把交付执行结果记为 `failed{verification_failed}`，按 IssueRun D5
-   重试新的交付执行；不登记 Revision。
+1. 先比对声明与交付工作项的固定输入：`revisionRef`、`baseCommit` 与对象键必须与输入一致，对象声明必须
+   形状合法（SHA-256 为 32 字节十六进制、大小非负、键不混用）。不一致在接管**之前**拒绝：与本次尝试矛盾的
+   声明返回 `ABORTED`/`CONFLICT`（`result_conflict`），形状不合法返回 `INVALID_ARGUMENT`/`INVALID_INPUT`
+   （`invalid_result`）。拒绝不访问对象存储，不写收据、持久结果、验证结论或 Revision，不推进序号，运行保持
+   `delivering`；该交付尝试随后按 IssueRun D5 的放弃窗口收敛（`GiveUpStaleDeliveriesOnce`）。
+2. 事务外：对每个声明的对象调用 `HEAD`（带 checksum 模式），确认存在、大小与 SHA-256 与声明一致。
+3. 事务内：接管交付事件（收据规则同 clone），写入 `revisions` 行，运行进入 `releasing`。
+4. 对象校验不一致或对象不存在：接管原 Node 事件，在独立 Cloud 验证结论（`revision_verifications`）中记
+   `failed{verification_failed}`，同事务调用失败的 deliverySettled，按 IssueRun D5 重试新交付；不登记 Revision。
+   原 Node 成功声明与原始事件保留在 `node_executions.result`，不以 Cloud 推断覆盖；Node 不能在自己的结果中
+   代替 Cloud 报告 `verification_failed`。网络失败不接管、不 ACK，可重放。
 
 `revisions` 表：`id`、`tenant_id`、`run_id`、`workspace_id`、`project_id`、`repository_url`、`base_commit`、
 `final_commit`、`revision_ref`、`bundle_key/bundle_size/bundle_sha256`（无改动时为空）、
@@ -85,17 +97,32 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
   Controller 以同一提交身份重试即可，对象不变。
 - 为什么由 Cloud 而不是 Controller 校验：Cloud 登记 Revision 就是在承诺“这些对象存在且可恢复”，承诺方应
   亲自验证；Controller 转述 Node 的“已上传”正是 Revision 方案否定的交付证据。
+- 为什么与输入矛盾的声明在接管前拒绝，而不是接管后记 `verification_failed`：这类矛盾不需要对象存储就能判定，
+  且说明结果不属于这次尝试（指向别的引用、基础提交或对象键）；接管它会把一份不可信的声明写成该执行的持久
+  结果。控制面根决策已允许以 `CONFLICT` 表达结果冲突，拒绝后执行仍无结果，由放弃窗口而不是一份伪造的终态
+  收敛。代价是这类尝试不会立即触发重试，要等放弃窗口到期。
+
+当前实现说明：外部 HEAD 后再次检查租约、执行身份/输入、非终态 run、maintenance binding、Workspace 准入及
+当前 Node/sandbox，再把原结果、收据、验证结论、Revision、业务 hook 同事务提交；重复接管不重新访问存储，
+已结算执行的重放只接受逐字节相同的事件。`delivering`/`releasing` phase 由 Cloud 业务钩子（`OnDeliverySettled`）
+在同一事务中维护。相关直接验收及草案差异见[实现记录](../../../implementation/agent-control-plane-a.md)；
+本 ADR 仍为 proposed。
 
 ### D5：公开读取只暴露元数据
 
 `GET .../runs/{rid}` 的结果中包含 Revision 元数据（最终 commit、是否有改动、对象大小、`deliveryState`）；
 第一版不提供下载或 diff 预览接口，对象 URL 不出现在公开 API 中。
 
+当前实现（2026-10-09）：运行的单个与列表读取都带 `revision{id, baseCommit, finalCommit, changed, bundleSize, historySize, createdAt}`，
+未登记时为 `null`；对象键、ref 与摘要同样不公开。`deliveryState` 与 `revisionId` 在运行的 `result` 中。Issue 页的 Agent
+会话面板据此显示保存结果。
+
 ## 不变量
 
 1. 对象存储凭据只在 Cloud 进程内；Controller、Node、数据库与日志中没有对象存储凭据，也不持久化上传授权。
 2. Node 只能写入 Cloud 为本次交付尝试（交付工作项）指定的对象键。
 3. Revision 只在 Cloud 亲自校验对象存在且 SHA-256 一致后登记。
+3a. 与交付输入矛盾或形状不合法的声明在接管前被拒绝，不访问对象存储、不留下任何持久记录。
 4. 同一交付执行的输入在授权刷新后不变。
 5. 无改动的运行也有 Revision 记录，且没有 bundle。
 6. 未配置对象存储时交付明确记为 `skipped`，不登记 Revision。
@@ -119,9 +146,9 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
 
 ## 落地顺序
 
-1. 配置与对象存储客户端（签发、HEAD 校验），以本地 MinIO 的集成测试覆盖签发 URL 只能写指定键、
+1. 配置与对象存储客户端（签发、HEAD 校验），以真实 S3 兼容服务（当前 RustFS）的集成测试覆盖签发 URL 只能写指定键、
    checksum 不一致被拒、HEAD 校验失败不登记。
 2. `revisions` 迁移与交付接管事务；`GrantRevisionUpload`。
-3. cluster Compose 增加 MinIO 与 Cloud 的 `object_store` 配置。
+3. cluster Compose 增加 S3 兼容服务（当前 RustFS）与 Cloud 的 `object_store` 配置。
 
 保持不变：已有配置与 API。开始改变：Agent 运行保存 Revision。

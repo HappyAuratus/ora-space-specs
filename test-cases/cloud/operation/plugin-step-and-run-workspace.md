@@ -2,7 +2,10 @@
 
 依据[已批准的 operation 后续决策](../../../decisions/cloud/operation/20260928-plugin-step-and-run-workspace-release.md)。
 本文件登记 Workspace 在插件安装后才开放准入、插件不再经 Substrate、运行 Workspace 只由 IssueRun 建删的承诺。
-证据来自 `ora-space/cloud` 的 `integration` 包。在途插件 operation 被迁移退回步骤起点这一条，还没有单独的升级夹具。
+直接证据来自 [cloud#41](https://github.com/ora-space/cloud/pull/41) 的 `integration` 包。M1 真实联调由 [cluster `task plugin:acceptance`](https://github.com/ora-space/cluster/blob/main/docs/plugin-step-acceptance.md) 补充：
+真实 Gateway/Cloud/Controller/Sandbox Server/Node 下，创建操作在 clone 后经过 plugin 步骤，采样确认结算前
+`admission_open` 始终为 false，Node 把发布包落到 Workspace 数据卷，Cloud 接管 Node 事件写回 `installed`。
+该验收只覆盖全部成功的路径；单项失败、整体失败与结果未知仍以上述集成测试为证据。
 
 ## Workspace Opens Admission Only After The Plugin Step
 
@@ -33,10 +36,10 @@ Space 有 `desired_state = installed` 的插件，其中一个的 release 无法
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 步骤表与准入时机 | `integration.TestRunWorkspaceAndPluginStep`：停在 `plugin` 步骤时准入关闭，结果接管后才开放 | Covered |
-| 单项失败不阻塞 | 同上：一项 `checksum_mismatch` 后 Workspace 仍 `ready`，实例记下失败原因 | Covered |
-| 输入固定 | 同上：登记与快照不同的插件输入返回 `CONFLICT` | Covered |
-| 不再计划插件 effect | `TestPluginEffectChainAndEvidence` 拒绝插入 `plugin_ensure`；`TestRunWorkspaceAndPluginStep` 拒绝 `PlanEffect`。在途 operation 退回步骤起点只有迁移 SQL，没有升级夹具 | Partial |
+| 步骤表与准入时机 | `TestRunWorkspaceAndPluginStep`：clone 后 plugin 未完成不开放准入，接管结果后 ready；`TestStartPluginPlanSurvivesSelectionChangesAndExecutionFailures`：非空 start 失败保持关闭、新执行重试，未知结果 blocked、不重新派发 | Covered |
+| 单项失败不阻塞 | `TestRunWorkspaceAndPluginStep`：checksum_mismatch 保存在实例，Workspace ready，Space Agent 仍 active；`TestPluginEvidenceMustCoverThePlanExactly` 拒绝重复、缺失及种类不符的结果 | Covered |
+| 输入固定 | `TestRunWorkspaceAndPluginStep` 拒绝额外输入；`TestStartPluginPlanSurvivesSelectionChangesAndExecutionFailures` 在快照后新增 Space 插件，深比较原执行输入与失败重试输入不变 | Covered |
+| 不再计划插件 effect | `TestRunWorkspaceAndPluginStep` 拒绝新 PlanEffect/旧插件上报；`TestAgentUpgradeRetainsHistoricalPluginEffectsAndRestartsNodeStep` 从真实 0023 升级并重复迁移，保留在途旧 effect 与请求，重置 plugin 步骤，新插件 effect 数据库写入拒绝 | Covered |
 
 ### 决策依据
 
@@ -70,8 +73,9 @@ operation 后续决策 D1、D2、D3，不变量 1–4。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 公开 API 不可见 | `integration.TestRunWorkspaceAndPluginStep`：GET 为 `404`，项目 Workspace 列表不包含它 | Covered |
-| 幂等建删 | 同上：两次创建只有一个 Workspace 和一个 `create_workspace`。创建尚未结束时删除返回 busy；重复删除本身未单独断言 | Partial |
+| 公开 API 不可见 | `TestRunWorkspaceAndPluginStep` 直接断言 GET/list 隐藏及 POST start/stop、DELETE 返回 404 | Covered |
+| 幂等建删 | `TestRunWorkspaceAndPluginStep` 重复创建只有一行 Workspace/create operation、忙时删除返回 busy；`TestSimulatorServicesEndCommandsWhileRunDeletionIsQueued` 覆盖运行结束后删除与重复删除仅一个 operation | Covered |
+| 业务与控制证据同事务 | `TestWorkspaceReadyAndDeletedHooksShareTheOperationTransaction`、`TestWorkspaceFailedHookAndForceEvidenceCommitTogether`：ready/failed/deleted 钩子使用调用方 sql.Tx，故障使业务与控制证据共同回滚，重放只生效一次 | Covered |
 
 ### 决策依据
 

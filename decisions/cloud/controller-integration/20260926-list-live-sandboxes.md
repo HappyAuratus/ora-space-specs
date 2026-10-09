@@ -4,6 +4,8 @@ status: implemented
 
 # Internal Control gRPC 增加只读 ListLiveSandboxes，供 Controller 重启后重建 Node 会话
 
+> 后续已批准决策：[运行时控制同步交付](20260927-fenced-runtime-control-delivery.md)增加控制身份验证、运行时操作绑定与旧执行隔离，状态为 `approved`，尚未实现。本文保留原状态；恢复会话能力不等同于多人独占授权。
+
 `WorkspaceOperationService` 以只增不改的方式增加 `ListLiveSandboxes(epoch)`：返回租约持有者应当持有 Node
 会话的全部 sandbox，每项带 sandbox 记录、`sandbox_ensure` 报告的 `node_id` 与该 sandbox 未结束的 Node 记录。
 它是只读的：不领取 operation、不改变任何 version，只受租约 fencing。

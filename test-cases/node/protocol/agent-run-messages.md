@@ -35,7 +35,7 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 |---|---|---|
 | 线上形状与记录上限 | `agent_session.rs` `thread_events_round_trip_and_bound_the_record`：非对象记录解码失败，超过 `MAX_THREAD_RECORD_BYTES` 被双向拒绝 | Partial |
 | 终态在结果族中可区分 | `agent_session.rs` `session_end_round_trips_as_event_and_completed_status`：终态事件与 Completed 查询都解码为会话结果族，自由文本 `detail` 被拒绝 | Partial |
-| 持久化、窗口与重放 | `ora-node-db` 的 `exact_ack_and_sequence_survive_reopen`、`failed_event_rolls_back_all_session_effects` 证明落盘、精确 ACK 和重开序号；生产发送、256 窗口和重连接线尚未实现 | Partial |
+| 持久化、窗口与重放 | `exact_ack_and_sequence_survive_reopen`、`failed_event_rolls_back_all_session_effects` 证明账本事务；`window_bounds_delivery_without_blocking_queries_and_reconnect_replays_exactly` 通过真实 Node 验证 256 窗口、重复 ACK 不多释放位置、窗口满仍响应查询、重开按原内容重放到终态 | Covered |
 
 ### 决策依据
 
@@ -70,7 +70,8 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 命令与回复形状 | `agent_session.rs` `session_commands_and_replies_round_trip`：四种消息往返，`command_id` 必填且非空 | Partial |
-| 去重、顺序与终态拒绝 | `ora-node-db` 的 `commands_are_ordered_deduplicated_and_discarded_at_end` 证明持久队列规则；实际协议受理回复、唤醒与拒绝回复尚未接线 | Partial |
+| 去重、顺序与终态拒绝 | `commands_are_ordered_deduplicated_and_discarded_at_end` 证明持久队列规则；`session_commands_use_the_production_ledger_and_installer_catalog` 通过真实 IPC 验证重复受理回复只执行一次、终态后回复拒绝及 JSONL 与 Thread 一致 | Covered |
+| 运行许可与关闭 | `controlled_session_start_round_trips_and_binds_exact_identity` 验证许可身份；`controlled_start_and_command_closure_use_original_runtime_authority` 验证真实 Node 受控启动及关闭后拒绝命令；`session_command_authority_expires_and_closes_without_losing_existing_work` 验证账本过期、刷新与 incarnation 隔离 | Covered |
 
 ### 决策依据
 
@@ -104,9 +105,9 @@ Thread 事件与终态事件序号冲突或出现空洞，Controller 无法按�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 授权脱敏与形状 | `revision.rs` `upload_grants_round_trip_without_exposing_the_url` | Partial |
+| 授权脱敏与形状 | `revision.rs` `upload_grants_round_trip_without_exposing_the_url`；`UploadGrantNeeded` 的 checksums 必须非空、键规范、摘要为小写规范形式（同文件 upload grant needed 用例），`ControlledDeliverRevision` 的许可必须精确对应执行、node operation 与 Node（`controlled_delivery_requires_a_matching_runtime_permit`）；desktop `apps/ora-controller/tests/workspaces/deliveries.rs::delivery_waits_for_its_permit_and_relays_checksum_bound_grants_unlogged` 以作用域内的记录型 subscriber 捕获 Controller 全部日志，断言其中没有存储主机与签名；Node 侧日志尚无同等断言 | Partial |
 | ref 与对象键校验 | `revision.rs` `deliver_revision_rejects_refs_keys_and_commits_outside_the_contract`、`revision_results_round_trip_and_keep_commits_consistent` | Covered |
-| 授权不落盘、过期重请求 | Node 测试：账本与日志中无授权；过期后发送 `UploadGrantNeeded` | Missing |
+| 授权不落盘、过期重请求 | desktop `apps/ora-node/tests/standalone/agent_sessions/delivery.rs::ended_session_is_delivered_with_requested_grants`：真实 Node 二进制完成交付后，账本文件字节中不含签名 URL；`apps/ora-node/src/revision/tests/upload.rs::grant_requests_carry_frozen_checksums_and_headers_travel_verbatim`：过期授权被丢弃并以冻结的 checksums 重新请求，`forbidden_grant_is_replaced`：403 后重新请求；Node 日志无授权尚未直接断言，Controller 重启后由 Node 在新连接上重发请求尚无真实重连测试 | Partial |
 
 ### 决策依据
 

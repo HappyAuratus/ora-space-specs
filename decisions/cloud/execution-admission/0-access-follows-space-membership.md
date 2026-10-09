@@ -4,6 +4,8 @@ status: implemented
 
 # 执行访问准入跟随 Space 成员身份
 
+> 后续已批准决策：[独占操作准入](20260927-exclusive-runtime-control.md)增加操作会话、冲突写活动和安全交接，状态为 `approved`。目标规则以其继承表为准，现有成员准入尚未提供这些保障；本文保留原状态。
+
 > 历史决策：已准入任务按原生命周期收尾的规则保留；下文的独立空间成员表已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前新访问与准入核验活动租户成员身份。
 
 `/internal/v1/access` 与 `/internal/v1/admissions` 的用户侧授权从「project owner 专属」改为

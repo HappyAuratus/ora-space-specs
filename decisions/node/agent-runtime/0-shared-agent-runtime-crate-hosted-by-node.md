@@ -117,7 +117,8 @@ schema v8 的第一步只将会话放入 `node_executions`；schema v7 已落地
 交付执行留待对应决策落地。operation 的唯一事实仍在 `execution_identities`，不在会话表重复存储。
 `session_commands` 用受理顺序作物理主键，并以 `UNIQUE(execution, command_id)` 保证上述命令身份语义。
 `ora-node-db::SessionJournal` 共享 Node 的独占租约；应用层为它实现下面的 trait，避免数据库反向依赖应用。
-这些账本实现不代表生产协议、在途窗口与启动恢复接线完成，本文状态不因这一局部实现改变。
+生产服务已组合上述账本、共享插件目录、协议入口、在途窗口与启动恢复；D2 中尚未纳管任意后代的差异仍保留，
+不以 echo 插件测试替代 host/guardian 进程 scope 保证，本文仍为 `approved`。
 
 **账本一侧提供给会话执行的接口**（`SessionLedger`）
 
@@ -133,7 +134,7 @@ schema v8 的第一步只将会话放入 `node_executions`；schema v7 已落地
 | 方法 | 调用时机 | 承诺 |
 |---|---|---|
 | `start(execution, AgentSessionSpec)` | 执行输入已持久化之后 | 按 D2 启动插件并送出首个轮次；立即返回，不等待会话 |
-| `command_arrived(execution)` | 命令已持久化并回复受理之后 | 唤醒该会话读取 `next_command`；丢失唤醒不丢命令 |
+| `command_arrived(execution)` | 命令已持久化并回复受理之后 | 唤醒该会话读取 `queued_commands`；丢失唤醒不丢命令 |
 | `recover_interrupted(execution) -> AgentSessionEnded` | Node 启动时，对没有终态的会话执行 | 关闭进程 scope、封口会话记录，返回 `interrupted` 结果由账本写入 |
 | `sealed_history(execution) -> path` | 交付执行开始时 | 仅当会话已结束且记录已封口时返回 JSONL 路径，否则 `history_unavailable` |
 

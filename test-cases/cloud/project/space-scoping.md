@@ -4,6 +4,8 @@
 以下用例通过真实 PostgreSQL 集成测试（`integration/project_space_test.go`、
 `integration/cloud_test.go`）与前端 Vitest 验证。
 
+运行时内容与操作的目标规则已由[创建者/管理员权限](../workspace/runtime-workspace-use-permissions.md)收紧；仓库凭据见[连续性核心用例](repository-credential-continuity.md)。下列原证据保留共享项目、owner 外键与生命周期义务，不证明新增创建者记录、独占或凭据治理。
+
 ## Members create and read projects inside their space
 
 - 风险：成员无法在 Space 内创建或读取 Project，协作边界形同虚设；或响应缺失归属信息。
@@ -19,9 +21,9 @@
 - 风险：将操作发起者误当成持久资源所有者导致外键失败；运行时列表仍依赖已停用的工作树表而漏项。
 - 前置状态：项目由 alice 创建，bob 是同租户普通成员，主运行时已就绪。
 - 触发：bob 创建独立运行时，Controller 完成 Node 克隆，随后 bob 查询项目运行时列表。
-- 必须成立：持久归属沿用项目所有者，操作发起者为 bob；双方能查看操作；列表包含主运行时与独立运行时，均就绪且提交标识正确。
+- 必须成立：持久归属沿用项目所有者，操作发起者为 bob；双方可见安全概况，受限操作内容按运行时创建者/管理员校验；列表包含主运行时与独立运行时，均就绪且提交标识正确。
 - 禁止结果：拒绝合法成员创建、资源归属被改写、列表为空或重新插入旧存储/工作树记录。
-- 验证义务与证据：**Covered** — `integration.TestDifferentMemberCanCreateRuntimeInSharedProject` 验证以上完整链路；`TestConcurrentMembersCannotStartTwoProjectOperations` 验证同项目生命周期操作的竞争结果恰为一成功、一冲突。
+- 验证义务与证据：**Partial** — `integration.TestDifferentMemberCanCreateRuntimeInSharedProject` 覆盖跨成员创建、owner/actor、克隆及列表的原义务；`TestConcurrentMembersCannotStartTwoProjectOperations` 直接证明项目生命周期竞争。新增内容投影与运行时创建者使用权限为 `Missing`，见上方核心用例。
 - 决策依据：一租户一空间 D1，以及上游每个运行时独立克隆的生命周期约束。
 
 ## Non-members cannot read a project or its runtime workspace
@@ -49,9 +51,9 @@
 - 风险：共享项目允许其他成员操作，但运行时行若误用操作人的 `owner_user_id`，会违反项目复合外键；若操作记录只允许项目创建人读取，发起人又无法跟踪结果。
 - 前置状态：alice 创建并完成 Project，bob 为同租户有效 member。
 - 触发：bob 在该项目创建 isolated Workspace，alice 和 bob 读取该 operation。
-- 必须成立：创建返回 202；运行时持久 owner 与 Project 相同，operation actor 为 bob；两人均可读取该 operation。
+- 必须成立：创建返回 202；运行时持久 owner 与 Project 相同，operation actor 为 bob；两人可读取安全概况，受限内容需运行时使用权限。
 - 禁止结果：外键错误变成 500、把运行时错误归属于 bob、成员无法查看共享操作。
-- 验证义务与证据：**Covered** — `integration TestDifferentMemberCanCreateRuntimeInSharedProject`。
+- 验证义务与证据：**Partial** — `integration TestDifferentMemberCanCreateRuntimeInSharedProject` 证明原 owner/actor 及可读链路；新增创建者记录与内容过滤为 `Missing`，见运行时使用权限核心用例。
 
 ## Concurrent members cannot start two lifecycle operations on one project
 
