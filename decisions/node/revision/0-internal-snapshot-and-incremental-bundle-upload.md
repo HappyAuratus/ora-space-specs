@@ -25,6 +25,9 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 `failed{session_not_settled}` 结束。这保证快照期间没有 Agent 或其子进程继续修改文件。
 交付对 checkout 的引用是 clone 执行 ID，Node 从账本解析路径（协议 D1）。
 
+当前实现说明（2026-10-09）：Agent 插件进程尚不在进程宿主的 scope 中，Node 无法证明其子进程都已退出；"进程已清理"
+目前落实为会话已有终态且会话 actor 已不在运行。
+
 ### D2：内部快照不经过提交钩子，也不改动工作区与分支
 
 1. 以 `git status --porcelain=v2 --untracked-files=all` 判断是否有应保存的改动：已跟踪文件的修改与删除、
@@ -39,6 +42,15 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 - 真实 index、工作区文件与当前分支都不变；`commit-tree` 不运行任何钩子，所以项目的 pre-commit、
   commit-msg 失败不会让成果无法保存。快照不代表项目校验通过。
 - 第一版只保存 HEAD 所在的提交链；Agent 另建的分支、stash 与 tag 不在 Revision 中。
+- 当前实现说明（2026-10-09）：
+  - 交付 git 像 clone 一样以工作负载用户运行，而 Agent 插件目前以 Node 用户运行，写出的文件可能属于 Node 用户且只有
+    属主可读。快照前，Node 把会话结束后的 checkout 交还工作负载用户：以 `symlink_metadata`/`lchown` 遍历，不跟随
+    任何链接，链接不能把这次特权改动引到 checkout 之外；权限位不变。
+  - 是否有改动用临时 index 生成的树与 `HEAD^{tree}` 比较来判断，与第 1 步的 `status` 判断结果相同，但不受改动文件
+    数量影响（受管 git 的输出捕获有上限）。
+  - 临时 index 与 bundle 先写在 checkout 自己的 `.git` 目录（工作负载用户无权写 Node home），bundle 随后复制到
+    Node home 下按执行固定的目录。
+  - 仓库配置中的 clean/smudge 过滤器仍可能在 `git add` 时以工作负载用户运行；提交钩子、fsmonitor 与提交签名均已禁用。
 - 子模块只记录 gitlink，不收录子模块工作区内容；LFS 指针按普通文件收录，不上传 LFS 实体。
 
 ### D3：累计增量 bundle
@@ -57,7 +69,8 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 - 首次 PUT 的回复丢失后，重复 PUT 的 412 只说明对象已存在。Node 重放原声明，由 Cloud 核对对象大小与摘要，
   不能只凭状态码推断成功。上传授权不持久化，恢复时重新请求。
 - 授权缺失或过期时发送 `UploadGrantNeeded` 等待；单个对象上传失败重试 3 次，仍失败则
-  `failed{upload_failed}`。
+  `failed{upload_failed}`。当前实现：`UploadGrantNeeded` 带每个仍需上传对象的冻结 SHA-256（协议 D5 补充）；等待期间
+  每 2 秒、以及每个新的 Controller 连接上重发；距过期不足 5 秒的授权与 403 都视为无效并重新请求。
 - 成功结果：`delivered{final_commit, base_commit, revision_ref, bundle{key, size, sha256}, history{key, size, sha256}}`
   或 `unchanged{final_commit, base_commit, revision_ref, history{...}}`。
 

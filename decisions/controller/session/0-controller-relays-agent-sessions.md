@@ -13,7 +13,7 @@ Workspace 的 Node；把 Node 的 Thread 事件按序批量交给 Cloud 接管�
 Node 会话编排”；这里的 Session 指 Agent 会话，不是 Controller–Node 连接会话）。契约见
 [gRPC 后续决策](../../cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)，
 Node 侧消息见 [Node 协议后续决策](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md)。
-本轮会话接线已形成待评审实现；本文仍保持 `proposed`，不以代码完成代替设计批准。Revision 交付与授权转交尚未实现。
+会话接线与 Revision 交付、授权转交均已形成待评审实现；本文仍保持 `proposed`，不以代码完成代替设计批准。
 
 它复用 [Controller 驱动 Workspace 沙盒](../node-management/0-controller-drives-workspace-sandboxes.md) 维护的
 “sandbox → Node 会话”映射与代报，不改变 operation 的推进方式。涉及 desktop `apps/ora-controller` 的云端
@@ -61,9 +61,25 @@ Controller 崩溃时未提交的事件必须还能从 Node 重放。
 
 ### D4：交付执行的上传授权即取即用
 
-派发 `DeliverRevision` 后，Controller 调用 `GrantRevisionUpload` 并以 `UploadGrant` 消息发给 Node；Node 报告
-需要授权（`UploadGrantNeeded`）或会话重连后仍有未结束的交付执行时再次申请。授权只在内存中转交，不写
-日志、不写任何持久存储。
+交付的派发与会话相同：领取要求 Node 声明 `revision_delivery`，以 `RecordDispatch` 固定 Cloud 给出的输入
+（Controller 只补上目标 `node_id`），再在拿到精确运行许可后发送 `ControlledDeliverRevision{binding, command}`。
+
+上传授权只按 Node 的请求申请：
+
+- 派发时**不**申请授权。此时 Node 尚未固定对象字节，申请到的授权无法绑定校验和；Node 在固定内容后、
+  每个仍需上传的对象没有有效授权时发送 `UploadGrantNeeded{node_id, checksums}`。
+- Controller 把 Node 给出的 `checksums` 原样交给 `GrantRevisionUpload`，并以 `UploadGrant` 把授权（请求头与
+  过期时间逐字不变，只含所请求的对象键）发给 Node；从不在没有校验和时申请授权。
+- 新连接首次看到未结束的交付时，若本进程记得该执行最近一次的校验和就重新申请；Controller 重启后不记得，
+  由 Node 在每个新连接上重发 `UploadGrantNeeded`（Node 协议 D5）。校验和只保存在进程内存，不是凭据。
+- `Unavailable` 或租约丢失时稍后重试；Cloud 回答 `Conflict`/`NotFound`（交付已有结果或运行已不在交付阶段）
+  时不再申请，**不**把它变成交付失败。
+- 授权只在内存中转交，不写日志、不写任何持久存储，也不以调试格式输出。
+
+交付的终态只从 Node 的有序 `RevisionResult` 事件接管：Controller 先核对其基础提交、ref 与对象键和派发
+输入一致，经 `TakeOverNodeEvent` 交给 Cloud，提交后才 `EventAck`。状态查询得到的 `Completed` 不登记：Cloud
+要求交付结果带接管回执，Node 会重放事件直到确认。Controller 关闭、租约丢失或重启都不写 `RevisionFailed`；
+已登记的交付经状态查询与重发继续。
 
 ### D5：释放由 Cloud 决定，Controller 只提供 idle 证据
 
