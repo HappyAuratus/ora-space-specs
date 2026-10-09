@@ -63,6 +63,17 @@ Desktop 中先完成并验证。
 这一点的后代进程不被回收。纳入执行的进程 scope 由后续 process I/O 决策承担。每个会话执行组合自己的插件生命
 周期，只含其指定插件并以其 Git 身份启动。
 
+实现补充（2026-10-09，M4 真实 Agent）：部署配置了工作负载用户（`process.workload_uid`）时，Node 必须同时配置
+`agent.workload_directory`（缺一启动失败），插件进程与宿主经 `ora/childprocess/spawn` 为它启动的全部子进程都以
+工作负载 UID/GID 运行：在 fork 与 exec 之间放弃附加组、设置 `no_new_privs`、清空能力并把 umask 设为 `077`，任一步
+失败则启动失败，不会以 root 执行。每个会话执行在 `workload_directory/<sha256(执行 ID)>/` 下得到只读的插件包硬链接
+视图（安装目录本身保持 Node 私有）与属于工作负载用户的私有 HOME（`XDG_*`、`DENO_DIR` 都在其中），插件停止后删除，
+Node 启动时清空整个目录；启动前把 checkout 属主交还工作负载用户（兼容旧版本以 root 运行留下的文件）。环境不清空，
+沙盒部署注入的模型凭据与出网代理照常进入 Agent 进程树（不变量 6 不变）。这样 Agent 的 Git 与 clone、交付 Git 同属
+一个用户，不再被 Git 以 `dubious ownership` 拒绝，且读不到 Node home、管理密钥与账本。未配置工作负载用户的 Node 与
+Desktop 行为不变。上段“Node 崩溃后忽略 stdio 关闭的后代不被回收”的差异仍然存在：这些后代现以工作负载用户运行，
+不再持有 root 权限，但纳入执行的进程 scope 仍待 process I/O 决策。
+
 ### D3：会话执行的记录同时进入 JSONL 与 Thread 事件
 
 - Ora Session ID 由会话执行 ID 确定（同一 UUID），会话 JSONL 位于 Node home 下 `ora-history` 规定的路径，

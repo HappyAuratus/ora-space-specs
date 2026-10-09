@@ -23,6 +23,11 @@ desktop 的插件清单、registry 与安装期校验决策（`desktop/plugin/*`
   相同；随 Workspace 数据跨沙盒保留，`start` 时的 plugin 步骤因此大多是“已安装”。
 - Workspace 数据被 `workspace_data_delete` 删除时插件随之删除；Node 不另建全局插件缓存。
 
+实现补充（2026-10-09，M4 真实 Agent）：安装布局与权限不变，安装目录仍在 Node 私有的数据目录下（目录 `0700`、
+属 root）。以工作负载用户运行的 Agent 会话不直接读安装目录，而是读会话目录中由 Node 建立的硬链接只读视图
+（[agent-runtime 根决策](../agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D2 的实现补充），因此
+升级不需要迁移已有 Workspace 卷，安装、校验与移除语义不变。
+
 ### D2：安装语义
 
 | 情况 | 结果 |
