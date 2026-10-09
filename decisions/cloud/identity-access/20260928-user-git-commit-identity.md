@@ -12,7 +12,7 @@ Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用
 [globalUserId 决策](20260923-huawei-global-id-alias.md)。注入方式由
 [Node agent-runtime 根决策](../../node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D4 承担，
 身份的解析时点由本文 D2 决定（会话启动时，而不是运行创建时）。
-兼容性边界：`users` 表只增加可空列，已有用户不受影响。
+兼容性边界：新增独立表 `user_git_identities`，`users` 表与已有用户不受影响。
 
 ## 继承与修改
 
@@ -21,18 +21,25 @@ Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用
 | Gateway 验证外部身份，Cloud 持有授权；浏览器不能自选身份 | 继承，不变；git 身份是用户自述的提交署名，不是认证身份，不参与任何授权 |
 | 外部 token 与 provider 字段不进入业务表 | 继承，不变；不从 GitHub 或 IDaaS 的邮箱自动填充 |
 | 日志排除不必要的个人数据 | 继承；git 邮箱属于个人数据，不写日志 |
-| 用户资料只有显示名等 Cloud 维护字段 | 修改：`users` 新增 `git_author_name`、`git_author_email`（D1） |
+| 用户资料只有显示名等 Cloud 维护字段 | 继承，不变：git 身份存放在独立表 `user_git_identities`，不进入 `users` 行（D1） |
 
 ## 决策
 
 ### D1：git 身份是用户级资料，由用户本人设置
 
-- `GET /api/v1/me/git-identity` 返回 `{name, email, isDefault}`；`PUT /api/v1/me/git-identity`（带 `version`）
-  设置，`DELETE` 恢复默认。只有用户本人可以读写，租户管理员不能代设。
+- `GET /api/v1/me/git-identity` 返回 `{name, email, isDefault, version}`；`PUT /api/v1/me/git-identity`（带 `version`）
+  设置，`DELETE`（带 `version`）恢复默认。只有用户本人可以读写，租户管理员不能代设。
+- `version` 是已设置身份自己的乐观并发计数：未设置时 `GET` 返回默认身份且 `version = 0`；`PUT` 带 `0` 创建，
+  带当前版本替换，其它值为 `409 version_conflict`。`DELETE` 只在当前版本下删除已设置的身份；身份已经是默认时，
+  `DELETE` 无论带什么版本都按无操作成功返回默认身份。因此重试 `DELETE` 是安全的，它不需要 `Idempotency-Key`：
+  `/me` 不属于任何租户，而 Cloud 的幂等记录按租户存放。
+- 存储：已设置的身份存放在独立表 `user_git_identities(user_id, name, email, version)`，每个用户至多一行，表上的
+  CHECK 与 API 的格式校验一致；没有行即使用默认身份。不放在 `users` 列上，是因为 `/me` 与所有用户读取都返回整行
+  `users`，git 邮箱放在那里会随之流向每个读者，违反不变量 5 的意图。
 - 校验：`name` 1–200 个字符、不含换行与 `<`、`>`；`email` 不超过 254 字节、形如 `local@domain`、不含空白
   与 `<`、`>`。只做格式校验，不验证邮箱归属：它只是提交署名，Cloud 不以它授予任何权限。
-- 默认身份：`name` 为用户显示名，`email` 为 `{userId}@{git.noreply_domain}`；`git.noreply_domain` 是 Cloud
-  配置，proposed 默认 `users.noreply.ora.invalid`。
+- 默认身份：`name` 为用户显示名（为空时用用户 ID），`email` 为 `{userId}@users.noreply.ora.invalid`。noreply 域名
+  目前是 Cloud 内的常量，尚未做成配置；`.invalid` 顶级域保证该地址永远不可投递。
 
 为什么是用户级而不是租户级：同一用户在不同 Space 中通常使用同一提交身份；租户级覆盖可以后续叠加，不改变
 本条的默认来源。为什么不自动取登录 provider 的邮箱：根决策不持久化 provider 返回的额外字段，且企业账号的
@@ -83,10 +90,12 @@ Node 为 Agent 进程及其全部子进程设置 `GIT_AUTHOR_NAME`、`GIT_AUTHOR
 ## 本决策未解决的问题
 
 - 租户级或 Space 级的身份覆盖与邮箱域名约束。
+- noreply 域名的部署配置（当前为常量 `users.noreply.ora.invalid`）。
 - 提交签名（GPG/SSH signing）。
 - 是否需要在提交信息中标注由 Agent 生成。
 
 ## 落地
 
-迁移增加两列；公开 API、OpenAPI 与前端设置页的“Git 身份”表单；运行输入快照与 Node 注入分别随 IssueRun
-与 agent-runtime 决策落地。保持不变：登录、会话与授权。
+迁移 `0032_user_git_identities` 新增独立表；公开 API、OpenAPI 与前端设置页的“Git 身份”表单；会话启动时按 D2
+解析身份，Node 按 D3 注入。cluster 的 M2 验收（`task agent:session:acceptance`）在真实栈中确认：用户设置的身份
+出现在 Agent 进程的 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 中，且没有写入 git 配置。保持不变：登录、会话与授权。
