@@ -4,14 +4,14 @@ status: proposed
 
 # 用户可在 Cloud 配置 git 提交身份，Agent 运行以触发用户的身份经环境变量提交
 
-每个用户可以在 Cloud 设置自己的 git 提交身份（姓名与邮箱）。用户触发 Agent 运行时，Cloud 把该身份
-快照进运行输入，经 Controller 下发给 Node；Node 只通过 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 环境变量注入
+每个用户可以在 Cloud 设置自己的 git 提交身份（姓名与邮箱）。Agent 会话启动时，Cloud 解析触发用户当时的
+身份写入会话启动规格，经 Controller 下发给 Node；Node 只通过 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 环境变量注入
 Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用由显示名与平台 noreply 地址组成的默认身份。
 
 本 ADR 处于 `proposed`，继承 [identity-access 根决策](0-gateway-mediated-external-identity.md) 与
 [globalUserId 决策](20260923-huawei-global-id-alias.md)。注入方式由
 [Node agent-runtime 根决策](../../node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D4 承担，
-运行输入的快照时点由 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) 承担。
+身份的解析时点由本文 D2 决定（会话启动时，而不是运行创建时）。
 兼容性边界：`users` 表只增加可空列，已有用户不受影响。
 
 ## 继承与修改
@@ -38,10 +38,21 @@ Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用
 本条的默认来源。为什么不自动取登录 provider 的邮箱：根决策不持久化 provider 返回的额外字段，且企业账号的
 邮箱可能不是用户希望出现在提交历史中的地址。
 
-### D2：运行输入快照触发用户的身份
+### D2：会话启动时解析触发用户的身份
 
-IssueRun 创建时，Cloud 把触发用户当时的 git 身份（或默认身份）写入运行输入 `gitIdentity{name, email}`。
-运行期间用户修改设置不影响正在进行的运行；其他成员在 Thread 中追加消息也不改变身份。
+Agent 会话启动时，Cloud 在构造会话启动规格的同一事务中解析身份，写入 `gitIdentity{name, email}`：
+
+1. 运行输入若已携带完整的 `gitIdentity`（`name` 与 `email` 均非空），原样使用。
+2. 否则取触发用户当时的 git 身份；用户未设置时取 D1 的默认身份。触发用户无法解析时会话启动失败并回滚，
+   不编造身份：线上协议要求每个 AgentSession 都带身份。
+
+会话启动规格是执行的固定输入，Node 在会话内以它为准；会话启动后用户修改设置不影响该会话，其他成员在
+Thread 中追加消息也不改变身份。
+
+为什么不在运行创建时冻结：当前没有任何创建运行的路径写入 `gitIdentity`，而会话启动规格本来就是 Cloud
+为会话固定的输入，在那里解析不需要再为运行输入增加一份副本。代价是运行创建与会话启动之间（排队、准备
+Workspace、安装插件）用户若修改了身份或显示名，会话使用修改后的身份。第 1 条保留了将来在创建时冻结的
+入口：写入运行输入的身份优先。
 
 ### D3：只经环境变量注入，Author 与 Committer 相同
 
@@ -57,7 +68,7 @@ Node 为 Agent 进程及其全部子进程设置 `GIT_AUTHOR_NAME`、`GIT_AUTHOR
 
 1. git 身份不参与认证与授权。
 2. 用户的 git 身份只能由其本人设置。
-3. Agent 运行使用创建时快照的触发用户身份。
+3. Agent 会话使用会话启动时解析的触发用户身份，会话启动后不再改变。
 4. Node 不修改仓库或全局 git 配置来设置身份。
 5. git 邮箱不写入日志。
 

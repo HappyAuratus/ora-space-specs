@@ -46,3 +46,17 @@
 cluster 的 `task agent:acceptance` 强制 PostgreSQL、S3 和 sandbox 网络，不能跳过或用内存成功结果通过。完整 Go 格式/lint、PG+S3 测试、race、构建、协议及 OpenAPI/前端检查的最终输出在配套 PR 记录。未关闭或合并 cluster#5/#7；A 的直接闭环不等于 M1–M4 整体完成。
 
 2026-10-01 对固定 Cloud `9ed8414` 的最终门禁均通过：`task check`（lint 0 issues；integration 273.840s）、`task test:race`（integration 574.014s）、`task build`；真实存储与 sandbox 网络下的 `task agent:acceptance`（integration 73.742s）通过，无跳过、失败或 race 报告。desktop `63132df9` 的协议三项兼容测试、clippy 与两消费端全目标构建通过，完整 [CI](https://github.com/ora-space/desktop/actions/runs/36741470877) 的 Windows/Linux/macOS Rust、frontend、Tauri、e2e 和 ci-ok 均通过。
+
+## 2026-10-09 对 Cloud main 的重新验收（cluster#9 阶段 0）
+
+[Cloud #44](https://github.com/ora-space/cloud/pull/44) 合并后改动了交付路径，此前只在 PostgreSQL 上验证。对 Cloud main
+[`482477d`](https://github.com/ora-space/cloud/commit/482477d7459b) 重跑 cluster 的 `task agent:acceptance`（真实
+PostgreSQL 17.11、RustFS 1.0.1 `sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c`、
+独立 sandbox 网络）：`task test:revision` 全部 37 个测试通过，无跳过、无失败（integration 47.9s）。
+
+- desktop 的 `third_party/cloud` 从 `9ed8414` 升到 `482477d`；两者之间 `proto/` 无变化，`task proto:check`
+  重新生成无漂移。
+- Cloud 的 Backend CI 以固定 digest 的 RustFS 运行上述真实 S3 测试（`REQUIRE_S3=1`、`REQUIRE_S3_SANDBOX=1`），
+  不再跳过；`internal/objectstore` README 与交付测试头注释中“G-037 未与真实 S3 联调”的过时说明已删除。
+- cloud#44 自述的两处 ADR 差异按实现改 ADR（仍为 proposed）：Revision D4 增加“与输入矛盾的声明在接管前
+  拒绝”一步；identity-access D2 改为会话启动时解析身份，运行输入携带的身份优先。
