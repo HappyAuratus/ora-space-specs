@@ -2,6 +2,8 @@
 
 决策依据：[个人连接与运行代理](../../../decisions/cloud/model-access/0-personal-model-connections-and-run-scoped-proxy.md)。
 状态对应直接证据范围；生产 CLI 与 Bluezone 的真实联调不能由下层替身测试代替。
+2026-10-10 两协议的受控上游浏览器/API 正常链路已通过，安全元数据与剩余义务见
+[M4 验收记录](../../../implementation/opencode-m4.md)。整体 M4 仍未完成，相关 ADR 保持 `approved`。
 
 ## Personal model configuration must remain owner scoped
 
@@ -10,7 +12,7 @@
 - 触发：公开 CRUD、默认选择、凭据写入及跨用户重试。
 - 必须成立：归属来自已验证身份；响应仅含公开字段；资源版本和幂等性由 PostgreSQL 保障。
 - 禁止结果：请求体选定用户、读取 Key/密文、重复写入或覆盖并发修改。
-- 证据：`cloud/internal/core/model_connections_db_test.go` 真实 PostgreSQL；HTTP 边界及严格结构测试。状态 `Partial`，完整浏览器范围待独立验收。
+- 证据：`cloud/internal/core/model_connections_db_test.go` 真实 PostgreSQL；HTTP 边界及严格结构测试；两协议浏览器记录直接覆盖发起者表单配置、默认模型和保存后密码输入清空。状态 `Partial`，多身份及完整配置矩阵的浏览器路径仍待直接验收。
 
 ## Model bindings must freeze inputs and never revive after revocation
 
@@ -46,7 +48,7 @@
 - 触发：读取、追加消息和结束运行。
 - 必须成立：仅发起者追加消息；其他成员可读取；发起者及管理员可结束；终态均不可追加。
 - 禁止结果：界面禁用但服务端仍受理、管理员默认获得 Key 权限、Echo 历史权限被一并改变。
-- 证据：Cloud PostgreSQL 权限矩阵与前端 Thread 测试。状态 `Covered`（规则与界面义务）；完整用户路径另行验收。
+- 证据：Cloud PostgreSQL 权限矩阵与前端 Thread 测试。两协议浏览器正常路径补充发起者的追加和结束，状态 `Covered`（规则与界面义务）；多身份浏览器路径仍为 `Partial`。
 
 ## Real OpenCode must modify the checkout and deliver a secret-free Revision
 
@@ -55,4 +57,4 @@
 - 触发：登录、创建项目并 clone、@OpenCode、追加轮次、结束会话。
 - 必须成立：真实 CLI 读取/修改 checkout，JSONL 与 bundle 保存并校验，Git 作者归发起者，运行 Workspace 释放。
 - 禁止结果：以替身代替 CLI、Key/临时令牌进入 Git/日志/截图、未登记成果就宣称完成。
-- 证据：独立 M4 栈 `opencode-m4-p256.json` 和 `opencode-m4-anthropic.json` 已验证固定官方 CLI、两轮工具调用、用户 Git 作者、RustFS bundle/JSONL、Revision 内容及运行 Workspace 释放。状态 `Partial`：受控上游两种协议已通过；完整浏览器和用户新 Key 的 Bluezone 实际服务证据仍待补齐，整体 M4 不标完成。
+- 证据：独立 M4 栈的 `opencode-m4-browser.json` / `opencode-m4-browser-anthropic.json` 直接覆盖开发登录、页面配置、clone、Issue、真实 CLI 两轮会话及结束；`opencode-m4-browser-verification.json` / `verified-opencode-m4-browser-anthropic.json` 对同一浏览器 Run 核验 Revision、Git 作者和运行 Workspace 容器/卷释放。`opencode-m4-final.json` 补充两协议 API 链路，模型 ID 为 `m4/tool-model`。受控上游正常浏览器及交付义务已有直接证据；整体状态仍为 `Partial`，用户页面新 Key 的 Bluezone 实际服务验收尚未执行，不能标记 M4 完成。
