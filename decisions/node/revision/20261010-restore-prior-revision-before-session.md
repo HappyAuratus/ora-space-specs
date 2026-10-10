@@ -30,7 +30,8 @@ Node 协议与 HTTP 下载。兼容性边界：不带前序的会话与交付行
 
 ### D1：恢复在会话 checkout 定位后、Agent 启动前进行
 
-顺序固定为：解析 checkout → 恢复 → 把 checkout 交还工作负载用户 → 准备会话目录 → 启动插件 → 发送首条提问。
+顺序固定为：解析 checkout → 确认已安装的插件版本（并持有插件租约）→ 恢复 → 把 checkout 交还工作负载用户 →
+准备会话目录 → 启动插件 → 发送首条提问。插件缺失的会话因此不会下载任何东西。
 恢复期间会话已是运行中，但 Agent 尚不存在，所以失败时只需结束会话：
 
 - 结束结果为 `agent_failed`，`detail` 为 `prior_revision_unavailable` 或 `prior_revision_base_unavailable`
@@ -40,10 +41,12 @@ Node 协议与 HTTP 下载。兼容性边界：不带前序的会话与交付行
 
 ### D2：下载授权与下载
 
-- Node 发送下载授权请求（不占事件序号），在 Controller 连接上等待授权；每个新连接上重发。等待与下载合计
-  有上限（5 分钟），超时按 `prior_revision_unavailable` 失败；Controller 转告 Cloud 拒绝签发时立即失败。
-- 下载写入 Node 私有目录下按执行区分的临时文件，权限 `0600`；完成后核对大小与 SHA-256，不符即失败。网络
-  错误与 5xx 重试 3 次，403 视为授权失效并重新申请一次。
+- Node 发送下载授权请求（不占事件序号），在 Controller 连接上等待授权；等待期间每 2 秒、以及每个新连接上
+  重发。等待与下载合计有上限（5 分钟），超时按 `prior_revision_unavailable` 失败；Controller 转告 Cloud 拒绝
+  签发时立即失败。
+- 下载写入 Node 私有目录下按执行区分的临时文件（目录 `0700`、文件 `0600`）；完成后核对大小与 SHA-256，不符
+  （包括比声明大）即失败。网络错误、429 与 5xx 重试 3 次；403 视为授权失效并重新申请一次，之后的 403 与其他
+  4xx 立即失败。
 - 下载器不跟随重定向；授权 URL 与签名头只在内存中，不写日志、不进入错误信息或会话记录。临时文件在恢复结束
   （无论成败）后删除，Node 启动时清空该目录。
 
@@ -54,9 +57,13 @@ Node 协议与 HTTP 下载。兼容性边界：不带前序的会话与交付行
 1. 读取 bundle 头：只接受 v2/v3 格式；前置提交列表（`-<oid>` 行）与 head 列表。head 必须恰好一个，名称在
    `refs/ora/revisions/` 下，指向会话输入中的前序最终提交；否则 `prior_revision_unavailable`。
 2. 逐个确认前置提交在 checkout 中存在。有缺失时执行一次 `git fetch --no-tags origin <缺失的 oid…>`（使用 clone
-   的环境与 CA 配置），再确认；仍缺失则 `prior_revision_base_unavailable`。
-3. `git bundle verify`，失败则 `prior_revision_unavailable`。
-4. `git fetch <bundle> <head>:<head>`，把 Revision ref 取入 checkout；再确认前序最终提交可解析为提交。
+   的环境与 CA 配置），再确认。只有远端明确回答没有该对象（`not our ref`、未公布的对象、没有该远端 ref），或
+   补取成功后仍缺失，才是 `prior_revision_base_unavailable`；远端不可达或拒绝访问是 `prior_revision_unavailable`，
+   以免一次网络故障让 Cloud 永久拒绝该 Revision。
+3. 把校验过的 bundle 从 Node 私有目录复制到 checkout 的 Git 目录（属主为工作负载用户，结束后删除），因为以
+   工作负载身份运行的 Git 读不到 Node home；然后 `git bundle verify`，失败则 `prior_revision_unavailable`。
+4. `git fetch <bundle> <head>:<head>`，把 Revision ref 取入 checkout；clone 的协议策略禁止 `file`，只有这一条
+   命令放开它。所有补取与取入都关闭自动 gc 与 maintenance。再确认前序最终提交可解析为提交。
 5. `git checkout --force -B <默认分支> <前序最终提交>`，默认分支是 clone 时检出的分支；`origin/<默认分支>`
    不动。之后工作区与 index 等于前序最终提交。
 6. 若前序 bundle 的任一前置提交不是 `origin/<默认分支>` 的祖先（远端历史被改写，D4），记下以便提示。

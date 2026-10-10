@@ -67,7 +67,7 @@ Node 无法恢复时不启动 Agent，会话以 `agent_failed` 结束，`detail`
 | `detail` | 含义 | Cloud 的处理 |
 |---|---|---|
 | `prior_revision_unavailable` | bundle 取不到、大小或摘要不符、`bundle verify` 失败、不含预期的最终提交 | 运行 `failed`；不做标记，下一次运行仍会尝试同一个 Revision |
-| `prior_revision_base_unavailable` | bundle 依赖的基础提交既不在本次 clone 中，也无法按 SHA 从 `origin` 取到 | 运行 `failed`；在同一结算事务里把该前序 Revision 标为不可续接 |
+| `prior_revision_base_unavailable` | bundle 依赖的基础提交不在本次 clone 中，按 SHA 从 `origin` 补取时远端明确回答没有该对象（或补取成功后仍缺失）；远端不可达属于上一行 | 运行 `failed`；在同一结算事务里把该前序 Revision 标为不可续接 |
 
 标记写在 `revisions.resume_refused_at` 与 `resume_refused_reason`，只由会话结束结算写入，只用于 D1 的选取。
 

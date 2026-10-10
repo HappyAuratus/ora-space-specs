@@ -82,7 +82,9 @@ message GrantRevisionDownloadResponse {
 ```
 
 - 只对处于登记状态、尚无结果、输入带 `prior_revision.bundle` 的会话执行签发，对象键只能是该 bundle 的键；
-  其他情况 `FAILED_PRECONDITION`。执行所在 Workspace、运行与 Node 的有效性检查与上传授权相同。
+  执行不存在时 `NOT_FOUND`，其他情况与上传授权相同为 `ABORTED`（`dispatch_conflict`）。执行所在 Workspace、
+  运行与 Node 的有效性检查与上传授权相同。`FAILED_PRECONDITION` 在本契约中表示租约失效，Controller 会重试，
+  所以拒绝签发不使用它。
 - 不是写提交，不携带 `submission_id`，不在 Cloud 留下记录；每次调用签发新授权。有效期沿用对象存储配置的
   授权有效期。
 - 链接使用对象存储的公开地址（沙盒可达），不带条件头；Node 自己校验大小与摘要。
@@ -102,14 +104,16 @@ D3 处理。不新增结束原因：运行状态的推导（`agent_failed` → `
 
 交付输入带 `prior_revision` 时，`RevisionUnchanged.final_commit` 可以等于 `prior_revision.final_commit`
 （且不等于基础提交），表示续接后没有新提交；其余字段不变，仍只带会话记录。Cloud 的声明校验相应放宽，其他
-情况仍要求最终提交等于基础提交。
+情况仍要求最终提交等于基础提交。Node 协议的编解码因此不再自行要求“最终提交等于基础提交”，只校验提交格式；
+合法性由持有输入的一方判断：Node 账本冻结交付计划时、Controller 接受结果时与 Cloud 登记时。
 
 ### D5：Controller 的中继与派发
 
 - Node 新能力 `revision_restore`。会话输入带 `prior_revision` 时，Controller 只在目标 Node 声明了该能力时登记
   派发；否则与能力缺失的其他工作项一样留在 Cloud。
-- Node 请求下载授权的消息不占事件序号；Controller 收到后调用 `GrantRevisionDownload`，把结果原样转交给发出
-  请求的连接；Cloud 拒绝签发时转告 Node 不可签发，Node 据此失败（`prior_revision_unavailable`）。
+- Node 请求下载授权的消息不占事件序号；Controller 收到后调用 `GrantRevisionDownload`，只接受针对该会话
+  bundle 键的 GET，把结果原样转交给发出请求的连接；Cloud 以 `NOT_FOUND` 或 `ABORTED` 拒绝签发时转告 Node
+  不可签发，Node 据此失败（`prior_revision_unavailable`）；Cloud 不可用或租约失效时重试。
 - Controller 不缓存、不持久化下载授权，连接重建后由 Node 重新请求。
 
 ## 不变量
