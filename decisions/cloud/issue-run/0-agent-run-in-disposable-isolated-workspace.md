@@ -164,6 +164,7 @@ gRPC 接管路径直接驱动状态机，而不是回调 `ExecutionObserver` 的
 ## 本决策未解决的问题
 
 - 在已有 Revision 上续接运行（用户在运行结束后继续对话）：需要从 bundle 恢复 Workspace，另立决策。
+  2026-10-10 补充：已由 [续接后续决策](20261010-resume-run-from-latest-issue-revision.md) 提出（proposed）：同一 Issue 的新运行在 Agent 启动前续接最近一个 Revision。
 - Team 目标与多 Agent 协作。
 - Agent 的 Space 级配置（名称、模型、提示词）与 agents 页的真实 API。
 - D5 中各上限的最终取值、运行总时长上限与配额。

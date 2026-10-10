@@ -140,7 +140,7 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
 ## 本决策未解决的问题
 
 - bundle 与会话 JSONL 的过期与清理、失败尝试的残留对象清理任务。
-- 从 Revision 恢复 Workspace（续接运行）。
+- 从 Revision 恢复 Workspace（续接运行）：由 [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) 承担（proposed），它同时修改了本文 D4 的 `unchanged` 条件与 D5 的 `changed` 含义。
 - 下载、diff 预览与推送到用户远端（需要另行授权）。
 - 生产对象存储的凭据轮换与加密策略。
 
