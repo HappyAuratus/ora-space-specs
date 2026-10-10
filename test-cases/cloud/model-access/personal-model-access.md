@@ -57,4 +57,4 @@
 - 触发：登录、创建项目并 clone、@OpenCode、追加轮次、结束会话。
 - 必须成立：真实 CLI 读取/修改 checkout，JSONL 与 bundle 保存并校验，Git 作者归发起者，运行 Workspace 释放。
 - 禁止结果：以替身代替 CLI、Key/临时令牌进入 Git/日志/截图、未登记成果就宣称完成。
-- 证据：独立 M4 栈的 `opencode-m4-browser.json` / `opencode-m4-browser-anthropic.json` 直接覆盖开发登录、页面配置、clone、Issue、真实 CLI 两轮会话及结束；`opencode-m4-browser-verification.json` / `verified-opencode-m4-browser-anthropic.json` 对同一浏览器 Run 核验 Revision、Git 作者和运行 Workspace 容器/卷释放。`opencode-m4-final.json` 补充两协议 API 链路，模型 ID 为 `m4/tool-model`。受控上游正常浏览器及交付义务已有直接证据；整体状态仍为 `Partial`，用户页面新 Key 的 Bluezone 实际服务验收尚未执行，不能标记 M4 完成。
+- 证据：最终 `Cloud 5b6b5ec`、`Desktop f8536f9d`、`Cluster a8146c7` 的独立 M4 栈以 `opencode-m4-receipt-final-browser-openai.json` / `opencode-m4-receipt-final-browser-anthropic.json` 直接覆盖开发登录、页面配置、clone、Issue、真实 CLI 两轮会话及结束；对应的两个 `verified-*` 文件对同一浏览器 Run 核验 Revision、Git 作者和运行 Workspace 容器/卷释放。`opencode-m4-api-receipt-final.json` 补充两协议 API 链路，模型 ID 为 `m4/tool-model`。受控上游正常浏览器及交付义务已有直接证据；整体状态仍为 `Partial`，用户页面新 Key 的 Bluezone 实际服务验收尚未执行，不能标记 M4 完成。历史成功和失败记录不代替本次最终源码验证。

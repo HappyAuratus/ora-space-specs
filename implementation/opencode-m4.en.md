@@ -1,71 +1,37 @@
-# M4 OpenCode: browser and API acceptance against controlled upstreams
+# M4 OpenCode: final controlled-model acceptance
 
-English | [中文](opencode-m4.md)
+[中文](opencode-m4.md) | English
 
-On 2026-10-10, the independent M4 Compose stack passed the normal browser and API paths for
-`openai-completions` and `anthropic-messages`. The production CLI from the pinned official
-`official/ora-space.opencode@0.6.4` package used the platform proxy, read and modified the checkout,
-and delivered a Revision. Every record below reports `mode=fixture` and `status=passed`, with exit code 0.
-The user has not entered a new Bluezone Key through the page. Overall M4 acceptance remains `Partial`,
-and the related ADRs remain `approved`.
+On 2026-10-10, `Cloud 5b6b5ec` / `Desktop f8536f9d` / `Cluster a8146c7` passed both protocol API paths, complete Chromium flows and exact-resource verification. The production CLI in fixed `official/ora-space.opencode@0.6.4` reads LICENSE, writes files and commits Git through the platform model proxy. Only the upstream model is controlled; the agent is not Echo or simulated.
 
-The decisions and core obligations are tracked in [personal model access](../test-cases/cloud/model-access/personal-model-access.md),
-[Thread input permissions](../test-cases/cloud/thread/personal-model-input.md),
-[Node model sessions](../test-cases/node/agent-runtime/model-proxy.md), and
-[model identities and deployment](../test-cases/cluster/sandbox-server/model-client-identity.md).
+## Final direct evidence
 
-## Direct evidence
+Cluster's ignored `.acceptance/` retains safe states and IDs without keys, Cookies or tokens. Browser and host verification refer to the same Run; API results are independent supplements.
 
-The files are retained under cluster's `.acceptance/`. This record includes safe status, protocol and
-resource identifiers only; it does not copy credentials, response bodies or screenshot contents.
-Each browser record and its subsequent verification address the same Run. API acceptance is additional
-evidence and does not replace page interactions.
+| Entry / protocol | Run | Revision | Final Git commit |
+| --- | --- | --- | --- |
+| Browser OpenAI / `openai-completions` | `ff53d668-4fde-4105-b903-61be7acf1f11` | `fcf6d81f-602e-4d87-9292-f39816555ad3` | `096fe77e4a3cb2262abecb3153bbd8b131c43a38` |
+| Browser Anthropic / `anthropic-messages` | `e8617fbf-33e5-4f67-af41-d84f8e998478` | `cd3306ae-dc9e-4151-a604-1ed0601ec2b9` | `233e85021b43d411ad35e19b72833ff18950574d` |
+| API / `openai-completions` | `72de9f9e-0289-4610-8ec4-1a85382c8973` | `e926d01a-f3d5-4515-8108-bc618811e7e7` | `bf1876c542e724ba8e84e5035311f07bf6ffcf7e` |
+| API / `anthropic-messages` | `c428cd73-4eee-4fe3-ab92-25ad9c80f734` | `f7df02d0-b086-4455-a9a7-3b980c7951d9` | `8cae721e2b77e1918860396f08875e3493249744` |
 
-| Entry and protocol | Browser record and verification of its exact resources | Run | Revision |
-|---|---|---|---|
-| Browser `openai-completions` | `opencode-m4-browser.json`, `opencode-m4-browser-verification.json` | `e464a25d-f31f-4770-ada9-b00f32b0ad34` | `69dc202d-1bb2-472f-9672-04f4d0deb6aa` |
-| Browser `anthropic-messages` | `opencode-m4-browser-anthropic.json`, `verified-opencode-m4-browser-anthropic.json` | `c696ad9b-3159-4cdc-a3c1-f99d8731ffa3` | `3204dcbb-1c64-40d6-9672-975374bf2b9c` |
-| API `openai-completions` | The matching scenario in `opencode-m4-final.json` | `81c988f3-9ea6-48cb-883b-5e2b0c160bcb` | `365d9a75-de7e-4630-a28f-c49034a0ecfb` |
-| API `anthropic-messages` | The matching scenario in `opencode-m4-final.json` | `c4f74e77-b648-4eeb-b53f-a685f6b9e65b` | `61da1046-390d-4a80-a3b4-4d7e27ce4300` |
+Browser reports are `opencode-m4-receipt-final-browser-openai.json` and `opencode-m4-receipt-final-browser-anthropic.json`, with corresponding `verified-*` files. API is `opencode-m4-api-receipt-final.json`; all passed. `m4/tool-model` keeps its slash. Two nonempty replies reach idle; ending reaches Thread ended/public completed. Verifiers check bundle/JSONL size/digest, restored files, user Git identity, known credential/private-key markers, and container/volume removal. Both ended screenshots were inspected.
 
-Both protocols retain model ID `m4/tool-model`. Its slash passes unchanged through the personal default,
-run binding and actual CLI request. The browser runs retain 10 and 9 checkpoint screenshots respectively;
-these counts provide traceability and do not replace assertions or stored-object verification.
+Login evidence is development login, not production external-identity acceptance. Live workload probes verified UID/GID 1000, no extra groups/capabilities, NoNewPrivs and no access to Node private keys/home. Guardian supervision remains independent; full production multiplayer isolation is not claimed.
 
-## Verified normal path
+## Merge compatibility and scope
 
-The browser signs in through the development provider, creates a collaboration space, fills in the model
-connection and default, saves a Git author identity, selects the official plugin, creates a project and
-clones GitHub's `main` branch, creates its associated Issue, mentions OpenCode, sends a follow-up turn and
-ends the session. The password input clears after saving. Both turns return non-empty replies and reach
-idle. The page then displays a saved changed Revision and the public run becomes completed.
-This login evidence does not claim production acceptance of an external identity provider.
+Personal-model and prior-Revision inputs coexist. Published restore wire field 6 stays intact; model reference uses 7. Controller gates both capabilities independently; wire round-trip and missing-either-capability regressions passed. Both `0033` migrations retain complete filenames/SQL without rewriting applied ledgers. Final Cloud full race CI passed 472 tests, frontend 945, and Desktop three-platform/frontend/Tauri/E2E checks all passed. See [Cluster evidence](https://github.com/wanglongan587/cluster/blob/codex/m4-opencode-model-proxy/docs/opencode-m4-acceptance.md).
 
-Subsequent verification reads the exact browser-created Run, checks bundle and JSONL object digests,
-restores the result file, checks the Git author, checks for credential material in the artifacts, and
-confirms run `done` plus removal of the run Workspace container and volume. The browser run Workspaces are
-`e83c5481-a6d0-493e-bc5f-49339b989acc` and `e84ce9d5-0d2b-4c92-85e8-fcdc53084a21`.
-The verification does not create a replacement run to obtain a successful result.
+| Obligation | Direct evidence | Status |
+| --- | --- | --- |
+| Both page configuration/clone/Issue/multiturn/end paths | Final browser reports, production CLI, controlled model | Covered |
+| Exact browser Run artifacts/Git/container and volume release | Final corresponding `verified-*` reports | Covered |
+| Both API protocols and slash model IDs | `opencode-m4-api-receipt-final.json` | Covered |
+| Bluezone with fresh page-entered Keys and real models | User configuration missing; controlled success is insufficient | Missing |
+| Multi-identity browser permissions/concurrency/disable/revoke | Lower-layer rules tested; browser paths cover only the initiator | Partial |
+| Full-stack authorization failure/crash/recovery | Scope/renewal/revoke/cancel tests do not replace fault drills | Partial |
+| Master-key disaster recovery | Encryption/startup-denial tested; no full recovery drill | Partial |
+| Unstarted empty JSONL full delivery/release | Node ending tests, no direct complete-delivery evidence | Partial |
 
-Final API acceptance separately verifies both protocols, production CLI repository tools, multiple turns,
-ending, Revision delivery, Git identity and cleanup. The model service is controlled; the execution side
-uses the pinned official CLI rather than Echo or an Agent simulator. Acceptance may serve the original
-package through an HTTPS cache with normal CA verification and the exact official SHA-256, without changing
-the package bytes or digest.
-
-## Evidence status and remaining acceptance
-
-| Obligation | Current direct evidence | Status |
-|---|---|---|
-| Page configuration, clone, Issue, multiple turns and ending for both protocols | Two real browser records, pinned production CLI, controlled upstream | Covered |
-| Revision, Git author, artifact restoration and container/volume removal for browser-created runs | Verification of the exact Run in both browser records | Covered |
-| Normal API paths for both protocols and a model ID containing a slash | `opencode-m4-final.json`, model ID `m4/tool-model` | Covered |
-| Both Bluezone protocols with a new Key entered through the page | Not executed; fixture success cannot establish it | Missing |
-| Browser permissions for multiple identities, concurrency, disablement and revocation | Core, HTTP and frontend rule tests exist; these browser records cover the initiating user's normal path | Partial |
-| Authorization failure, process crashes and recovery across the stack | Lower-level scope, revocation, renewal and cancellation tests exist; the normal path does not prove recovery | Partial |
-| Encryption master-volume disaster recovery | Encryption identity and startup refusal tests exist; a complete recovery exercise has not run | Partial |
-| Upload, registration and release of an empty JSONL Revision when the initial grant already sees ending | Node ending coordination and empty-history sealing are tested; complete delivery has no direct evidence yet | Partial |
-
-M4 can be recorded as complete only after a new Bluezone Key is configured through the page and both
-protocols pass acceptance against the actual service. Agent privilege reduction and guardian ownership
-remain separate work; this record does not claim completed production execution isolation for multiple users.
+Overall M4 stays Partial and personal-model ADRs approved until new page-entered Bluezone Keys pass one real model per protocol. Historic success, interruption recovery, startup failures and cumulative timeout reports remain distinct from final-source evidence.
