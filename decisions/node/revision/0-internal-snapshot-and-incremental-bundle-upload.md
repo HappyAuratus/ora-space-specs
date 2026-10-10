@@ -15,7 +15,7 @@ Agent 会话结束后，Node 以一次交付执行保存成果：保留 Agent �
 [Cloud Revision 根决策](../../cloud/revision/0-cloud-owned-object-store-and-verified-revisions.md)，消息见
 [Node 协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)。继承
 [clone 最小执行契约](../repository/20260918-minimal-clone-execution-contract.md) 的 Git 执行约束（禁用 hooks、
-不改用户仓库配置、受 host/guardian 纳管）。本文不涉及从 Revision 恢复 Workspace，也不推送到用户远端。
+不改用户仓库配置、受 host/guardian 纳管）。本文不涉及从 Revision 恢复 Workspace（见 [恢复前序 Revision 后续决策](20261010-restore-prior-revision-before-session.md)），也不推送到用户远端。
 
 ## 决策
 

@@ -61,10 +61,13 @@ Workspace 插件根装有 agent 插件与其他插件。
 - 只启动指定版本的 agent 插件，在该执行的进程 scope 内；不符或未安装时以 `agent_failed{agent_plugin_unavailable}` 结束。
 - Agent 进程树的提交使用 `GIT_AUTHOR_*`/`GIT_COMMITTER_*`，checkout 的 `.git/config` 与全局配置不变。
 - 会话期间持有插件租约，结束后释放。
+- 配置了工作负载用户时，插件进程与宿主为它启动的全部子进程以工作负载 UID/GID 运行（无附加组、`no_new_privs`、
+  无能力），从会话目录中的只读包视图启动、HOME 在会话目录内；会话结束后会话目录被删除。
 
 ### 禁止结果
 
-启动其他插件；修改 git 配置；会话结束后租约仍被持有。
+启动其他插件；修改 git 配置；会话结束后租约仍被持有；配置了工作负载用户时任何 Agent 进程以 root 运行、能读到
+Node home 或管理密钥，或身份切换失败后仍以原身份执行。
 
 ### 验证义务与证据
 
@@ -74,6 +77,7 @@ Workspace 插件根装有 agent 插件与其他插件。
 | git 身份隔离 | `agent_commits_carry_the_session_identity_without_touching_git_config`：经宿主 `ora/childprocess/spawn` 与插件直接派生的两次提交，author/committer 都是输入身份，`.git/config` 逐字节不变 | Covered |
 | 租约 | `ending_cancels_the_running_turn_and_discards_queued_turns` 验证结束后租约归零；`session_commands_use_the_production_ledger_and_installer_catalog` 验证生产安装器与会话共享租约，活跃插件移除返回 `plugin_in_use` | Covered |
 | 执行进程 scope | 插件进程与 Agent CLI 纳入该执行的 host/guardian 进程 scope | Missing：第二步直接启动插件进程（见 ADR D2 落地差异） |
+| 工作负载身份 | `ora-process` 的 `an_identity_the_parent_cannot_take_fails_the_spawn`（无法切换身份时启动失败、不留子进程）与 `a_root_parent_drops_the_whole_tree_to_the_identity`（root 父进程下整树为目标 UID/GID、无附加组、`NoNewPrivs`、`CapEff` 为 0、umask `0077`，整树可终止）；`apps/ora-node` 的 `a_separate_workload_runs_the_agent_from_its_session_directory`（插件 cwd 为包视图、HOME 为会话 home，结束后目录删除）、`the_view_launcher_moves_the_launch_into_the_package_view`、`the_session_environment_reaches_the_plugin_and_its_host_spawned_processes`、`purging_removes_every_leftover_without_following_links` | Partial：需要 root 的测试标记为 `#[ignore]`，CI 不运行（2026-10-09 在 root 容器中手工运行通过）；ora-node 测试以当前用户身份运行，未经真实降权；cluster `task real-agent:acceptance` 在真实栈上核对 opencode 进程树为 UID 1000，只作补充证据 |
 
 ### 决策依据
 
