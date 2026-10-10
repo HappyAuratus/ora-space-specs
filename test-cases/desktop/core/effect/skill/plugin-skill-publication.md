@@ -49,3 +49,41 @@ Effect worker 为当前 generation 规划并应用 Plugin Skill Source revision�
   保持独立。
 - Effect 系统基础决策不变量 5–8、10–11：Observed State 不授予 ownership，Resource mutation 必须
   持有 fenced authority，并以完整 projection 和 durable journal 推进。
+
+## Republishing a Retired Source Must Restore Desired Intent
+
+### 风险
+
+Source retirement 删除该 Source 在全部 Scope 的当前 Desired intent，但保留 `published_revision_id`。
+如果重新发布同一 revision 只恢复 availability、不重新装入 Desired，插件卸载后重装会永远失去
+Skill intent，接替 Target 无法收敛（重复安装/卸载回归）。
+
+### 前置状态
+
+- 一个插件已在所有 Workspace Scope 发布 Skill Source revision。
+- 该插件卸载：Source retirement 删除 Desired intent。
+
+### 触发
+
+同一插件以同一 revision 重新安装（`replace_plugin_skills`）。
+
+### 必须成立
+
+- 重新发布把该 Source 的 Desired intent 装入全部 active Scope，各 Scope 只推进一次 generation。
+- active Source 重复发布同一 revision 仍为 no-op，不产生无意义 generation。
+
+### 禁止结果
+
+- 仅恢复 revision availability 而不恢复 Desired intent。
+- 恢复过程中产生重复 Desired 行或多余 generation。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 卸载后重装同一 revision 恢复 Desired intent，且卸载确实先行移除 | `ora_db::effect_repository_tests::skill_republish::reinstalling_the_same_plugin_revision_restores_desired_effects` | `Covered` |
+
+### 决策依据
+
+- [Target 生命周期转换推进 Scope 收敛纪元](../../../../decisions/desktop/core/effect/20261010-retirement-epoch.md)
+  D3：退役 Source 重发必须像新 Source 一样恢复 Desired intent。

@@ -73,3 +73,62 @@ worker 首次 reconcile 完整 generation，随后在 Desired、Consumer Revisio
 - ADR 不变量 14：mutation 必须可精确验证、可安全重试或进入 RecoveryRequired。
 - durable request 表示仍欠一次重新评估；wakeup payload 不是 correctness 来源。
 - 无 mutation 路径不应创建 Attempt 或 Operation journal。
+
+## Target Retirement Must Finish on a Fresh Epoch
+
+### 风险
+
+Target lifecycle 从 active 进入 retiring 会把该 Target 的 Desired 选择清空。如果退役事务不推进
+Scope generation，退役 Target 的空 projection 会落在它与 active 期间完全相同的不可变身份
+`(target_id, generation, consumer_revision_id)` 上，与已持久化的非空 projection 同身份不同内容，
+持久化必然失败并无限重试；接替 Consumer 把退役 Target 作为共享 Resource contributor 一并投影时
+命中同一冲突，新旧 Workspace 全部无法收敛，readiness gate 永久阻止发送（desktop issue #6）。
+
+### 前置状态
+
+- 一个 Workspace Scope 内，一个纯 Consumer 型插件（自身不发布 Skill Source）的 Target 已在
+  当前 generation 收敛为 Current，并在该 generation 持久化非空 projection。
+- Skill catalog 由另一个 Skill 插件提供，卸载 Consumer 型插件不改变 Desired State。
+
+### 触发
+
+卸载该插件（`retire_consumer`），随后在同一 worker pass 之前安装同能力的 Marketplace 构建
+（`declare_consumer`），再由（可能重启后的）worker 领取全部到期 Target。
+
+### 必须成立
+
+- 退役事务推进受影响 Scope 的 generation，并唤醒 Scope 内全部 active 与 retiring Target。
+- 退役 Target 的空 projection 在新纪元持久化成功，收敛后 Target 行删除；共享 Resource 与
+  Managed ledger 只在被最后一个贡献者放弃时清理。
+- 接替 Target 在同一共享 Resource 上收敛为 Current/ready，既有 Workspace 的发送 gate 解除。
+- 新建 Worktree 使用同一接替 Consumer 仍独立收敛。
+- 声明替换（同一 Consumer 的新 Revision）同样推进纪元：旧 Target 在新纪元完成退役，新 Target
+  收敛。
+- 退役 Target 遇到已删除的 Workspace 根目录时观察为空 Resource，仅当共享 Resource 上没有存活
+  贡献者仍 desire 内容时忘却 ledger 并完成退役；存在存活接替者时两个 Target 持续失败直至
+  工作区恢复或接替 intent 撤销，不得重建用户删除的根目录（升格为 manual 恢复 Condition 见
+  desktop issue #664）。
+
+### 禁止结果
+
+- 退役或声明替换在未推进 generation 的事务中唤醒 Target。
+- 以"digest 冲突"失败后无限重试，或通过强删 projection/绑定"修复"。
+- 把双重绑定（retiring 与 active Target 共享一个 Resource）当成非法状态强拆。
+- 对已删除 Workspace 根目录的退役 Target 永久报 `Resource adapter operation failed`。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 卸载纯 Consumer 插件并安装 Marketplace 构建后，旧 Target 完成退役、新 Target 在共享 Resource 上 Current/ready、新 Worktree 独立收敛、重启后无剩余请求 | `ora_db::effect_repository_tests::consumer_handover::retiring_local_consumer_handover_to_marketplace_consumer_converges` | `Covered` |
+| 同一 Consumer 声明变化替换 Target 时，旧 Target 在新纪元完成退役，新 Target Current/ready | `ora_db::effect_repository_tests::consumer_handover::replacing_a_consumer_declaration_retires_the_old_target_at_a_new_epoch` | `Covered` |
+| Workspace 根目录已删除且无存活接替贡献者时，退役 Target 以空观察完成退役并清理全部自有行 | `ora_db::effect_repository_tests::consumer_handover::retiring_target_on_a_deleted_worktree_finishes_retiring` | `Covered` |
+| Workspace 根目录已删除且存在存活接替贡献者仍 desire 内容时，两个 Target 不重建根目录；该组合场景升格为 manual 恢复 Condition 前无法收敛 | 评审实测确认持续失败；修复方案见 desktop issue #664 | `Missing` |
+| 退役 Source 重新发布（同 revision）恢复全部 active Scope 的 Desired intent | `ora_db::effect_repository_tests::skill_republish::reinstalling_the_same_plugin_revision_restores_desired_effects` | `Covered` |
+
+### 决策依据
+
+- [Target 生命周期转换推进 Scope 收敛纪元](../../../../decisions/desktop/core/effect/20261010-retirement-epoch.md)
+  D1、D2、D3 与不变量 1–5。
+- [Effect 系统基础](../../../../decisions/desktop/core/effect/0-effect-system-foundation.md)：
+  退役 Target 以空贡献参与共享 Resource 合并，只有空 projection 收敛后才删除 Target。
