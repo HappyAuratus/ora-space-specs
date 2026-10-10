@@ -121,7 +121,7 @@ Thread 以外的交互式聊天（`chat` 页）。
 
 - token 级增量显示的旁路设计。
 - Thread 条目与 JSONL 的保留期限、Thread 的总大小上限。
-- 运行结束后在 Thread 中继续对话（需要从 Revision 续接）。
+- 运行结束后在 Thread 中继续对话（需要从 Revision 续接）。2026-10-10 补充：新运行续接前序 Revision 已由 [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) 提出（proposed）；同一个 Thread 在运行结束后继续对话仍未决。
 - 权限请求的人工审批：第一版沿用 desktop 运行时的自动批准，Thread 只显示结果。
 
 ## 落地顺序
