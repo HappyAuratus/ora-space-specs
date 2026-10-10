@@ -27,12 +27,25 @@ D1 的 `public_endpoint`。只适用于本地联调，不代表生产 Substrate 
 
 ### D1：`-node-env-file` 注入部署提供的环境变量
 
-- Sandbox Server 启动参数 `-node-env-file <path>`（可选）指向 `KEY=VALUE` 文件；创建容器时把其中每个变量
-  加入容器环境。变量名必须匹配 `^[A-Z][A-Z0-9_]*$`，且不得是 `ORA_NODE_CONFIG` 或以 `ORA_` 开头，
-  否则启动失败。
+- Sandbox Server 启动参数 `-node-env-file <path>`（可选，只能与 `-lifecycle-addr` 一起使用）指向
+  `KEY=VALUE` 文件；创建容器时把其中每个变量追加到容器环境（排在 `ORA_NODE_CONFIG` 与管理 TLS 变量之后）。
+  空行与 `#` 开头的行忽略；值是第一个 `=` 之后的全部内容，按字面使用，不处理引号、不展开变量。
+- 变量名必须匹配 `^[A-Z][A-Z0-9_]*$`，且不得以 `ORA_` 开头（`ORA_NODE_CONFIG` 与管理 TLS 变量由 Sandbox
+  Server 自己设置）；同名变量出现两次、或只写变量名（Docker env-file 中“从宿主环境复制”的写法）同样拒绝。
+  任一不合规、文件缺失都使启动失败；错误信息只含行号与变量名，不含值。
 - 变量值不写入 journal、日志或 effect 结果；journal 中的请求与结果保持原样。
 - 文件内容在 Sandbox Server 启动时读取一次；修改后需要重启 Sandbox Server，已运行的沙盒不受影响。
-- cluster 提供 `compose/node.env.example`，真实的 `compose/node.env` 被 Git 忽略。
+- cluster 提供 `compose/node.env.example`，真实的 `compose/node.env` 被 Git 忽略。Compose 始终以只读方式
+  挂载该文件（`ORA_NODE_ENV_FILE` 可改路径，且不允许 Docker 在缺失时代建目录）；`task up` 与
+  `task agent:fixture:up` 在文件不存在时从示例复制一份（权限 `600`），示例中的变量均已注释，因此默认不注入任何变量。
+- Node 不过滤环境：注入的变量经 ora-node 传给插件进程与它启动的 Agent CLI。这意味着沙盒内能执行代码的
+  主体（Agent、用户工作负载）都能读到这些值，本地联调接受这一点。
+- Agent 以工作负载 UID 1000 运行，而不是 Node 的 root：cluster 的 Node 配置模板设置 `agent.workload_directory`
+  （`/var/lib/ora/agent`，由镜像入口脚本创建），Node 在其中为每个会话建立只读插件包视图与私有 HOME（见
+  [agent-runtime 根决策](../../node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D2 的实现补充）。
+  注入的变量因此能被 Agent 读取，但 Agent 读不到 Node home、管理密钥与账本。
+- 模型凭据只是最常见的用途；宿主只能经代理出网时，同一文件也承载 `HTTPS_PROXY`/`NO_PROXY`（`NO_PROXY` 需包含
+  对象存储在沙盒网络上的别名，交付上传才不经代理）。OpenCode 的免费模型不需要凭据。
 
 为什么放在 Sandbox Server 而不是 Node 镜像：凭据不应进入镜像层；Sandbox Server 已经是本地“平台”，由它注入
 与平台向沙盒注入 Secret 的位置一致，Cloud 与 Controller 都不经手。
@@ -74,4 +87,6 @@ path-style 寻址），换用其他 S3 兼容服务不改变本决策的网络�
 
 Sandbox Server 增加参数与注入（单元测试覆盖变量名校验与不写 journal）；Compose 增加 RustFS、凭据与建桶
 任务、env 示例与 Cloud 配置；README 更新。其中 RustFS、凭据、建桶与 Cloud `object_store` 配置已由
-cluster#8 落地；`-node-env-file` 与 `compose/node.env.example` 尚未实现。
+cluster#8 落地；`-node-env-file`、`compose/node.env.example` 与 Compose 挂载在 M4 落地
+（`sandbox-server/internal/lifecycle/nodeenv.go`，单元测试 `nodeenv_test.go` 覆盖变量名校验、错误不回显值，
+以及值只进入容器环境、不出现在 journal 文件、effect 结果与日志中）。
