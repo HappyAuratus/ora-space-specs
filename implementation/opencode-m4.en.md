@@ -10,7 +10,7 @@ Review confirmed missing trusted DNS deployment behavior when system DNS returns
 
 Repairs add authenticated HTTPS DNS with whole-answer public-address checking, finite safe error classifications, a bounded network Git deadline, three durable clone attempts, and closed failed sessions with a persisted safe failure entry. Existing successful multiturn behavior remains; failed sessions attempt to deliver partial Revisions and release authorization. A committed user cancellation wins a racing model failure. Project configuration discovery is disabled without changing tracked `.opencode` files.
 
-Per-comment reproductions, checks, commits and original-thread replies are recorded in the [review ledger](https://github.com/ora-space/cluster/blob/codex/m4-opencode-model-proxy/docs/m4-review-follow-up.en.md). One OpenAI response after a temporary hosts mapping is insufficient evidence for DNS, Anthropic, failure UI, cleanup or new-key acceptance. Overall M4 remains Partial and real-provider acceptance Missing.
+Per-comment reproductions, checks, commits and original-thread replies are recorded in the [review ledger](https://github.com/wanglongan587/cluster/blob/codex/m4-opencode-model-proxy/docs/m4-review-follow-up.en.md). One OpenAI response after a temporary hosts mapping is insufficient evidence for DNS, Anthropic, failure UI, cleanup or new-key acceptance. Overall M4 remains Partial and real-provider acceptance Missing.
 
 ## 2026-10-11 direct review-fix evidence
 

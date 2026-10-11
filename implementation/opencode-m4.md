@@ -10,7 +10,7 @@
 
 已按意见修正可信 HTTPS DNS、公网答案整体检查、安全错误分类、网络 Git 独立预算、持久三次 clone 重试，以及会话失败的关闭与持久安全条目。失败时关闭消息通道并释放授权，尝试交付已有 Revision；成功多轮行为保留。已提交的用户取消优先于竞态中的模型失败。禁止项目配置发现，不修改仓库已有 `.opencode` 内容。
 
-逐意见的复现、验证、提交和原线程回复见 [检视处理记录](https://github.com/ora-space/cluster/blob/codex/m4-opencode-model-proxy/docs/m4-review-follow-up.md)。一次临时 hosts 映射后的 OpenAI 回复不能替代正常 DNS、Anthropic、错误页面、资源释放或新 Key 的完整验证。整体仍为 Partial，真实供应商义务仍为 Missing。
+逐意见的复现、验证、提交和原线程回复见 [检视处理记录](https://github.com/wanglongan587/cluster/blob/codex/m4-opencode-model-proxy/docs/m4-review-follow-up.md)。一次临时 hosts 映射后的 OpenAI 回复不能替代正常 DNS、Anthropic、错误页面、资源释放或新 Key 的完整验证。整体仍为 Partial，真实供应商义务仍为 Missing。
 
 ## 2026-10-11 检视修复的直接证据
 
