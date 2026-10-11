@@ -18,4 +18,4 @@
 - 触发：重复启动、损坏或丢失主密钥、执行 M4 验收。
 - 必须成立：复用加密身份；旧密文无法解密时启动失败；独立项目/端口/网络/标签；浏览器无真实密钥持久存储。
 - 禁止结果：静默重置密钥、挂载 Gateway 签名私钥给模型服务、验收重建 Echo 的 `local` 镜像。
-- 证据与义务：model-gateway 加密身份校验测试；bootstrap 脚本和隔离参数拒绝检查；独立 WSL 栈两协议的真实浏览器/API 正常链路及精确 Run 的容器/卷释放复核，见 [M4 验收记录](../../../implementation/opencode-m4.md)。状态 `Partial`，浏览器正常路径已有直接证据，主密钥卷灾备恢复演练和用户页面新 Key 的真实 Bluezone 验收仍待补齐。
+- 证据与义务：model-gateway 加密身份校验测试；bootstrap 脚本和隔离参数拒绝检查；[独立两协议实际链路证据](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)复核同 Run 的容器/卷释放。状态 `Partial`，浏览器正常路径已有直接证据，主密钥卷灾备恢复演练和页面已有真实默认模型的供应商验证仍待补齐。

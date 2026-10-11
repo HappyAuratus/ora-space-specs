@@ -2,8 +2,8 @@
 
 决策依据：[个人连接与运行代理](../../../decisions/cloud/model-access/0-personal-model-connections-and-run-scoped-proxy.md)。
 状态对应直接证据范围；生产 CLI 与 Bluezone 的真实联调不能由下层替身测试代替。
-2026-10-10 两协议的受控上游浏览器/API 正常链路已通过，安全元数据与剩余义务见
-[M4 验收记录](../../../implementation/opencode-m4.md)。整体 M4 仍未完成，相关 ADR 保持 `approved`。
+两协议的受控上游浏览器/API 证据见 [PR 检视与验证记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)，实施阶段记录见 [Specs PR 归档](https://github.com/ora-space/specs/pull/76#issuecomment-6107673463)。
+证据只覆盖各自明确的义务；整体 M4 仍为 `Partial`，相关 ADR 保持 `approved`。
 
 ## Personal model configuration must remain owner scoped
 
@@ -39,7 +39,7 @@
 - 触发：调用冻结模型、上游错误、撤销绑定或超时。
 - 必须成立：两种协议和工具数据持续转发；加入冻结的认证与模型；撤销取消上游；HTTP 失败不回显诊断正文。
 - 禁止结果：跨模型请求、客户端指定目标、跟随重定向、访问私网或把真实 Key 返回客户端。
-- 证据：`cloud/internal/modelgateway/service_test.go`、`transport_test.go` 使用真实 TLS HTTP 边界验证转发、撤销、错误过滤与地址策略；`events_test.go`、`framing_test.go`、`completion_test.go` 直接覆盖 HTTP 200 内错误、SSE 格式及阻塞写入/正常结束竞态。状态 `Partial`，实际 OpenCode 受控上游两协议已通过，Bluezone 仍需直接验收。
+- 证据：`cloud/internal/modelgateway/service_test.go`、`transport_test.go` 使用真实 TLS HTTP 边界验证转发、撤销、错误过滤与地址策略；`events_test.go`、`framing_test.go`、`completion_test.go` 直接覆盖 HTTP 200 内错误、SSE 格式及阻塞写入/正常结束竞态。`dns_test.go` 验证真实 HTTPS DNS 双栈、混合私网/基准地址拒绝、重定向及畸形响应；`diagnostics_test.go`、`diagnostics_classification_test.go` 验证有限分类和诊断过滤。可选 `TestLiveTrustedDNSAndVerifiedUpstreamTLS` 只证明无凭据连接与 TLS。状态 `Partial`，受控 CLI 两协议证据见 [PR 记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)，真实供应商仍需直接验证。
 
 ## Personal model usage must remain controlled by the run initiator
 
@@ -52,11 +52,9 @@
 
 ## Real OpenCode must modify the checkout and deliver a secret-free Revision
 
-可信解析和安全错误分类的补充证据：`dns_test.go` 验证真实 HTTPS DNS 的双栈答案、混合私网/基准地址整体拒绝、重定向及畸形响应失败关闭；`transport_test.go` 保留 IPv4 策略并补上 `2001:2::/48` 边界。`diagnostics_test.go` 与 `diagnostics_classification_test.go` 检查有限分类及日志不含诊断数据。可选 `TestLiveTrustedDNSAndVerifiedUpstreamTLS` 不读取或发送凭据，现场返回 401 只证明可信 DNS、公网拨号和 TLS，不计为真实模型生成验收。
-
 - 风险：只有 Echo 或模拟器跑通，实际 CLI、工具调用、成果保存及释放未接通。
 - 前置：独立真实 Compose 栈，安装固定版本官方 OpenCode，用户通过页面配置连接和模型。
 - 触发：登录、创建项目并 clone、@OpenCode、追加轮次、结束会话。
 - 必须成立：真实 CLI 读取/修改 checkout，JSONL 与 bundle 保存并校验，Git 作者归发起者，运行 Workspace 释放。
 - 禁止结果：以替身代替 CLI、Key/临时令牌进入 Git/日志/截图、未登记成果就宣称完成。
-- 证据：最终 `Cloud 5b6b5ec`、`Desktop f8536f9d`、`Cluster a8146c7` 的独立 M4 栈以 `opencode-m4-receipt-final-browser-openai.json` / `opencode-m4-receipt-final-browser-anthropic.json` 直接覆盖开发登录、页面配置、clone、Issue、真实 CLI 两轮会话及结束；对应的两个 `verified-*` 文件对同一浏览器 Run 核验 Revision、Git 作者和运行 Workspace 容器/卷释放。`opencode-m4-api-receipt-final.json` 补充两协议 API 链路，模型 ID 为 `m4/tool-model`。受控上游正常浏览器及交付义务已有直接证据；整体状态仍为 `Partial`，用户页面新 Key 的 Bluezone 实际服务验收尚未执行，不能标记 M4 完成。历史成功和失败记录不代替本次最终源码验证。
+- 证据与义务：[独立实际 CLI 验证记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)覆盖两协议的页面配置、clone、两轮读写、结束及同 Run 的 Revision 恢复、Git 作者、对象摘要和容器/卷释放。API 链路作为补充；[实施阶段历史记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672503)不替代后续代码验证。状态 `Partial`：受控正常路径已有直接证据，页面已有真实默认模型的两协议供应商验证仍 `Missing`；多身份、崩溃和灾备义务保持各自缺口。
