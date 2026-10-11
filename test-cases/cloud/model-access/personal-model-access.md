@@ -52,6 +52,8 @@
 
 ## Real OpenCode must modify the checkout and deliver a secret-free Revision
 
+可信解析和安全错误分类的补充证据：`dns_test.go` 验证真实 HTTPS DNS 的双栈答案、混合私网/基准地址整体拒绝、重定向及畸形响应失败关闭；`transport_test.go` 保留 IPv4 策略并补上 `2001:2::/48` 边界。`diagnostics_test.go` 与 `diagnostics_classification_test.go` 检查有限分类及日志不含诊断数据。可选 `TestLiveTrustedDNSAndVerifiedUpstreamTLS` 不读取或发送凭据，现场返回 401 只证明可信 DNS、公网拨号和 TLS，不计为真实模型生成验收。
+
 - 风险：只有 Echo 或模拟器跑通，实际 CLI、工具调用、成果保存及释放未接通。
 - 前置：独立真实 Compose 栈，安装固定版本官方 OpenCode，用户通过页面配置连接和模型。
 - 触发：登录、创建项目并 clone、@OpenCode、追加轮次、结束会话。

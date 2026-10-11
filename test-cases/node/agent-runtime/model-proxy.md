@@ -19,3 +19,12 @@
 - 必须成立：停止模型调用，在有限时间内等待已有持久结束命令，保留其结束原因并完成成果封装；未开始会话也可封装空记录。
 - 禁止结果：把身份伪造/错误代次/其他撤销识别成正常 ending，或无限等待。
 - 证据与义务：Core 的 ending 错误分类矩阵，Desktop `session/model` ending 竞态及未启动会话空 JSONL 封存测试。状态 `Partial`：分类与 Node 收尾有直接证据；初始授权已 ending 时的空记录 Revision 上传、登记及释放仍缺全栈直接证据。
+
+## Project configuration must not become CLI state or Revision output
+
+- 风险：OpenCode 自动发现 checkout 中的 `.opencode`，安装 CLI 依赖并把配置、缓存或私有会话状态纳入成果。
+- 前置：官方 `ora-space.opencode@0.6.4`，用户仓库已提交 `.opencode/package.json` 和哨兵文件。
+- 触发：两协议各启动全新会话，读取 LICENSE、写文件、追加一轮并结束。
+- 必须成立：仅模型会话设置 `OPENCODE_DISABLE_PROJECT_CONFIG=true`；已有仓库 `.opencode` 不修改；HOME/XDG/CLI 配置在会话目录，公开 CA 可读而管理私钥不可读。结束后私有目录删除，Revision 仅含用户请求的仓库改动。
+- 证据：`model_proxy/tests` 检查禁用标志；2026-10-11 两组官方 CLI 浏览器记录及同 Run bundle 恢复比较，差异仅为 `ora-m4-result.txt`，已提交 `.opencode` 内容不变，JSONL 摘要匹配、容器和卷释放。现场工作进程 UID/GID 1000、无附加组和能力、`NoNewPrivs=1`，公开 CA 可读、管理私钥不可读。
+- 状态：配置隔离与该受控链路 `Covered`；完整 guardian 后代纳管和全栈崩溃恢复仍 `Partial`，不从正常结束推定崩溃回收。

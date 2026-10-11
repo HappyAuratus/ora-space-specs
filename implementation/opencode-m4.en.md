@@ -1,10 +1,57 @@
-# M4 OpenCode: final controlled-model acceptance
+# M4 OpenCode: controlled evidence and review repair boundaries
 
 [中文](opencode-m4.md) | English
 
-On 2026-10-10, `Cloud 5b6b5ec` / `Desktop f8536f9d` / `Cluster a8146c7` passed both protocol API paths, complete Chromium flows and exact-resource verification. The production CLI in fixed `official/ora-space.opencode@0.6.4` reads LICENSE, writes files and commits Git through the platform model proxy. Only the upstream model is controlled; the agent is not Echo or simulated.
+The following preserves historical 2026-10-10 results for `Cloud 5b6b5ec` / `Desktop f8536f9d` / `Cluster a8146c7`; those successes do not establish the subsequently reviewed failure paths or project configuration isolation. The production CLI in fixed `official/ora-space.opencode@0.6.4` performed LICENSE reads, file writes and Git commits through the platform proxy. Controlled upstream evidence does not establish real-provider acceptance.
 
-## Final direct evidence
+## 2026-10-11 review follow-up
+
+Review confirmed missing trusted DNS deployment behavior when system DNS returns reserved fake IPs, an omitted IPv6 benchmark range, insufficient safe transport classification, clone sharing the short local-command deadline with unbounded retries, project `.opencode` discovery, and ACP failures represented as completed turns. The subsequent HOME and public CA fixes require fresh-session verification.
+
+Repairs add authenticated HTTPS DNS with whole-answer public-address checking, finite safe error classifications, a bounded network Git deadline, three durable clone attempts, and closed failed sessions with a persisted safe failure entry. Existing successful multiturn behavior remains; failed sessions attempt to deliver partial Revisions and release authorization. A committed user cancellation wins a racing model failure. Project configuration discovery is disabled without changing tracked `.opencode` files.
+
+Per-comment reproductions, checks, commits and original-thread replies are recorded in the [review ledger](https://github.com/ora-space/cluster/blob/codex/m4-opencode-model-proxy/docs/m4-review-follow-up.en.md). One OpenAI response after a temporary hosts mapping is insufficient evidence for DNS, Anthropic, failure UI, cleanup or new-key acceptance. Overall M4 remains Partial and real-provider acceptance Missing.
+
+## 2026-10-11 direct review-fix evidence
+
+The independent `ora-m4-review` stack uses this round's Cloud/Node code, the fixed official 0.6.4
+package and controlled HTTPS models. Its repository has tracked `.opencode/package.json` and a
+sentinel; isolation is tested without deleting user files. `browser-final.json` and exact-Run
+`verified-browser.json` passed development login, private connection setup, clone, two read/write
+turns, ending, Revision restoration and container/volume release. Restored diffs contain only
+`ora-m4-result.txt`; tracked `.opencode` stays unchanged and bundle/Node JSONL size/digests match.
+
+| Protocol | This round's Run | Revision | Final Git commit |
+| --- | --- | --- | --- |
+| `openai-completions` | `3890efc9-63c2-48ff-bb04-c7efec7efb19` | `67233399-9f15-4248-8c9a-99c2c4cd8f3d` | `3348203ef5c71d58d0153bff14bf0b07f4fb23da` |
+| `anthropic-messages` | `92efb86b-df38-40ff-abe7-c13a33f30aeb` | `f59f0c28-ce88-48d5-8b68-d17f8be48227` | `6e9ac4d9b39b593662cd1cb8eb865408cf79771f` |
+
+`failure-browser.json` and `verified-failure.json` passed. A controlled provider rejects a synthetic
+credential with HTTP 401; safe Gateway 502 and actual CLI ACP failure end the Node session. The page
+shows a safe failure entry and disables appending; Thread is ended, public run failed and an unchanged
+Revision registered. OpenAI Run `022547f5-d58f-407f-b870-a3fc4563c90e` and Anthropic Run
+`09c01527-8ba4-4dea-b680-b830a60f6f14` have zero active grants, matching Node JSONL digests and removed
+run containers/volumes. PostgreSQL/gRPC and Node plugin tests separately establish unknown-detail
+sanitization, replay deduplication and committed-cancellation priority.
+
+Actual Controller/Node clone operation `e56b5445-d95f-4121-b369-17c641df652b` stopped after exactly
+three durable dispatches: failed, no retryAt, admission closed and manual retry rejected with 409;
+the primary Workspace remains. A slow actual Node clone succeeds beyond the unchanged five-second
+local-command budget. A network timeout still goes through guardian cleanup; Unknown is not retried.
+
+Independent Echo `echo-browser.json` and `echo-resume-final.json` passed M2 multiturn/ending and M3's
+three-run first output, restored unchanged and further-write paths, with object digests, Git author
+and resource cleanup verified. Credential-free Windows/WSL HTTPS DNS probes verified a real upstream
+certificate and received HTTP 401; this establishes connectivity only. No Pi Key was read this round;
+Bluezone fresh-Key acceptance for both protocols remains Missing.
+
+A first cold startup under concurrent heavy load exceeded the existing 30-second ready budget and
+left AgentUnavailable; later fresh sessions passed. The ready budget, certificate verification and
+hosts configuration were not relaxed. Full delivery of unstarted empty JSONL remains Partial and
+complete descendant supervision stays tracked by Desktop #665. The review ledger owns current checks
+and commit status.
+
+## 2026-10-10 historical direct evidence
 
 Cluster's ignored `.acceptance/` retains safe states and IDs without keys, Cookies or tokens. Browser and host verification refer to the same Run; API results are independent supplements.
 
@@ -21,7 +68,7 @@ Login evidence is development login, not production external-identity acceptance
 
 ## Merge compatibility and scope
 
-Personal-model and prior-Revision inputs coexist. Published restore wire field 6 stays intact; model reference uses 7. Controller gates both capabilities independently; wire round-trip and missing-either-capability regressions passed. Both `0033` migrations retain complete filenames/SQL without rewriting applied ledgers. Final Cloud full race CI passed 472 tests, frontend 945, and Desktop three-platform/frontend/Tauri/E2E checks all passed. See [Cluster evidence](https://github.com/wanglongan587/cluster/blob/codex/m4-opencode-model-proxy/docs/opencode-m4-acceptance.md).
+Personal-model and prior-Revision inputs coexist. Published restore wire field 6 stays intact; model reference uses 7. Controller gates both capabilities independently; wire round-trip and missing-either-capability regressions passed. Both `0033` migrations retain complete filenames/SQL without rewriting applied ledgers. The following is historical 2026-10-10 CI: Cloud full race passed 472 tests, frontend 945, and Desktop three-platform/frontend/Tauri/E2E checks passed. These are not this round's CI results. See [Cluster evidence](https://github.com/wanglongan587/cluster/blob/codex/m4-opencode-model-proxy/docs/opencode-m4-acceptance.md).
 
 | Obligation | Direct evidence | Status |
 | --- | --- | --- |

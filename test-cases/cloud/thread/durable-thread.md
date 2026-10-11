@@ -103,7 +103,10 @@ Thread 为 `idle`，`idle_since` 已记录。
 
 - 越过窗口后派发循环把 Thread 置为 `ending` 并放出 `EndSession{idle_timeout}`，只放出一次。
 - 窗口内追加消息使 Thread 回到 `active`，不结束。
-- Agent 首轮失败后 Thread 同样进入 `idle`，不自动结束。
+- 只有成功结束且无待执行消息的轮次进入 `idle`；取消的 `turnEnded` 不建立空闲窗口。
+- Agent 请求失败或流意外关闭时，Node 以有限安全分类结束会话。Cloud 在终态接管事务中关闭 Thread，
+  丢弃排队消息并追加一个 `source=system/kind=session_failed` 条目；重放不追加第二个条目。
+  原始 Node 历史保留原样，失败条目不携带供应商诊断、认证头或错误链。
 
 ### 禁止结果
 

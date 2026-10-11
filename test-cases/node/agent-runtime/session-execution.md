@@ -23,13 +23,13 @@ Node 运行 echo agent 的会话执行。
 
 ### 必须成立
 
-- 每条记录先追加 JSONL，再经 `append_thread_event` 持久化，之后才发送。
+- 每条 Node 会话记录先追加 JSONL，再经 `append_thread_event` 持久化，之后才发送。Cloud 终态事务生成的 `source=system/session_failed` 条目是独立平台事实，不伪造成 Node 原始记录。
 - 崩溃后 Thread 至多缺最后一条，JSONL 完整；重启时会话以 `interrupted` 结束，记录已封口。
 - 用户消息记录携带 `turn_id`。
 
 ### 禁止结果
 
-Thread 有 JSONL 中不存在的记录；重启后恢复出运行中的会话。
+Thread 的 Node 来源记录在 JSONL 中不存在；平台失败条目混入 Node JSONL；重启后恢复出运行中的会话。
 
 ### 验证义务与证据
 
@@ -119,6 +119,28 @@ Node 运行 echo agent 的会话执行，首个轮次尚未结束或正在运行
 ### 决策依据
 
 agent-runtime D6、D7；协议后续决策 D4，不变量 4。
+
+## Provider Failure Ends The Session Without Publishing Its Diagnostic
+
+### 风险
+
+ACP 错误或提前结束被当作成功，Thread 继续显示空闲；直接传播上游错误又可能泄露请求或凭据。
+
+### 触发与必须成立
+
+实际插件返回 prompt 错误，或事件流在 Completed 前结束。Node 以有限类别 `agent_turn_failed` / `agent_stream_closed`
+结束会话，不发布原始错误；停止插件并释放租约、模型授权。已持久受理的结束命令优先，保留取消原因。
+Cloud 关闭 Thread、丢弃排队消息，并在终态事务内追加一次安全 System 失败条目；重放不追加第二次。
+原始 Node JSONL 不改变，已有仓库成果仍走 Revision 交付和 Workspace 释放。
+
+### 验证义务与证据
+
+| 义务 | 直接证据 | 状态 |
+|---|---|---|
+| prompt 失败不再当作成功 | `provider_failure_ends_the_session_with_a_safe_code_and_releases_resources`：真实 echo 插件的 ACP 错误导致 AgentFailed、安全 detail、进程退出和租约归零 | Covered |
+| 取消优先 | `durable_cancel_wins_a_racing_provider_failure`：阻塞记录追加，先持久受理取消但不唤醒，再放行 ACP 错误；最终 Cancelled | Covered |
+| 持久失败与重放 | Cloud `TestSessionFailureProjectsOnlySafeCodes`：真实 PostgreSQL + gRPC，未知恶意 detail 收为 `agent_failed`、单一 System 条目、不可追加且重放不重复 | Covered |
+| 实际 CLI 和浏览器失败链路 | 2026-10-11 两协议受控上游 HTTP 401 → Gateway 安全 502 → OpenCode ACP 错误；页面显示失败并禁止追加，同 Run 完成交付、撤销及容器/卷释放 | Covered：仅受控供应商故障；真实供应商和全栈崩溃演练仍未完成 |
 
 ## Durable Session Ledger Preserves Events Commands And Terminal State
 
