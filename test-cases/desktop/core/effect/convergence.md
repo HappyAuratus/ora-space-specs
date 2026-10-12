@@ -104,17 +104,19 @@ Scope generation，退役 Target 的空 projection 会落在它与 active 期间
 - 新建 Worktree 使用同一接替 Consumer 仍独立收敛。
 - 声明替换（同一 Consumer 的新 Revision）同样推进纪元：旧 Target 在新纪元完成退役，新 Target
   收敛。
-- 退役 Target 遇到已删除的 Workspace 根目录时观察为空 Resource，仅当共享 Resource 上没有存活
-  贡献者仍 desire 内容时忘却 ledger 并完成退役；存在存活接替者时两个 Target 持续失败直至
-  工作区恢复或接替 intent 撤销，不得重建用户删除的根目录（升格为 manual 恢复 Condition 见
-  desktop issue #664）。
+- 退役 Target 遇到已删除的 Workspace 根目录时，若共享 Resource 上没有存活贡献者仍 desire
+  内容，则完成退役并清理其 ledger。
+- 同一缺失根目录上若仍有接替贡献者 desire 内容，两个 Target 以 blocking、retry 为 `manual` 的
+  Condition `workspace_root_missing` 进入 Blocked，不自动重试，也不重建该根目录。目录恢复后的
+  显式 retry 重新收敛：接替 Target ready，退役 Target 删除，技能内容写回。
 
 ### 禁止结果
 
 - 退役或声明替换在未推进 generation 的事务中唤醒 Target。
 - 以"digest 冲突"失败后无限重试，或通过强删 projection/绑定"修复"。
 - 把双重绑定（retiring 与 active Target 共享一个 Resource）当成非法状态强拆。
-- 对已删除 Workspace 根目录的退役 Target 永久报 `Resource adapter operation failed`。
+- 对已删除 Workspace 根目录无限重试 `Resource adapter operation failed`，或在仍有 desire
+  内容时重建用户删除的根目录。
 
 ### 验证义务与证据
 
@@ -122,8 +124,9 @@ Scope generation，退役 Target 的空 projection 会落在它与 active 期间
 |---|---|---|
 | 卸载纯 Consumer 插件并安装 Marketplace 构建后，旧 Target 完成退役、新 Target 在共享 Resource 上 Current/ready、新 Worktree 独立收敛、重启后无剩余请求 | `ora_db::effect_repository_tests::consumer_handover::retiring_local_consumer_handover_to_marketplace_consumer_converges` | `Covered` |
 | 同一 Consumer 声明变化替换 Target 时，旧 Target 在新纪元完成退役，新 Target Current/ready | `ora_db::effect_repository_tests::consumer_handover::replacing_a_consumer_declaration_retires_the_old_target_at_a_new_epoch` | `Covered` |
-| Workspace 根目录已删除且无存活接替贡献者时，退役 Target 以空观察完成退役并清理全部自有行 | `ora_db::effect_repository_tests::consumer_handover::retiring_target_on_a_deleted_worktree_finishes_retiring` | `Covered` |
-| Workspace 根目录已删除且存在存活接替贡献者仍 desire 内容时，两个 Target 不重建根目录；该组合场景升格为 manual 恢复 Condition 前无法收敛 | 评审实测确认持续失败；修复方案见 desktop issue #664 | `Missing` |
+| Workspace 根目录已删除且无存活接替贡献者时，退役 Target 完成退役并清理全部自有行 | `ora_db::effect_repository_tests::consumer_handover::retiring_target_on_a_deleted_worktree_finishes_retiring` | `Covered` |
+| Workspace 根目录已删除且存在存活接替贡献者仍 desire 内容时，两个 Target 以 manual `workspace_root_missing` 进入 Blocked；目录恢复后的显式 retry 重新收敛，退役 Target 删除，技能内容写回 | `ora_db::effect_repository_tests::consumer_handover::deleted_worktree_with_a_surviving_successor_blocks_until_the_directory_returns` | `Covered` |
+| 已收敛的接替 Target 在桌面端删除 Workspace 目录并 retry 后出现该 Condition；目录恢复并再次 retry 后重新 ready，技能文件回来 | `ora-desktop-tests` `core::effect::tests::uninstall_and_reinstall_from_another_source_hands_over_the_shared_skill_directory` | `Covered` |
 | 退役 Source 重新发布（同 revision）恢复全部 active Scope 的 Desired intent | `ora_db::effect_repository_tests::skill_republish::reinstalling_the_same_plugin_revision_restores_desired_effects` | `Covered` |
 
 ### 决策依据
@@ -131,4 +134,56 @@ Scope generation，退役 Target 的空 projection 会落在它与 active 期间
 - [Target 生命周期转换推进 Scope 收敛纪元](../../../../decisions/desktop/core/effect/20261010-retirement-epoch.md)
   D1、D2、D3 与不变量 1–5。
 - [Effect 系统基础](../../../../decisions/desktop/core/effect/0-effect-system-foundation.md)：
-  退役 Target 以空贡献参与共享 Resource 合并，只有空 projection 收敛后才删除 Target。
+  退役 Target 以空贡献参与共享 Resource 合并，只有空 projection 收敛后才删除 Target。Blocked
+  由显式 retry 恢复，retry 不修改 Desired。
+
+## Absent Effect Consumers Must Not Block Send
+
+### 风险
+
+发送门禁若把“已安装 Agent 且 status 为空”一律当成技能仍在同步，则没有 declared Consumer 的身份
+会永远等不到 Target。升级后所选插件 ID 与已注册 Consumer 不一致、以及卸载完成后的旧插件 ID，
+都会永久阻止发送（desktop issue #6 的另一条触发路径）。反过来，已声明 Consumer 的新建 Workspace
+在 Target 行出现之前放行，会让第一条消息抢在物化之前发出。
+
+### 前置状态
+
+- 一个 Workspace Scope 已经存在。
+- 至少一个 Agent Consumer 已经 `declared`，并至少在另一个 Workspace 上有 Target。
+- 另有一个从未声明 Effect 的 Agent identity。
+
+### 触发
+
+按 Workspace 加 Agent identity 读取 Effect status，并把结果交给发送门禁。对失败态调用显式 retry。
+
+### 必须成立
+
+- 没有 declared Consumer 时，`obligation` 为 `not_required`，status 为空，发送门禁放行。
+- 已声明 Consumer 在尚无 active Target 的 Workspace 上，`obligation` 仍为 `required`，status 为空，
+  发送门禁继续等待。
+- 已有 active Target 时，`obligation` 为 `required`，并返回该 Target 的 status。
+- 插件卸载完成后，旧 Agent identity 变为 `not_required`；接替身份在声明后为 `required`。
+- blocking 且 retry 为 `manual` 的 Condition 使门禁进入失败态，并调用显式 retry；retry 只携带
+  Target identity。
+
+### 禁止结果
+
+- 用超时把 required Target 放行。
+- 把 `not_required` 显示成“正在同步项目技能”。
+- 在 required 且尚无 Target 时放行发送。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+|---|---|---|
+| 未声明 identity 为 `not_required` 且无 status；已声明 Consumer 有 Target 时为 `required`；已声明但新 Workspace 尚无 Target 时仍为 `required` | `ora_db::effect_repository_tests::consumer_handover::effect_obligation_follows_the_declared_consumer_not_only_an_active_target` | `Covered` |
+| 卸载完成后的旧 Agent 为 `not_required`，从未注册的 identity 为 `not_required`，仍声明的接替 Agent 为 `required` | `ora-desktop-tests` `core::effect::tests::uninstall_and_reinstall_from_another_source_hands_over_the_shared_skill_directory` | `Covered` |
+| `not_required` 不关发送门；`required` 且 status 为空继续等待 | `@ora/app-shell` `use-agent-effect-readiness.test.tsx`：“does not gate an installed agent whose backend obligation is not required”，“keeps gating an installed agent until its required Target exists” | `Covered` |
+| manual Condition 使门禁失败，并调用 `retryTarget` | `@ora/app-shell` `use-agent-effect-readiness.test.tsx`：“retries a failed Target through the Effect retry operation” | `Covered` |
+
+### 决策依据
+
+- [Target 生命周期转换推进 Scope 收敛纪元](../../../../decisions/desktop/core/effect/20261010-retirement-epoch.md)
+  D4 与不变量 6。
+- [Effect 系统基础](../../../../decisions/desktop/core/effect/0-effect-system-foundation.md)：
+  显式 retry 只唤醒 reconcile，不改变 Desired。

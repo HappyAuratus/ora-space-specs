@@ -32,6 +32,7 @@ adapter conformance 测试。
 - [Replaying a Converged Generation Must Have No Side Effects](convergence.md#replaying-a-converged-generation-must-have-no-side-effects)
 - [Older Completion Preserves Newer Target Intent](convergence.md#older-completion-preserves-newer-target-intent)
 - [Target Retirement Must Finish on a Fresh Epoch](convergence.md#target-retirement-must-finish-on-a-fresh-epoch)
+- [Absent Effect Consumers Must Not Block Send](convergence.md#absent-effect-consumers-must-not-block-send)
 - [Unowned Observed Items Must Never Be Adopted or Mutated](ownership-and-sharing.md#unowned-observed-items-must-never-be-adopted-or-mutated)
 - [Shared Resource Contributions Must Agree on Materialization Contract](ownership-and-sharing.md#shared-resource-contributions-must-agree-on-materialization-contract)
 - [Unfinished Operations Must Enter RecoveryRequired Without Guessing](journal-and-recovery.md#unfinished-operations-must-enter-recoveryrequired-without-guessing)
