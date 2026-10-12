@@ -28,8 +28,8 @@ Workspace 标为 ready。
 - sandbox 阶段只计划 `sandbox_ensure`（请求不含仓库字段），成功证据 `sandboxInstanceId` 等于 effect ID。
 - node 阶段要求当前 generation 的 Node 已由 Controller 登记、initialized、30 秒内心跳。
 - clone 成功后写入基线提交并进入 plugin；固定插件集合为空或全部逐项结果已接管后才开放准入并 ready。
-  plugin 的直接证据见 [插件步骤用例](plugin-step-and-run-workspace.md)。clone 失败进入 `retry_wait`/`blocked`
-  且保留执行记录；未知保持 `blocked`，不自动重试。
+  plugin 的直接证据见 [插件步骤用例](plugin-step-and-run-workspace.md)。已确认 clone 失败的前两次进入 `retry_wait`，
+  第三次失败关闭受理并结束准备，全部执行记录保留；未知保持 `blocked`，不自动重试。
 - 一个 operation 的 clone 阶段至多一个进行中的执行；重试是新执行。
 - `start` 走 sandbox → node → plugin → done，不再 clone。
 

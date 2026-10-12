@@ -82,8 +82,13 @@ clone 阶段至多一个执行。
 | clone 结果 | 阶段推进 |
 |---|---|
 | `succeeded`（含 commit） | 写入 Workspace 的基线提交，推进到 done，开放准入 |
-| `failed`（任一失败码，含 `Interrupted`） | `defer` 为 `retry_wait`/`blocked`，保留执行记录；重试是同一 operation 的新执行 |
+| `failed`（任一失败码，含 `Interrupted`） | 同一 operation 以持久执行记录最多尝试三次；前两次 `retry_wait` 5/10 秒，第三次 `failed`，保留执行记录；重试是新执行 |
 | 未知（Node 报告 `Unknown`） | 保持 `blocked`，不自动重试（clone 契约 D6） |
+
+2026-10-11 检视修订：次数和退避由 Cloud 决定，Controller 重启、重复提交或人工 retry 不重置预算。
+第三次已知失败后准入保持关闭、运行时维护控制归还；run Workspace 触发原失败释放路径，项目主
+Workspace 留存供核查。Node 的网络 Git 使用独立、有限的命令预算，超时仍须取得原 Scope 收尾证据。
+运行公开 `preparation` 只展示准备阶段、次数上限、retryAt 和安全错误码，不暴露执行／Workspace 身份或地址。
 
 - 复用而不另建表：clone 的派发前登记、原子接管与幂等规则已经在 gRPC 契约中实现并有证据，Workspace
   的 clone 与租户级 clone 的差别只在于“谁发起、结果写到哪里”。

@@ -34,8 +34,9 @@ Thread 以外的交互式聊天（`chat` 页）。
 ### D2：条目内容就是 Ora 会话记录的行，按定型记录粒度流式
 
 - Node 发回的 `record` 是 `ora-history` 的 `HistoryLine` 原样 JSON（用户消息、Agent 消息、思考、工具
-  调用最终快照、`TurnEnded`、`Gap` 等），`kind` 取其类型标签；Cloud 不解析业务字段，只校验是 JSON
+  调用最终快照、`TurnEnded`、`Gap` 等），`kind` 取其类型标签；Cloud 不解析消息和工具的业务字段，只校验是 JSON
   对象、`kind` 在已知集合内、单条不超过 256 KiB。
+  唯一新增的生命周期元数据判断是 `TurnEnded.stopReason`：`cancelled` 不能作为成功空闲证据；原记录不改写。
 - 粒度是**定型记录**：一条 Agent 消息在该消息结束时整条到达，工具调用在终态时到达。这比逐 token 粗，
   但每条都能按 D1 持久接管和确认，刷新页面、断线重连、Controller 重启都不会丢或重复。
 - 会话结束后上传到对象存储的会话 JSONL（Revision 的一部分）与 Thread 条目来自同一份记录，二者内容一致；
@@ -72,7 +73,7 @@ Thread 以外的交互式聊天（`chat` 页）。
 |---|---|
 | 会话执行已登记、尚无记录 | `pending` |
 | 接管到任意 Node 记录 | `active` |
-| 接管到 `TurnEnded` 且没有 `queued` 的用户轮次 | `idle`，记录 `idle_since`（数据库时间） |
+| 接管到成功 `TurnEnded`（非 `cancelled`），且没有 `queued` 的用户轮次 | `idle`，记录 `idle_since`（数据库时间） |
 | 新用户轮次写入 | `active` |
 | 用户点击“结束”、`idle` 超过空闲窗口、或运行被取消 | `ending`，放出 `EndSession{reason}` 命令 |
 | 会话执行终态被接管 | `ended` |
@@ -81,8 +82,16 @@ Thread 以外的交互式聊天（`chat` 页）。
   按数据库时间判断，不依赖 Controller 或 Node 的时钟。
 - `reason` 为 `user_ended | idle_timeout | cancelled`；Node 对三者都停止 Agent、完成会话记录后以终态结束
   会话执行，区别只影响 IssueRun 的 `status`（[IssueRun D4](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)）。
-- Agent 在首轮以非正常原因结束（拒绝、失败、连接丢失）时，Thread 同样进入 `idle`，由用户决定重试
-  （追加消息）或结束；不自动结束，因为用户可能想让 Agent 继续。
+- 2026-10-11 检视修订：Node 会话遇到 ACP 请求错误或意外流关闭时以 `agent_failed` 结束；终态接管后
+  Thread 为 `ended`，通过可空 `failureCode` 显示白名单安全分类，不复制供应商错误。成功 ACP 完成仍可
+  追加消息。已持久化的 EndSession 与错误竞态时保留明确的取消／结束原因。
+  同一终态事务追加 `source=system, kind=session_failed`、`record={type:sessionFailed,code}` 的 Cloud
+  失败条目，分配连续 seq，并发布 append/change 提示；重复接管不追加。它不是伪造的 Node 历史行，
+  不改写 Node 的 JSONL 或 Thread 条目。仅允许固定分类，未知 detail 收为 `agent_failed`。
+- 这修改了此前“失败后继续保留会话”的策略。代价是供应商失败后需新运行（可续接已保存 Revision）；
+  好处是 Cloud 页面、Node 通道与临时模型授权均有一致终态，避免无响应时继续接受消息。部分仓库成果
+  仍执行原来的终态交付和 Workspace 释放，Node 记录保持原样。取消的 TurnEnded 在终态接管前保持 active，
+  不启动空闲计时。此修订属于 M4 检视修复，不能据此升级 M4 总体验收状态。
 
 为什么不在 Agent 首轮 `EndTurn` 时立即结束：用户明确要求在 Thread 中对话；一轮结束后立即释放沙盒，
 用户的回复就只能开启一次新运行，并重新 clone 和安装插件。空闲窗口让“快速回复”复用同一沙盒，代价是
