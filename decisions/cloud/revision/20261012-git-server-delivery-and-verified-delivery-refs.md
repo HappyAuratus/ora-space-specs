@@ -9,8 +9,8 @@ status: proposed
 （`https://<git-server>/<tenantId>/<projectId>.git`）与交付 ref 写进固定输入，Controller 原样转交。Node 报告结果后，
 Cloud 先比对输入，再在事务外经 Git Server 的 ref 查询确认交付 ref 指向声明的最终提交、经对象存储 `HEAD` 确认
 JSONL，最后在事务内登记 Revision 并记下交付 ref。无改动的运行同样推送并登记交付 ref。续作时，前序 Revision 以
-仓库地址与交付 ref 交给 Node 拉取。代码 bundle 的对象键、bundle 的上传授权与下载授权全部删除；不向后兼容，旧的
-只有 bundle 的 Revision 保留但不能续作。
+仓库地址与交付 ref 交给 Node 拉取。代码 bundle 的对象键、bundle 的上传授权与下载授权全部删除；不向后兼容：升级前
+只有 bundle 的 Revision 不迁移，行保留，但不在续作候选中。
 
 本 ADR 处于 `proposed`，是 [Cloud Revision 根决策](0-cloud-owned-object-store-and-verified-revisions.md) 的第一个后续
 决策，承担 [Git Server 根决策](../git-server/0-sandbox-scoped-git-server-over-https.md)“对 Revision 链路的影响”中 Cloud
@@ -44,7 +44,7 @@ Controller 与 Node；cluster 的 Node 配置模板、Compose 中的 Cloud 配�
 | Git Server 根 D5：Git Server 地址随执行输入给出 | 继承并明确：仓库地址由 Cloud 按部署配置写入固定输入，Controller 原样转交（D1） |
 | Git Server 根 D6：比对 → 事务外 ref 查询 → 事务内登记 | 继承（D3） |
 | Git Server 根不变量 12：只在 ref 查询确认后登记 | 本文承担（D3、不变量 2） |
-| [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) D1：候选是带 bundle（自有或沿用）的最近 Revision | 修改：候选是最终提交不等于基础提交的最近 Revision；它有交付 ref 才续作，只有 bundle 时从头开始（D7） |
+| [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) D1：候选是带 bundle（自有或沿用）的最近 Revision | 修改：候选是有交付 ref、且最终提交不等于基础提交的最近 Revision，用它自己的交付 ref 续作（D7） |
 | IssueRun 续接决策 D3：`prior_revision_base_unavailable` 表示基础提交从远端消失，标记不可续接 | 修改：改为前序交付 ref 在 Git Server 上取不到；仍标记不可续接，但运行已请求取消时不标记（D7） |
 | IssueRun 续接决策 D5：续接后没有新提交时沿用前序 bundle，`bundle_revision_id` 一跳 | 修改：删除一跳；每个 Git Revision 都有自己的交付 ref（D7） |
 | IssueRun 续接决策不变量 6：可续接的 Revision 一跳找到 bundle | 修改：可续接的 Revision 有自己的交付 ref，指向它的最终提交（不变量 6） |
@@ -207,17 +207,14 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 为什么也删 `RevisionDelivered.bundle` 与 `DownloadGrant`：只保留 Git 交付后它们没有任何合法取值；留着一个“必须
 为空”的字段或一个无人引用的消息，会让读契约的人以为还存在 bundle 路径。
 
-### D7：续作只选有交付 ref 的 Revision；旧 Revision 不能续作但保留
+### D7：续作只选有交付 ref 且有新提交的 Revision
 
 续作选取（`selectPriorRevision`，IssueRun 续接决策 D1）改为：
 
-1. 候选：同一 Issue 的其他运行登记的 Revision 中，最终提交不等于基础提交的那些，按登记时间取最新一个。没有
-   候选时从头开始。
+1. 候选：同一 Issue 的其他运行登记的 Revision 中，有 `delivery_ref` 且最终提交不等于基础提交的那些，按登记时间
+   取最新一个。没有候选时从头开始。
 2. Project 或仓库地址不同、或被标为不可续接：从头开始（续接决策 D1 第 2、3 条，不变）。
-3. 候选没有 `delivery_ref`（只有 bundle 的旧 Revision）：从头开始，首条提问的 `resume` 为
-   `{skippedRevisionId, reason: "legacy_revision"}`。不回退到更早的候选，理由同续接决策 D1 第 3 条；而且升级后
-   登记的 Revision 都比旧 Revision 新，不存在“更早但有 ref”的候选。
-4. 否则会话输入的 `priorRevision` 为
+3. 否则会话输入的 `priorRevision` 为
    `{revisionId, finalCommit, baseCommit, gitRepositoryUrl, deliveryRef}`：地址按当前 `git_server.repository_base_url`
    与候选的 tenant、Project 拼成，`deliveryRef` 是候选自己的交付 ref，`baseCommit` 供 Node 判断远端历史是否被改写
    （node/revision 后续决策 D5）。交付输入中的 `priorRevision` 仍只有 `{revisionId, finalCommit}`。
@@ -227,6 +224,8 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 - 为什么筛掉最终提交等于基础提交的 Revision，而不是字面上“有 ref 就选”：这样的 Revision 只含它当时的基础提交，
   续作它会把新 checkout 的默认分支拨回比本次 clone 更旧的提交，丢掉远端的进展。旧规则因为它们没有 bundle 而
   自然排除，新规则保持同一候选集合：凡最终提交不等于基础提交的 Revision，旧规则下都有自有或沿用的 bundle。
+- 没有交付 ref 的行（升级前只有 bundle 的 Revision）不在候选集合中，不设专门分支，首条提问的 `resume` 也不记录
+  跳过：不向后兼容，升级前的成果不续作，续作只从升级后登记的 Revision 开始。
 - 不可续接标记（续接决策 D3）：会话以 `agent_failed` 加 `prior_revision_base_unavailable` 结束时，结算事务照旧标记
   前序 Revision 不可续接；但运行在结算时已有取消请求时不标记。Git Server 对已取消运行的读请求同样返回 `403`
   （D5），Node 无法把它与“仓库或 ref 不存在”区分（Git Server 根决策 D3 有意返回相同响应），不加这一条，一次取消
@@ -239,6 +238,9 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 - `changed` 取自 Cloud 核验结论：`revision_verifications.outcome = delivered` 为 `true`，`unchanged` 为 `false`。
   这与旧定义“本次存了自己的 bundle”在旧行上一致，在 Git 行上表示本次运行产生了新提交。
 - Git Revision 的 `bundleSize` 为 `null`；旧行照旧返回大小。
+- 前端随之修改：cloud 中 Issue 页的交付展示（`frontend/src/features/issues/thread/run-delivery.tsx`）现在把有改动的交付显示为
+  “含改动，bundle N B”，`bundleSize` 为 `null` 时会显示成 `bundle 0 B`；第 4 步实现时去掉 bundle 大小这部分，并同步
+  `run-delivery.test.tsx`。
 - 仓库地址、交付 ref 与对象键都不进入公开 API；下载与 diff 预览仍未提供（Git Server 根决策未解决项）。
 
 ### D9：升级前提
@@ -261,7 +263,7 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 2. Cloud 只在 ref 查询确认交付 ref 指向声明的最终提交、且 JSONL 经 `HEAD` 核对一致之后登记 Revision。
 3. ref 不存在或指向其他提交时不登记 Revision，记 `verification_failed`；Git Server 不可用时不接管、不确认，可重放。
 4. 每个新登记的 Revision（包括 `unchanged`）都有 `delivery_ref`，且 bundle 列全为空。
-5. 旧 Revision 行不删除、不改写；只有 bundle 的 Revision 永远不会被选为前序。
+5. 升级前的 Revision 行不删除、不改写。
 6. 被选为前序的 Revision 有自己的交付 ref，且最终提交不等于其基础提交。
 7. Git Server 只在运行处于 `delivering` 且交付执行尚无结果时授予写权限；只在输入带前序、运行处于
    `starting`/`running`、没有取消请求且 Thread 未在结束时授予会话执行读权限。
@@ -298,7 +300,7 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 
 - 新增 `test-cases/cloud/revision/`：Revision 只在 ref 查询确认后登记（Git Server 根决策不变量 12，本文不变量 2）；
   ref 不存在或不符记 `verification_failed` 且不登记；Git Server 不可用不接管、可重放；`unchanged` 也登记交付 ref；
-  续作候选跳过旧 Revision（`legacy_revision`）与停在基础提交的 Revision；取消的运行不标记不可续接。
+  续作候选只含有交付 ref 且最终提交不等于基础提交的 Revision；取消的运行不标记不可续接。
 - `test-cases/cloud/controller-integration/agent-run-executions-and-thread.md`：“成功交付等待 Cloud 验证”改为 ref 查询
   加 JSONL `HEAD`；“授权不持久化”中只剩 JSONL 上传授权。
 - `test-cases/node/protocol/agent-run-messages.md`：交付输入的 ref 与对象键校验改为交付 ref 与 JSONL 键，删除下载
@@ -311,7 +313,7 @@ Controller 拿不到仓库地址与交付 ref，无论 `v1` 是否保留都无�
 1. **specs**：本文与 node/revision、controller-integration 两份后续决策获批。
 2. **cloud**：proto 修改与 `buf.yaml` 豁免、生成物、`internal/controlgrpc` 编解码（`DeliverRevisionSpec` 不再要求
    `bundle_key`）、`git_server` 配置与 ref 查询客户端、`deliveryWorkInput`、核验登记、迁移、续作选取、
-   `GrantRevisionUpload` 只签 JSONL、删除 `GrantRevisionDownload`；Git Server 的写授权改为读取固定输入中的
+   `GrantRevisionUpload` 只签 JSONL、删除 `GrantRevisionDownload`、前端交付展示去掉 bundle 大小（D8）；Git Server 的写授权改为读取固定输入中的
    `deliveryRef`。以真实 PostgreSQL、真实 Git Server 与 S3 兼容服务的集成测试证明不变量 2–4、6、7、10。
 3. **desktop**：锁定新契约 commit；Controller 与 Node 按两份后续决策修改。
 4. **cluster**：Node 配置模板启用 `git_access`，Compose 为 Cloud 配置 `git_server`，`revision:acceptance` 与
