@@ -1,6 +1,8 @@
 # 空间插件管理员权限与持久维护等待
 
-依据[已批准的插件维护决策](../../../decisions/cloud/plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md)。新增义务按直接证据登记 Partial/Missing；前序固定版本、摘要校验和租户隔离证据继续保留，不证明真实插件执行器已接线。
+已实现服务承诺仍由原 ADR 拥有；下文的 UI 与完整联合故障矩阵改由[后续验收 ADR](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接。保留本文件与英文标题作为稳定引用，Partial/Missing 不因后端 implemented 而自动提高。
+
+依据[已实现后端的插件维护决策](../../../decisions/cloud/plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md)。新增义务按直接证据登记 Partial/Missing；前序固定版本、摘要校验和租户隔离证据继续保留，不替代真实插件下载、文件及进程的完整故障验收。
 
 ## Only Current Tenant Admins Change Space Plugin Selection
 
@@ -12,7 +14,7 @@
 - 验证义务与证据：**Partial** — 需真实 HTTP/PostgreSQL 角色及租户矩阵、零副作用和前端汇总测试；原成员插件测试不能证明管理员门控。
 - 决策依据：D1、D4，不变量 1、5。
 
-- 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/plugin_pending_test.go) 的管理员门控、忙时保存 pending；前端 PluginsPanel 角色/版本/汇总测试通过完整前端门禁。
+- 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/plugin_pending_test.go) 的管理员门控、忙时保存 pending；前端 PluginsPanel 角色/版本/汇总测试通过完整前端门禁。
 - 仍缺：跨租户与全部选择/移除/角色变化组合尚需联合覆盖。
 
 ## Plugin Maintenance Waits For Human Release And Continues From Durable Pending
@@ -25,8 +27,8 @@
 - 验证义务与证据：**Partial** — 需 PostgreSQL 多运行时调度与真实插件文件/进程测试，覆盖安装、升级、卸载与维护/用户获取竞争。
 - 决策依据：D2、D3，不变量 2、3。
 
-- 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/plugin_pending_test.go) 证明持有人、停止实例与缺执行器持续等待；plugins_test.go 的显式模拟维护计划和恢复。
-- 仍缺：真实插件安装/升级/移除执行器仍缺，生产不派发；模拟器不是安装完成证据。
+- 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/plugin_pending_test.go) 证明管理员门控、持有人等待及释放后重新处理 pending（执行结果由测试替身提供）；plugins_test.go 的显式模拟维护计划和恢复。
+- 仍缺：生产 Node 插件执行已接通；真实安装/移除、下载、未知响应及并发装卸矩阵仍缺，模拟器不替代这些边界。
 
 ## Changed Plugin Intent And Unknown Results Reconcile Without Duplicate Execution
 
@@ -38,7 +40,6 @@
 - 验证义务与证据：**Partial** — 需持久待办/版本/删除竞争与真实执行器幂等恢复测试；模拟器 effect journal 只作为前序证据。
 - 决策依据：D3、D4，不变量 3–5。
 
-- 本次直接证据：**Partial** — cloud#41 的 `integration/plugin_intent_recovery_test.go` `TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval`：真实 PostgreSQL + 显式 Node 执行替身，核对旧期望未知结果、新移除期望等待、稳定执行重放和唯一后续维护。原 effect journal 是前序规则证据，不证明新的 Node 安装路径。
+- 本次直接证据：**Partial** — `integration/plugin_intent_recovery_test.go` `TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval`：真实 PostgreSQL + 显式 Node 执行替身，核对旧期望未知结果、新移除期望等待、稳定执行重放和唯一后续维护。原 effect journal 是前序规则证据，不证明新的 Node 安装路径。
 - 仍缺：真实插件旧期望/迟到结果、下载/进程/丢失响应矩阵仍缺；代码或状态本身不是直接验收。
 - 失败终态的直接证据：`TestPluginFailedResultReleasesMaintenanceForNewSelection` 覆盖失败后移除、移除先于旧执行失败、维护绑定释放与最新期望收敛；整体仍为 `Partial`，不替代真实插件执行器证据。
-

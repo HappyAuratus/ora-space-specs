@@ -1,6 +1,8 @@
 # 普通生命周期活动保护与管理员强停
 
-依据[已批准的停止与强停决策](../../../decisions/cloud/operation/20260927-safe-stop-and-administrative-force-stop.md)。新保障均为 `Missing`；旧生命周期证据见[独立运行时生命周期](workspace-runtime-lifecycle.md)，不替代强停验收。
+已实现服务承诺仍由原 ADR 拥有；下文的 UI 与完整联合故障矩阵改由[后续验收 ADR](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接。保留本文件与英文标题作为稳定引用，Partial/Missing 不因后端 implemented 而自动提高。
+
+依据[已实现后端的停止与强停决策](../../../decisions/cloud/operation/20260927-safe-stop-and-administrative-force-stop.md)。已有局部证据，完整义务仍按 Partial/Missing 保留；旧生命周期证据见[独立运行时生命周期](workspace-runtime-lifecycle.md)，不替代强停验收。
 
 ## Ordinary Stop Restart And Delete Never Bypass Control Or Activity Protection
 
@@ -12,7 +14,7 @@
 - 验证义务与证据：**Partial** — 需真实 PostgreSQL 生命周期/准入竞争及执行端 idle 证据；项目删除覆盖全部运行时并断言无部分副作用。
 - 决策依据：D1，不变量 1。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 的持久 restart 不 clone；[cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 包含错误 SID、管理员不能夺取有效会话及项目删除原子保护。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 的持久 restart 不 clone；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 包含错误 SID、管理员不能夺取有效会话及项目删除原子保护。
 - 仍缺：完整界面与实际生命周期/活动竞争故障矩阵尚缺。
 
 ## Administrative Force Stop Is Explicit Audited And Scoped To One Runtime
@@ -25,7 +27,7 @@
 - 验证义务与证据：**Partial** — 需真实 HTTP、数据库、前端及两运行时进程测试，完整检查审计和重试只有同一责任。
 - 决策依据：D2、D5，不变量 2、6。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 的管理员/原因/影响确认、在途记录及幂等；cluster docs/runtime-control.md 记录真实目标终止与卷保留。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 的管理员/原因/影响确认、在途记录及幂等；cluster docs/runtime-control.md 记录真实目标终止与卷保留。
 - 仍缺：脚本已通过强停幂等、只终止目标、保留目标卷和另一运行时内容；完整界面与联合故障矩阵尚缺。
 
 ## Force Stop Can Be Accepted During Inflight Work Without Reviving Old Resources
@@ -38,7 +40,7 @@
 - 验证义务与证据：**Partial** — 需真实 Controller/Substrate 的终止与 ensure 竞争、崩溃恢复和磁盘写入检查；Cloud simulator 不构成生产边界证明。
 - 决策依据：D3、D4，不变量 3、4、6。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go)；[cluster lifecycle](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/sandbox-server/internal/lifecycle/runtime_fence_test.go) 的持久 generation fence、旧 ensure 与进程重开；真实在途 create 强停记录见 cluster 文档。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go)；[cluster lifecycle](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/sandbox-server/internal/lifecycle/runtime_fence_test.go) 的持久 generation fence、旧 ensure 与进程重开；真实在途 create 强停记录见 cluster 文档。
 - 仍缺：真实迟到 ensure/终止同时间竞争、响应丢失与崩溃磁盘矩阵仍缺。
 
 ## Unconfirmed Termination Blocks Handoff And Persistent Data Survives Stop
@@ -51,6 +53,5 @@
 - 验证义务与证据：**Partial** — 需真实沙盒/持久卷、进程及 PostgreSQL 的停止/强停/启动/删除与节点不可达测试，分别检查业务状态、磁盘和进程。
 - 决策依据：D4、D5，不变量 4、5。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_force_stop_test.go) 与 Sandbox Server 持久 tombstone；真实强停目标不存在且卷保留的记录。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 与 Sandbox Server 持久 tombstone；真实强停目标不存在且卷保留的记录。
 - 仍缺：Node 不可达、停止/删除/重启及未确认终止的真实联合故障矩阵仍缺。
-
