@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: implemented
 ---
 
 # 会话与交付执行输入增加前序 Revision，新增 `GrantRevisionDownload` 签发只读下载授权
@@ -10,9 +10,9 @@ status: proposed
 执行签发前序 bundle 的预签名 GET。Controller 在 Node 与 Cloud 之间中继下载授权，方式与上传授权相同，并只把
 带前序的会话派给声明了恢复能力的 Node。
 
-本 ADR 处于 `proposed`，继承 [Agent 运行执行与上传授权决策](20260928-agent-run-executions-thread-and-upload-grants.md)。
-涉及 Cloud 的 proto、`internal/controlgrpc` 映射与授权签发，以及 desktop 的 Controller。兼容性边界：`v1`
-已发布的消息、字段与方法不变，buf breaking 检查必须通过；不带 `prior_revision` 的执行与现在完全相同。
+本 ADR 处于 `implemented`，继承 [Agent 运行执行与上传授权决策](20260928-agent-run-executions-thread-and-upload-grants.md)，
+描述 Cloud 的 proto、`internal/controlgrpc` 映射与授权签发，以及 desktop Controller 的当前实现。兼容性边界：
+`v1` 已发布的消息、字段与方法不变，`buf breaking` 检查通过；不带 `prior_revision` 的执行与之前完全相同。
 
 ## 继承与修改
 
@@ -29,64 +29,29 @@ status: proposed
 
 ### D1：执行输入中的前序 Revision
 
-```proto
-message PriorRevision {
-  string revision_id = 1;
-  string final_commit = 2;
-  // Only on the session spec: the object holding the bundle, possibly another Revision's.
-  StoredObject bundle = 3;
-}
-
-message AgentSessionSpec {
-  // … fields 1-5 unchanged
-  PriorRevision prior_revision = 6;
-}
-
-message DeliverRevisionSpec {
-  // … fields 1-6 unchanged
-  PriorRevision prior_revision = 7;
-}
-```
-
-- 会话输入中的 `bundle` 是 Cloud 登记时校验过的对象键、大小与摘要；Node 按它校验下载结果。
-- 交付输入中的 `prior_revision` 与该运行会话输入中的是同一个 Revision，不带 `bundle`：Node 只需要它的最终
-  提交来判定 D4 的 `unchanged`。
-- 两者都在 Cloud 放出工作项时固定，`RecordDispatch` 校验 Controller 转交的输入与之相同，规则同 D1。
+- 新消息 `PriorRevision{revision_id = 1, final_commit = 2, bundle = 3}`，`bundle` 是 `StoredObject`（对象键、大小、
+  SHA-256）。
+- `AgentSessionSpec.prior_revision = 6`，带 `bundle`：它是 Cloud 登记时校验过的对象，可能属于另一个 Revision
+  （续接决策 D5 的沿用），Node 按它校验下载结果。字段 7 由个人模型决策另行增加，与本文无关。
+- `DeliverRevisionSpec.prior_revision = 7`，与该运行会话输入中的是同一个 Revision，不带 `bundle`：Node 只需要
+  它的最终提交来判定 D4 的 `unchanged`。
+- 两者都在 Cloud 放出工作项时固定；`RecordDispatch` 要求 Controller 转交的整份输入与工作项中的相同，否则
+  `dispatch_conflict`，规则同前序决策 D1。
 
 为什么把 bundle 的对象信息放进会话输入、而不放下载链接：对象键与摘要不会过期，可以随工作项长期等待领取；
 链接会过期，所以与上传一样另行申请（前序决策“上传授权在工作项中一起返回”的否决理由同样适用）。
 
 ### D2：`GrantRevisionDownload`
 
-```proto
-rpc GrantRevisionDownload(GrantRevisionDownloadRequest) returns (GrantRevisionDownloadResponse);
-
-message GrantRevisionDownloadRequest {
-  int64 epoch = 1;
-  // A session execution registered through RecordDispatch.
-  string execution_id = 2;
-}
-
-message DownloadGrant {
-  string object_key = 1;
-  string url = 2;
-  // Always GET.
-  string method = 3;
-  map<string, string> headers = 4;
-  google.protobuf.Timestamp expires_at = 5;
-}
-
-message GrantRevisionDownloadResponse {
-  repeated DownloadGrant grants = 1;
-}
-```
-
-- 只对处于登记状态、尚无结果、输入带 `prior_revision.bundle` 的会话执行签发，对象键只能是该 bundle 的键；
-  执行不存在时 `NOT_FOUND`，其他情况与上传授权相同为 `ABORTED`（`dispatch_conflict`）。执行所在 Workspace、
-  运行与 Node 的有效性检查与上传授权相同。`FAILED_PRECONDITION` 在本契约中表示租约失效，Controller 会重试，
-  所以拒绝签发不使用它。
+- `AgentRunService.GrantRevisionDownload(epoch = 1, execution_id = 2)` 返回 `grants = 1`，恰好一张
+  `DownloadGrant{object_key = 1, url = 2, method = 3, headers = 4, expires_at = 5}`：`method` 恒为 `GET`；
+  `headers` 须原样携带，目前为空；`expires_at` 是实际过期时间。
+- 只对已登记（经过 `RecordDispatch`）、尚无结果、未被强停、输入带 `prior_revision.bundle` 的会话执行签发，
+  对象键只能是该 bundle 的键。执行所在 Workspace、运行与 Node 的有效性检查与上传授权相同。错误映射：执行
+  不存在或不是会话执行为 `NOT_FOUND`；其他拒绝为 `ABORTED`/`CONFLICT`（`dispatch_conflict`，对象存储未配置时
+  为 `object_store_unconfigured`）；租约失效为 `FAILED_PRECONDITION`，Controller 会重试，所以拒绝签发不使用它。
 - 不是写提交，不携带 `submission_id`，不在 Cloud 留下记录；每次调用签发新授权。有效期沿用对象存储配置的
-  授权有效期。
+  `upload_grant_ttl`。
 - 链接使用对象存储的公开地址（沙盒可达），不带条件头；Node 自己校验大小与摘要。
 - 授权是短期的持有者凭据：Cloud、Controller、Node 都只在内存中持有，不写日志、不进错误信息。
 
@@ -103,17 +68,20 @@ D3 处理。不新增结束原因：运行状态的推导（`agent_failed` → `
 ### D4：`RevisionUnchanged` 的适用条件
 
 交付输入带 `prior_revision` 时，`RevisionUnchanged.final_commit` 可以等于 `prior_revision.final_commit`
-（且不等于基础提交），表示续接后没有新提交；其余字段不变，仍只带会话记录。Cloud 的声明校验相应放宽，其他
-情况仍要求最终提交等于基础提交。Node 协议的编解码因此不再自行要求“最终提交等于基础提交”，只校验提交格式；
-合法性由持有输入的一方判断：Node 账本冻结交付计划时、Controller 接受结果时与 Cloud 登记时。
+（且不等于基础提交），表示续接后没有新提交；其余字段不变，仍只带会话记录。Node 协议的编解码对 `unchanged`
+只校验提交格式，不再自行要求“最终提交等于基础提交”；合法性由持有输入的一方判断：Node 冻结交付计划时、
+Controller 接受结果时与 Cloud 登记时，其他情况仍要求最终提交等于基础提交。
 
 ### D5：Controller 的中继与派发
 
 - Node 新能力 `revision_restore`。会话输入带 `prior_revision` 时，Controller 只在目标 Node 声明了该能力时登记
-  派发；否则与能力缺失的其他工作项一样留在 Cloud。
-- Node 请求下载授权的消息不占事件序号；Controller 收到后调用 `GrantRevisionDownload`，只接受针对该会话
-  bundle 键的 GET，把结果原样转交给发出请求的连接；Cloud 以 `NOT_FOUND` 或 `ABORTED` 拒绝签发时转告 Node
-  不可签发，Node 据此失败（`prior_revision_unavailable`）；Cloud 不可用或租约失效时重试。
+  派发（同时带模型绑定的会话还要求 `model_proxy`）；否则与能力缺失的其他工作项一样留在 Cloud。
+- Node 请求下载授权的消息不占事件序号，只在握手声明了 `revision_restore` 的连接上接受。Controller 先按本地
+  派发记录预检：执行不属于该 Node、不是会话、已有结果或没有前序时直接转告不可签发，不调用 Cloud。
+- 预检通过后调用 `GrantRevisionDownload`，只接受针对该会话 bundle 键的 GET，把结果原样转交给发出请求的连接。
+  Cloud 以 `NOT_FOUND` 或 `ABORTED` 拒绝签发时转告 Node 不可签发，Node 据此失败（`prior_revision_unavailable`）；
+  Cloud 不可用或租约失效时每 500 毫秒重试，同一执行的重复请求合并。Cloud 返回的键或方法不符时按契约错误
+  丢弃，不转告拒绝，由 Node 重新请求。
 - Controller 不缓存、不持久化下载授权，连接重建后由 Node 重新请求。
 
 ## 不变量
@@ -135,10 +103,14 @@ D3 处理。不新增结束原因：运行状态的推导（`agent_failed` → `
 ## 本决策未解决的问题
 
 - 下载授权的单独有效期配置（目前与上传共用）。
-- Controller 遇到能力不足的工作项时的队头阻塞，与 ClaimWork 的整体修复一起处理。
+- Controller 遇到能力不足（`revision_restore`、`model_proxy`）等无法登记的工作项时停止本批领取，而 Cloud 总是
+  返回最早的未登记工作项，造成 ClaimWork 队头阻塞；随 ClaimWork 的整体修复处理。
 
-## 落地
+## 验证
 
-proto 变更与生成物、`internal/controlgrpc` 映射、PostgreSQL 集成测试：只对带前序的未结束会话签发、键只能是
-固定的 bundle、放宽后的 `RevisionUnchanged` 校验。desktop 按 commit 锁定新契约，Controller 测试覆盖中继、
-重连后重新申请与能力检查。
+Cloud：`integration/agent_run_resume_test.go` 以 PostgreSQL 覆盖前序在放出工作项时固定、交付输入不带 bundle、
+只对带前序的未结束会话签发且键只能是固定的 bundle、放宽后的 `RevisionUnchanged` 校验；
+`internal/controlgrpc` 的线上形状测试断言字段 6、7；`internal/objectstore` 测试断言 GET 走公开端点且不带写条件；
+CI 运行 `buf breaking`。desktop：`apps/ora-controller/tests/workspaces/restores.rs` 覆盖能力检查、中继不进日志、
+拒绝转告、Cloud 不可用时重试与重连后等待 Node 重新请求；`crates/node-protocol` 覆盖前序在两种输入中的往返。
+Cloud 集成测试尚未断言拒绝的具体错误码，Controller 尚无租约失效后重试的直接测试。
