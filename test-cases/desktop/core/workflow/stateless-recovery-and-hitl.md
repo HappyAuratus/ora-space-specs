@@ -1,7 +1,8 @@
 # 无状态恢复与循环内人工介入
 
-反应式调度承诺"任意时刻崩溃可恢复"与"HITL 停靠数天"。循环引入后这两条承诺必须在复合
-节点上继续成立。
+反应式调度从持久事实恢复或安全结束。本文件的自动轮次恢复用例针对 foreach；while 的显式
+resume 从 round 1 重开，见[while-Loop 用例](while-loop.md)，不能将两者等同。区域内 HITL 尚非
+当前交付承诺；第二个稳定标题保留历史验收目标，需后续 ADR 批准后再交付。
 
 ## Loop State Is Recovered From Persistence After A Crash
 
@@ -29,7 +30,7 @@
 
 ### 禁止结果
 
-- 循环从第 1 轮重跑。
+- foreach 自动恢复无理由重跑已完成轮；不涵盖用户显式 resume while 的 round 1 重开。
 - run 永久滞留 Running 无 in-flight 节点。
 - 恢复路径依赖崩溃前的内存状态或日志文件。
 
@@ -37,8 +38,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 第 k 轮中途崩溃后恢复到第 k 轮续算，已完成轮内节点不重跑 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（真实 boot sweep + reconcile：轮 0 已完成后崩溃于轮 1，轮 0 仅一行不重跑，轮 1 按失败结算后节点完成） | `Verified` |
-| 既有"Running 无在途节点则 resume"语义在含 Loop 的 run 上成立 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（sweep 保留 Running 复合行后 `reconcile_running_workflow_runs` 经 resume 驱动 advance 续算至终态） | `Verified` |
+| 第 k 轮中途崩溃后恢复到第 k 轮续算，已完成轮内节点不重跑 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（真实 boot sweep + reconcile：轮 0 已完成后崩溃于轮 1，轮 0 仅一行不重跑，轮 1 按失败结算后节点完成） | `Covered` |
+| 既有"Running 无在途节点则 resume"语义在含 Loop 的 run 上成立 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（sweep 保留 Running 复合行后 `reconcile_running_workflow_runs` 经 resume 驱动 advance 续算至终态） | `Covered` |
 
 ### 决策依据
 
@@ -48,6 +49,10 @@
 D2，被打断轮的结算细节见[迭代节点核心用例](iteration-node.md)。
 
 ## Interactive Nodes Inside A Region Park And Resume Through Existing Paths
+
+> 历史验收目标：原根决策的区域 HITL 目标已由 iteration ADR D5 收窄。当前 foreach 在执行前
+> 拒绝 interactive 成员，while ADR 也不承诺完整区域 HITL。下列原目标不构成 implemented 的
+> 系统承诺，Missing 表示未交付该扩展，不能据此开放区域交互。
 
 ### 风险
 
@@ -88,5 +93,7 @@ D2，被打断轮的结算细节见[迭代节点核心用例](iteration-node.md)
 ### 决策依据
 
 同上决策 D5 与[迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)
-D5：v1 结构校验禁止迭代区域内 interactive 节点，机制与协调义务保留、二期放开（预期随
-while-Loop ADR 认领，见该决策未解决条目）；本用例固定二期放开后的承诺。
+D5：v1 结构校验禁止迭代区域内 interactive 节点。直接证据为
+`ora_application::workflow_run::engine::iteration::tests::rejects_interactive_nodes_inside_the_region`
+（拒绝义务 Covered）。[while-Loop ADR](../../../../decisions/desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md)
+未认领该扩展，后续批准后才恢复上述 park/resume 验收目标。

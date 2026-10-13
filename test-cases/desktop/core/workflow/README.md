@@ -7,6 +7,7 @@
 [节点运行时编排决策](../../../../decisions/desktop/core/workflow/0-node-runtime-orchestration.md)；首个
 复合运行时（迭代节点）的落地承诺见
 [迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)。
+while 的独立轮池、上限两策略和早退见[while-Loop 决策](../../../../decisions/desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md)。
 Agent 长任务的静默容错见
 [prompt 静默策略决策](../../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)。
 
@@ -26,7 +27,8 @@ Agent 长任务的静默容错见
 | 文件                                                             | 覆盖的风险面                                                                                      |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | [engine-parity.md](engine-parity.md)                             | Stage 1 重构行为等价；调度层无节点类型字面量                                                      |
-| [region-and-loop.md](region-and-loop.md)                         | 区域黑盒与结构校验；DAG 不变量；轮次持久化；while-Loop 上限用例待其 ADR 迁移                      |
+| [region-and-loop.md](region-and-loop.md)                         | 区域黑盒与结构校验；DAG 不变量；轮次持久化；while 默认上限失败                      |
+| [while-loop.md](while-loop.md) | 独立轮池、同时 feedback、上限成功/失败、早退清理、恢复和显式 resume |
 | [iteration-node.md](iteration-node.md)                           | 迭代节点启动边界、轮次事务性、错误策略与恢复；显式区域编辑、容器几何、级联删除与 Desktop 真实执行 |
 | [stateless-recovery-and-hitl.md](stateless-recovery-and-hitl.md) | 崩溃后从持久化续算循环；循环体内 HITL 停靠与推进                                                  |
 | [runtime-forms.md](runtime-forms.md)                             | 快执行器锁内无 IO；session 归属；回报幂等                                                         |
@@ -34,7 +36,7 @@ Agent 长任务的静默容错见
 | [invalidation-events.md](invalidation-events.md)                 | 失效事件不携带工作流状态，重查收敛                                                                |
 | [prompt-inactivity.md](prompt-inactivity.md)                     | 静默持续等待、冻结策略、会话隔离与取消清理                                                        |
 
-"未解决的问题"中的预留项（并行迭代、嵌套循环、Code 沙箱、远程子工作流细节、while-Loop）
+"未解决的问题"中的预留项（并行迭代、嵌套循环、Code 沙箱、远程子工作流细节）
 不登记核心用例：它们尚未构成系统承诺，待各自后续 ADR 批准后随其义务登记。节点级错误策略的
 复合区域作用域最小切片（`FailurePropagation`）已随迭代节点决策落地，其用例在
 `iteration-node.md`；向任意节点的泛化仍属预留。
