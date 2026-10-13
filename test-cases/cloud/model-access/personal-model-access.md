@@ -3,7 +3,7 @@
 决策依据：[个人连接与运行代理](../../../decisions/cloud/model-access/0-personal-model-connections-and-run-scoped-proxy.md)。
 状态对应直接证据范围；生产 CLI 与 Bluezone 的真实联调不能由下层替身测试代替。
 两协议的受控上游浏览器/API 证据见 [PR 检视与验证记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)，实施阶段记录见 [Specs PR 归档](https://github.com/ora-space/specs/pull/76#issuecomment-6107673463)。
-证据只覆盖各自明确的义务；整体 M4 仍为 `Partial`，相关 ADR 保持 `approved`。
+两种协议的真实供应商正常路径及浏览器个人连接/默认选择已验收，相关三份 ADR 按实现同步为 implemented。证据只覆盖各自明确的义务；多身份浏览器、全栈崩溃和灾备仍保留 Partial/Missing。
 
 ## Personal model configuration must remain owner scoped
 
@@ -12,7 +12,7 @@
 - 触发：公开 CRUD、默认选择、凭据写入及跨用户重试。
 - 必须成立：归属来自已验证身份；响应仅含公开字段；资源版本和幂等性由 PostgreSQL 保障。
 - 禁止结果：请求体选定用户、读取 Key/密文、重复写入或覆盖并发修改。
-- 证据：`cloud/internal/core/model_connections_db_test.go` 真实 PostgreSQL；HTTP 边界及严格结构测试；两协议浏览器记录直接覆盖发起者表单配置、默认模型和保存后密码输入清空。状态 `Partial`，多身份及完整配置矩阵的浏览器路径仍待直接验收。
+- 证据：`cloud/internal/core/model_connections_db_test.go` 真实 PostgreSQL；HTTP 边界及严格结构测试；两协议真实连接的浏览器路径覆盖元数据保存、凭据已配置状态和默认模型选择；Key 输入保持为空，写入通过 Gateway 独占接口。状态 `Partial`，多身份及完整配置矩阵的浏览器路径仍待直接验收。
 
 ## Model bindings must freeze inputs and never revive after revocation
 
@@ -39,7 +39,7 @@
 - 触发：调用冻结模型、上游错误、撤销绑定或超时。
 - 必须成立：两种协议和工具数据持续转发；加入冻结的认证与模型；撤销取消上游；HTTP 失败不回显诊断正文。
 - 禁止结果：跨模型请求、客户端指定目标、跟随重定向、访问私网或把真实 Key 返回客户端。
-- 证据：`cloud/internal/modelgateway/service_test.go`、`transport_test.go` 使用真实 TLS HTTP 边界验证转发、撤销、错误过滤与地址策略；`events_test.go`、`framing_test.go`、`completion_test.go` 直接覆盖 HTTP 200 内错误、SSE 格式及阻塞写入/正常结束竞态。`dns_test.go` 验证真实 HTTPS DNS 双栈、混合私网/基准地址拒绝、重定向及畸形响应；`diagnostics_test.go`、`diagnostics_classification_test.go` 验证有限分类和诊断过滤。可选 `TestLiveTrustedDNSAndVerifiedUpstreamTLS` 只证明无凭据连接与 TLS。状态 `Partial`，受控 CLI 两协议证据见 [PR 记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)，真实供应商仍需直接验证。
+- 证据：`cloud/internal/modelgateway/service_test.go`、`transport_test.go` 使用真实 TLS HTTP 边界验证转发、撤销、错误过滤与地址策略；`events_test.go`、`framing_test.go`、`completion_test.go` 直接覆盖 HTTP 200 内错误、SSE 格式及阻塞写入/正常结束竞态。`dns_test.go` 验证真实 HTTPS DNS 双栈、混合私网/基准地址拒绝、重定向及畸形响应；`diagnostics_test.go`、`diagnostics_classification_test.go` 验证有限分类和诊断过滤。可选 `TestLiveTrustedDNSAndVerifiedUpstreamTLS` 只证明无凭据连接与 TLS。状态 `Partial`，受控 CLI 两协议证据见 [PR 记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)，真实供应商正常路径已由官方 OpenCode 两协议多轮工具会话验证；撤销、错误和故障的完整真实上游矩阵仍缺直接证据。
 
 ## Personal model usage must remain controlled by the run initiator
 
@@ -57,4 +57,4 @@
 - 触发：登录、创建项目并 clone、@OpenCode、追加轮次、结束会话。
 - 必须成立：真实 CLI 读取/修改 checkout，JSONL 与 bundle 保存并校验，Git 作者归发起者，运行 Workspace 释放。
 - 禁止结果：以替身代替 CLI、Key/临时令牌进入 Git/日志/截图、未登记成果就宣称完成。
-- 证据与义务：[独立实际 CLI 验证记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)覆盖两协议的页面配置、clone、两轮读写、结束及同 Run 的 Revision 恢复、Git 作者、对象摘要和容器/卷释放。API 链路作为补充；[实施阶段历史记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672503)不替代后续代码验证。状态 `Partial`：受控正常路径已有直接证据，页面已有真实默认模型的两协议供应商验证仍 `Missing`；多身份、崩溃和灾备义务保持各自缺口。
+- 证据与义务：[独立实际 CLI 验证记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)覆盖两协议的页面配置、clone、两轮读写、结束及同 Run 的 Revision 恢复、Git 作者、对象摘要和容器/卷释放。API 链路作为补充；[实施阶段历史记录](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672503)不替代后续代码验证。真实正常运行路径 `Covered`：`scripts/opencode-session-acceptance.py --real-default-subject` 消费浏览器已保存的个人默认值，两协议各完成真实模型/工具调用、追加、用户结束、同 Run 的 Revision 恢复/摘要/Git 作者及运行 Workspace 容器/卷释放。实际授权 Key 的字节另在会话 JSONL 与恢复结果文件中排除，检查范围以验收记录为准，不推定任意第三方输出自动脱敏；多身份、全栈崩溃和灾备保留各自 Partial/Missing。

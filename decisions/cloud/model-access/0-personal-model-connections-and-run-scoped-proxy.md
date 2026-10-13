@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 个人模型连接由用户配置，平台保管密钥并为每次运行代理模型请求
@@ -8,7 +8,7 @@ status: approved
 OpenCode 的一次运行冻结发起者选择的连接和模型，通过平台模型代理调用上游；沙盒仅取得当前运行的临时凭据。
 真实 API Key 不进入 Cloud 服务、Controller、Node 或会话记录。
 
-本决策依据 2026-10-10 用户批准的 M4 实施计划，状态为 `approved`，完整真实模型验收尚待完成。
+本决策已实现，个人连接表单、默认选择及两种协议的真实 OpenCode 模型/工具调用、追加消息、成果交付和释放已验证。
 涉及 Cloud 的个人设置、IssueRun 绑定、独立 model-gateway、Node 模型访问及 cluster 部署。
 PostgreSQL 采用追加迁移，历史运行没有模型绑定；本决策不承担生产完整进程隔离、计费、思考档位及 MCP 配置。
 
@@ -93,8 +93,8 @@ SSE 文本、工具调用及结果持续转发，不等待完整生成，也不�
 | Cloud 转发模型请求并解密 Key | 少一个服务，但将业务控制与原始凭据/长连接合并，扩大控制面的敏感数据范围 |
 | Node 自行读取所有个人配置 | 接线简单，但破坏只授权当前运行及冻结输入的约束 |
 
-## 验收与未决项
+## 验收与后续边界
 
 核心义务和直接证据见 [个人模型访问](../../../test-cases/cloud/model-access/personal-model-access.md)。
-真实 OpenCode、两种 Bluezone 协议和完整浏览器链路须由独立 cluster 栈提供直接证据后，才标记整体实施完成。
+独立 cluster 栈已验证 OpenAI Completions 与 Anthropic Messages 的真实上游、官方 OpenCode、两轮工具读写、Revision 恢复/摘要/Git 作者及运行 Workspace 释放；浏览器直接保存连接元数据并选择个人默认模型。凭据写入走 Gateway 独占接口，页面只返回已配置状态。多身份浏览器、全栈崩溃和灾备矩阵仍按核心用例保留 Partial/Missing，不从正常路径推定这些故障已验收。
 权限审批、进程降权/guardian 纳管、生产轮换体系、费用统计、图片输入、思考参数和运行中换模型属于后续范围。

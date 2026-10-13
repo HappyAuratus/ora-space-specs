@@ -9,7 +9,7 @@
 - 触发：启动、续期、结束、Node 重启。
 - 必须成立：授权目标固定；续期沿用令牌；配置只在会话运行目录和进程环境；结束撤销并清理；重启按既有中断规则收尾。
 - 禁止结果：缺模型代理能力退回直连、WSS 证书替代客户端身份、后台续期脱离会话生命周期。
-- 证据与义务：Desktop `model_proxy/tests` 的真实 mTLS、范围、续期/撤销及配置/清理测试；Node 协议兼容与能力拒绝测试。[两协议实际 CLI 证据](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)补充无检测到的凭据材料的 Revision 和容器/卷释放。状态 `Partial`，全栈崩溃恢复仍缺直接证据；受控模型服务不替代真实供应商验证。
+- 证据与义务：Desktop `model_proxy/tests` 的真实 mTLS、范围、续期/撤销及配置/清理测试；Node 协议兼容与能力拒绝测试。[两协议实际 CLI 证据](https://github.com/ora-space/cluster/pull/15#issuecomment-6107672919)补充无检测到的凭据材料的 Revision 和容器/卷释放。状态 `Partial`，真实 OpenAI Completions / Anthropic Messages 各以生产 OpenCode 完成两轮、正常撤销和 Workspace 释放；会话 JSONL 与恢复结果文件未含本次真实授权 Key 字节。全栈崩溃恢复仍缺直接证据，正常路径不替代故障矩阵。
 
 ## Model ending must preserve the durable end reason
 
