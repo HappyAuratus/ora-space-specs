@@ -166,6 +166,7 @@ Issue 页的 Agent 会话面板据此显示保存结果。
 
 ## 验证
 
+核心用例见 [Cloud 校验后登记的 bundle Revision](../../../test-cases/cloud/revision/verified-bundle-revisions.md)。
 Cloud CI 以真实 RustFS 运行 PostgreSQL 集成测试：`integration/revision_test.go` 覆盖 `changed`/`unchanged` 登记、
 对象缺失与大小摘要不符、hook 与提交回滚、网络失败可重放、外部校验后重新检查租约与状态、重试使用新对象键
 并拒绝错误摘要与过期授权；`revision_immutability_test.go` 覆盖有效授权不能覆盖已验证对象；

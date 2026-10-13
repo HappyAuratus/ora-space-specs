@@ -108,6 +108,7 @@ Controller 接受结果时与 Cloud 登记时，其他情况仍要求最终提�
 
 ## 验证
 
+核心用例见 [前序 Revision 与下载授权的 gRPC 契约](../../../test-cases/cloud/controller-integration/revision-restore-contract.md)。
 Cloud：`integration/agent_run_resume_test.go` 以 PostgreSQL 覆盖前序在放出工作项时固定、交付输入不带 bundle、
 只对带前序的未结束会话签发且键只能是固定的 bundle、放宽后的 `RevisionUnchanged` 校验；
 `internal/controlgrpc` 的线上形状测试断言字段 6、7；`internal/objectstore` 测试断言 GET 走公开端点且不带写条件；

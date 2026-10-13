@@ -130,6 +130,7 @@ Node 在会话与交付能力都可用时声明 `revision_restore`。未声明�
 
 ## 验证
 
+核心用例见 [Node 恢复前序 Revision](../../../test-cases/node/revision/prior-revision-restore.md)。
 desktop `apps/ora-node/src/revision/restore/tests/git.rs` 以真实 Git 覆盖正常恢复、前置提交缺失后从 `origin`
 补取成功（同时远端已改写）、补取失败为 `prior_revision_base_unavailable`、远端不可达为
 `prior_revision_unavailable`、head 不符与 bundle 损坏、恢复后的交付判定；`restore/tests/restorer.rs` 覆盖授权

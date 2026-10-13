@@ -142,6 +142,8 @@ Revision，运行 `deliveryState = unchanged`、`status = failed`。这个 Revis
 
 ## 实现与验证
 
+核心用例见 [同一 Issue 的运行续接最近一次 Revision](../../../test-cases/cloud/issue-run/resume-from-latest-revision.md)。
+
 - Cloud：迁移增加 `revisions.prior_revision_id`、`bundle_revision_id`、`resume_refused_at/reason` 与
   `issue_runs.resume_revision_id`。`integration/agent_run_resume_test.go` 以 PostgreSQL 覆盖续接最近一个、没有历史、
   Issue 换了项目、不可续接标记与下一次选取、D5 三种登记与一跳沿用、公开投影；迁移测试覆盖升级与约束；前端

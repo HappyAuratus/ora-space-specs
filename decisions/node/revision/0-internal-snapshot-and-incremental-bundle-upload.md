@@ -138,6 +138,7 @@ Scope 中运行，并在下一条命令开始前关闭。
 
 ## 验证
 
+核心用例见 [Node 的快照与 bundle 交付](../../../test-cases/node/revision/snapshot-bundle-delivery.md)。
 desktop `apps/ora-node/src/revision/tests/snapshot.rs` 以真实 Git 覆盖有/无改动、修改删除与新增、忽略文件、
 提交钩子失败不影响快照、工作区与分支不变、bundle 可在只有基础提交的新仓库中 fetch 出最终提交、续接后停在
 前序最终提交时为 `unchanged`；`upload.rs` 以本地 HTTP 替身覆盖签名头原样携带、`412`、`403` 换授权、次数耗尽、
