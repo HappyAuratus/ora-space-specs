@@ -2,7 +2,6 @@
 status: superseded
 ---
 
-
 # API Server–Controller Internal Control Protocol：双向控制与状态回写
 
 > 已被取代：本决策由 [Cloud 拥有 Internal Control gRPC 契约并承担权威持久化：租约与 clone 执行登记经 proto 定义的服务提供，补提交身份幂等、派发登记、Node 事件接管与服务端流](../../cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md) 取代，原因是 Cloud 场景的双向内部控制已收敛为 Cloud 拥有的 gRPC 契约，而不再以本篇 proposed 协议为当前系统承诺。当前系统承诺以取代者为准。

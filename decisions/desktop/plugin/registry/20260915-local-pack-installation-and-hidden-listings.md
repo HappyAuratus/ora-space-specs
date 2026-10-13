@@ -2,7 +2,6 @@
 status: superseded
 ---
 
-
 # 插件分发：pack 从源检出本地安装，隐藏成员只退出新构建的展示索引
 
 > 已被取代：本决策由 [插件集合包：Extension Pack 是安装编排条目，不是运行时插件](../extension-pack/0-extension-pack.md) 及其后续 ADR 取代，原因是本地 Pack 安装与隐藏列表规则已由 extension-pack 系列承接。当前系统承诺以取代者为准。
