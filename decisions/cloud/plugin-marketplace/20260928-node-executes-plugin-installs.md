@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 插件安装与移除由 Node 执行，新建 Workspace 自动补装 Space 插件
@@ -10,7 +10,7 @@ status: approved
 期望的全部插件，补上根决策中留给后续 phase 的“新建 workspace 自动补装”。agent 类插件收敛为 `installed`
 时同时维护 Space 的 Agent 行。
 
-本 ADR 处于 `approved`（已评审，待实现），继承 [插件市场根决策](0-plugin-marketplace.md)。步骤表见
+本 ADR 处于 `implemented`，继承 [插件市场根决策](0-plugin-marketplace.md)。步骤表见
 [operation 后续决策](../operation/20260928-plugin-step-and-run-workspace-release.md)；Node 上的安装语义见
 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-installs-plugins-into-workspace-home.md)；
 Agent 行见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D1。
@@ -36,7 +36,10 @@ Agent 行见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolate
   与 `RemovePlugins{plugins: [{pluginId, version}]}`，每项字段与原 effect 载荷逐一对应。
 - 结果逐项：`installed{version}` 必须等于计划版本，否则 Cloud 以 `invalid_plugin_evidence` 拒绝整个结果；
   `removed`；`failed{reason}`，`reason` 是有界错误码（`download_failed`、`checksum_mismatch`、
-  `no_matching_target`、`invalid_package`、`install_failed`），写入实例的 `install_error`。
+  `no_matching_target`、`invalid_package`、`install_failed`、`plugin_in_use`），写入实例的 `install_error`。
+  `plugin_in_use` 表示有运行中的 Agent 会话正在使用该插件，Node 既不替换也不移除它。
+- 结果必须与计划逐项对应：项数相同、插件不重复、`removed` 只出现在移除执行中、失败码在白名单内；任何一项
+  不符都以 `invalid_plugin_evidence` 拒绝整个结果。
 - 同一 operation 的插件执行在失败后重试时是新执行，旧执行的结果保留。
 
 ### D2：新建与启动的 Workspace 补装期望集合
@@ -72,4 +75,5 @@ Agent 行见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolate
 
 ## 落地
 
-Cloud 的接管写回与 Agent 行维护以 PostgreSQL 集成测试覆盖；simulator 改为模拟 Node 执行结果。
+Cloud 的接管写回与 Agent 行维护以 PostgreSQL 集成测试覆盖；desktop Node 执行安装与移除；simulator 改为模拟
+Node 执行结果，保留用于 Cloud 测试。

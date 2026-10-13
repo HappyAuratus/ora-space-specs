@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Agent 运行的对话记为 Thread：Node 的会话记录逐条持久流入 Cloud，用户可追加消息，空闲或用户结束后收尾
@@ -10,7 +10,8 @@ status: approved
 作为命令经 Controller 交给 Node 排队执行；Agent 完成当前轮次后 Thread 进入空闲，用户结束或空闲期满时
 Cloud 请求结束会话，进入 Revision 交付。
 
-本 ADR 处于 `approved`（已评审，待实现），是新建领域 `cloud/thread` 的根决策。运行阶段由
+本 ADR 处于 `implemented`，是领域 `cloud/thread` 的根决策。D3 的追加消息授权已由
+[个人模型发起者决策](20261010-personal-model-initiator-controls-input.md)修改。运行阶段由
 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)承担；事件与命令的线上
 形状由 [gRPC 后续决策](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)
 与 [Node 协议后续决策](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md)承担；
@@ -54,9 +55,11 @@ Thread 以外的交互式聊天（`chat` 页）。
   使 Node 不需要理解 Issue 领域。
 - **追加消息**：`POST /api/v1/tenants/{tid}/issues/{iid}/runs/{rid}/thread/messages`（必须带
   `Idempotency-Key`，body `{content: [{type: "text", text}]}`，文本合计 ≤ 64 KiB）。Thread 状态为
-  `pending | active | idle` 时接受；Cloud 写入 `source = user`、`kind = user_turn` 条目（状态 `queued`）
+  `pending | active | idle` 且运行尚未登记取消请求时接受；Cloud 写入 `source = user`、`kind = user_turn` 条目（状态 `queued`）
   并在同一事务中经 `enqueueThreadCommand` 放出 Thread 命令 `SubmitUserTurn{turn_id, content}`（命令表与事务边界见
-  [controller-integration D6](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)）。`ending | ended` 时返回 `409 thread_closed`。
+  [controller-integration D6](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)）。`ending | ended`、或运行已登记取消请求时返回
+  `409 thread_closed`：取消之后接受的轮次会被持久化却永远不会执行。正文只接受文本块，未知块类型返回
+  `400 invalid_field_type`，超出大小返回 `400 content_too_large`。
 - Node 执行某个用户轮次时写入的用户消息记录携带同一 `turn_id`；Cloud 接管到它时把对应 `user_turn`
   条目标为 `delivered`。前端据此区分“已发送、排队中”与“Agent 已接收”。
 - Agent 正在执行上一轮时，新消息在 Node 上按接收顺序排队（[Node 协议](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md) D4），不打断当前轮次。
@@ -75,23 +78,24 @@ Thread 以外的交互式聊天（`chat` 页）。
 | 接管到任意 Node 记录 | `active` |
 | 接管到成功 `TurnEnded`（非 `cancelled`），且没有 `queued` 的用户轮次 | `idle`，记录 `idle_since`（数据库时间） |
 | 新用户轮次写入 | `active` |
-| 用户点击“结束”、`idle` 超过空闲窗口、或运行被取消 | `ending`，放出 `EndSession{reason}` 命令 |
+| 用户结束、`idle` 超过空闲窗口、或运行被取消 | `ending`，放出 `EndSession{reason}` 命令 |
 | 会话执行终态被接管 | `ended` |
 
 - 空闲窗口是 Cloud 配置 `issue_runs.thread_idle_timeout`，第一版默认 15 分钟；由 Cloud 的派发循环
   按数据库时间判断，不依赖 Controller 或 Node 的时钟。
 - `reason` 为 `user_ended | idle_timeout | cancelled`；Node 对三者都停止 Agent、完成会话记录后以终态结束
   会话执行，区别只影响 IssueRun 的 `status`（[IssueRun D4](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)）。
-- 2026-10-11 检视修订：Node 会话遇到 ACP 请求错误或意外流关闭时以 `agent_failed` 结束；终态接管后
-  Thread 为 `ended`，通过可空 `failureCode` 显示白名单安全分类，不复制供应商错误。成功 ACP 完成仍可
-  追加消息。已持久化的 EndSession 与错误竞态时保留明确的取消／结束原因。
-  同一终态事务追加 `source=system, kind=session_failed`、`record={type:sessionFailed,code}` 的 Cloud
-  失败条目，分配连续 seq，并发布 append/change 提示；重复接管不追加。它不是伪造的 Node 历史行，
-  不改写 Node 的 JSONL 或 Thread 条目。仅允许固定分类，未知 detail 收为 `agent_failed`。
-- 这修改了此前“失败后继续保留会话”的策略。代价是供应商失败后需新运行（可续接已保存 Revision）；
-  好处是 Cloud 页面、Node 通道与临时模型授权均有一致终态，避免无响应时继续接受消息。部分仓库成果
-  仍执行原来的终态交付和 Workspace 释放，Node 记录保持原样。取消的 TurnEnded 在终态接管前保持 active，
-  不启动空闲计时。此修订属于 M4 检视修复，不能据此升级 M4 总体验收状态。
+- 用户结束是 `POST .../runs/{rid}/thread/end`（必须带 `Idempotency-Key`，空 body）：`pending | active | idle`
+  时进入 `ending` 并放出 `EndSession{user_ended}`，返回 `202`；已是 `ending | ended` 时 `409 thread_closed`。它不推进
+  `ended`、不标记排队轮次、不改变运行阶段；后续由会话终态决定。
+- 会话失败：Node 会话遇到 ACP 请求错误或意外流关闭时以失败结束，终态接管后 Thread 为 `ended`。同一终态事务
+  追加一条 `source = system`、`kind = session_failed`、`record = {type: sessionFailed, code}` 的 Cloud 条目，分配
+  连续 `seq` 并发布刷新提示，重复接管不再追加。`code` 只取白名单分类（Agent 轮次失败、流关闭、Agent 不可用或
+  启动失败、模型代理或模型授权不可用或过期、Thread 不可用），其余一律收为 `agent_failed`；不复制供应商错误，
+  不改写 Node 的记录。已持久化的 `EndSession` 与错误竞态时保留明确的取消／结束原因。
+- 失败后不再保留会话：供应商失败后需要新运行（可续接已保存的 Revision），换来 Cloud 页面、Node 通道与临时
+  模型授权一致的终态。成功完成的 ACP 轮次之后仍可追加消息。`cancelled` 的 `TurnEnded` 不启动空闲计时，
+  Thread 保持 `active` 直到终态接管。
 
 为什么不在 Agent 首轮 `EndTurn` 时立即结束：用户明确要求在 Thread 中对话；一轮结束后立即释放沙盒，
 用户的回复就只能开启一次新运行，并重新 clone 和安装插件。空闲窗口让“快速回复”复用同一沙盒，代价是
@@ -99,11 +103,13 @@ Thread 以外的交互式聊天（`chat` 页）。
 
 ### D5：公开读取与实时刷新
 
-- `GET .../runs/{rid}/thread?after={seq}&limit={n}` 按 `seq` 升序返回条目与 `threadState`；
-  `limit` 上限 500。
-- 条目写入事务提交后，Cloud 在 Space 事件流上发布 `issue_run.thread_appended{issueId, runId, lastSeq}`；
-  事件只是失效提示，前端据此从自己的游标继续 `GET`，与 Space API 根决策中“事件只带失效信息，权威状态
-  经 REST 重取”一致。
+- `GET .../runs/{rid}/thread?after={seq}|before={seq}&limit={n}`：`after` 与 `before` 互斥，都不带时返回尾部
+  窗口；`limit` 默认 200、上限 500；无论方向，结果都按 `seq` 升序，并带 `threadState`、`idleSince` 与
+  `nextCursor`/`prevCursor`。条目与状态来自同一个数据库快照。
+- 事务提交后，Cloud 在 Space 事件流上发布两种失效提示，载荷都是 `{issueId, runId, lastSeq}`：
+  `issue_run.thread_appended` 表示追加了条目；`issue_run.thread_changed` 表示 Thread 的 REST 表示有任何变化，
+  包括只改状态的提交（轮次 `queued → delivered`、`active ⇄ idle`、进入 `ending`、写 `idleSince`）。两者都不是
+  权威状态，前端据此从自己的游标继续 `GET`，与 Space API 根决策中“事件只带失效信息，权威状态经 REST 重取”一致。
 - Issue 详情页右侧面板列出该 Issue 的 Agent 运行，选中一个显示其 Thread；输入框在 `pending | active | idle`
   时可用。
 
@@ -130,14 +136,14 @@ Thread 以外的交互式聊天（`chat` 页）。
 
 - token 级增量显示的旁路设计。
 - Thread 条目与 JSONL 的保留期限、Thread 的总大小上限。
-- 运行结束后在 Thread 中继续对话（需要从 Revision 续接）。2026-10-10 补充：新运行续接前序 Revision 已由 [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) 提出（proposed）；同一个 Thread 在运行结束后继续对话仍未决。
+- 同一个 Thread 在运行结束后继续对话。新运行续接前序 Revision 由
+  [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md)承担，它开启的是新的 Thread。
 - 权限请求的人工审批：第一版沿用 desktop 运行时的自动批准，Thread 只显示结果。
 
-## 落地顺序
+## 落地
 
-1. 迁移 `thread_entries` 与 `issue_runs.thread_state/idle_since`；接管路径与幂等以 PostgreSQL 集成测试覆盖
-   （重复接管、同键不同内容、`seq` 连续、空闲期满放出结束命令）。
-2. 公开 API、OpenAPI 与前端生成客户端；SSE 事件。
-3. 前端 Issue 详情页右侧 Thread 面板（列表、输入、状态），以 mock 数据的组件测试覆盖状态显示。
+迁移 `0030`（`issue_runs.thread_state/idle_since`）与 `0031`（`thread_entries`）；接管路径与幂等、空闲期满放出
+结束命令、失败条目由 PostgreSQL 集成测试覆盖；公开 API、OpenAPI、前端生成客户端与 SSE 事件；Issue 详情页右侧
+Thread 面板（列表、输入、结束、状态）。
 
 保持不变：评论、Timeline 活动与 manual run。开始改变：Agent 运行有可读、可对话的 Thread。
