@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Workspace 创建与启动增加 plugin 步骤并由 Node 执行；IssueRun 的运行 Workspace 由 Cloud 发起建删
@@ -9,7 +9,7 @@ status: approved
 结果逐个写回 `workspace_plugin_instances`。插件步骤不再计划 Substrate effect。IssueRun 的运行 Workspace
 （isolated）复用 `create_workspace`/`delete_workspace`，由 Cloud 以系统身份发起，不能被公开 API 操作。
 
-本 ADR 处于 `approved`（已评审，待实现），继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)
+本 ADR 处于 `implemented`，继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)
 与 [具体默认分支决策](20260926-require-concrete-default-branch.md)。插件目录、选择状态与 fan-out 的修改
 见 [plugin-marketplace 后续决策](../plugin-marketplace/20260928-node-executes-plugin-installs.md)，
 运行 Workspace 的业务语义见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)。
@@ -71,7 +71,9 @@ status: approved
 - IssueRun 的派发事务创建运行 Workspace（`kind = isolated`、`issue_run_id` 非空）与其 `create_workspace`
   operation；进入 `releasing` 的事务创建 `delete_workspace` operation。两者的幂等身份是
   `(issue_run_id, kind)`，由 Cloud 生成，不经过公开幂等键。
-- 公开 API 对运行 Workspace 的 start/stop/delete 返回 `404`：它的生命周期只属于 IssueRun。
+- 公开 API 对运行 Workspace 的 start/stop/delete 返回 `404`：它的生命周期只属于 IssueRun。运行 Workspace
+  也不出现在 Workspace 列表与运行时列表中，不参与 Space 插件的 fan-out 与聚合；它的插件只在自己的 `plugin`
+  步骤安装。
 - `delete_workspace` 的 quiesce 规则不变：Controller 只有在该 Node 上没有尚无终态的派发（包括 Agent 会话、
   交付与插件执行）时才报告 idle。IssueRun 保证只在交付结束后创建删除操作，因此正常路径下 quiesce 一次通过；
   若仍有未终态执行（例如交付被放弃时的会话结果未知），quiesce 失败并按原规则重试。
@@ -100,6 +102,7 @@ status: approved
 
 ## 落地
 
-迁移增加步骤与运行 Workspace 关联列，改写步骤表；`request.plugins` 快照与接管写回以 PostgreSQL 集成测试
-覆盖（空集合直接推进、部分失败仍就绪、执行失败重试）；Go 模拟 Controller 按新步骤工作。保持不变：
+迁移增加步骤与运行 Workspace 关联列，改写步骤表；`request.plugins` 快照（同时记录每个插件的 `desiredRevision`，
+写回时据此判断结果是否仍对应当前选择）与接管写回以 PostgreSQL 集成测试覆盖（空集合直接推进、部分失败仍就绪、
+执行失败重试）；desktop Node 执行安装，Go simulator 保留用于 Cloud 测试。保持不变：
 sandbox/node/clone/quiesce/terminate/cleanup。开始改变：Workspace 就绪前安装 Space 插件，插件不再经 Substrate。
