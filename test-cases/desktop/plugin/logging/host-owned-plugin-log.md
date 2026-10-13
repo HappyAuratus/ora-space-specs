@@ -1,7 +1,7 @@
 # Host 管理的插件日志
 
 决策依据：[插件日志 ADR](../../../../decisions/desktop/plugin/logging/0-host-owned-plugin-log.md)。
-ADR 已批准，本文记录长期验证义务；不表示实现已完成。证据来自现有测试源码检查，本次文档变更未运行测试。
+ADR 已按实现同步为 implemented，本文记录长期验证义务；测试源码与实际执行结果分别登记在关联 PR 中。
 `Partial` 表示已有直接但不完整的证据，`Missing` 表示尚无对应直接证据，不能以相邻测试替代。
 下文 Rust 测试名称相对于所列源码文件；源码路径相对于代码仓库根目录。
 
@@ -17,8 +17,8 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 路径类型冲突不改写原对象且不阻塞 drain | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`a_conflicting_log_path_fails_the_sink_but_keeps_draining` | Covered |
-| logs root 与所有子级链接/reparse-point 均被拒绝 | `crates/plugin-runtime/src/plugin_log/sink.rs`：`symlinks_at_any_level_are_refused`；仍需根目录及 Windows reparse-point 证据 | Partial |
-| 跨进程代、跨 Host 排他写入及失败隔离 | 尚无直接竞争测试 | Missing |
+| logs root 与所有子级链接/reparse-point 均被拒绝 | `crates/plugin-runtime/src/plugin_log/sink.rs`：`symlinks_at_any_level_are_refused`、`a_symlinked_root_is_refused`（Unix）、`a_junction_level_is_refused`（Windows） | Covered |
+| 跨进程代、跨 Host 排他写入及失败隔离 | 同文件：`the_active_file_has_at_most_one_writer`；`pipeline_tests.rs`：`a_generation_never_writes_beside_an_unreleased_writer`；尚缺两个独立 Host 进程的竞争演练 | Partial |
 | 通过生产 storage 接口验证日志树不可达 | 尚未登记对应直接证据 | Missing |
 
 - **决策依据：** D2、D7、D8，不变量 4、5、12。
@@ -34,8 +34,8 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 身份覆盖、correlation 保留键清除及时间序列化 | `crates/plugin-runtime/src/plugin_log/record.rs`：`structured_records_carry_host_identity_and_never_promote_reserved_keys`；尚不覆盖新增 session 与全部诊断标记 | Partial |
-| Host 重启后 session/generation 不混淆 | 尚无直接证据 | Missing |
+| 身份覆盖、correlation 保留键清除及时间序列化 | `crates/plugin-runtime/src/plugin_log/record.rs`：`structured_records_carry_host_identity_and_never_promote_reserved_keys`、`fragments_and_invalid_bytes_are_preserved_traceably` | Covered |
+| Host 重启后 session/generation 不混淆 | 同文件：`host_sessions_keep_equal_generations_apart`；`crates/plugin-lifecycle/src/log_level_tests.rs`：`each_host_run_mints_a_fresh_session_for_equal_generations` | Covered |
 | 实际 pipeline 使用本地接收时钟，回拨仍按接收顺序写入 | 尚无注入回拨时钟的生产路径证据 | Missing |
 
 - **决策依据：** D3，不变量 3、13。
@@ -53,8 +53,8 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 | --- | --- | --- |
 | 五个方法映射且 stdout 仅含协议帧 | `packages/plugin-sdk/tests/logger.test.ts`：`console.* maps onto the plugin logger and stdout carries only protocol frames` | Covered |
 | 复杂值与 sink 失败不抛入业务 | 同文件：`hostile values never throw and degrade to bounded descriptions`、`a failing sink is absorbed rather than thrown into plugin code` | Covered |
-| 初始化前边界、失败后持续接管、第三方调用与 stop | 尚无覆盖这些生命周期路径的直接证据 | Missing |
-| SDK 短写和并发写入的完整 envelope 顺序 | 尚无故障注入证据 | Missing |
+| 初始化前边界、失败后持续接管、第三方调用与 stop | 同文件：`the console takeover is installed before the first protocol frame and never removed`、`a console that cannot be taken over keeps the plugin out of protocol operation`；仍缺接管成功后初始化失败的完整路径 | Partial |
+| SDK 短写和并发写入的完整 envelope 顺序 | 同文件：`the stderr sink continues short writes until the whole envelope is out`；仍缺并发/重入 writer 故障证据 | Partial |
 
 - **决策依据：** D1、D4、D5。
 
@@ -72,8 +72,8 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 | read 边界、structured/raw、EOF 尾部 | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`persists_structured_and_raw_records_independently_of_read_boundaries` | Covered |
 | 分片与无效字节可追溯 | `crates/plugin-runtime/src/plugin_log/record.rs`：`fragments_and_invalid_bytes_are_preserved_traceably` | Covered |
 | 满队列拒收新记录并区分策略过滤 | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`a_full_queue_drops_the_newest_records_and_counts_them` | Covered |
-| 编码膨胀、嵌套深度及队列总字节界限 | 尚无完整边界测试 | Missing |
-| 部分写入、flush 失败、告警限次与未知结果计数 | 路径冲突测试只覆盖初始化失败，不能证明这些义务 | Missing |
+| 编码膨胀、嵌套深度及队列总字节界限 | `pipeline_tests.rs`：`a_maximal_raw_record_renders_within_a_fixed_multiple_of_the_limit`、`the_queue_is_bounded_by_bytes_as_well_as_count`；`envelope.rs`：`rejects_context_and_error_nested_past_the_depth_bound` | Covered |
+| 部分写入、flush 失败、告警限次与未知结果计数 | `pipeline_tests.rs`：`a_write_failure_splits_indeterminate_from_lost_and_warns_once`、`a_flush_failure_makes_written_records_indeterminate` | Covered |
 
 - **决策依据：** D5、D7，不变量 6、8、9。
 
@@ -90,7 +90,7 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 | --- | --- | --- |
 | 默认、身份隔离与重开持久化 | `crates/plugin-lifecycle/src/log_level_tests.rs`：`levels_default_to_info_persist_and_stay_per_identity` | Covered |
 | 运行中设置送达及过滤阈值生效 | 同文件：`launch_receives_the_reserved_directory_and_a_live_level`；`crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`applies_the_live_threshold_as_a_floor_without_restart`；仍缺真实 Host 到插件落盘的整链证据 | Partial |
-| retain/delete 处置与清除失败报告 | `crates/plugin-lifecycle/src/log_level_tests.rs`：`uninstall_disposition_decides_whether_the_level_survives`、`delete_uninstall_reports_a_failed_level_clear`；失败后的整体回滚仍需证明 | Partial |
+| retain/delete 处置与清除失败报告 | `crates/plugin-lifecycle/src/log_level_tests.rs`：`uninstall_disposition_decides_whether_the_level_survives`、`delete_uninstall_rolls_back_every_tree_when_the_level_clear_fails` | Covered |
 | 设置写入失败、并发设置及卸载竞争的一致性 | 尚无完整故障/竞争证据 | Missing |
 
 - **决策依据：** D6、D8，不变量 7。
@@ -106,10 +106,10 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| stderr 不关闭时最终有界返回 | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`teardown_is_bounded_when_stderr_never_closes`；该测试不能证明单一截止时间或 writer 隔离 | Partial |
-| 真正阻塞 writer 下的代际排他、新代 drain 与最终释放 | 尚无直接证据；当前 `pipeline.rs::finish` 超时后放任 blocking writer 完成，需补齐所有权管理 | Missing |
+| stderr 不关闭时最终有界返回 | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`teardown_is_bounded_when_stderr_never_closes`、`teardown_shares_one_deadline_and_reports_the_unreleased_writer` | Covered |
+| 真正阻塞 writer 下的代际排他、新代 drain 与最终释放 | 同文件：`teardown_shares_one_deadline_and_reports_the_unreleased_writer`、`a_generation_never_writes_beside_an_unreleased_writer`；真实文件 sink 锁由 `sink.rs`：`the_active_file_has_at_most_one_writer` 验证；仍缺真正阻塞磁盘 I/O 后恢复的整链演练 | Partial |
 | retain/delete 日志目录处置 | `crates/plugin-lifecycle/src/log_directory_tests.rs`：`uninstall_disposition_decides_whether_the_log_tree_survives` | Covered |
-| writer 未释放时禁止删除，失败全量回滚 | 同文件：`delete_uninstall_fails_and_rolls_back_while_the_log_is_open` 仅覆盖 Windows 打开句柄场景，未覆盖真实 writer 与设置共同回滚 | Partial |
+| writer 未释放时禁止删除，失败全量回滚 | 同文件：`delete_uninstall_is_refused_while_a_writer_holds_the_log`；`log_level_tests.rs`：`delete_uninstall_rolls_back_every_tree_when_the_level_clear_fails` | Covered |
 | 启动失败及 Host 关闭复用同一收尾约束 | 尚无对应直接集成证据 | Missing |
 
 - **决策依据：** D8，不变量 10、12、14。
@@ -126,8 +126,8 @@ ADR 已批准，本文记录长期验证义务；不表示实现已完成。证�
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 完整文件创建、复用与追加 | `crates/plugin-runtime/src/plugin_log/sink.rs`：`creates_every_level_reuses_and_appends` | Covered |
-| 残缺尾部恢复、名称冲突与恢复失败隔离 | 尚无直接证据 | Missing |
-| 恢复文件参与 retain/delete 事务 | 尚无直接证据 | Missing |
+| 残缺尾部恢复、名称冲突与恢复失败隔离 | 同文件：`an_unterminated_tail_is_set_aside_not_joined`、`a_failed_recovery_leaves_the_file_and_fails_the_sink` | Covered |
+| 恢复文件参与 retain/delete 事务 | 日志树整体 staging 已覆盖，尚缺包含 recovery 文件的直接卸载样本 | Partial |
 
 - **决策依据：** D10，不变量 15。
 
