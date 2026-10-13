@@ -1,6 +1,6 @@
 # Agent 运行编排
 
-依据[已批准的 IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md)，
+依据 [IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md)，
 事务边界见 [controller-integration D6](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
 本文件登记 Agent IssueRun 从评论触发到释放运行 Workspace 的阶段承诺。证据来自 `ora-space/cloud` 的 `integration` 包
 （真实 HTTP/gRPC 与 PostgreSQL，部分以 simulator 扮演 Controller/Node）和 `internal/core` 包（白盒 PostgreSQL 测试，经生产
@@ -67,7 +67,7 @@ IssueRun D1、D2，不变量 6、7。
 - 每次转换与对应证据的接管在同一事务中提交：`provisioning → starting → running → delivering → releasing → done`。
 - `starting` 放出恰好一个会话工作项；`delivering` 放出恰好一个未登记的交付工作项。
 - Project 忙时运行保持 `queued`/`provisioning`，派发循环稍后重试，不报错。
-- `create_workspace` 失败（或 `blocked` 超过 30 分钟）时进入 `releasing`，`status = failed`，`failure_reason = workspace_unavailable`。
+- `create_workspace` 失败时进入 `releasing`，`status = failed`，`failure_reason = workspace_unavailable`。
 
 ### 禁止结果
 
@@ -79,7 +79,7 @@ IssueRun D1、D2，不变量 6、7。
 |---|---|---|
 | 完整阶段链 | `integration/agent_run_delivery_test.go::TestFullLifecycleSessionEndToDoneSkipsNoPhase`：从 `starting` 依次经过 `running → delivering → releasing → done`，终态为 `done/completed/ended`、Revision 已登记、恰好一个成功的 delete；`internal/core/agent_run_settle_db_test.go::TestPhase2ASettleReady`：`create_workspace` 成功把 `provisioning` 推进到 `starting`；`integration/agent_run_thread_events_test.go::TestOnlyTheFirstRecordAdvancesRunning`：声明会话、POST、命令登记都不推进，只有首条 Node 记录进入 `running`；`integration/agent_run_session_end_test.go::TestSessionEndedEndsThreadDiscardsQueuedAndReleasesDelivery`：终态接管恰好放出一个未登记的交付工作项。缺口：没有一个测试从 `queued` 经 `provisioning` 连续驱动到 `done`；“`starting` 放出恰好一个会话工作项”只在测试辅助函数里以“存在工作项”检查，没有计数断言；Agent 会话不占用 operation 没有直接断言。M2 真实链路验收以真实 Controller/Node 把一次运行从评论驱动到 `done`（交付 `skipped`） | Partial |
 | Project 忙时排队 | 缺口：派发器在 `createRunWorkspace` 返回 `busy` 时保持 `queued`（`internal/core/agent_run_dispatcher.go`），但没有测试以忙 Project 调用派发并断言运行保持 `queued`、operation 结束后再创建运行 Workspace；`seedDispatchScene` 支持 busy 参数但没有测试使用。`TestRunWorkspaceAndPluginStep` 的 busy 只针对删除，不是本义务 | Missing |
-| 建 Workspace 失败 | `internal/core/agent_run_settle_db_test.go::TestPhase2ASettleWorkspaceFailure`：`failed` 结果使运行进入 `releasing`、`status = failed`、`failure_reason = workspace_unavailable`，为该运行 Workspace 恰好声明一个 delete，并写一条 `run.failed`；`integration/agent_workspace_failure_hook_test.go::TestWorkspaceFailedHookAndForceEvidenceCommitTogether`：失败钩子与控制面证据同事务提交。缺口：`blocked` 超过 30 分钟进入失败没有测试 | Partial |
+| 建 Workspace 失败 | `internal/core/agent_run_settle_db_test.go::TestPhase2ASettleWorkspaceFailure`：`failed` 结果使运行进入 `releasing`、`status = failed`、`failure_reason = workspace_unavailable`，为该运行 Workspace 恰好声明一个 delete，并写一条 `run.failed`；`integration/agent_workspace_failure_hook_test.go::TestWorkspaceFailedHookAndForceEvidenceCommitTogether`：失败钩子与控制面证据同事务提交 | Covered |
 | 钩子失败回滚 | `integration/agent_hook_atomicity_test.go::TestSessionEndedHookRollsBackAndReplaysOnce`：注入会话结束钩子错误，收据、执行结果与钩子写入全部回滚，重放后成功且钩子只执行一次；`::TestWorkspaceReadyAndDeletedHooksShareTheOperationTransaction`：就绪与删除钩子失败时准入与删除都不提交，重放后成功一次；`integration/agent_run_boundary_test.go::TestThreadBusinessHookSharesTheTakeoverTransaction`：Thread 接管钩子失败时收据与序号都不写入，重放后成功一次；`integration/agent_run_session_end_test.go::TestSessionEndedHookFailureRollsBackTheWholeTakeover`：生产钩子失败时收据、序号、Thread、轮次状态、交付工作与阶段都不变 | Covered |
 
 ### 决策依据
@@ -105,7 +105,6 @@ Revision 未登记就删除运行 Workspace，Agent 的修改丢失；或交付�
 - 只有 Revision 已登记、交付按上限放弃、或无会话取消时才创建 `delete_workspace`。
 - 交付失败以 30 秒起、10 分钟封顶的退避放出新的交付工作项；放弃时 `deliveryState = failed`。
 - `status` 与 `deliveryState` 分别记录：`failed`/`cancelled` 的运行也可以有 Revision。
-- `completed` 时 Agent 最后一条消息写为 Agent 署名的回复评论。
 
 ### 禁止结果
 
@@ -122,3 +121,39 @@ Revision 未登记就删除运行 Workspace，Agent 的修改丢失；或交付�
 ### 决策依据
 
 IssueRun D4、D5、D6，不变量 3、4。
+
+## Run Workspace Release Gives Up Only When Unreachable
+
+### 风险
+
+运行 Workspace 的删除持续失败时运行永远停在 `releasing`；或者反过来，删除仍在推进时被判为放弃，运行被谎报为已释放。
+
+### 前置状态
+
+运行处于 `releasing`，运行 Workspace 有一个未完成的 `delete_workspace`。
+
+### 触发
+
+删除成功；Node 明确拒绝 quiesce；运行 Workspace 的 Node 状态未知时间未超过或超过不可达窗口；删除成功与放弃扫描竞态。
+
+### 必须成立
+
+- 只有运行 Workspace 仍有存活沙盒、且 Node 状态未知超过 D5 的不可达窗口时才放弃；拒绝 quiesce、失败次数都不触发放弃。
+- 放弃时 `delete_workspace` 以 `node_unavailable` 终结，运行进入 `done`，`status` 保持不变，`failure_reason = workspace_unavailable`。
+- 运行 Workspace 行保留且仍关联该运行，不写成功形态的删除结果。
+
+### 禁止结果
+
+把放弃写成删除成功；`done` 之后再次声明删除或改写运行；放弃后阶段倒退。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 只以不可达为条件 | `integration/agent_run_release_giveup_test.go::TestG032_2_UnreachableBelowTheWindowStaysReleasing`：窗口内保持 `releasing`；`::TestG032_4_RefusedQuiesceNeverTriggersGiveUpEvenPastTheWindow`：拒绝 quiesce 越过窗口也不放弃 | Covered |
+| 放弃终态与残留 | `::TestG032_3_UnreachablePastTheWindowSettlesDoneWithoutClaimingDeletion`：越过窗口进入 `done`、`failure_reason = workspace_unavailable`，Workspace 未软删除，删除以失败码终结；`::TestG032_8_BusinessStatusMatrixSurvivesTheGiveUp`：`status` 保持交付时写入的值 | Covered |
+| 竞态与终态稳定 | `::TestG032_5_SuccessfulDeleteWinsTheRaceAndThePassIsANoOp`、`::TestG032_6_GiveUpWinsTheRaceAndAStaleDeleteSettlementIsRefused`、`::TestG032_7_ADoneRunIsNeverRedeclaredOrRewritten`、`::TestG032_9_NoBackwardLifecycleAfterGiveUp`；`::TestG032_1_SuccessfulDeleteIsUnchangedByTheGiveUpPass`：正常删除不受扫描影响 | Covered |
+
+### 决策依据
+
+IssueRun D8，不变量 8。

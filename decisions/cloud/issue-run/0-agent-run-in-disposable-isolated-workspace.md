@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Issue 上 @Agent 的 IssueRun 由 Cloud 编排：每次运行一个一次性 isolated Workspace，成果保存为 Revision 后释放
@@ -10,7 +10,7 @@ status: approved
 Thread 中继续对话；会话结束后 Node 保存 git 变更与会话记录为 **Revision**，Cloud 校验并登记后删除该
 Workspace，释放沙盒与数据。整条编排的权威状态在 Cloud，Controller 与 Node 只执行 Cloud 放出的工作。
 
-本 ADR 处于 `approved`（已评审，待实现），是新建领域 `cloud/issue-run` 的根决策，承担“一次 Agent 运行从哪里开始、经过哪些
+本 ADR 处于 `implemented`，是领域 `cloud/issue-run` 的根决策，承担“一次 Agent 运行从哪里开始、经过哪些
 阶段、何时结束和释放”的业务不变量。其他环节分别由下列决策承担，本文只引用：
 
 | 环节 | 决策 |
@@ -30,9 +30,9 @@ Workflow 路径不变。本文不承担“续接上次 Revision 再次运行”�
 
 ## 背景
 
-- Cloud 已有 Issue 协作层：评论 `targets` 中的 `agent` 目标以 Task Mode 创建 IssueRun，事务提交后调用
+- Cloud 的 Issue 协作层：评论 `targets` 中的 `agent` 目标以 Task Mode 创建 IssueRun，事务提交后调用
   `ExecutionDispatcher.Dispatch`，外部执行经 `ExecutionObserver` 回写 started/progress/message/completed/failed。
-  目前只有 `collab` 包中的 fixture 目录和同步 mock Dispatcher。
+  本决策之前只有 `collab` 包中的 fixture 目录和同步 mock Dispatcher。
 - 运行时 Workspace 的 sandbox → node → clone 已由 Rust Controller 与 cluster Sandbox Server 跑通
   （[operation 根决策](../operation/0-workspace-runtime-follows-desktop-node.md)）。
 - 云端沙盒与 Revision 方案（2026-09-15 讨论结论）已确定：看板自动化运行在成果保存成功后释放沙盒及存储；
@@ -83,15 +83,18 @@ CRUD，前端 agents 页继续用 mock，直到另立决策。
 | `running` | Node 报告会话已开始（首条 Thread 事件或会话开始事件被接管） | Thread 命令（用户消息、结束请求） | `running` |
 | `delivering` | 会话执行有终态结果（任何结束原因） | Revision 交付执行（`DeliverRevision` 工作项） | `running` |
 | `releasing` | Revision 已登记（或按 D5 放弃交付） | 运行 Workspace 的 `delete_workspace` operation | 见 D4 |
-| `done` | `delete_workspace` `succeeded` | 无 | 终态不变 |
+| `done` | `delete_workspace` `succeeded`，或删除侧超过 D8 的上限（此时 `done` 不代表删除成功） | 无 | 终态不变 |
 
 - 每个阶段转换都在接管上一阶段证据的同一事务中写入，并在提交后发 `Watch` 信号；Controller 丢信号时
   靠周期领取兜底。没有任何阶段依赖 Controller 内存中的“下一步”。
 - `provisioning` 的 operation 受 `one_project_operation` 约束：Project 忙时 Cloud 不报错，运行保持
   `provisioning` 并由 Cloud 的派发循环（周期 ≤ 10 秒）重试创建 operation。operation 都很短（分钟级），
   Agent 会话本身不占用 operation，因此同一 Project 的多个运行只在建删 Workspace 时排队。
-- create_workspace 失败（`failed`，或 `blocked` 超过 30 分钟）时运行进入 `releasing`，`status = failed`，
-  `failure_reason = workspace_unavailable`；已创建的部分由 `delete_workspace` 清理。
+- create_workspace `failed` 时运行进入 `releasing`，`status = failed`，`failure_reason = workspace_unavailable`；
+  已创建的部分由 `delete_workspace` 清理。Workspace 已就绪但运行固定的 agent 插件没有以固定版本装上时，
+  运行同样进入 `releasing`，`failure_reason = agent_plugin_unavailable`。
+- 偏离：approved 方案还规定 create_workspace `blocked` 超过 30 分钟视同失败，这一条没有实现。`blocked` 的
+  create_workspace 让运行停在 `provisioning`，见“本决策未解决的问题”。
 
 为什么不新增一个覆盖全程的 `run_agent` operation：会话可能持续数小时，期间 `one_project_operation`
 会让同一 Project 的其他运行、插件安装和 Workspace 操作全部 `409`；而把会话、交付拆成执行项后，
@@ -107,9 +110,11 @@ IssueRun 的最终 `status` 只表达执行结果；成果保存状态由 Revisi
 | 用户取消运行 | `cancelled` | 尽量保存（未完成成果） |
 | Agent 失败、Node 中断、会话结果未知 | `failed` | 尽量保存 |
 
-- `status` 在进入 `releasing` 时写入并追加对应 `run.completed/failed/cancelled` Timeline 活动；
-  `completed` 时 Cloud 把 Thread 中 Agent 的最后一条消息写为 Agent 署名的回复评论（沿用
-  `appendReplyComment`），使 Issue 时间线上能看到结论。
+- `status` 由会话的结束原因推导，在进入 `releasing` 时与阶段一起写入，并追加对应
+  `run.completed/failed/cancelled` Timeline 活动。
+- 偏离：approved 方案还规定 `completed` 时把 Thread 中 Agent 的最后一条消息写为 Agent 署名的回复评论。这一条
+  没有实现，因为消息文本在 `ora-history` 的业务记录里，而 [Thread D2](../thread/0-durable-agent-thread-with-user-turns.md)
+  规定 Cloud 不解析这些业务字段、不改写 Node 记录；没有约定的字段路径，写评论就要猜测外部 schema。
 - 现有 `ObserveCancelled` 只允许 `queued/dispatched → cancelled`；Agent 运行的取消改为请求（D6），
   实际的 `cancelled` 由会话结束后写入，不改变 manual run 的既有转换。
 - `issue_runs.result` 保存 `{revisionId | null, deliveryState}`，`deliveryState` 为
@@ -121,8 +126,9 @@ IssueRun 的最终 `status` 只表达执行结果；成果保存状态由 Revisi
   Node 只报告“已上传”不构成交付完成。
 - 交付执行失败（上传失败、校验失败、Node 报告失败）时，Cloud 以指数退避（30 秒起、上限 10 分钟）
   放出新的交付执行，运行保持 `delivering`，沙盒保持运行。
-- 交付连续失败超过 2 小时、或运行 Workspace 已不可达（Node 状态未知超过 30 分钟）时，Cloud 以
-  `deliveryState = failed` 放弃交付并进入 `releasing`。这两个上限是第一版默认值（Cloud 配置项），用来防止沙盒无限期占用；
+- 交付连续失败超过 2 小时（从该运行第一个交付工作项的创建时间起算，按数据库时钟比较）、或运行 Workspace
+  已不可达（Cloud 观察到该 Workspace 的 Node 状态未知超过 30 分钟）时，Cloud 以 `deliveryState = failed` 放弃
+  交付并进入 `releasing`。这两个上限是第一版默认值（Cloud 配置项），用来防止沙盒无限期占用；
   放弃意味着本轮未保存的修改丢失，这是 Revision 方案“第一版故障边界”已接受的代价。
 
 ### D6：取消与结束是请求，由会话收尾后生效
@@ -141,6 +147,22 @@ Thread 结束请求）并放出 Thread 命令；会话收尾与交付照常进�
 gRPC 接管路径直接驱动状态机，而不是回调 `ExecutionObserver` 的公开语义。`collab` fixture 继续用于开发
 演示，二者由配置选择，默认生产装配。
 
+### D8：运行 Workspace 的删除也有上限，且只以不可达为条件
+
+- 重试来源不变：沿用 operation 后续决策 D4 的 quiesce 失败重试与“同一 operation 的新执行”规则，Cloud 以重新
+  声明保证任一时刻至多一个未完成的 `delete_workspace`。
+- 上限只取 D5 的不可达窗口：运行 Workspace 仍有存活的沙盒，且 Cloud 观察到的该沙盒 Node 状态未知超过同一个
+  配置窗口（默认 30 分钟）。D5 的 2 小时连续失败窗口不适用于删除侧；Node 明确拒绝 quiesce 时 Node 仍然可达，
+  不触发放弃。沙盒已终止、删除正在 `cleanup` 步骤推进时也不触发：那时已没有可判“未知”的 Node。
+- 超过上限后，`delete_workspace` 以既有失败码 `node_unavailable` 终结，运行进入 `done`；`status` 保持进入
+  `releasing` 时按 D4 写入的值，另记 `failure_reason = workspace_unavailable`。
+- 残留如实保留：运行 Workspace 行不软删除，`issue_run_id` 仍指向该运行，并有一个终结失败的 `delete_workspace`。
+  不新增列、表或后台清理机制；公开 API 对运行 Workspace 的删除恒为 `404`，残留只能由运维处置。
+
+为什么只以不可达为条件：反复失败但 Node 可达的删除仍可能成功，按失败次数放弃会把仍在推进的释放判死；
+不可达的 Workspace 则永远等不到 quiesce 证据，没有上限运行会一直停在 `releasing`。代价是放弃后的沙盒与数据不会
+自动回收，`failure_reason = workspace_unavailable` 是唯一可见信号。
+
 ## 不变量
 
 1. 每个 Agent IssueRun 至多一个运行 Workspace，运行 Workspace 只属于一个 IssueRun。
@@ -150,6 +172,7 @@ gRPC 接管路径直接驱动状态机，而不是回调 `ExecutionObserver` 的
 5. 同一 Project 同时至多一个 operation 的约束不被 Agent 运行绕过；Agent 会话不占用 operation。
 6. 运行输入中的插件 ID 与版本在 IssueRun 创建时固定。
 7. 没有 Project 的 Issue 不能创建 Agent 运行。
+8. `done` 不代表运行 Workspace 已删除；只有 `delete_workspace` `succeeded` 时才是。
 
 ## 为什么不是这些替代方案
 
@@ -163,20 +186,22 @@ gRPC 接管路径直接驱动状态机，而不是回调 `ExecutionObserver` 的
 
 ## 本决策未解决的问题
 
-- 在已有 Revision 上续接运行（用户在运行结束后继续对话）：需要从 bundle 恢复 Workspace，另立决策。
-  2026-10-10 补充：已由 [续接后续决策](20261010-resume-run-from-latest-issue-revision.md) 提出（proposed）：同一 Issue 的新运行在 Agent 启动前续接最近一个 Revision。
+- 在已有 Revision 上续接运行：由 [续接后续决策](20261010-resume-run-from-latest-issue-revision.md) 承担，同一 Issue
+  的新运行在 Agent 启动前续接最近一个 Revision。
+- create_workspace 长期 `blocked` 时运行停在 `provisioning`：approved 方案的 30 分钟上限没有实现，需要后续决策
+  给出上限与终态。
+- `completed` 时在 Issue 时间线写出 Agent 结论：需要先约定 Cloud 可读的结论字段（D4 偏离）。
 - Team 目标与多 Agent 协作。
 - Agent 的 Space 级配置（名称、模型、提示词）与 agents 页的真实 API。
 - D5 中各上限的最终取值、运行总时长上限与配额。
 - manual run（`POST .../runs`）是否也走本编排。
 
-## 落地顺序
+## 落地
 
-1. 迁移：`space_agents`、`issue_runs.phase/workspace_id/cancel_requested_at`、`workspaces.issue_run_id`；
-   `AgentRunDispatcher` 与派发循环以 no-op 后续阶段先打通 `queued → provisioning → starting`，PostgreSQL
-   集成测试覆盖 `issue_project_required`、Project 忙时排队、create_workspace 失败进入 `releasing`。
-2. 接入 Thread 与 Revision 决策的接管路径，覆盖 `starting → running → delivering → releasing → done`。
-3. 以 cluster 手动联调验证整条链路（Node 侧 Agent 可先为 echo 实现）。
+迁移 `space_agents`、`issue_runs.phase/workspace_id/cancel_requested_at`、`workspaces.issue_run_id`；生产装配
+`AgentRunDispatcher` 与 10 秒周期的派发循环，`development_fixtures` 配置选择开发用 fixture；Thread、Revision
+交付、运行 Workspace 释放与 D8 的放弃路径接入同一状态机，由 PostgreSQL 集成测试覆盖；cluster 的 Agent 验收在真实栈
+中走通 `queued → provisioning → starting → running → delivering → releasing → done`。
 
 保持不变：manual run、Workflow 与 Form Mode、fixture 开发装配、已有 Workspace 操作。开始改变：
 `agent` 目标的 Task Mode 评论要求 Project，并在生产装配下真正执行。
