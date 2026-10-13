@@ -7,8 +7,10 @@
 架构边界和不变量来自
 [插件分发根决策](../../../../decisions/desktop/plugin/registry/0-registry-distribution.md) 与
 [来源派生 Namespace 决策](../../../../decisions/desktop/plugin/registry/20260831-source-derived-namespace.md)，
-以及 [Source 级插件包获取决策](../../../../decisions/desktop/plugin/registry/20260904-source-configured-artifact-retrieval.md)
-和 [本地 pack 与隐藏条目索引决策](../../../../decisions/desktop/plugin/registry/20260915-local-pack-installation-and-hidden-listings.md)。
+以及 [Source 级插件包获取决策](../../../../decisions/desktop/plugin/registry/20260904-source-configured-artifact-retrieval.md)。
+原 [本地 pack 与隐藏条目索引决策](../../../../decisions/desktop/plugin/registry/20260915-local-pack-installation-and-hidden-listings.md)
+已 `superseded`，对应 pack 用例改挂到
+[Extension Pack 核心测试用例](../extension-pack/README.md)。
 namespace 相关的身份、绑定与去重规则以来源派生 Namespace 决策为准。
 
 ## 阅读与维护规则
