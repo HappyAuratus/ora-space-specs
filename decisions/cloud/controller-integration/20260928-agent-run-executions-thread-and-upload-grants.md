@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Internal Control gRPC 增加插件、Agent 会话与 Revision 交付三类执行，新增 AgentRunService 承载 Thread 事件、Thread 命令与上传授权
@@ -10,7 +10,7 @@ status: approved
 `ClaimThreadCommands`/`RecordThreadCommandDelivered` 把用户消息与结束请求交给 Controller，
 `GrantRevisionUpload` 签发上传授权。`Watch` 增加 `ThreadCommandAvailable`。
 
-本 ADR 处于 `approved`（已评审，待实现），继承 [gRPC 契约根决策](0-cloud-owned-internal-grpc-contract.md)、
+本 ADR 处于 `implemented`，继承 [gRPC 契约根决策](0-cloud-owned-internal-grpc-contract.md)、
 [控制监听器保活](20260924-control-listener-keepalive.md)、[Workspace 操作与 Node 代报](20260926-workspace-operations-and-controller-reported-nodes.md)
 与 [ListLiveSandboxes](20260926-list-live-sandboxes.md)。业务语义分别由
 [IssueRun](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)、
@@ -90,13 +90,12 @@ status: approved
 对象键必须是该执行输入中的键。它不是写提交，不携带 `submission_id`，也不在 Cloud 留下记录；重复调用签发
 新的授权。授权内容不得写入 Controller 日志。
 
-兼容实现说明（2026-09-30）：可选 `checksums` 是对象键到小写 SHA-256 的 map（v1 field 3），只允许固定输入中的
-键。Cloud 将摘要签入 `x-amz-checksum-sha256`，返回请求键的授权；不提供 map 的旧请求仍返回两个输入键的
-授权。摘要与授权均不是执行输入，刷新不改变登记。旧 wire/decoder 与 Buf breaking 有直接证据。
-
-所有返回的 PUT 头都包含签名的 `If-None-Match: *`，禁止覆盖同键对象；Controller 必须原样转交该条件。
-412 后提交原元数据声明供 Cloud HEAD 校验，不能将状态码单独当作交付成功证据。Controller 生命周期取消
-不构成 Node 终态，应保留已登记执行供重启继续。
+- 可选 `checksums` 是对象键到小写 SHA-256 的 map，只允许执行输入中的键：Cloud 把摘要签入
+  `x-amz-checksum-sha256`，只返回所请求键的授权；不带 map 的请求返回输入中两个键的授权。摘要与授权都不是
+  执行输入，刷新授权不改变登记。
+- 返回的 PUT 头都包含签名的 `If-None-Match: *`，禁止覆盖同键对象，Controller 必须原样转交。收到 `412` 时
+  Node 仍提交原元数据声明，由 Cloud HEAD 校验；状态码本身不能当作交付成功证据。
+- Controller 生命周期取消不构成 Node 终态；已登记的执行保留，供重启后继续。
 
 ### D5：`Watch` 增加 `ThreadCommandAvailable{run_id}`
 
@@ -117,7 +116,7 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 | `thread_commands` | 控制面 | `id uuid`（即 `command_id`）、`run_id`、`kind`、`body jsonb`、`created_at`、单调 `queue_sequence`、`delivered_at`、`delivered_execution_id`。同事务的 created_at 相同，领取按 queue_sequence 保持接受顺序；升级保留旧 created_at/id 顺序 |
 | `revisions` | 控制面 | 见 [Revision D4](../revision/0-cloud-owned-object-store-and-verified-revisions.md) |
 | `revision_verifications`、`revision_delivery_skips` | 控制面 | Cloud 对象校验结论与未配置存储的幂等跳过记录；原 Node 声明不改写，业务 phase 由 hook 维护 |
-| `issue_runs` 新列、`space_agents`、`thread_entries`、`users` 的 git 身份列 | 业务 | 见 IssueRun、Thread、git 身份决策 |
+| `issue_runs` 新列、`space_agents`、`thread_entries`、`user_git_identities` | 业务 | 见 IssueRun、Thread、git 身份决策 |
 
 控制面提供给业务转换调用的函数：
 
@@ -147,11 +146,9 @@ Cloud 内部分为两类表。**控制面表**承载“交给 Controller 的工�
 epoch、触发者权限及仓库凭据可用性。触发者来自同租户同 Issue 的 `run.enqueued` 用户证据，固定为
 Workspace creator；不能改用 Issue 创建者。缺失或歧义证据返回 `run_actor_required`，交给业务侧补齐。
 
-控制面提供上述五个命名钩子的同事务接缝；业务实现必须使用调用方事务，不能在钩子里再次调用会
-开启事务的 Store 包装方法。`deliverySettled(saved/unchanged)` 仍须在 Revision 校验登记完成之后调用；
-仅接管 Node 上传成功声明不能触发成功业务转换。cloud#41 原分支后续提交已直接验收 saved/unchanged、failed、
-skipped 及同事务回滚/重放；生产 B 的 phase 投影与 C/D relay/Agent 仍需跨仓验收，详见
-[实现记录](../../../implementation/agent-control-plane-a.md)。本 ADR 保留 approved 状态，不据替身验收宣称整体现实运行已完成。
+钩子的实现必须使用调用方事务，不能在钩子里再次调用会开启事务的 Store 包装方法。
+`deliverySettled(saved/unchanged)` 只在 Revision 校验登记完成之后调用；仅接管 Node 的上传成功声明不能触发
+成功的业务转换。
 
 为什么用命名函数而不是共享表：Thread 的顺序规则（连续序号、重放）与业务规则（轮次状态、空闲判定）由
 不同的人演进，若双方都直接写同一张表，任何一侧改动都可能破坏另一侧的不变量；函数边界让每张表只有一个
@@ -184,5 +181,7 @@ skipped 及同事务回滚/重放；生产 B 的 phase 投影与 C/D relay/Agent
 
 ## 落地
 
-proto 变更与生成物、`internal/controlgrpc` 映射、PostgreSQL 集成测试覆盖：批量接管的原子性与顺序冲突、
-终态事件先于 Thread 事件时拒绝、命令重复投递登记幂等、授权只对未结束交付签发。desktop 按 commit 锁定新契约。
+proto 变更与生成物、`internal/controlgrpc` 映射；PostgreSQL 集成测试覆盖批量接管的原子性与顺序冲突、终态事件
+先于 Thread 事件时拒绝、命令重复投递登记幂等、授权只对未结束交付签发、各钩子的同事务回滚与重放。desktop 的
+Controller 与 Node 按锁定的契约实现，cluster 的 Agent 验收（`task agent:acceptance`、`task agent:session:acceptance`）
+在真实栈中走通会话、Thread 与交付。
