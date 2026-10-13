@@ -1,12 +1,19 @@
 ---
-status: proposed
+status: superseded
 ---
 
 # Node 管理已有主工作树并创建任务工作树
 
+> 已放弃：当前实现不提供本决策描述的 Worktree 管理能力。Node 服务直接拒绝
+> `EnsureWorktree` 与 `RemoveWorktree`，Controller 也不派发 Worktree 执行；协议类型和崩溃恢复
+> 路径仅为兼容与恢复保留，不构成 Worktree 管理承诺。实现依据见
+> [clone 的 Git 副作用在 admission worker 之外执行](../repository/20260925-clone-git-effects-run-outside-the-admission-worker.md)。
+> 本决策没有取代者，不再构成当前系统承诺。
+
 > 2026-09-18：首条最小闭环改为[clone 指定仓库与分支](../repository/0-clone-selected-repository-branch.md)。
 > 本文保留 Worktree 能力范围，下文“第一版／第一条闭环”仅指原 Worktree 切片，不再约束当前
-> 首个交付目标；“已有 main worktree”不能成为 clone 的前置条件。本 ADR 状态不变。
+> 首个交付目标；“已有 main worktree”不能成为 clone 的前置条件。该变更是放弃 Worktree 管理
+> 决策前的过渡记录，当前状态与依据以上方说明为准。
 
 Node 负责其所在执行环境中的 Git worktree 操作。第一版要求目标环境已经存在一个可用的
 `main worktree`；Controller 只持有任务和工作树意图、选择 Node、发起操作并持久化结果，不在

@@ -1,8 +1,10 @@
 ---
-status: approved
+status: superseded
 ---
 
 # 插件集合包：从 registry 本地创建 pack，以持久化状态机完成成员安装与失败回滚
+
+> 已被取代：本决策由 [插件集合包：Extension Pack 是安装编排条目，不是运行时插件](../../extension-pack/0-extension-pack.md) 及其后续 ADR 取代，原因是 Pack 能力已收敛到 extension-pack 系列。当前系统承诺以取代者为准。
 
 Plugin Pack 是 `kind = "pack"` 的非运行时插件。宿主在 preflight 通过后，先从所属源的本地
 registry 检出复制清单、创建 pack 的安装态，再顺序安装成员；pack 自身不发布或下载 `.orax`

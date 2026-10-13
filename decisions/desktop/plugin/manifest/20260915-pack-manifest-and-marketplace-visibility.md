@@ -1,8 +1,10 @@
 ---
-status: approved
+status: superseded
 ---
 
 # 插件清单：pack 声明成员而不声明制品，可见性字段仅属于普通插件发布清单
+
+> 已被取代：本决策由 [插件集合包：Extension Pack 是安装编排条目，不是运行时插件](../extension-pack/0-extension-pack.md) 及其后续 ADR 取代，原因是 Pack 清单与市场可见性规则已由 extension-pack 系列承接。当前系统承诺以取代者为准。
 
 在双形态 `orax.toml` 中增加 `kind = "pack"` 及其独占的成员声明，pack 不声明下载资产或运行时
 贡献物。同时将 `marketplace_visible` 定义为普通插件（`kind != "pack"`）release 形态的可选

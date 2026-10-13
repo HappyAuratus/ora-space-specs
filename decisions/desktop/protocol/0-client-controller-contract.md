@@ -1,8 +1,10 @@
 ---
-status: proposed
+status: superseded
 ---
 
 # Client–Controller Contract：异步命令、查询与订阅
+
+> 已被取代：本决策由 [Space API 与 Space 级失效事件流：REST 为权威，SSE 只做失效通知](../../cloud/api-boundary/0-space-api-and-event-stream.md) 与 [退役 Controller 过渡 JSON 接口与监听器：可执行入口在任何形态下都不开监听，本机受理只经内嵌句柄](../../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md) 取代，原因是客户端与控制面边界已分别落到 Space API/事件流与 Controller 内嵌入口，本篇 proposed 契约不再构成当前系统承诺。当前系统承诺以取代者为准。
 
 Client 与 Controller 之间使用统一的应用契约。Client 表达业务意图，Controller 持久化并接管
 后续操作；任何可能触发 Node 或其他外部副作用的命令都采用异步接受语义。Desktop 使用本机
