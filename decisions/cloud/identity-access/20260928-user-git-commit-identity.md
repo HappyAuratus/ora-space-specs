@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: implemented
 ---
 
 # 用户可在 Cloud 配置 git 提交身份，Agent 运行以触发用户的身份经环境变量提交
@@ -8,7 +8,8 @@ status: proposed
 身份写入会话启动规格，经 Controller 下发给 Node；Node 只通过 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 环境变量注入
 Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用由显示名与平台 noreply 地址组成的默认身份。
 
-本 ADR 处于 `proposed`，继承 [identity-access 根决策](0-gateway-mediated-external-identity.md) 与
+本 ADR 处于 `implemented`：Cloud 的存储、公开 API、设置页与会话启动解析，以及 Node 的环境变量注入均已落地。
+继承 [identity-access 根决策](0-gateway-mediated-external-identity.md) 与
 [globalUserId 决策](20260923-huawei-global-id-alias.md)。注入方式由
 [Node agent-runtime 根决策](../../node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D4 承担，
 身份的解析时点由本文 D2 决定（会话启动时，而不是运行创建时）。
@@ -38,8 +39,8 @@ Agent 及其子进程，不写入仓库或全局 git 配置。未设置时使用
   `users`，git 邮箱放在那里会随之流向每个读者，违反不变量 5 的意图。
 - 校验：`name` 1–200 个字符、不含换行与 `<`、`>`；`email` 不超过 254 字节、形如 `local@domain`、不含空白
   与 `<`、`>`。只做格式校验，不验证邮箱归属：它只是提交署名，Cloud 不以它授予任何权限。
-- 默认身份：`name` 为用户显示名（为空时用用户 ID），`email` 为 `{userId}@users.noreply.ora.invalid`。noreply 域名
-  目前是 Cloud 内的常量，尚未做成配置；`.invalid` 顶级域保证该地址永远不可投递。
+- 默认身份：`name` 为用户显示名（为空时用用户 ID，不用平台名义署名），`email` 为
+  `{userId}@users.noreply.ora.invalid`。noreply 域名是 Cloud 内的常量；`.invalid` 顶级域保证该地址永远不可投递。
 
 为什么是用户级而不是租户级：同一用户在不同 Space 中通常使用同一提交身份；租户级覆盖可以后续叠加，不改变
 本条的默认来源。为什么不自动取登录 provider 的邮箱：根决策不持久化 provider 返回的额外字段，且企业账号的
@@ -97,5 +98,6 @@ Node 为 Agent 进程及其全部子进程设置 `GIT_AUTHOR_NAME`、`GIT_AUTHOR
 ## 落地
 
 迁移 `0032_user_git_identities` 新增独立表；公开 API、OpenAPI 与前端设置页的“Git 身份”表单；会话启动时按 D2
-解析身份，Node 按 D3 注入。cluster 的 M2 验收（`task agent:session:acceptance`）在真实栈中确认：用户设置的身份
-出现在 Agent 进程的 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 中，且没有写入 git 配置。保持不变：登录、会话与授权。
+解析身份写入 `AgentSessionSpec.git_identity`，Node 按 D3 注入。cluster 的 M2 验收（`task agent:session:acceptance`）
+在真实栈中确认用户设置的身份出现在 Agent 进程的 `GIT_AUTHOR_*`、`GIT_COMMITTER_*` 中，且没有写入 git 配置。
+保持不变：登录、会话与授权。

@@ -40,3 +40,5 @@
 - [Internal Routes And Cross-Site Mutations Never Reach Cloud](proxy-and-credentials.md#internal-routes-and-cross-site-mutations-never-reach-cloud)
 - [Cloud Authorization Decisions Pass Through Unchanged](proxy-and-credentials.md#cloud-authorization-decisions-pass-through-unchanged)
 - [Cloud Outage Is A Stable Failure That Keeps Sessions](proxy-and-credentials.md#cloud-outage-is-a-stable-failure-that-keeps-sessions)
+- [Only The Owner Reads And Writes A Git Identity](user-git-commit-identity.md#only-the-owner-reads-and-writes-a-git-identity)
+- [Session Start Fixes The Trigger User's Identity](user-git-commit-identity.md#session-start-fixes-the-trigger-users-identity)
