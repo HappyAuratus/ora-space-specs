@@ -1,8 +1,11 @@
 ---
-status: proposed
+status: superseded
 ---
 
+
 # Node 管理已有主工作树并创建任务工作树
+
+> 已被取代：本决策由 [首个 Node 业务闭环改为 clone 指定仓库的指定分支](../repository/0-clone-selected-repository-branch.md) 取代，原因是首条闭环已改为 clone 指定仓库与分支，Worktree 管理不再作为当前系统承诺。当前系统承诺以取代者为准。
 
 > 2026-09-18：首条最小闭环改为[clone 指定仓库与分支](../repository/0-clone-selected-repository-branch.md)。
 > 本文保留 Worktree 能力范围，下文“第一版／第一条闭环”仅指原 Worktree 切片，不再约束当前
