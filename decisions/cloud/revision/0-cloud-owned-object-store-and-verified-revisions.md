@@ -105,7 +105,9 @@ Node 报告交付结果（`delivered{finalCommit, baseCommit, ref, bundle?{key, 
 当前实现说明：外部 HEAD 后再次检查租约、执行身份/输入、非终态 run、maintenance binding、Workspace 准入及
 当前 Node/sandbox，再把原结果、收据、验证结论、Revision、业务 hook 同事务提交；重复接管不重新访问存储，
 已结算执行的重放只接受逐字节相同的事件。`delivering`/`releasing` phase 由 Cloud 业务钩子（`OnDeliverySettled`）
-在同一事务中维护。相关直接验收及草案差异见[实现记录](../../../implementation/agent-control-plane-a.md)；
+在同一事务中维护。相关直接验收及草案差异见
+[历史实现与验收记录](https://github.com/ora-space/specs/blob/41f9dd1910feb071e055685a1172a4dd488cc5ec/implementation/agent-control-plane-a.md)；
+该固定快照保留当时的证据与差异，当前接缝说明见[控制面实现说明](../../../implementation/cloud/controller-integration/agent-control-plane.md)。
 本 ADR 仍为 proposed。
 
 ### D5：公开读取只暴露元数据
