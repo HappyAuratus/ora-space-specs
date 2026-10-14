@@ -1,7 +1,7 @@
 # Host 管理的插件日志
 
 决策依据：[插件日志 ADR](../../../../decisions/desktop/plugin/logging/0-host-owned-plugin-log.md)。
-ADR 已按实现同步为 implemented，本文记录长期验证义务；测试源码与实际执行结果分别登记在关联 PR 中。
+本文记录长期验证义务及代表性直接测试。
 `Partial` 表示已有直接但不完整的证据，`Missing` 表示尚无对应直接证据，不能以相邻测试替代。
 下文 Rust 测试名称相对于所列源码文件；源码路径相对于代码仓库根目录。
 
@@ -17,9 +17,9 @@ ADR 已按实现同步为 implemented，本文记录长期验证义务；测试�
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 路径类型冲突不改写原对象且不阻塞 drain | `crates/plugin-runtime/src/plugin_log/pipeline_tests.rs`：`a_conflicting_log_path_fails_the_sink_but_keeps_draining` | Covered |
-| logs root 与所有子级链接/reparse-point 均被拒绝 | `crates/plugin-runtime/src/plugin_log/sink.rs`：`symlinks_at_any_level_are_refused`、`a_symlinked_root_is_refused`（Unix）、`a_junction_level_is_refused`（Windows） | Covered |
+| logs root 与所有子级链接/reparse-point 均被拒绝 | `crates/plugin-runtime/src/plugin_log/sink.rs`：`symlinks_at_any_level_are_refused`、`a_symlinked_root_is_refused`（Unix）、`a_junction_level_is_refused`（Windows）；尚缺 Windows 根目录 reparse-point 的直接测试，Unix 测试不构成本次 Windows 执行证据 | Partial |
 | 跨进程代、跨 Host 排他写入及失败隔离 | 同文件：`the_active_file_has_at_most_one_writer`；`pipeline_tests.rs`：`a_generation_never_writes_beside_an_unreleased_writer`；尚缺两个独立 Host 进程的竞争演练 | Partial |
-| 通过生产 storage 接口验证日志树不可达 | 尚未登记对应直接证据 | Missing |
+| 通过生产 storage 接口验证日志树不可达 | `crates/plugin-lifecycle/src/storage_tests.rs::storage_cannot_reach_the_sibling_logs_tree` | Covered |
 
 - **决策依据：** D2、D7、D8，不变量 4、5、12。
 
