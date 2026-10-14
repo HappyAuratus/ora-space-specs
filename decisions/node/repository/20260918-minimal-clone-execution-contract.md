@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 非交互 clone 指定分支，独占目标目录并按原执行恢复
@@ -8,10 +8,15 @@ status: approved
 受管执行 clone 并检出指定分支。成功返回实际路径、分支和 commit；重传读取原执行，
 失败残留不自动删除或被新请求接管。
 
-本文继承[根决策](0-clone-selected-repository-branch.md)，于 2026-09-18 经 Eric 批准，状态为 approved。
-下述传输范围、目录分配和恢复策略已确定；批准不表示已经实现。
-只覆盖本机首个 clone 闭环，不迁移既有 Worktree 数据，不切换 Backend 写入入口，
-也不安装凭据、SSH 服务或特权 helper。
+> 历史决策：D6 中“被终止的尝试保留 Unknown”已被[中断失败判定](20260925-terminated-clone-attempt-fails-as-interrupted.md)
+> 收窄：被信号终止且收尾已确认的尝试判为中断失败。受理与 Git 执行的线程划分见
+> [Git 副作用移出受理 worker](20260925-clone-git-effects-run-outside-the-admission-worker.md)。其余规则不变。
+
+本文继承[根决策](0-clone-selected-repository-branch.md)，状态为 `implemented`：实现位于 desktop 的
+`crates/node-protocol`（`CloneRepositoryMessage`、`CloneExecutionResult` 与源地址校验）、`crates/node-db`（clone 执行
+记录，schema v3）、`crates/gitlancer/src/git/branch_clone.rs` 与 `apps/ora-node/src/repository/`。验证见
+[最小 clone 执行契约用例](../../../test-cases/node/repository/minimal-clone-execution.md)。不迁移既有 Worktree 数据，
+不切换 Backend 写入入口，也不安装凭据、SSH 服务或特权 helper。
 
 ## 继承与修改
 
@@ -23,7 +28,7 @@ status: approved
 | 目标目录尚未决定 | 细化：Node 在注入根目录下分配专用目录，不由请求提供任意绝对路径 |
 | 分支移动语义尚未决定 | 细化：保存本次成功获取并检出的实际 commit，不承诺请求接受时的远端快照 |
 | clone 参数和凭据尚未决定 | 细化为下述固定首版政策，不开放任意 Git 参数或凭据随请求传递 |
-| 旧文件、历史执行与 Worktree 能力保留 | 继承，不变；不将 WorktreeReady 重新解释为 clone 结果 |
+| 旧文件与历史执行保留 | 继承，不变；不将 WorktreeReady 重新解释为 clone 结果 |
 
 ## 背景与约束
 
@@ -48,13 +53,18 @@ status: approved
 不开放任意 Git 选项、shell 字符串、目标路径或逐请求环境变量。
 使用结构化参数调用，拒绝无效输入；不以字符串拼接执行 shell。
 
+实现比上述规则更严：HTTPS 地址不允许任何 userinfo（含只有用户名的形式），SSH 地址可带非空、不含 `:` 的
+用户名；`ssh://` 后紧跟 `/` 的无主机形式、含空白、控制字符或反斜杠的地址同样拒绝（URL 解析器会“修复”这些写法，而 Git 收到的是原文）。HTTPS 的用户名对认证没有用处，一律拒绝比逐个判断是否
+含秘密更简单。
+
 地址等价化只做明确且无损的处理，不把不同输入静默合并为一个执行。
 持久保存经校验的源地址用于去重和来源检查，不在日志回显完整地址或认证诊断。
 
 ### D2：非交互访问，凭据由 Node 部署提供
 
 Node 使用显式配置的 Git 程序、运行环境及可信凭据配置；不从 Controller 机器复制其 HOME 或密钥。
-HTTPS 可使用部署已配置的非交互凭据来源；SSH 可使用部署已准备的身份和主机校验配置。
+HTTPS 可使用部署已配置的非交互凭据来源；SSH 可使用部署已准备的身份和主机校验配置（`BatchMode=yes`、
+`StrictHostKeyChecking=yes`）。部署没有配置 SSH 时，Node 以调用级配置 `protocol.ssh.allow=never` 禁用 SSH 传输。
 凭据缺失、需要询问密码／口令或确认主机时明确失败，不弹窗、不无限等待，不自动接受未知主机。
 管理的网络及认证子进程同样受运行时收尾和执行期限约束。
 
@@ -84,12 +94,14 @@ Node 先持久保存输入、目标和资源预留，再以排他方式创建目
 使用普通非 bare 仓库，获取指定单分支的完整可达历史，不使用 depth、partial clone、
 mirror、共享对象库或引用外部 object store。远端分支在实际获取时不存在就失败，不使用同名 tag 替代。
 获取后检出该分支，不能以 detached HEAD 或仅有 bare 仓库冒充成功。
-单分支和分支选择的 Git 语义见 [git-clone](https://git-scm.com/docs/git-clone)。
+实际命令为 `git clone --no-local --reject-shallow --single-branch --no-tags --no-recurse-submodules --template=
+--origin origin --branch <branch> -- <source> <target>`：不带 tag、不读本地模板、拒绝浅仓库作为来源。单分支和分支
+选择的 Git 语义见 [git-clone](https://git-scm.com/docs/git-clone)。
 
-Node 管理命令以调用级配置禁用 hooks，不修改用户仓库持久 hooks 配置；这与
+Node 管理命令以调用级配置禁用 hooks（`core.hooksPath=/dev/null`），不修改用户仓库持久 hooks 配置；这与
 [core.hooksPath 的单次调用用法](https://git-scm.com/docs/git-config#Documentation/git-config.txt-corehooksPath)一致。
 不自动运行项目初始化、构建或依赖安装，不递归初始化 submodule，不主动下载 LFS 对象。
-LFS smudge 必须被抑制；指针文件与未初始化 submodule 是本版明确允许的内容边界，
+LFS smudge 必须被抑制（`GIT_LFS_SKIP_SMUDGE=1`，并以调用级配置清空 `filter.lfs.*`）；指针文件与未初始化 submodule 是本版明确允许的内容边界，
 “可使用 checkout”只表示 Git 工作树可访问，不表示项目依赖或全部外部资产已经就绪。
 禁用 hooks 不等于沙盒，也不能单独阻止配置的其他 Git filter／helper 执行；可信部署需明确
 允许的辅助程序，不能把任意环境继承称为执行隔离。
@@ -132,14 +144,13 @@ Node 先持久保存业务终态及待交付结果，再向调用方报告完成
 
 ### D7：clone 是独立能力，不伪装为 Worktree 终态
 
-Node 协议增加独立的 clone 请求及结果形状，沿用通用执行状态、查询、结果重放和精确确认。
-握手不再要求只会 clone 的 Node 也声明 Worktree；派发方依据实际声明选择能力。
-Worktree 历史结果和校验保留原语义，不将新字段塞进 WorktreeReady 或依赖已有 Main Workspace。
+Node 协议有独立的 clone 请求（`CloneRepositoryMessage`）及结果（`CloneExecutionResult`），沿用通用执行状态、
+查询、结果重放和精确确认。Worktree 历史结果和校验保留原语义，不将新字段塞进 WorktreeReady 或依赖已有
+Main Workspace；Worktree 请求本身已被 Node 拒绝（根决策 D3）。
 
-Controller 持久记录原输入、目标 Node 和执行关联，接管结果后确认；Client 通过 Controller
-观察接受、进行中、失败／未知与成功，不直接管理 host。Node 目录事实不等于 Controller 本地路径。
-具体 wire 字段、存储迁移与 Client 命令需在所属协议／实现计划中落定；不得直接扩大旧结果集合
-为无业务约束的任意 JSON，也不为第二个能力先构建通用插件框架。
+Controller 持久记录原输入、目标 Node 和执行关联，接管结果后确认；调用方通过 Controller 观察接受、进行中、
+失败／未知与成功，不直接管理 host。Cloud 模式下调用方是 Cloud，clone 作为 Workspace 操作的 clone 步骤派发。
+Node 目录事实不等于 Controller 本地路径。结果是有界的结构化形状，不扩大为任意 JSON。
 
 ### D8：网络 Git 采用独立且有上限的预算
 
@@ -170,9 +181,8 @@ clone、fetch 等网络命令使用 `network_timeout_ms`，缺省十分钟，必
 
 ## 文件兼容与风险
 
-不改变现有 ora-node.sqlite3、host.sqlite、guardian.sqlite 或 Worktree 文件的含义。
-引入 clone 存储时需明确 schema 迁移和旧程序拒绝路径，不能靠清空旧库开始新闭环。
-已有 Worktree 专用 managed runner／数据库接口不代表已经支持 clone；实现时按实际职责适配。
+不改变现有 ora-node.sqlite3、host.sqlite、guardian.sqlite 或 Worktree 文件的含义。clone 记录经 node-db 的 schema
+迁移引入，旧库按迁移升级，不靠清空旧库开始新闭环。
 
 主要代价是完整历史可能耗时较长、失败残留占用磁盘、缺少进程证据时执行可能长期 Unknown。
 运行期限、输出上限及诊断保留由部署显式给出，不能用超时制造成功或推断无副作用。
@@ -184,12 +194,8 @@ Linux BestEffort 不能排除逃逸后代；远端服务和外部程序副作用
 credential 配置引用与日志脱敏边界。自动清理、GC、原目录复用、按 commit 获取、
 其他传输、资产拉取和交互认证另开 ADR；跨平台和 Strong 沿用既有延期边界。
 
-## 落地顺序与验收方向
+## 落地
 
-1. 依据已登记的核心用例，实现 clone 专用协议结果／能力声明及持久记录，保护旧 Worktree 数据。
-2. 接入 Node 受管 Git，验证指定非默认分支、缺失分支、非交互认证、已有路径拒绝和实际 checkout。
-3. 用独立进程验证派发、网络失败、强杀、结果落盘与重传边界；检查原身份、原目录和残留均未被误用。
-4. 接本机 IPC、Controller 持久接管和最小 Client 状态；这一步完成前不宣称端到端闭环完成。
-
-[最小 clone 执行契约核心用例](../../../test-cases/node/repository/minimal-clone-execution.md)
-登记上述验证义务；当前直接证据均为 Missing，以上阶段均不因批准而视为完成。
+clone 专用协议、持久记录与源地址校验，受管 Git 执行与仓库事实核实，独立进程的派发、强杀与重传恢复，以及
+Controller 持久接管依次落地。真实 HTTPS／SSH 与恢复路径由 `apps/ora-node/tests/standalone/` 下的独立进程测试
+验证。保持不变：已有 Node／process 状态文件的含义。开始改变：Node 可以受理 clone，并以原执行身份恢复和重放结果。

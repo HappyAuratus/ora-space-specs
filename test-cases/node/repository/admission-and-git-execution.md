@@ -1,6 +1,6 @@
 # 受理与 clone 的 Git 执行分离
 
-依据[已批准的受理与 Git 执行分离决策](../../../decisions/node/repository/20260925-clone-git-effects-run-outside-the-admission-worker.md)。
+依据[已实现的受理与 Git 执行分离决策](../../../decisions/node/repository/20260925-clone-git-effects-run-outside-the-admission-worker.md)。
 本文件登记“受理不等待 Git”与“在途执行不被重复驱动”两项承诺，desktop 实现见 `apps/ora-node/src/service/clones.rs`
 与 `repository/drive.rs`；
 clone 的判定、终态与恢复义务仍见[最小 clone 执行契约](minimal-clone-execution.md)，本文不重复登记。
