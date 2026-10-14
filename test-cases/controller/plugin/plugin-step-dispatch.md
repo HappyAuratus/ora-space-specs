@@ -1,6 +1,6 @@
 # plugin 步骤的派发
 
-依据[已批准的 Controller plugin 根决策](../../../decisions/controller/plugin/0-plugin-installs-as-node-executions.md)。
+依据[已实现的 Controller plugin 根决策](../../../decisions/controller/plugin/0-plugin-installs-as-node-executions.md)。
 证据来自 desktop `apps/ora-controller/tests/workspaces/plugins.rs`，使用假 Cloud gRPC（`test-server`）与假 Node WebSocket；不替代真实 Cloud 投影及跨仓库联调。跨仓库联调由 [cluster `task plugin:acceptance`](https://github.com/ora-space/cluster/blob/main/docs/plugin-step-acceptance.md) 提供：生产 Controller 对真实 Cloud 与 Node
 派发创建路径与维护路径的插件执行，并在接管结果后推进。
 
