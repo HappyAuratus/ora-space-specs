@@ -136,7 +136,8 @@ Scope 中运行，并在下一条命令开始前关闭。
 - 交付后工作区是否需要保持 clean（交互式场景）。
 - 交付时无法证明 Agent 插件留下的后代进程都已退出（D1）：脱离 stdio 的后代进程可能在快照期间继续写
   checkout，使 Revision 拿到不一致的内容。改用 Git Server 推送交付后这一缺口依然存在。承接：进程纳管覆盖
-  Agent 插件后，D1 回到“会话的进程 scope 已确认关闭”，见
+  Agent 插件后，D1 回到“会话的进程 scope 已确认关闭”。插件进程不在执行 scope 内的现状见
+  [agent-runtime 根决策](../agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md) D2，纳管方向见
   [进程纳管与清理证据](../process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md)
   及 `node/process/containment/` 下各平台的 ADR。
 
