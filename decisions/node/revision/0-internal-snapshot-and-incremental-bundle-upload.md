@@ -134,7 +134,11 @@ Scope 中运行，并在下一条命令开始前关闭。
 - Agent 其他分支、子模块内容与 LFS 实体的保存。
 - 仓库尚无任何提交时（没有基础提交）的处理；目前表现为 `checkout_unavailable`。
 - 交付后工作区是否需要保持 clean（交互式场景）。
-- Agent 插件纳入进程宿主 scope 后，交付前提收紧为“会话进程 scope 已关闭”。
+- 交付时无法证明 Agent 插件留下的后代进程都已退出（D1）：脱离 stdio 的后代进程可能在快照期间继续写
+  checkout，使 Revision 拿到不一致的内容。改用 Git Server 推送交付后这一缺口依然存在。承接：进程纳管覆盖
+  Agent 插件后，D1 回到“会话的进程 scope 已确认关闭”，见
+  [进程纳管与清理证据](../process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md)
+  及 `node/process/containment/` 下各平台的 ADR。
 
 ## 验证
 
