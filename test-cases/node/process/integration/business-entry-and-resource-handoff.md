@@ -79,11 +79,11 @@ Git 直接 spawn、辅助命令旁路或 Adapter 自动换 ID 会绕开纳管并
 
 ### 风险
 
-按路径分配资源或失权即解锁，会让新工作与旧进程／外部服务同时写共享仓库。
+按路径分配资源或失权即解锁，会让新工作与旧进程／外部服务同时写同一目录。
 
 ### 前置状态
 
-两个 worktree 共享仓库元数据，另有无冲突资源；scope 已持久关联占用，包含多个 Run 和可能的插件外部任务。
+一次 clone 的目录被未结束的执行占用（clone 本身，或在其 checkout 上运行的 Revision 交付），另有无冲突的独立 clone 目录；scope 已持久关联占用，包含多个 Run 和可能的外部任务。
 
 ### 触发
 
@@ -97,15 +97,15 @@ Node 强杀后立即重启，分别出现租约失效、直接退出、单 Run �
 
 ### 禁止结果
 
-租约过期或数据库锁释放即放行；不同 worktree 路径即判无冲突；本地静止抹掉外部服务责任；条件满足后永久卡住。
+租约过期或数据库锁释放即放行；本地静止抹掉外部服务责任；条件满足后永久卡住。
 
 ### 验证义务与证据
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 持久资源关联与领域冲突集合防止重复分配，单 Run 不提前释放 | apps/ora-node/src/tests/local_recovery.rs 覆盖资源预留和重开；共享仓库元数据的完整冲突政策仍未确认 | `Partial` |
+| 持久资源关联与领域冲突集合防止重复分配，单 Run 不提前释放 | apps/ora-node/src/tests/local_recovery.rs 覆盖资源预留和重开；义务中的其余组合尚无独立进程证据 | `Partial` |
 | 两种保证分别要求清理和对账，失败阻塞且恢复后可推进 | apps/ora-node/tests/standalone.rs::guardian_loss_keeps_conflicting_recovery_unknown_but_allows_other_work 覆盖 BestEffort 缺证据不放行；Strong 与外部服务协调由未来 ADR 负责 | `Partial` |
-| 同一协调域单一有效权威，无冲突工作继续 | apps/ora-node/src/tests/local_recovery.rs::cleanup_failure_does_not_block_unrelated_work_or_release_conflicting_resources 及真实 guardian 丢失测试覆盖局部准入；并行共享仓库协调仍有缺口，跨 Node 延期 | `Partial` |
+| 同一协调域单一有效权威，无冲突工作继续 | apps/ora-node/src/tests/local_recovery.rs::cleanup_failure_does_not_block_unrelated_work_or_release_conflicting_resources 及真实 guardian 丢失测试覆盖局部准入；跨 Node 共享存储协调延期 | `Partial` |
 
 ### 决策依据
 
