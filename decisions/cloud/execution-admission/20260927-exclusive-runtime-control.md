@@ -11,7 +11,7 @@ Cloud 以 PostgreSQL 当前状态裁决运行时操作权。使用权限、独�
 本决策的后端已实现于 Cloud、Controller 和 Node。前端获取/续期/释放、断线恢复及未覆盖联合
 故障验收归入[后续 UI 与故障验收 ADR](20261013-runtime-control-ui-and-fault-acceptance.md)，
 保持 approved。现有证据见[独占用例](../../../test-cases/cloud/execution-admission/exclusive-runtime-control.md)，
-Partial/Missing 不因本次状态同步而改成完整验收。
+Partial/Missing 表示对应直接证据仍不完整。
 
 ## 继承与修改
 
@@ -64,10 +64,11 @@ clone、插件及会话执行等真实入口在持久接受和开始变更处校
 不能自报用户/角色/代次建立权限。持久审计保留 holder、session、control epoch、期限、原因和
 执行关联；proto/OpenAPI 由所属仓库生成。
 
-## 实际同步与后续边界
+## 与 approved 决策的偏离
 
-原 approved 将浏览器行为和后端共同列为交付完成条件；本次按已完成后端划定 implemented 范围，
-UI 与多实例/接受丢失等完整矩阵移到后续 ADR，原有安全义务没有删除。控制代次不替代 Controller
+approved 的后端与浏览器联合完成边界拆为两份独立契约：本文只承诺已实现后端规则，
+UI 与多实例/接受丢失等完整矩阵由后续 ADR 拥有。该拆分允许独立判断后端实现与产品交互，
+没有放宽原安全义务或将局部测试作为整体验收。控制代次不替代 Controller
 租约、运行时代次或真实终止证据；内存计数、超时与空新表均不能充当空闲证明。
 
 ## 不变量

@@ -22,7 +22,7 @@
 [权限界面用例](../execution-admission/runtime-control-ui-and-fault-acceptance.md#runtime-views-must-separate-shared-summaries-from-restricted-content)，依据后续 ADR D3。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_permissions_test.go) 的 TestRuntimeContentPermissionsAndReplay；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的共享概况、main 内容与跨租户拒绝。
-- 仍缺：完整运行时操作界面尚未接入，文件/输出产品入口仍关闭。 未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：完整运行时操作界面尚未接入，文件/输出产品入口仍关闭。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Runtime Creator Is Recorded Separately From Durable Ownership
 
@@ -35,7 +35,7 @@
 - 决策依据：D1、D4，不变量 1、5。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_permissions_test.go)、TestDifferentMemberCanCreateRuntimeInSharedProject 与 [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的 owner/creator 对比。
-- 仍缺：已有生命周期 actor 与创建者得到证明；完整任务/Agent 产品入口的联合验收仍缺。 未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：已有生命周期 actor 与创建者得到证明；完整任务/Agent 产品入口的联合验收仍缺。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Historical Creators Are Backfilled Only From Unique Creation Evidence
 
@@ -48,7 +48,7 @@
 - 决策依据：D4，不变量 1、5。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_upgrade_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_upgrade_test.go) 的唯一/冲突/缺失证据、operation 完整快照、重复迁移及不可变创建者。
-- 仍缺：软删除、在途执行与所有历史表联合快照矩阵尚缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：软删除、在途执行与所有历史表联合快照矩阵尚缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Separate Runtimes Keep Their Code Tasks And Persistent Data Isolated
 
@@ -61,4 +61,4 @@
 - 决策依据：D1–D3，不变量 1–4；同批独占 D3 与强停 D5。
 
 - 本次直接证据：**Partial** — [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 创建同项目两个真实 Node/Git/命名卷，并检查只在成员 clone 目录写入标记。
-- 仍缺：任意 shell、Agent 及完整停止/删除故障矩阵仍缺，未开放入口保持关闭。 未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：任意 shell、Agent 及完整停止/删除故障矩阵仍缺，未开放入口保持关闭。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。

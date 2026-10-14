@@ -15,7 +15,7 @@
 - 决策依据：D1、D4，不变量 1、5。
 
 - 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/plugin_pending_test.go) 的管理员门控、忙时保存 pending；`frontend/src/features/plugins/plugins-page.test.tsx` 覆盖页面角色、版本与汇总。
-- 仍缺：跨租户与全部选择/移除/角色变化组合尚需联合覆盖。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：跨租户与全部选择/移除/角色变化组合尚需联合覆盖。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Plugin Maintenance Waits For Human Release And Continues From Durable Pending
 
@@ -28,7 +28,7 @@
 - 决策依据：D2、D3，不变量 2、3。
 
 - 本次直接证据：**Partial** — [Cloud integration/plugin_pending_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/plugin_pending_test.go) 证明管理员门控、持有人等待及释放后重新处理 pending（执行结果由测试替身提供）；plugins_test.go 的显式模拟维护计划和恢复。
-- 仍缺：生产 Node 插件执行已接通；真实安装/移除、下载、未知响应及并发装卸矩阵仍缺，模拟器不替代这些边界。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：生产 Node 插件执行已接通；真实安装/移除、下载、未知响应及并发装卸矩阵仍缺，模拟器不替代这些边界。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Changed Plugin Intent And Unknown Results Reconcile Without Duplicate Execution
 
@@ -41,5 +41,5 @@
 - 决策依据：D3、D4，不变量 3–5。
 
 - 本次直接证据：**Partial** — `integration/plugin_intent_recovery_test.go` `TestChangedPluginIntentReconcilesUnknownOldResultBeforeRemoval`：真实 PostgreSQL + 显式 Node 执行替身，核对旧期望未知结果、新移除期望等待、稳定执行重放和唯一后续维护。原 effect journal 是前序规则证据，不证明新的 Node 安装路径。
-- 仍缺：真实插件旧期望/迟到结果、下载/进程/丢失响应矩阵仍缺；代码或状态本身不是直接验收。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：真实插件旧期望/迟到结果、下载/进程/丢失响应矩阵仍缺；代码或状态本身不是直接验收。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 - 失败终态的直接证据：`TestPluginFailedResultReleasesMaintenanceForNewSelection` 覆盖失败后移除、移除先于旧执行失败、维护绑定释放与最新期望收敛；整体仍为 `Partial`，不替代真实插件执行器证据。

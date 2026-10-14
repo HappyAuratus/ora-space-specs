@@ -4,7 +4,7 @@ status: implemented
 
 # 执行访问准入跟随 Space 成员身份
 
-> 后续已批准决策：[独占操作准入](20260927-exclusive-runtime-control.md)增加操作会话、冲突写活动和安全交接，状态为 `approved`。目标规则以其继承表为准，现有成员准入尚未提供这些保障；本文保留原状态。
+> 后续已实现决策：[独占操作准入](20260927-exclusive-runtime-control.md)增加操作会话、冲突写活动和安全交接，后端状态为 `implemented`。成员资格仍是前提，不能替代新增准入；UI 与完整故障验收由后续 ADR 承接，本文保留原状态。
 
 > 历史决策：已准入任务按原生命周期收尾的规则保留；下文的独立空间成员表已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前新访问与准入核验活动租户成员身份。
 

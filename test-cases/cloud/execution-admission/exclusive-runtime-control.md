@@ -22,7 +22,7 @@
 - 决策依据：D1、D2、D5，不变量 1、3。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_control_test.go) 的同步获取、幂等/第二页面/确认前拒绝；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的真实 Node 绑定。
-- 仍缺：多 Cloud 服务实例和响应丢失完整矩阵尚缺；独占 UI 状态统一登记于[界面用例](runtime-control-ui-and-fault-acceptance.md#operator-controls-must-recheck-authority-after-disconnection)（后续 ADR D1）。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：多 Cloud 服务实例和响应丢失完整矩阵尚缺；独占 UI 状态统一登记于[界面用例](runtime-control-ui-and-fault-acceptance.md#operator-controls-must-recheck-authority-after-disconnection)（后续 ADR D1）。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Conflicting Write Activities Are Exclusive Even Within One Session
 
@@ -35,7 +35,7 @@
 - 决策依据：D1、D3，不变量 2、4。
 
 - 本次直接证据：**Partial** — [desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 的 runtime_mutex_spans_identities_and_started_work_survives_closure；Cloud ticket 唯一约束和插件维护等待。
-- 仍缺：已开放入口的不同活动实际进程竞争仍缺；未开放文件/终端及完整 Agent 产品入口保持关闭，开放它们的后续 ADR 必须承接对应互斥和进程责任，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：已开放入口的不同活动实际进程竞争仍缺；未开放文件/终端及完整 Agent 产品入口保持关闭，开放它们的后续 ADR 必须承接对应互斥和进程责任，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Expiry Or Disconnection Does Not Permit Handoff Before Old Work Ends
 
@@ -48,7 +48,7 @@
 - 决策依据：D2、D4，不变量 3–5。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_control_test.go)、[Cloud integration/runtime_connection_recovery_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_connection_recovery_test.go) 与 [desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 的关闭/恢复实际入口拒绝。
-- 仍缺：Cloud–Node 接受结果丢失、在途执行到期及交接的联合故障矩阵尚缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：Cloud–Node 接受结果丢失、在途执行到期及交接的联合故障矩阵尚缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Membership Revocation Denies New Access While Preserving Accepted Execution Responsibility
 
@@ -61,4 +61,4 @@
 - 决策依据：D4、D5，不变量 5、6。
 
 - 本次直接证据：**Partial** — [Cloud integration/space_events_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/space_events_test.go)、runtime control 测试及 [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的成员停用步骤。
-- 仍缺：真实脚本已通过 HTTP/SSE、续期、新运行时准入及 Node 控制撤回联合验证；在途任务停用、未知接受及并发联合矩阵仍缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
+- 仍缺：真实脚本已通过 HTTP/SSE、续期、新运行时准入及 Node 控制撤回联合验证；在途任务停用、未知接受及并发联合矩阵仍缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。

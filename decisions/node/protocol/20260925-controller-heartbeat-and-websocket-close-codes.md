@@ -4,7 +4,7 @@ status: implemented
 
 # Controller 上行心跳作为 Node 读期限的存活依据，WebSocket 会话以约定 close code 结束
 
-> 后续已批准决策：[运行时控制同步交付](../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)约束运行时旧指令与交互输入，状态为 `approved`，尚未实现。本文保留原状态；心跳或会话关闭不等同于用户撤权或执行结束。
+> 后续已实现决策：[运行时控制同步交付](../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)约束运行时旧指令与交互输入，状态为 `implemented`，完整故障矩阵仍按核心用例验证。本文保留原状态；心跳或会话关闭不等同于用户撤权或执行结束。
 
 Controller 会话在空闲时向 Node 发送应用层 `Heartbeat`，Node 保留每帧读期限 `frame_timeout_ms`，
 把它作为“Controller 仍在、连接仍通”的依据。空闲会话不再每约 11 s 被 Node 断开并重建两段连接；

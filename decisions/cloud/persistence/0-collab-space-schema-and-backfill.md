@@ -4,7 +4,7 @@ status: implemented
 
 # 协作 Space 的 Schema、确定性回填与迁移不可变性
 
-> 后续已批准决策：[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)定义创建者回填及未知归属边界，状态为 `approved`。本文保留原状态；开发时追加新迁移，不得改写本文历史迁移。
+> 后续已实现决策：[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)定义创建者回填及未知归属边界，状态为 `implemented`。创建者通过前向迁移保存，完整历史快照矩阵仍见其后续验收 ADR；本文历史迁移不得改写。
 
 > 历史决策：本页记录不可变迁移 0006/0007。前向迁移 0017 按 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 删除独立空间成员表、约束一租户一空间和全局 slug 唯一；旧迁移文件未改写。
 

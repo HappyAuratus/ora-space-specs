@@ -21,4 +21,4 @@
 
 ## 已批准的跨仓库依赖
 
-[运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `approved`，要求 Cloud 执行入口以持久控制绑定约束迟到指令、交互输入和恢复，并验证管理程序与工作负载的权限隔离，可进入开发。Node 单连接、心跳及宿主代次不是用户独占证明；本决策不自动恢复进程控制领域此前延期的完整信任体系。新能力尚未交付，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。
+[运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `implemented`，要求 Cloud 执行入口以持久控制绑定约束迟到指令、交互输入和恢复，并验证管理程序与工作负载的权限隔离。Node 单连接、心跳及宿主代次不是用户独占证明；本决策不自动恢复进程控制领域此前延期的完整信任体系。完整联合故障矩阵仍有缺口，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。
