@@ -3,6 +3,8 @@
 依据[有界启动 ADR](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)。
 第一期 D1–D4 与第二期 D5 分别验收；下列代码路径相对 cloud 仓库。局部回归不替代真实 Controller/Node 故障演练。
 
+代表性[候选部署证据](https://github.com/ora-space/circus/issues/36#issuecomment-6162711653)固定 Cloud `116e932`、Controller/Node `cf166325`、cluster `aef10f3`，脚本快照归档在同一运行 issue。部署使用真实个人模型、普通/恢复 2m/6m 与确认 30s 配置，暂停已登记 Node 并重启 Cloud；默认确认 5m 由配置回归覆盖。正常多轮、Revision 保存/恢复、正常资源释放也在该候选上验证。证据限单机指定场景，不代表领取延后、登记响应丢失或完整故障矩阵。
+
 ## Startup Deadlines Must Remain Fixed Across Retries And Restarts
 
 - 风险：声明、输入或配置变更延长已接受 Run 的等待。
@@ -10,7 +12,7 @@
 - 触发：重复扫描、输入、延后领取及服务重启。
 - 必须成立：普通/恢复/结束确认默认 2/6/5 分钟，数据库绝对截止持久冻结，非法显式配置拒绝；恢复不叠加普通窗口。
 - 禁止结果：重放续期、从可变 updated_at 推断新起点或默默接受零/负时长。
-- 证据：`internal/core/agent_run_startup_budget_db_test.go::TestStartupDeadlineIsFrozenAcrossReplicasAndRetries`；`internal/config/agent_startup_test.go`；`integration/agent_run_resume_test.go::TestFollowUpRunResumesTheIssueLatestRevision`。持久窗口与配置义务 Covered；真实调度暂时失败/延后联合矩阵 Partial。
+- 证据：`internal/core/agent_run_startup_budget_db_test.go::TestStartupDeadlineIsFrozenAcrossReplicasAndRetries`；`internal/config/agent_startup_test.go`；`integration/agent_run_resume_test.go::TestFollowUpRunResumesTheIssueLatestRevision`；候选部署在确认窗口中重启 Cloud，前后绝对截止不变。持久窗口与配置义务 Covered；真实调度暂时失败/延后联合矩阵 Partial。
 - 决策依据：D1、D2。
 
 ## Withdrawal And Registration Must Have One Transactional Owner
@@ -28,9 +30,9 @@
 - 风险：永久 ending，或业务关闭时丢弃残留资源、伪造物理终止。
 - 前置：已登记而首次启动期间进入 ending，确认截止到达仍无真实终态。
 - 触发：截止扫描、重复处理或残留账本写入失败。
-- 必须成立：failed/done/ended、失败交付与独立账本同事务提交；资源和原执行保留，新输入/派发/模型授权关闭；普通删除/接管拒绝。
+- 必须成立：failed/done/ended、失败交付与独立账本同事务提交；资源和原执行保留，新输入/派发/模型授权关闭；普通删除/接管拒绝。Node 重连可恢复 ready 事实，但未清除残留继续关闭 admission。
 - 禁止结果：假 Node 结果/收据/Revision，账本失败但 Run 已 done，因 done 解除保护。
-- 证据：`TestUnknownStartupEndsWithResidualWithoutFabricatingNodeResult`、`TestStartupResidualFailureRollsBackBusinessTerminalAndProtection`（`internal/core/agent_run_startup_budget_db_test.go`）。数据库及普通清理保护 Covered；真实模型授权撤销与部署永久失联联合故障 Partial。
+- 证据：`TestUnknownStartupEndsWithResidualWithoutFabricatingNodeResult`、`TestStartupResidualFailureRollsBackBusinessTerminalAndProtection`、`TestNodeReconnectPreservesStartupResidualAdmissionFence`（`internal/core/agent_run_startup_budget_db_test.go`）。数据库、普通清理及重连受理保护 Covered。候选部署直接验证业务终态时无 Node 结果/Revision、保留容器/卷、拒绝输入/Project 删除，以及真实 model-gateway 创建/续期/旧 bearer 请求均拒绝；单机配置窗口场景 Covered，完整部署故障组合仍 Partial。
 - 决策依据：D3、D4；D8 旧删除残留状态保持。
 
 ## Late Facts Must Be Receipted Without Resurrecting An Abandoned Run
@@ -40,7 +42,7 @@
 - 触发：HTTP/gRPC 真实记录、终态与重复序号接管。
 - 必须成立：按原身份保存事实并 ACK；业务终态不变，不新建会话、交付或普通清理。
 - 禁止结果：修改失败结果、恢复输入、把迟到终态当成资源已删除。
-- 证据：`integration/agent_run_startup_settlement_test.go::TestStartupAbandonmentReceiptsLateFactsWithoutResurrectingRun`。HTTP/gRPC/PG 接管义务 Covered；真实 Node/Controller 跨重启演练 Partial。
+- 证据：`integration/agent_run_startup_settlement_test.go::TestStartupAbandonmentReceiptsLateFactsWithoutResurrectingRun`。HTTP/gRPC/PG 接管义务 Covered。候选部署验证恢复 Node 后接管真实 terminal、Run 版本/终态不变、admission 保持关闭，Node completed 且持久 outbox 排空（Controller ACK）；该终态路径 Covered。部署中的迟到首记录、多种历史记录及 Controller 跨重启组合仍 Partial。
 - 决策依据：D4。
 
 ## Startup Migration Must Preserve Existing Outcomes And Freeze Legacy Windows Once
