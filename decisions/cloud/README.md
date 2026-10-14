@@ -29,27 +29,29 @@ Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node �
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他
 层引用，不复制成多份权威规则。
 
-## 已批准的多人协作运行时控制（2026-09-28）
+## 多人协作运行时控制
 
-以下六份 ADR 于 2026-09-28 经用户明确批准，均为 `approved`，可以作为跨仓库开发依据。已补充核心用例，新保障的直接证据均为 `Missing`；批准不表示新权限或并发控制已经实现。实现与真实边界验收完成后才标记 `implemented`。
+使用权限、独占准入、停止/强停、控制交付和插件维护五份 ADR 的后端规则为 `implemented`。
+仓库凭据连续性仍为 `approved`，三处前端 UI 与完整联合故障矩阵由独立 `approved` ADR 承接。
+状态描述各自的交付边界；局部证据不等于真实跨进程故障矩阵全部通过。
 
-最初核查基线：Cloud main `67dcbf9`（PR #33 已合并）、desktop `652af71`、specs PR #55 `a81c263`。批准时 [PR #55](https://github.com/ora-space/specs/pull/55) 已合并，本分支已同步 specs 上游 `e2c8dce`；[PR #56](https://github.com/ora-space/specs/pull/56)仍面向 main，不直接合并。成员管理与多人操作控制分别验收，历史代码链接不能证明新增保障已落地。
+Controller 继续遵守[只拨出与过渡监听退役](../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)，
+不恢复已[退役的 minicloud](../minicloud/runtime/20260928-retire-minicloud.md)。真实联调由 cluster Compose 或等价部署承担。
 
-上游已合入 [Controller 过渡 JSON 接口与监听器退役](../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)及[minicloud 退役](../minicloud/runtime/20260928-retire-minicloud.md)，由 desktop #627 落地。开发继续遵守 Controller 只拨出和浏览器经 Cloud 接入；真实端到端联调由 cluster Compose 栈承担，不恢复旧监听、DTO 或 minicloud。
-
-| 建议阅读顺序 | ADR | 决策归属 |
+| 阅读顺序 | ADR | 状态与边界 |
 | --- | --- | --- |
-| 1 | [运行时使用权限](workspace/20260927-runtime-workspace-use-permissions.md) | 创建者、管理员、概况/内容边界、权限矩阵、历史归属、同类产品比较 |
-| 2 | [独占操作与执行准入](execution-admission/20260927-exclusive-runtime-control.md) | 会话、写活动、续期、断线、撤回、正常接管与状态转换 |
-| 3 | [普通停止与管理员强停](operation/20260927-safe-stop-and-administrative-force-stop.md) | 生命周期冲突、紧急终止、真实结束证据及数据保留 |
-| 4 | [跨进程协议与同步交付](controller-integration/20260927-fenced-runtime-control-delivery.md) | 控制身份、旧操作资格隔离、组件责任、兼容升级及跨仓库验收 |
-| 5 | [空间插件维护](plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md) | 管理员选择、逐运行时维护独占与持久等待 |
-| 6 | [仓库凭据连续性](project/20260927-repository-credential-continuity.md) | 团队/个人/未知引用、成员离开、验证重绑与执行端依赖 |
+| 1 | [运行时使用权限](workspace/20260927-runtime-workspace-use-permissions.md) | implemented：创建者/管理员、概况/内容与历史归属 |
+| 2 | [独占操作与执行准入](execution-admission/20260927-exclusive-runtime-control.md) | implemented：会话、写活动、续期、撤回和安全交接 |
+| 3 | [普通停止与管理员强停](operation/20260927-safe-stop-and-administrative-force-stop.md) | implemented：活动保护、真实终止证据与数据保留 |
+| 4 | [跨进程协议与同步交付](controller-integration/20260927-fenced-runtime-control-delivery.md) | implemented：身份、旧资格隔离与持久责任 |
+| 5 | [空间插件维护](plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md) | implemented：管理员选择、维护互斥与持久等待 |
+| 6 | [仓库凭据连续性](project/20260927-repository-credential-continuity.md) | approved：团队/个人/未知引用、成员离开与验证重绑 |
+| 7 | [前端交互与联合故障验收](execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md) | approved：三处 UI、十一项矩阵与未开放入口归属 |
 
 ### 实施边界与默认值
 
-- 本批采用“普通成员使用自己的运行时、管理员使用同空间全部运行时；操作仍需独占”的第一阶段方案，不建立成员授权关系或授予/撤销功能，不实现实时共同编辑。
-- 60 秒独占有效期、20 秒续期，以及云端管理通道双向 TLS 和管理/工作负载权限隔离，已随本批 ADR 批准；执行端、协议和部署仍需实现与验证。
-- 当前没有完整云端文件/终端/Agent 使用入口；Substrate 此次只有规格核查、真实插件执行器与按项目凭据解析也有实现缺口。具体能力须在执行端和部署配套完成后开放。
-- 各 ADR 的验收要求已落实到[核心用例索引](../../test-cases/cloud/README.md)。按可独立判断的义务维护 `Covered`、`Partial`、`Missing`，既有成员或 clone 测试不作为新独占保障的完整证据。
-- 旧 ADR 保留原状态；本批的继承表明确修改后的目标规则。产品实现尚未同步，原测试证据的适用边界需单独保留；本次未重命名旧文件、未改写迁移、未修改任何产品仓库代码。
+- 普通成员使用自己的运行时、当前管理员可使用同租户运行时；操作仍需独占。不建立成员共享授权或实时共同编辑。
+- 后端实现 60 秒独占有效期、20 秒续期契约，以及管理通道双向 TLS 和工作负载隔离；完整故障及跨版本组合按后续 ADR 验收。
+- [Node 插件执行与新 Workspace 补装](plugin-marketplace/20260928-node-executes-plugin-installs.md)已 implemented。按项目凭据解析和连续性仍单独交付，不能因插件执行落地而认为私仓能力完成。
+- 未开放文件/PTY/完整 Agent 产品入口，须在各自能力决策批准并接入相同准入边界后开放；其验证责任见后续验收 ADR 的未解决问题。
+- 直接证据见[核心用例索引](../../test-cases/cloud/README.md)，逐项维护 Covered、Partial、Missing。旧根决策状态不因后续 ADR implemented 而自动变化，原成员或 clone 测试不能替代新增安全边界的完整证据。
