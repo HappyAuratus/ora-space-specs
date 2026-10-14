@@ -1,11 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Run 保留一次尝试身份，Scope 关闭不卸除未完成责任
 
 当前 host／guardian 持久接受原身份，未知启动不自动重试。直接退出、Run 收尾和 Scope 关闭
-分别表达。本文收紧至 Linux 可信本机路线，但保留 approved：并发启动／关闭等完整验收仍有缺口。
+分别表达。本文收紧至 Linux 可信本机路线，按这一范围处于 `implemented`，实现位于 desktop 的
+`crates/process-runtime`；并发启动／关闭等完整验收缺口登记在核心用例中。
 
 ## 决策
 
@@ -50,5 +51,5 @@ Start／Close 并发、持久故障和停止升级义务。
 ## 验收
 
 真实 Run 重放、丢回复、日志失败、后代／邻居隔离、host 重启已覆盖主要路径；
-所有接受／执行／关闭竞争窗口的独立进程证据尚不完整，继续保持 approved。
+所有接受／执行／关闭竞争窗口的独立进程证据尚不完整，按实际覆盖登记为 `Partial` 或 `Missing`。
 见[核心用例](../../../../test-cases/node/process/lifecycle/attempts-and-closure.md)。

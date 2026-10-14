@@ -1,12 +1,18 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 的 GitRunner 统一受管 Git，恢复先关闭旧尝试再对账
 
 当前 Linux 独立 Node 的 Git 命令经 ManagedGitRunner → process-client → host → guardian 执行。
-gitlancer 仅构造命令与解析结果，不持有 Node／process 概念。本文收紧至 Node Worktree 切片；
-插件、现有 Backend 写入切换、Controller IPC 和跨 Node 资源协调由未来 ADR 负责。
+gitlancer 仅构造命令与解析结果，不持有 Node／process 概念。本文覆盖 Node 自己执行的 Git：clone、Revision
+交付与恢复；插件与 Agent 进程、现有 Backend 写入切换和跨 Node 资源协调不在本文范围。
+
+本 ADR 处于 `implemented`：实现位于 desktop 的 `apps/ora-node/src/managed.rs`、`apps/ora-node/src/git.rs` 与
+`crates/process-client`。实际决策与偏离：原文收紧至 Worktree 切片，Worktree 后来被放弃（见
+[clone 根决策](../../repository/0-clone-selected-repository-branch.md) D3），受管 Git 的业务入口改为 clone 与 Revision；
+插件与 Agent 进程不经 host 启动，见 [agent-runtime 根决策](../../agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)
+D2 记录的偏离。
 
 ## 决策
 
@@ -34,10 +40,12 @@ guardian 丢失时缺少收尾证据，保留 Unknown 和冲突资源预留，�
 
 ### D4：业务归属仍由 Node 判断
 
-Node 保留原 Execution、冻结目标和 base_commit；分支／目录残留按 Worktree 规则处理。
-进程层不解释仓库成功或资源冲突。本地清理不证明 hook 委托的外部服务已经停止。
-当前保护已登记身份、分支和重叠路径；同仓库不同 worktree 共享元数据的完整冲突政策仍需确认，
-不能把路径不同直接提升为所有 Git 操作互不冲突的承诺。
+Node 保留原 Execution、冻结目标和输入；目录残留按 [clone 执行契约](../../repository/20260918-minimal-clone-execution-contract.md)
+处理。进程层不解释仓库成功或资源冲突。本地清理不证明 hook 委托的外部服务已经停止。
+
+资源冲突以 clone 目录为单位：每次 clone 在独立预留的目录中执行，不复用已有 checkout；Revision 交付与恢复只在
+引用的 clone 执行所创建的 checkout 中运行，且交付在会话结束后才开始。原文担心的“同仓库不同 worktree 共享
+元数据”在当前范围内不存在：Node 不再创建 worktree。
 
 ## 不变量
 
@@ -48,11 +56,11 @@ Node 保留原 Execution、冻结目标和 base_commit；分支／目录残留�
 ## 取舍与未来 ADR
 
 仅替换插件 reaper 无法解决 Git 恢复交错；把全部业务塞入 process 会破坏领域归属。
-插件持续 I/O 与会话接管、公共 Session／Scope／Run 高层句柄、只读角色、Backend 切换、
-Controller 投递以及跨 Node 协调由后续对应领域 ADR 定义，不以本切片宣称完成。
+插件持续 I/O 与纳入执行 scope、公共 Session／Scope／Run 高层句柄、只读角色、Backend 切换以及跨 Node 协调由
+后续对应领域 ADR 定义，不以本文宣称完成。
 
 ## 验收与状态
 
 真实 Node 强杀重启、guardian 丢失、不冲突任务继续、正常宽限与超时，以及持久关联故障测试
-已通过。见[核心用例](../../../../test-cases/node/process/integration/business-entry-and-resource-handoff.md)。
-共享仓库冲突边界待 Eric 确认，本文保持 approved，不靠收窄措辞消除这一安全问题。
+已通过。见[核心用例](../../../../test-cases/node/process/integration/business-entry-and-resource-handoff.md)，
+其余缺口在用例中如实标为 `Partial` 或 `Missing`。
