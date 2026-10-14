@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # ACP Agent 运行时抽成共享 crate `ora-agent-runtime`，由 Desktop Backend 与 Node 各自提供适配器；Node 以会话执行运行 Agent 插件
@@ -11,7 +11,11 @@ Desktop Backend 中的 ACP Agent 运行时（`crates/backend/src/agent_runtime`�
 的 agent 插件，以 checkout 为 `cwd`，以环境变量注入 git 身份，把每条定型记录同时写入会话 JSONL 与 Thread
 事件。
 
-本 ADR 处于 `approved`（已评审，待实现），是 `node/agent-runtime` 的根决策（本目录范围：“Agent 进程、ACP 转发、会话连接和
+> 历史决策：D5 中“模型凭据由沙盒部署以环境变量提供”已被[运行范围的模型代理](20261010-run-scoped-model-proxy.md)
+> 修改：模型绑定的会话经 Node 的模型代理访问平台代理，真实 Key 不进入沙盒。其余规则不变。
+
+本 ADR 处于 `implemented`：共享运行时在 desktop 的 `crates/agent-runtime`，Node 侧会话执行在 `apps/ora-node/src/session/`
+（D7 的接口定义在 `session/ports.rs`），验证见 `test-cases/node/agent-runtime/` 下的用例。它是 `node/agent-runtime` 的根决策（本目录范围：“Agent 进程、ACP 转发、会话连接和
 运行恢复”）。协议消息见 [Node 协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)；
 插件安装位置见 [plugin-runtime 根决策](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)；
 git 身份来源见 [Cloud git 身份决策](../../cloud/identity-access/20260928-user-git-commit-identity.md)。
@@ -54,25 +58,22 @@ Desktop 中先完成并验证。
   的安装目录。
 - 会话执行开始时，Node 按 `agent_plugin_id` 与版本找到已安装的插件，只启动这一个插件进程；未安装或版本
   不符时以 `AgentSessionEnded{agent_failed, detail: agent_plugin_unavailable}` 结束，不启动 Agent。
-- 插件进程与 Agent CLI 都在该执行的进程 scope 内，受 Node 的 host/guardian 纳管；会话结束或 Node 停止时
-  整个 scope 被清理。
+- 每个会话执行组合自己的插件生命周期，只含其指定插件，并以该会话的 Git 身份启动。插件进程用 `ora-process`
+  直接启动（与 Desktop 相同），会话结束与 Node 正常停止时按进程组整树终止并等待退出。
+- 部署配置了工作负载用户（`process.workload_uid`）时，Node 必须同时配置 `agent.workload_directory`（缺一启动
+  失败）。插件进程及宿主经 `ora/childprocess/spawn` 为它启动的全部子进程都以工作负载 UID/GID 运行：在 fork 与
+  exec 之间放弃附加组、设置 `no_new_privs`、清空能力并把 umask 设为 `077`，任一步失败则启动失败，不会以 root
+  执行。
+- 每个会话执行在 `workload_directory/<sha256(执行 ID)>/` 下得到只读的插件包硬链接视图（安装目录本身保持 Node
+  私有）与属于工作负载用户的私有 HOME（`XDG_*`、`DENO_DIR` 都在其中），插件停止后删除，Node 启动时清空整个
+  目录；启动前把 checkout 属主交还工作负载用户。Agent 的 Git 因此与 clone、交付 Git 同属一个用户，不被 Git 以
+  `dubious ownership` 拒绝，也读不到 Node home、管理密钥与账本。未配置工作负载用户的 Node 与 Desktop 行为不变。
 
-落地差异（第二步）：guardian 当前不提供 stdin 与插件协议流（[process/io 根决策](../process/io/0-bounded-output-and-fenced-input.md)），
-而 Deno 插件依赖 stdio 上的 JSON-RPC，因此第二步中 Node 与 Desktop 一样用 `ora-process` 直接启动插件进程
-（进程组整树终止）：会话结束与 Node 正常停止时整树清理并等待退出；Node 崩溃时插件因 stdio 关闭而退出，忽略
-这一点的后代进程不被回收。纳入执行的进程 scope 由后续 process I/O 决策承担。每个会话执行组合自己的插件生命
-周期，只含其指定插件并以其 Git 身份启动。
-
-实现补充（2026-10-09，M4 真实 Agent）：部署配置了工作负载用户（`process.workload_uid`）时，Node 必须同时配置
-`agent.workload_directory`（缺一启动失败），插件进程与宿主经 `ora/childprocess/spawn` 为它启动的全部子进程都以
-工作负载 UID/GID 运行：在 fork 与 exec 之间放弃附加组、设置 `no_new_privs`、清空能力并把 umask 设为 `077`，任一步
-失败则启动失败，不会以 root 执行。每个会话执行在 `workload_directory/<sha256(执行 ID)>/` 下得到只读的插件包硬链接
-视图（安装目录本身保持 Node 私有）与属于工作负载用户的私有 HOME（`XDG_*`、`DENO_DIR` 都在其中），插件停止后删除，
-Node 启动时清空整个目录；启动前把 checkout 属主交还工作负载用户（兼容旧版本以 root 运行留下的文件）。环境不清空，
-沙盒部署注入的模型凭据与出网代理照常进入 Agent 进程树（不变量 6 不变）。这样 Agent 的 Git 与 clone、交付 Git 同属
-一个用户，不再被 Git 以 `dubious ownership` 拒绝，且读不到 Node home、管理密钥与账本。未配置工作负载用户的 Node 与
-Desktop 行为不变。上段“Node 崩溃后忽略 stdio 关闭的后代不被回收”的差异仍然存在：这些后代现以工作负载用户运行，
-不再持有 root 权限，但纳入执行的进程 scope 仍待 process I/O 决策。
+实际决策与偏离：原决策要求插件进程与 Agent CLI 都在执行的进程 scope 内、受 host/guardian 纳管。guardian 不提供
+stdin 与插件协议流（[process/io 根决策](../process/io/0-bounded-output-and-fenced-input.md)），而 Deno 插件依赖 stdio
+上的 JSON-RPC，所以插件改为由 `ora-process` 直接启动。代价是 Node 崩溃时插件因 stdio 关闭而退出，但忽略这一点
+的后代进程不被回收；这些后代以工作负载用户运行，不持有 root 权限。纳入执行的进程 scope 留在“本决策未解决的
+问题”。
 
 ### D3：会话执行的记录同时进入 JSONL 与 Thread 事件
 
@@ -114,7 +115,7 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 
 会话执行（本文）与协议执行、插件安装、交付（[协议后续决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)、
 [plugin-runtime](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)、[revision](../revision/0-internal-snapshot-and-incremental-bundle-upload.md)）
-在 Node 进程内只经下列接口交互。接口以 trait 定义在 `ora-node` 中，名称与签名是评审用的示例，语义是承诺。
+在 Node 进程内只经下列接口交互。接口以 trait 定义在 `apps/ora-node/src/session/ports.rs`。
 
 **Node 账本（`ora-node-db`）新增的持久结构**
 
@@ -124,12 +125,9 @@ Node 通过插件生命周期的子进程环境接口（`ChildProcessEnvironment
 | `execution_events` | `(execution, sequence)` 主键与事件 JSON；多事件 outbox，确认后删除。`last_sequence` 保证删除后序号不回退 |
 | `session_commands` | `(execution, command_id)` 主键、命令 JSON、受理顺序、`state`（`queued \| executed \| discarded`） |
 
-schema v8 的第一步只将会话放入 `node_executions`；schema v7 已落地的 plugin 表及旧执行表继续保留，
-交付执行留待对应决策落地。operation 的唯一事实仍在 `execution_identities`，不在会话表重复存储。
-`session_commands` 用受理顺序作物理主键，并以 `UNIQUE(execution, command_id)` 保证上述命令身份语义。
-`ora-node-db::SessionJournal` 共享 Node 的独占租约；应用层为它实现下面的 trait，避免数据库反向依赖应用。
-生产服务已组合上述账本、共享插件目录、协议入口、在途窗口与启动恢复；D2 中尚未纳管任意后代的差异仍保留，
-不以 echo 插件测试替代 host/guardian 进程 scope 保证，本文仍为 `approved`。
+operation 的唯一事实仍在 `execution_identities`，不在会话表重复存储。`session_commands` 用受理顺序作物理主键，
+并以 `UNIQUE(execution, command_id)` 保证命令身份语义。`ora-node-db::SessionJournal` 共享 Node 的独占租约；应用层
+为它实现下面的 trait，避免数据库反向依赖应用。
 
 **账本一侧提供给会话执行的接口**（`SessionLedger`）
 
@@ -166,7 +164,7 @@ Node 启动时先由协议侧恢复账本，再对未终态的会话调用 `reco
 
 1. Desktop 在抽取前后的 Agent 行为与会话 JSONL 格式不变。
 2. `ora-agent-runtime` 不依赖 Backend、SQLite 实现或 Tauri。
-3. Node 的一个会话执行只启动其指定版本的 agent 插件，且在该执行的进程 scope 内。
+3. Node 的一个会话执行只启动其指定版本的 agent 插件；会话结束或 Node 正常停止时插件进程组整树终止。
 4. Thread 事件中的记录都存在于同一会话的 JSONL 中。
 5. git 身份只经环境变量进入 Agent 进程树，Node 不修改 git 配置。
 6. 模型凭据不经过 Cloud、Controller 或 Controller–Node 协议。
@@ -189,12 +187,10 @@ Node 启动时先由协议侧恢复账本，再对未终态的会话调用 `reco
 - MCP 与 Skill 插件在 Node 会话中的配置与注入。
 - 权限请求的人工审批。
 - Node 重启后恢复会话。
+- 插件进程纳入执行的进程 scope，使 Node 崩溃后忽略 stdio 关闭的后代也能被回收（见 D2 的偏离）。
 
-## 落地顺序
+## 落地
 
-1. Desktop：抽取 `ora-agent-runtime`，定义五个接口，Backend 提供实现；全部既有测试通过，文档更新。
-2. Node：插件生命周期与 Deno 接入；以 echo agent 插件（测试夹具）运行会话执行，测试覆盖记录顺序、命令排队、
-   结束与中断。
-3. Node 镜像加入 Deno；cluster 联调接入真实 agent 插件。
-
-保持不变：Desktop 的 Agent 行为、数据与前端。开始改变：Node 能运行 Agent 会话。
+Desktop 抽取 `ora-agent-runtime` 并由 Backend 提供五个适配器；Node 接入插件生命周期与 Deno，以 echo agent 插件
+测试记录顺序、命令排队、结束与中断；Node 镜像加入 Deno，cluster 以真实 agent 插件验收。保持不变：Desktop 的 Agent
+行为、数据与前端。开始改变：Node 能运行 Agent 会话。

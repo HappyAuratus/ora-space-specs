@@ -1,11 +1,11 @@
 # Node Agent 会话执行
 
-依据[已批准的 agent-runtime 根决策](../../../decisions/node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)。
+依据[已实现的 agent-runtime 根决策](../../../decisions/node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)。
 证据来自 `ora-agent-runtime` 单元测试与 `apps/ora-node/tests/agent_session.rs`：后者通过 `SessionHost` 驱动真实的
 echo agent 插件进程，以内存 `SessionLedger`、固定 checkout 与计数租约的插件目录代替账本、clone 账本与插件安装。
 账本持久化另由 `crates/node-db/src/tests/session.rs`、`session/recovery.rs` 与
 `apps/ora-node/tests/session_ledger.rs` 的真实 SQLite 测试证明；生产服务接线与启动恢复由 `apps/ora-node/tests/standalone/agent_sessions.rs` 及子模块的真实 Node 进程测试验证。
-强杀后任意后代进程的 scope 清理仍受 ADR D2 落地差异限制。
+强杀后任意后代进程的 scope 清理仍受 ADR D2 偏离的限制。
 
 ## Session Records Reach JSONL Before The Thread
 
@@ -58,7 +58,7 @@ Workspace 插件根装有 agent 插件与其他插件。
 
 ### 必须成立
 
-- 只启动指定版本的 agent 插件，在该执行的进程 scope 内；不符或未安装时以 `agent_failed{agent_plugin_unavailable}` 结束。
+- 只启动指定版本的 agent 插件，会话结束时插件进程组整树终止；不符或未安装时以 `agent_failed{agent_plugin_unavailable}` 结束。
 - Agent 进程树的提交使用 `GIT_AUTHOR_*`/`GIT_COMMITTER_*`，checkout 的 `.git/config` 与全局配置不变。
 - 会话期间持有插件租约，结束后释放。
 - 配置了工作负载用户时，插件进程与宿主为它启动的全部子进程以工作负载 UID/GID 运行（无附加组、`no_new_privs`、
@@ -76,7 +76,7 @@ Node home 或管理密钥，或身份切换失败后仍以原身份执行。
 | 插件选择 | `a_plugin_of_another_version_ends_the_session_without_starting_it`：目录无该版本、或插件根中的包不在该版本目录时，以 `agent_plugin_unavailable` 结束，没有插件进程启动，租约已释放 | Covered |
 | git 身份隔离 | `agent_commits_carry_the_session_identity_without_touching_git_config`：经宿主 `ora/childprocess/spawn` 与插件直接派生的两次提交，author/committer 都是输入身份，`.git/config` 逐字节不变 | Covered |
 | 租约 | `ending_cancels_the_running_turn_and_discards_queued_turns` 验证结束后租约归零；`session_commands_use_the_production_ledger_and_installer_catalog` 验证生产安装器与会话共享租约，活跃插件移除返回 `plugin_in_use` | Covered |
-| 执行进程 scope | 插件进程与 Agent CLI 纳入该执行的 host/guardian 进程 scope | Missing：第二步直接启动插件进程（见 ADR D2 落地差异） |
+| 执行进程 scope | 插件进程与 Agent CLI 纳入该执行的 host/guardian 进程 scope | Missing：插件由 `ora-process` 直接启动，崩溃后的后代回收是 ADR D2 记录的偏离，留在“本决策未解决的问题” |
 | 工作负载身份 | `ora-process` 的 `an_identity_the_parent_cannot_take_fails_the_spawn`（无法切换身份时启动失败、不留子进程）与 `a_root_parent_drops_the_whole_tree_to_the_identity`（root 父进程下整树为目标 UID/GID、无附加组、`NoNewPrivs`、`CapEff` 为 0、umask `0077`，整树可终止）；`apps/ora-node` 的 `a_separate_workload_runs_the_agent_from_its_session_directory`（插件 cwd 为包视图、HOME 为会话 home，结束后目录删除）、`the_view_launcher_moves_the_launch_into_the_package_view`、`the_session_environment_reaches_the_plugin_and_its_host_spawned_processes`、`purging_removes_every_leftover_without_following_links` | Partial：需要 root 的测试标记为 `#[ignore]`，CI 不运行（2026-10-09 在 root 容器中手工运行通过）；ora-node 测试以当前用户身份运行，未经真实降权；cluster `task real-agent:acceptance` 在真实栈上核对 opencode 进程树为 UID 1000，只作补充证据 |
 
 ### 决策依据
