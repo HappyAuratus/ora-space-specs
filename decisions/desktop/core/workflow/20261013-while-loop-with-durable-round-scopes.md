@@ -30,6 +30,9 @@ status: implemented
 
 `containerId` 是执行成员身份，UI 的 parentage/几何信息不代替它。每个 body 有 Start，内部无
 Output 或嵌套复合节点，跨容器连边拒绝。Loop 是外层一个普通节点；body 行只在本轮作用域调度。
+当前 while 图校验不拒绝 body 内 `interactive` Agent；这与 foreach 的显式拒绝不同。
+解析接受不构成区域内停靠、人工完成及重启恢复的整链保证，相关边界见
+[区域交互用例](../../../../test-cases/desktop/core/workflow/stateless-recovery-and-hitl.md#interactive-nodes-inside-a-region-park-and-resume-through-existing-paths)。
 
 采用 ScopedLoop 而非把所有逻辑塞进 foreach runtime，是因为 while 需要拥有独立变量池、轮间
 携带及早退清理事务。新增此显式形态修改了根决策“一种通用复合接口覆盖全部节点”的预期。
@@ -65,7 +68,8 @@ feedback 和 outputs 的实际校验，不能靠上限策略把坏数据包装�
 变量池与分支事实。body 的 node-run 绑定 scope，不借用 foreach 的零起 iteration。
 
 旧轮结算和下一轮 scope/Start 创建，或父 Loop 终态与 outputs 发布，在同一 SQLite 事务提交。
-重复回报不能创建第二个下一轮。恢复读取已提交 scope；不能只凭内存计数推测未完成副作用。
+重复回报不能创建第二个下一轮。普通调度波读取已提交 scope；不能只凭内存计数推测未完成副作用。
+持久 scope 不意味着进程重启后自动接续当前轮；启动恢复的失败边界见 D6。
 
 ### D5：loopExit 持久化清理意图，完成后才发布退出
 
@@ -82,8 +86,11 @@ cleanup 不能重新提交成功。输出不可用同样失败。
 carried state。成功完成 Loop 时保留其进入前 checkpoint，供后续 resume 定位。外层兄弟失败
 不把已独立提交的 Loop scope 任意改写；run 的 resume 边界由原有恢复 owner 处理。
 
-自动重算持久 scope 与用户发起 resume 是两种行为，不能把“从第一轮重开”误写成每个普通调度波
-都重跑，也不能承诺恢复已消失的 Agent 进程继续原副作用。
+进程重启时，boot sweep 不把 Running 的 `loop` 当作可吸收中断的 foreach composite：
+普通执行轮使 run 以 `interrupted_by_restart` 失败，之后由用户显式 resume 从 round 1 重开。
+已持久化 pending `loopExit` 的父 Loop 行被 sweep 豁免，交由清理恢复；该豁免不保护其它仍在途的外层工作。
+普通调度波重算、启动 sweep 和用户 resume 是不同边界，不能以直接调用 engine.resume 的测试
+证明自动重启续算，也不承诺已消失的 Agent 进程继续原副作用。
 
 ## 不变量
 

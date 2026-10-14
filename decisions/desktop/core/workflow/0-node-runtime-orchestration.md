@@ -111,4 +111,6 @@ values；旧轮结算与新轮启动或父 Loop 完成在同一事务提交。
 
 显式运行时和持久作用域提高可恢复性，也增加了轮次事务与失败吸收的验证义务。嵌套、并行迭代、
 复合区域 HITL、Code/远程执行及跨机器 run ownership 分别需要后续决策；不能将这些预留写成
-已实现的系统承诺。相关核心用例保留实际的 Covered、Partial、Missing 证据状态。
+已实现的系统承诺。节点级错误策略向任意节点的泛化、循环体失败重试也仍需后续 ADR；
+foreach 的 `FailurePropagation` 只覆盖当前区域失败吸收，不能代替这两项预留。
+相关核心用例保留实际的 Covered、Partial、Missing 证据状态。

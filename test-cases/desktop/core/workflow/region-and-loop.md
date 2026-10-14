@@ -53,7 +53,7 @@ D1。
 
 ### 前置状态
 
-一组违反 D3 六条校验规则的候选冻结图。
+一组违反根 D3 区域约束及 foreach ADR D1、D3 具体规则的候选冻结图。
 
 ### 触发
 
@@ -79,9 +79,9 @@ D1。
 
 ### 决策依据
 
-同上决策 D3 的六条区域边界校验与不变量 7；第六条的迭代节点读法见
+同上决策 D3 的区域结构约束与不变量 7；具体成员规则与上限见
 [迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)
-D3。
+D1、D3。
 
 ## Outer Graph Remains A DAG
 
@@ -118,7 +118,7 @@ D3。
 
 ### 决策依据
 
-同上决策不变量 1 与 D3 第二段。
+同上决策不变量 1 与 D3（外层与 body 分别保持 DAG）。
 
 ## Loop Iterations Are Persisted Facts
 
