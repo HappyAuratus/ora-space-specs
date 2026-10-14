@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 协议增加插件、Agent 会话与 Revision 交付执行：会话执行发出有序的非终态 Thread 事件，并接受会话命令
@@ -9,7 +9,8 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
 这些事件与终态事件共享同一执行内的序号空间、同样持久保留直到确认。会话执行在运行期间接受
 `SubmitUserTurn`、`EndSession` 两种命令，Node 持久受理后回复确认。上传授权是唯一不持久化的消息。
 
-本 ADR 处于 `approved`（已评审，待实现），继承 [协议根决策](0-controller-node-protocol.md)、
+本 ADR 处于 `implemented`，消息与校验在 desktop 的 `crates/node-protocol`，账本在 `crates/node-db`，会话处理在
+`apps/ora-node/src/service/`；继承 [协议根决策](0-controller-node-protocol.md)、
 [FrameChannel 传输](20260924-frame-channel-with-ipc-and-websocket.md) 与
 [Controller 心跳与 close code](20260925-controller-heartbeat-and-websocket-close-codes.md)。执行的业务语义由
 [plugin-runtime](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md)、
@@ -28,7 +29,7 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
 | 根 D6：控制与心跳优先于大量事件，不能静默丢失 | 继承；非终态事件有在途窗口与磁盘保留（D3） |
 | 根不变量 5、6：Controller 不传 Node 本地路径 | 继承；checkout 以 clone 执行 ID 引用（D1） |
 | 传输：一帧 16 MiB 上限 | 继承；单个 Thread 记录另限 256 KiB（D2） |
-| 握手能力 `repository_clone`、`worktree_execution` | 修改：新增 `plugin_install`、`agent_session`、`revision_delivery`（D1） |
+| 握手能力 `repository_clone`、`worktree_execution` | 修改：新增 `plugin_install`、`agent_session`、`revision_delivery`（D1）；`runtime_control`、`model_proxy`、`revision_restore` 由各自的后续决策新增 |
 
 ## 决策
 
@@ -50,7 +51,7 @@ Controller–Node 协议以新增能力与消息的方式承载第二个最小�
 绑定已登记的会话输入及精确的 Node、incarnation、operation/execution 身份。受控部署拒绝裸
 `StartAgentSession`；Node 在持久化与实际启动前检查许可，重复输入不重新启动 Agent。
 交付同样以 `ControlledDeliverRevision{binding, command}` 进入，许可必须精确对应交付的 execution、node
-operation 与 Node（2026-10-09 实现补充）。
+operation 与 Node。
 `SubmitUserTurn` / `EndSession` 使用既有消息形状，由当前绑定验证原执行的 control scope 和 incarnation；
 同一 control epoch 可刷新许可，关闭、过期或 scope 改变后不能受理新命令。已终态的命令仍返回
 `session_ended`，不复活执行。Controller 身份与执行归属检查先于上述入口。
@@ -95,7 +96,7 @@ Node 同一执行最多有 256 个已发送未确认的事件；达到窗口时�
   不写账本、不写日志。
 - Node 需要上传而没有有效授权（未收到、过期、Node 重启后丢失）时发送 `UploadGrantNeeded{execution_id}`，
   并等待新授权；等待期间交付执行保持 `Running`。
-- 2026-10-09 实现补充：`UploadGrantNeeded` 携带 `checksums`，列出每个仍需上传的对象键及 Node 在首个 PUT 前
+- `UploadGrantNeeded` 携带 `checksums`，列出每个仍需上传的对象键及 Node 在首个 PUT 前
   固定的 SHA-256，Controller 据此申请绑定校验和的授权（Cloud gRPC 决策 D4 的 `checksums`）。Controller 不在
   派发时主动申请，Node 在等待授权期间于每个新连接上重发该消息，并按有界间隔重复。
 - `UploadGrant` 与 `UploadGrantNeeded` 都不携带序号、不需要确认。
@@ -133,5 +134,7 @@ Node 重启后，没有终态的会话执行不会恢复 Agent 进程：provider
 
 ## 落地
 
-`crates/node-protocol` 增加消息与校验（往返与校验测试）；Node 账本迁移（执行种类、事件表、命令表）；
-Controller 与 Node 的会话处理接线。协议消息往返测试不构成恢复保证的证据，恢复由 Node/Controller 测试承担。
+`crates/node-protocol` 增加消息与校验，Node 账本前向迁移（执行种类、事件表、命令表），Controller 与 Node 的
+会话处理接线。在途窗口与截断上限分别是 `apps/ora-node/src/service/delivery.rs` 的 `WINDOW` 与
+`MAX_THREAD_RECORD_BYTES`。协议消息往返测试不构成恢复保证的证据，恢复由 Node/Controller 测试承担。保持不变：
+已有消息与 clone 行为。开始改变：Node 可以执行插件安装、Agent 会话与 Revision 交付。
