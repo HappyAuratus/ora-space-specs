@@ -15,7 +15,7 @@
 - 决策依据：D1，不变量 1。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 的持久 restart 不 clone；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 包含错误 SID、管理员不能夺取有效会话及项目删除原子保护。
-- 仍缺：完整界面与实际生命周期/活动竞争故障矩阵尚缺。
+- 仍缺：完整界面与实际生命周期/活动竞争故障矩阵尚缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Administrative Force Stop Is Explicit Audited And Scoped To One Runtime
 
@@ -28,7 +28,7 @@
 - 决策依据：D2、D5，不变量 2、6。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 的管理员/原因/影响确认、在途记录及幂等；cluster docs/runtime-control.md 记录真实目标终止与卷保留。
-- 仍缺：脚本已通过强停幂等、只终止目标、保留目标卷和另一运行时内容；完整界面与联合故障矩阵尚缺。
+- 仍缺：脚本已通过强停幂等、只终止目标、保留目标卷和另一运行时内容；强停 UI 状态统一登记于[确认界面用例](../execution-admission/runtime-control-ui-and-fault-acceptance.md#force-stop-confirmation-must-preserve-scope-and-pending-responsibility)（后续 ADR D2）；联合故障矩阵尚缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Force Stop Can Be Accepted During Inflight Work Without Reviving Old Resources
 
@@ -41,7 +41,7 @@
 - 决策依据：D3、D4，不变量 3、4、6。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go)；[cluster lifecycle](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/sandbox-server/internal/lifecycle/runtime_fence_test.go) 的持久 generation fence、旧 ensure 与进程重开；真实在途 create 强停记录见 cluster 文档。
-- 仍缺：真实迟到 ensure/终止同时间竞争、响应丢失与崩溃磁盘矩阵仍缺。
+- 仍缺：真实迟到 ensure/终止同时间竞争、响应丢失与崩溃磁盘矩阵仍缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Unconfirmed Termination Blocks Handoff And Persistent Data Survives Stop
 
@@ -54,4 +54,4 @@
 - 决策依据：D4、D5，不变量 4、5。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_force_stop_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_force_stop_test.go) 与 Sandbox Server 持久 tombstone；真实强停目标不存在且卷保留的记录。
-- 仍缺：Node 不可达、停止/删除/重启及未确认终止的真实联合故障矩阵仍缺。
+- 仍缺：Node 不可达、停止/删除/重启及未确认终止的真实联合故障矩阵仍缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。

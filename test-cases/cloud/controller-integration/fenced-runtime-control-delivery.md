@@ -22,7 +22,7 @@
 - 决策依据：D1、D2，不变量 1、4。
 
 - 本次直接证据：**Partial** — [Cloud internal/controlgrpc/tls_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/internal/controlgrpc/tls_test.go)；[desktop crates/node-transport/tests/mtls.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-transport/tests/mtls.rs)；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 实际 UID 1000 拒绝读取密钥、恢复日志及写管理目录。
-- 仍缺：失效证书、全部范围错配和工作负载直接伪造入口的真实联合矩阵仍缺；生产轮换与旧目录迁移尚缺。
+- 仍缺：失效证书、全部范围错配和工作负载直接伪造入口的真实联合矩阵仍缺；生产轮换与旧目录迁移尚缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Revocation Reconciles Inflight Acceptance Before A New Operator Is Admitted
 
@@ -35,7 +35,7 @@
 - 决策依据：D3，不变量 2、3。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_control_test.go) 的未结束责任阻止交接；[desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 的持久关闭与接受/启动两道检查。
-- 仍缺：真实 Cloud gRPC–Controller–Node 接受响应丢失与故障恢复联合矩阵仍缺。
+- 仍缺：真实 Cloud gRPC–Controller–Node 接受响应丢失与故障恢复联合矩阵仍缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Stale Queued Commands And Restored Connections Cannot Write After Handoff
 
@@ -48,7 +48,7 @@
 - 决策依据：D1、D4，不变量 3–5。
 
 - 本次直接证据：**Partial** — [Cloud integration/runtime_connection_recovery_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_connection_recovery_test.go) 证明可用性恢复不复活旧 SID；[desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 证明旧资格重开后不能启动或建目录。
-- 仍缺：旧字节队列、真实 Git/进程和 Cloud 交接的联合故障注入仍缺。
+- 仍缺：旧字节队列、真实 Git/进程和 Cloud 交接的联合故障注入仍缺。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Protocol Upgrade And Rollback Never Restore An Unfenced Path
 
@@ -61,4 +61,4 @@
 - 决策依据：D5、D6，不变量 6；同批停止决策的迟到 ensure 验收联合执行。
 
 - 本次直接证据：**Partial** — [Cloud integration/repository_credentials_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/repository_credentials_test.go) 的生产旧 clone 410；TLS 无明文回退；生成契约固定提交并检查漂移。
-- 仍缺：各组件版本组合与真实部署回滚矩阵仍缺；无安全配套的新能力明确拒绝。
+- 仍缺：各组件版本组合与真实部署回滚矩阵仍缺；无安全配套的新能力明确拒绝。 验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
