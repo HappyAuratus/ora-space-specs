@@ -5,7 +5,7 @@ status: implemented
 # Node 通过专用模型身份领取临时授权，OpenCode 经平台代理调用冻结的模型
 
 本决策继承 [共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)，将 D5 的部署共享凭据/默认模型改为用户的冻结连接与平台代理。
-真实上游 Key 保留在平台；Node 只取得当前运行的临时授权。状态 `implemented`；两种协议的真实 OpenCode 模型/工具调用、成果恢复与摘要、Git 作者及 Workspace 容器/卷释放已验证。全栈崩溃、初始 ending 和生产轮换矩阵仍按核心用例保留缺口。
+真实上游 Key 保留在平台；Node 只取得当前运行的临时授权。状态 `implemented`；证据与缺口见核心用例。
 
 ## 继承与修改
 
