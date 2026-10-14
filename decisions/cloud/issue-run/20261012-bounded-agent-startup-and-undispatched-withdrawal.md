@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 创建结果未知与 Agent 启动都有等待上限，业务收尾保留残留责任
 
 Cloud 区分 Workspace 创建、启动意图、派发登记、Node 受理和真实记录。运行 Workspace 创建结果长期未知时，有界放弃该次创建并释放 Project 操作槽，残留执行与资源继续受保护。ready 后，未登记的确定性拒绝立即结算，暂时失败在不续期的启动预算内延后重试；用户结束或总预算耗尽时原子撤回并声明清理。已登记且尚无启动记录的执行先请求结束，结束确认窗口耗尽后 Run 按 `failed/done` 关闭业务等待，保留未知执行和残留资源的对账责任。
 
-本文为 `proposed`，尚待完整评审。D2 的可配置 2/6/5 分钟默认值和 D4 的 `failed/done` 方向已确认；D1 的固定总预算内重试及 D5 的创建放弃规则仍待审。继承 [IssueRun 根决策](0-agent-run-in-disposable-isolated-workspace.md) 和前序 [续接提案](20261010-resume-run-from-latest-issue-revision.md)，修改根 D3/D6 的创建与启动缺口，并为根 D4/D5 的真实会话终态与交付链路增加未知执行的有界业务放弃分支。根 D8 已实现的删除放弃规则继续有效；续接提案的 Revision 选择与恢复规则不改。Thread 继承 [根决策](../thread/0-durable-agent-thread-with-user-turns.md) 与 [个人模型输入权限](../thread/20261010-personal-model-initiator-controls-input.md)。控制面仍遵循 [派发前登记与同事务接缝](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
+本文为 `approved`。第一期交付 D1–D4 的启动与结束等待边界；D5 的创建 blocked 放弃属于独立第二期，第一期不依赖它。继承 [IssueRun 根决策](0-agent-run-in-disposable-isolated-workspace.md) 和前序 [续接提案](20261010-resume-run-from-latest-issue-revision.md)，修改根 D3/D6 的创建与启动缺口，并为根 D4/D5 的真实会话终态与交付链路增加未知执行的有界业务放弃分支。根 D8 已实现的删除放弃规则继续有效；续接提案的 Revision 选择与恢复规则不改。Thread 继承 [根决策](../thread/0-durable-agent-thread-with-user-turns.md) 与 [个人模型输入权限](../thread/20261010-personal-model-initiator-controls-input.md)。控制面仍遵循 [派发前登记与同事务接缝](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
 
 ## 继承与修改
 
@@ -197,15 +197,13 @@ Cloud 终结 operation 后拒绝新的 effect permit、clone/插件派发登记�
 
 ## 未决与落地
 
-本文仍为 `proposed`，完整规则需评审通过后再维护核心用例。待确认的选择包括 D1 的固定总预算内暂时失败重试，以及 D5 的创建 blocked 默认 30 分钟、`failed/done`、原 operation 放弃、Project 槽释放与独立残留保护。D1 的代价是容量长期不足仍可能在未执行任何 Agent 工作时失败；D5 的代价是业务和调度可继续，但未知物理资源仍占用且需后续对账。预算与错误类别可定位原因，不保证一次领取机会或物理释放。全局领取的拒绝分类、延后退避、公平性与终态工作出队由领取调度负责，必须与本 ADR 的截止/撤回事务共同防止旧快照重新登记。
+两期语义均已批准，实施分开：
 
-明确留给后续 ADR 的边界包括上述“Agent Run 残留资源对账与回收”，以及 Node 完整恢复截止与 Git 停止确认；它们不阻塞本次业务窗口的选择，实施验收分别保留直接证据。公开取消 API 和新结算 SSE 不在本文范围。D2 的成功样本不能替代高负载、低带宽及永久失联故障证据，也不能把尚未实施的残留回收宣称为物理有界释放。
+1. 第一期交付 D1–D4：持久化普通/恢复启动及结束确认截止（默认 2/6/5 分钟），与领取调度共用原意图、work 和冻结输入；未登记原子撤回，已登记未知窗口耗尽后 failed/done，并保留独立残留账本与迟到事实。先同步[核心用例](../../../test-cases/cloud/issue-run/bounded-agent-startup.md)，再以直接事务、重启及故障证据判断交付。
+2. 第二期单独交付 D5：创建首次 blocked 截止、业务放弃/Project 槽释放、事实接管入口、旧许可拒绝、存量回填与故障验证。实施追踪为 ora-space/circus#92（总事项 #14）；不作为第一期交付前置。D5 核心义务仍登记在同一核心用例，证据未完成时保持 Missing/Partial。
 
-批准后依次落地：
+第一期必须和领取调度对齐固定总预算内的延后与终态出队，不另建队列。登记响应未知只重放原身份；旧 claim 不得越过撤回/结算事务重新登记。永久失联、两副本扫描、重启/配置不续期、取消/截止/迟到事实和租户隔离均须直接验证，并回归正常多轮、结束、Revision 与资源释放。
 
-1. 同步对应核心用例，固定 D1/D4/D5 的事务、未知结果、残留保护与兼容义务；D8 既有义务和实际证据继续有效。
-2. 先交付持久窗口与独立账本、目标准入关闭、派发拒绝及业务终态后的真实事实接管，再启用超时结算；账本回滚、旧 claim/许可、创建成功与截止竞态、取消时钟及 Project 操作槽须直接验证。
-3. 验证创建在 sandbox/clone/plugin 各阶段长期 blocked、尚无 Node 的 ensure、持有旧许可的迟到 ensure、原执行迟到成功、两副本扫描、重启/配置不续期、存量起点回填和租户隔离。另一独立 Workspace 可操作，而残留 Workspace 与 Project 删除仍受保护；不以容器列表缺失伪造清理。
-4. 联合领取调度验证暂时失败延后及总预算耗尽、终态工作出队、登记与结束/截止竞态、登记响应丢失；核验真实 Controller/Node 链路及永久失联 `failed/done`，随后回归正常多轮、冻结输入、结束、Revision 和物理释放。
+D1 接受容量持续不足时一次执行机会也没有就失败的代价；D5 的 provisioning 取消沿原 blocked 截止等待，不增设第二个取消计时器。预算和安全错误可解释结果，不保证领取机会或物理释放。
 
-真实交付证据决定实施状态；现有迁移与历史执行结果不重写。后续授权回收未完成时，验收必须展示未回收资源与对账责任，不能把这项业务有界等待标成物理有界释放。
+后续“Agent Run 残留资源对账与回收”ADR 负责隐藏 Workspace 的清理授权、真实终止、late ensure fencing、成果救援与删除顺序；Node 完整恢复截止与 Git 停止确认另由后续 ADR 负责。公开取消 API 和新增结算 SSE 不在本文范围。既有 D8 删除放弃保持原条件与状态，不能把本次业务收尾冒充自动物理回收。
