@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 个人模型连接由用户配置，平台保管密钥并为每次运行代理模型请求
@@ -8,7 +8,7 @@ status: approved
 OpenCode 的一次运行冻结发起者选择的连接和模型，通过平台模型代理调用上游；沙盒仅取得当前运行的临时凭据。
 真实 API Key 不进入 Cloud 服务、Controller、Node 或会话记录。
 
-本决策依据 2026-10-10 用户批准的 M4 实施计划，状态为 `approved`，完整真实模型验收尚待完成。
+本决策状态为 `implemented`；证据与缺口见核心用例。
 涉及 Cloud 的个人设置、IssueRun 绑定、独立 model-gateway、Node 模型访问及 cluster 部署。
 PostgreSQL 采用追加迁移，历史运行没有模型绑定；本决策不承担生产完整进程隔离、计费、思考档位及 MCP 配置。
 
@@ -19,7 +19,7 @@ PostgreSQL 采用追加迁移，历史运行没有模型绑定；本决策不承
 | [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)：一次运行一个 isolated Workspace，交付 Revision 后释放 | 继承，不变 |
 | [Node agent-runtime D5](../../node/agent-runtime/0-shared-agent-runtime-crate-hosted-by-node.md)：模型选择和凭据由部署提供 | 修改：用户设置默认连接/模型，平台代理保管真实 Key，Node 只持有临时运行凭据 |
 | 原始模型 Key 不经过 Controller–Node 协议 | 继承，不变；该协议增加不透明模型绑定引用 |
-| [Thread 根决策](../thread/0-durable-agent-thread-with-user-turns.md)：有效成员可以追加消息 | 个人模型运行改为仅发起者追加；当前管理员仍可结束，成员仍可读取 |
+| [Thread 根决策](../thread/0-durable-agent-thread-with-user-turns.md)：有效成员可以追加和结束 | 修改，仅限个人模型运行：只有发起者可追加，结束权收窄为发起者与当前管理员；有效成员读取不变 |
 
 ## 决策
 
@@ -93,8 +93,8 @@ SSE 文本、工具调用及结果持续转发，不等待完整生成，也不�
 | Cloud 转发模型请求并解密 Key | 少一个服务，但将业务控制与原始凭据/长连接合并，扩大控制面的敏感数据范围 |
 | Node 自行读取所有个人配置 | 接线简单，但破坏只授权当前运行及冻结输入的约束 |
 
-## 验收与未决项
+## 验收与后续边界
 
 核心义务和直接证据见 [个人模型访问](../../../test-cases/cloud/model-access/personal-model-access.md)。
-真实 OpenCode、两种 Bluezone 协议和完整浏览器链路须由独立 cluster 栈提供直接证据后，才标记整体实施完成。
+多身份浏览器、全栈崩溃和灾备义务按核心用例分别判断，不从正常路径推定故障恢复保证。
 权限审批、进程降权/guardian 纳管、生产轮换体系、费用统计、图片输入、思考参数和运行中换模型属于后续范围。
