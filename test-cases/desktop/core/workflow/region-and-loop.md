@@ -2,7 +2,7 @@
 
 循环是节点的结构语义而非图上的回边：复合节点拥有一个区域，在外层投影中是黑盒。本文件守住
 DAG 不变量、区域边界与轮次持久化；首个复合运行时为迭代节点（foreach 语义），while-Loop 的
-`exit_when` 终止用例随其 ADR 落地后迁移。
+`until`、独立轮池、上限策略及早退见[while-Loop 核心用例](while-loop.md)。
 
 ## Region Interior Nodes Never Enter The Outer Ready Set
 
@@ -35,7 +35,7 @@ DAG 不变量、区域边界与轮次持久化；首个复合运行时为迭代�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| Loop Running 期间外层 ready 集合排除全部区域内部节点 | `ora_application::workflow_run::engine::branch_projection::tests::outer_projection_treats_regions_as_black_boxes`（外层投影排除成员与区域行）与 `ora_backend::workflow::run::iteration_tests::region_rows_never_enter_the_outer_current_nodes_anchor`（端到端：区域行在途时 `current_nodes` 仅含迭代节点） | `Verified` |
+| Loop Running 期间外层 ready 集合排除全部区域内部节点 | `ora_application::workflow_run::engine::branch_projection::tests::outer_projection_treats_regions_as_black_boxes`（外层投影排除成员与区域行）与 `ora_backend::workflow::run::iteration_tests::region_rows_never_enter_the_outer_current_nodes_anchor`（端到端：区域行在途时 `current_nodes` 仅含迭代节点） | `Covered` |
 
 ### 决策依据
 
@@ -53,7 +53,7 @@ D1。
 
 ### 前置状态
 
-一组违反 D3 六条校验规则的候选冻结图。
+一组违反根 D3 区域约束及 foreach ADR D1、D3 具体规则的候选冻结图。
 
 ### 触发
 
@@ -75,13 +75,13 @@ D1。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 六条区域校验规则各自拒绝违规图 | `ora_application::workflow_run::engine::iteration::tests`（`derives_a_valid_region_from_parent_id_containment`、`rejects_a_region_without_entry_edges`、`rejects_a_member_unreachable_from_the_entry_edge`、`rejects_output_nested_composite_and_escaping_edges`、`rejects_outer_edges_targeting_members`、`rejects_parent_id_referencing_a_non_iteration_node`；第六条 maxIterations 由 `parses_iteration_config_with_defaults_and_validation` 覆盖） | `Verified` |
+| 六条区域校验规则各自拒绝违规图 | `ora_application::workflow_run::engine::iteration::tests`（`derives_a_valid_region_from_parent_id_containment`、`rejects_a_region_without_entry_edges`、`rejects_a_member_unreachable_from_the_entry_edge`、`rejects_output_nested_composite_and_escaping_edges`、`rejects_outer_edges_targeting_members`、`rejects_parent_id_referencing_a_non_iteration_node`；第六条 maxIterations 由 `parses_iteration_config_with_defaults_and_validation` 覆盖） | `Covered` |
 
 ### 决策依据
 
-同上决策 D3 的六条区域边界校验与不变量 7；第六条的迭代节点读法见
+同上决策 D3 的区域结构约束与不变量 7；具体成员规则与上限见
 [迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)
-D3。
+D1、D3。
 
 ## Outer Graph Remains A DAG
 
@@ -113,12 +113,12 @@ D3。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 环与自环仍被解析拒绝 | `ora_application::workflow_run::engine::tests::rejects_cycle`、`ora_application::workflow_run::engine::tests::rejects_self_loop_as_cycle` | `Partial`（证明现状语义；含 Loop 图上的不变待 Stage 2 验证） |
-| 不可达节点报告语义不变 | `ora_application::workflow_run::engine::tests::unreachable_from_start_reports_isolated_nodes` | `Partial`（同上） |
+| 环与自环仍被解析拒绝 | `ora_application::workflow_run::engine::tests::rejects_cycle`、`rejects_self_loop_as_cycle`；`loop_graph::tests::rejects_cycles_in_each_scope` 覆盖 Loop root/body | `Covered` |
+| 不可达节点报告语义不变 | `ora_application::workflow_run::engine::tests::unreachable_from_start_reports_isolated_nodes`；完整的 foreach/while 不可达组合矩阵未登记 | `Partial` |
 
 ### 决策依据
 
-同上决策不变量 1 与 D3 第二段。
+同上决策不变量 1 与 D3（外层与 body 分别保持 DAG）。
 
 ## Loop Iterations Are Persisted Facts
 
@@ -153,7 +153,7 @@ D3。
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 多轮执行产生带正确 iteration 的多行，且变量池解析为最新轮 | `ora_backend::workflow::run::iteration_tests::serial_foreach_executes_every_round_and_exposes_the_ledger`（三轮三行各带 iteration；`fix.output`、`iter.item`、`iter.index` 均为最新轮值） | `Verified` |
+| 多轮执行产生带正确 iteration 的多行，且变量池解析为最新轮 | `ora_backend::workflow::run::iteration_tests::serial_foreach_executes_every_round_and_exposes_the_ledger`（三轮三行各带 iteration；`fix.output`、`iter.item`、`iter.index` 均为最新轮值） | `Covered` |
 
 ### 决策依据
 
@@ -168,8 +168,8 @@ D2。
 
 ### 前置状态
 
-- Loop 声明 `max_iterations = N`。
-- 前 N 轮结束后 `exit_when` 求值始终为假。
+- Loop 声明 `maxIterations = N`，`maxIterationsBehavior` 省略或为 `fail`。
+- 前 N 轮正常结束后 `until` 求值始终为假。
 
 ### 触发
 
@@ -183,17 +183,16 @@ D2。
 ### 禁止结果
 
 - 以任何形式发起第 N+1 轮。
-- 上限校验被 `exit_when` 的求值错误绕过（求值失败同样失败节点）。
+- 上限校验被 `until` 的求值错误绕过（求值失败同样失败节点）。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 到达上限且退出条件不满足时进入失败终态，不发起下一轮 | 尚无直接证据 | `Missing` |
+| 默认/显式 fail 达上限进入失败终态，不发起下一轮 | `ora_backend::workflow::run::engine::tests::loop_iteration_limit_fails_the_run`；`loop_limit_tests::loop_limit_policy_controls_only_exhaustion` | `Covered` |
 
 ### 决策依据
 
-同上决策不变量 6 与 D4 终止条件。while-Loop（`exit_when`）已由
-[迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)
-D4 移至后续 while-Loop ADR（首个复合运行时改为 foreach 迭代，数组长度即轮数）；本用例随
-该 ADR 迁移，迁移前保留以记录 while 语义承诺。
+同上决策不变量 6 与[while-Loop 决策](../../../../decisions/desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md)
+D3。保留稳定标题，只覆盖默认失败策略；显式 succeed、错误隔离、早退及事务义务见
+[while-Loop 核心用例](while-loop.md)。

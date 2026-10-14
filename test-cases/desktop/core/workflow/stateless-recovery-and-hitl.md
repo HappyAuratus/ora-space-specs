@@ -1,7 +1,8 @@
 # 无状态恢复与循环内人工介入
 
-反应式调度承诺"任意时刻崩溃可恢复"与"HITL 停靠数天"。循环引入后这两条承诺必须在复合
-节点上继续成立。
+反应式调度从持久事实恢复或安全结束。本文件的自动轮次恢复用例针对 foreach；while 的显式
+resume 从 round 1 重开，见[while-Loop 用例](while-loop.md)，不能将两者等同。区域内 HITL 尚非
+当前整链交付承诺；第二个用例明确 foreach 拒绝与 while 尚无整链证据的边界。
 
 ## Loop State Is Recovered From Persistence After A Crash
 
@@ -29,7 +30,7 @@
 
 ### 禁止结果
 
-- 循环从第 1 轮重跑。
+- foreach 自动恢复无理由重跑已完成轮；不涵盖用户显式 resume while 的 round 1 重开。
 - run 永久滞留 Running 无 in-flight 节点。
 - 恢复路径依赖崩溃前的内存状态或日志文件。
 
@@ -37,8 +38,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 第 k 轮中途崩溃后恢复到第 k 轮续算，已完成轮内节点不重跑 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（真实 boot sweep + reconcile：轮 0 已完成后崩溃于轮 1，轮 0 仅一行不重跑，轮 1 按失败结算后节点完成） | `Verified` |
-| 既有"Running 无在途节点则 resume"语义在含 Loop 的 run 上成立 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（sweep 保留 Running 复合行后 `reconcile_running_workflow_runs` 经 resume 驱动 advance 续算至终态） | `Verified` |
+| 第 k 轮中途崩溃后恢复到第 k 轮续算，已完成轮内节点不重跑 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（真实 boot sweep + reconcile：轮 0 已完成后崩溃于轮 1，轮 0 仅一行不重跑，轮 1 按失败结算后节点完成） | `Covered` |
+| 既有"Running 无在途节点则 resume"语义在含 Loop 的 run 上成立 | `ora_backend::workflow::run::recovery::tests::a_crashed_round_inside_a_running_iteration_is_absorbed_not_failed`（sweep 保留 Running 复合行后 `reconcile_running_workflow_runs` 经 resume 驱动 advance 续算至终态） | `Covered` |
 
 ### 决策依据
 
@@ -51,42 +52,35 @@ D2，被打断轮的结算细节见[迭代节点核心用例](iteration-node.md)
 
 ### 风险
 
-循环体内的交互节点若不能停靠 `Pending`，或人工完成后循环无法推进，HITL 与循环的组合就不可
-用——而"reviewer 打回"恰恰是最核心的循环场景。
+把图解析接受误认为循环内 HITL 已完整交付，或把 foreach 的拒绝规则误套到 while。
 
 ### 前置状态
 
-- 循环体内的 Agent 节点声明 `interactive: true`。
-- 该节点第一轮以 EndTurn 结束。
+foreach 或 while 的区域内含 `interactive: true` Agent。
 
 ### 触发
 
-第一轮结束；随后人工追问若干轮；最终人工完成该节点。
+图校验，以及 while 中 Agent 停靠、人工完成和进程重启。
 
 ### 必须成立
 
-- 节点停靠 `Pending`（AwaitingInput），迭代投影 `has_in_flight` 计为在途，外层不误判 run
-  结束。
-- 人工追问经既有 `begin_human_turn`/`end_human_turn` 路径，节点在 Running/Pending 间翻转。
-- 人工完成的回报经统一 sink 进入引擎，触发调度波；调度波把 Running 的复合节点交还运行时
-  （advance），循环自动推进决策或下一轮。
-- 终态节点的会话只读，拒绝新 prompt。
+foreach 在执行前拒绝 interactive 成员。while 当前解析器不作同样拒绝；接受配置不能证明
+停靠、人工完成后推进、终态会话只读及启动恢复的联合行为已验证。
+while 普通 Running 轮的启动 sweep 仍遵守 while ADR D6 的失败边界。
 
 ### 禁止结果
 
-- 循环体内交互节点被当作普通节点自动重试或跳过。
-- 人工完成后需要专门的通知通道才能推进循环（决策明确禁止）。
-- 终态节点的 session 仍可接收 prompt。
+把普通平图 interactive 测试作为区域内整链证据，或因 while 解析通过便承诺自动重启续跑。
 
 ### 验证义务与证据
 
-| 验证义务 | 代表性证据测试 | 状态 |
-|---|---|---|
-| 循环体内交互节点停靠后人工完成，循环经调度波自动推进 | 尚无直接证据 | `Missing` |
-| 终态节点会话拒绝新 prompt（既有行为在区域内保持） | 既有 `interactive` 路径测试不覆盖区域内场景 | `Missing` |
+| 验证义务 | 代表性直接证据 | 状态 |
+| --- | --- | --- |
+| foreach 执行前拒绝 interactive 成员 | `ora_application::workflow_run::engine::iteration::tests::rejects_interactive_nodes_inside_the_region` | Covered |
+| while 接受 interactive 配置后的停靠、人工完成、终态只读与重启组合 | 尚无对应区域内直接整链证据；普通 interactive 测试不能替代 | Missing |
 
 ### 决策依据
 
-同上决策 D5 与[迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)
-D5：v1 结构校验禁止迭代区域内 interactive 节点，机制与协调义务保留、二期放开（预期随
-while-Loop ADR 认领，见该决策未解决条目）；本用例固定二期放开后的承诺。
+[迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md) D5；
+[while-Loop ADR](../../../../decisions/desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md) D1、D6。
+完整区域 HITL 的产品保证需后续 ADR 承接，不由解析器是否接受配置推导。

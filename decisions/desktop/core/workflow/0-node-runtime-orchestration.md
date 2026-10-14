@@ -1,287 +1,116 @@
 ---
-status: approved
+status: implemented
 ---
 
-# 工作流编排：以注册的节点运行时取代引擎核心的节点类型分支
+# 工作流编排：以注册运行时驱动节点，以持久事实重算调度
 
-Ora 的工作流引擎保留其反应式、无状态的调度模型——每个调度决策都从 SQLite 持久化状态重算——
-但把"一种节点如何执行"从 `WorkflowRunEngine::run_schedule` 内的节点类型 `match` 分支与仅面向
-Agent 的 `NodeExecutor` 分发改成一等抽象：每种节点类型注册一个 `NodeRuntime`，引擎核心只保留
-调度、分发、回调与收尾四种职责。同时为投影层引入"区域包含"机制，使复合节点以黑盒方式拥有一个
-子图区域并在其中驱动多轮执行；Loop（循环）是第一个复合运行时。变量聚合、Code、HTTP、远程子
-工作流等后续节点类型都以新运行时实例注册，不再修改引擎核心。调度波提交的状态转移以失效事件广播，
-观察者重查持久化状态（D7）；同时以组件级对照显式否决重建 Dify 式事件驱动内存编排引擎（见
-"为什么不是这些替代方案"）。
+工作流保持反应式调度：从 SQLite 的冻结图、node-run、变量和作用域事实重算每个调度波。
+节点执行策略通过运行时注册表分发；区域在外层表现为黑盒，进度以提交后的失效事件通知观察者
+重查。首个复合运行时是 foreach 迭代，while-Loop 随后采用独立轮次作用域落地。
 
-本 ADR 已完成评审并标记为 `approved`：评审期间的修正（D7 失效事件、以节点级错误策略取代并行
-容器预留、并行迭代语义吸收 Dify 实践验证）均已并入正文；核心测试用例已依据最终同意的不变量
-补充于 `test-cases/desktop/core/workflow/`，证据缺口如实标记，待各落地阶段的代码实现后回填。
-文中的接口名与代码片段只用于固定语义，不构成实现契约；`implemented` 待"落地顺序"各阶段的代码
-实现完成并验证后再标记。涉及模块为 `crates/application/src/workflow_run/engine`（`engine.rs`、
-`branch_projection.rs`、`node_type.rs`、`variable_pool.rs`、`ports.rs`）、
-`crates/backend/src/workflow/run`（`executor.rs`、`interactive/`）、
-`crates/backend/src/app_event.rs`（`AppEventHub`）、
-`crates/db/src/repository/workflow_run_engine.rs`、`ora-contracts`（`AppEvent`）与前端工作流
-编辑器/运行视图。
+本决策已实现于 application 引擎、backend adapter、db repository、契约和编辑器/运行视图。
+对应证据见[Workflow 核心用例](../../../../test-cases/desktop/core/workflow/README.md)。
+既有 start/agent/condition/output 平图继续执行；未知节点经图解析拒绝，不产生半解析运行。
+本决策不承诺未来 Code、HTTP、远程节点或嵌套循环已经交付。
 
-兼容性边界：只含既有四种节点类型（start/agent/condition/output）的冻结图，其执行行为必须与重构
-前一致，这是第一阶段重构的验收标准。旧版本 Ora 打开含新节点类型的冻结图时，由既有
-`UnknownNodeType` 解析拒绝路径自然失败，不产生半解析状态。本决策不承担 Code 节点沙箱选型、远程
-节点网络与 secret 细节、嵌套循环、循环体失败重试语义——各自另立后续 ADR。
+## 后续决策的继承与修改
 
-## 术语与边界
-
-- **节点运行时（NodeRuntime）**：一种节点类型的执行策略。给定 node-run 身份、冻结图节点与执行
-  上下文，它负责驱动该节点到终态，并经统一入口回报结果。
-- **快执行器（swift runtime）**：在调度波内同步完成的运行时，必须无 IO、无等待。
-- **异步执行器（async runtime）**：`dispatch` 立即返回、后台驱动的运行时（Agent session、HTTP、
-  远程子工作流）。
-- **复合运行时（composite runtime）**：拥有一个区域、在其中驱动多轮或多次执行的运行时（Loop、
-  未来的子工作流）。
-- **区域（Region）**：复合节点经结构边可达性推导拥有的子图节点集合。区域是冻结图的结构属性，
-  不在运行时动态改变。
-- **迭代（Iteration）**：区域的一轮执行。迭代编号是持久化在 node-run 行上的事实，不是编排器
-  的内存状态。
-- **完成回报入口（sink）**：运行时向引擎回报 `complete`/`fail` 的统一入口，是现有
-  `WorkflowRunCallback` 的单节点视图，仍经 per-run 串行门进入引擎。
+| 原约定 | 后续决策 | 最终规则 |
+| --- | --- | --- |
+| D4：while-Loop 是首个复合运行时 | [foreach 迭代](20260915-iteration-composite-runtime.md) | 首先遍历冻结数组，零起 iteration 与账本是持久事实 |
+| D5：区域内 HITL 直接沿用 | foreach 迭代 D5 | 首版 foreach 区域禁止 interactive，避免未定义的恢复交互 |
+| D4：仅用 iteration 行推导全部循环进度 | [while-Loop](20261013-while-loop-with-durable-round-scopes.md) | while 使用显式 round scope、独立变量池和 carried values |
+| 不变量 6：Loop 达上限一律失败 | while-Loop D3 | 默认 fail，可显式 succeed；两者均禁止第 N+1 轮，执行/值错误仍失败 |
+| D2：复合节点统一使用 advance plan | while-Loop D1 | foreach 保持 composite advance，while 由注册的 ScopedLoop 驱动专用作用域调度 |
 
 ## 决策
 
-### D1：引擎核心只保留调度职责，节点执行策略外置为注册表
+### D1：主调度波按运行时注册表分发节点策略
 
-`run_schedule` 不再出现节点类型字面量匹配。控制节点的 `match` 分支（Start/Output/Condition 同步
-完成）与 `if node.node_type == NodeType::Agent` 的异步分发改写为：按节点类型从注册表取得运行时，
-交给它执行或续算。引擎核心的循环收敛为"重算投影 → 分发 ready → 收到回报 → 收尾"。
+`run_schedule` 经注册表取得节点执行形态，保留重算投影、启动 ready、分发、回报与收尾。
+Start、Condition、Output、Aggregator 和 LoopExit 的同步行为由 swift runtime 负责；Agent
+由异步 runtime 负责；foreach 使用 composite runtime。注册元数据也决定输出优先级和重试策略。
 
-当前引擎核心有两类硬编码：控制节点在 per-run 排他锁内同步完成；异步路径只有一条且绑定在为
-session 设计的 `NodeExecutor` 上（模型校验、session 绑定、HITL 停靠都是 Agent 特有语境）。第三
-种执行形态出现时（HTTP、循环、Code），要么进锁内同步执行——一次 30 秒的网络调用会冻结该 run 的
-全部调度——要么硬塞进 Agent 语境的接口形成一堆空实现。`engine.rs` 已约 900 行，超出仓库 500 LoC
-模块纪律；每个节点特例都在把它推向上帝模块。
+实际实现并未把所有持久化动作归入同一个通用 sink：Condition 分支、Output 暴露和 Loop scope
+启动仍由拥有相应事务的引擎/repository 协作完成。while 的 `ScopedLoop` 是显式形态扩展，
+不能把“新增任意复合节点只注册一行”继续写成普遍承诺；选择它是为了完整拥有轮次事务和隔离。
 
-验收判据：重构第一阶段完成时，`run_schedule` 及其同层函数不再出现任何 `NodeType` 字面量匹配
-（注册表装配处除外）。
+### D2：执行形态与事务边界明确
 
-### D2：运行时按执行形态分类，完成回报统一走 per-run 串行门
-
-| 形态 | 约束 | 首批实例 |
-| --- | --- | --- |
-| 快执行器 | 调度锁内同步完成；必须无 IO、无等待、有界工作量 | Start、Condition、Output、变量聚合 |
-| 异步执行器 | `dispatch` 立即返回；后台驱动；必须带超时；取消必须可传播 | Agent session、HTTP、远程子工作流 |
-| 复合运行时 | 拥有区域；区域内可多次进入；自身经 sink 回报终态 | Loop、子工作流 |
-
-所有形态经同一个 sink 回报 `complete_node`/`fail_node`，回报仍走 `KeyedResourceLocks` 的 per-run
-排他门——继承现有 `WorkflowRunCallback` 的串行化契约，晚到与重复回报由仓库幂等拒绝。session
-归属不变量保持：只有 Agent 运行时创建并绑定 session；其他运行时的
-`workflow_node_runs.session_id` 保持 NULL（现有 schema 已允许）。
-
-### D3：区域包含——复合节点在外层投影中是黑盒
-
-外层 `BranchProjection` 不感知区域内部节点：复合节点自身是一个普通的在途节点，其区域内部节点
-不出现在外层 ready 集合中。区域内部调度复用同一个投影算法，构造时携带区域节点集合（scope）与
-迭代编号（iteration）两个参数。
-
-外层冻结图仍然是 DAG。`WorkflowGraph::parse` 的 `toposort` 环校验、可达性与闭包查询语义不变
-——循环是节点的结构语义，不是图上的回边。这保住了 prompt 全景排序、输入血缘推导和
-`unreachable_from_start` 校验的全部现有调用方。
-
-区域边界由冻结图结构校验固定，运行时不可违反：
-
-1. 区域非空。
-2. 区域内不得包含 Output 节点——run 的"唯一终点"语义只属于外层；现有的重复 Output 退化检查
-   因此在外层保持有效。
-3. 区域内不得包含另一个复合节点（v1 禁止嵌套）。
-4. 区域内部节点的出边只能指向区域内节点；数据不得半路流出区域。
-5. 复合节点的退出边目标不得在区域内——否则构成真实环。
-6. Loop 必须声明 `max_iterations >= 1`。
-
-### D4：Loop 是第一个复合运行时；迭代是持久化事实
-
-`workflow_node_runs` 增加 `iteration` 列（v1 为整数，不预留嵌套路径——这是刻意接受的债，见"未
-解决的问题"）。表中主键是 node-run id、没有 `(run_id, node_id)` 唯一约束，同一节点多轮执行 =
-多行记录，今天的数据模型已经容纳。
-
-数据流与状态机：
-
-- 变量池为 Loop 声明 `{loop_id}.index`（number，writer 为 Loop 节点）；每轮开始由引擎写入。Loop
-  与 Condition 一样是控制节点，不声明 `.output`，其轮次与退出决策属于调度器私有状态，不进入
-  变量池。
-- 区域内节点的输出按 selector 覆盖写——继承 `pool.set` 的既有语义，第 N 轮完成后
-  `{{#fix.output#}}` 自然解析为最新一轮的值。
-- 终止条件：`exit_when` 复用 Condition 求值器对变量池求值；或 `iterations_done` 到达
-  `max_iterations` 硬上限。到达上限仍未满足退出条件时节点失败，run 进入终态——循环不允许无限
-  运行。
-- 区域内 Condition 的分支选择按轮记录；迭代投影只消费当前轮的决策。持久化编码在实现阶段固定，
-  必须向后兼容既有 payload。
-- Loop 状态机无内存态：当前轮从区域行的 `max(iteration)` 推导。进程崩溃后，boot sweep 把
-  Running 的 Loop 行交还其运行时续算，即从持久化状态恢复到当前轮——继承反应式模型对恢复、
-  HITL、审计的既有保证。
-
-### D5：循环体内的 HITL 沿用现有交互路径，经调度波自动驱动续算
-
-区域内的交互节点照常停靠 `Pending`（AwaitingInput）；迭代投影的 `has_in_flight` 已把
-AwaitingInput 计为在途，外层因此不会误判 run 结束。人工追问与人工完成继续走
-`interactive/` 的现有路径（`begin_human_turn`/`prepare_completion`），其完成回报经同一个 sink
-进入引擎并触发新的调度波。
-
-新增的协调义务只有一条：每次调度波必须把 Running 状态的复合节点交还其运行时续算（advance）。
-因此人工完成一个循环体内的交互节点后，循环推进由既有回调链自动完成，不需要新增通知通道。相对
-把循环写进引擎核心的方案，这是运行时方案唯一新增的协调面，也是第三阶段真正的实现风险所在。
-
-失败语义 v1：区域内节点 fail → 整个 run fail，与现有引擎行为一致；带上一轮错误的
-`retry_iteration` 属于后续决策。
-
-### D6：后续节点以运行时实例扩展；变量聚合与 Code 的语义边界
-
-条件节点已存在，本决策不改变其语义——运行时化后它只是第一个快执行器实例。后续节点类型各立
-ADR 固定细节，本决策只固定它们的扩展契约：新节点 = 一个新运行时文件 + 注册表一行，引擎核心不
-动。
-
-**并行能力分层**：就绪节点的并发分发不是节点属性，是引擎既有行为（调度波对 ready 集合逐个
-`dispatch`，每个 Agent 独立 session，AND-join 扇入汇合），任何节点类型在图结构允许时自动并发。
-分支失败语义不引入并行容器节点——分支级容错由节点级错误策略承担，迭代级并行与容错由 Loop
-的并行模式承担，两者均见"未解决的问题"。
-
-**变量聚合节点（aggregator）**是快执行器：声明一个输出变量与一组候选输入 selector；完成时从
-候选中取唯一已赋值的变量写入输出。Ora 的投影模型中互斥分支的扇入本来就是"任一 active 即
-Ready"，aggregator 与之天然适配：
-
-| Dify 语义 | Ora 对应 |
+| 形态 | 最终边界 |
 | --- | --- |
-| 汇聚互斥分支为单一输出 | 候选 selector 列表中唯一已赋值变量 |
-| 各分支输出同类型 | 候选 selector 的值类型必须一致，编辑器校验 |
-| 下游只定义一次 | 输出 selector 由 aggregator 节点声明，下游照常引用 |
+| swift | 调度门内纯计算，无 IO、等待或无界工作 |
+| async | 分发后由后台 owner 驱动，完成/失败重入 per-run 串行门 |
+| composite | 从持久事实生成续算计划，由 repository 提交 |
+| ScopedLoop | 以独立持久 round scope 驱动 body，作用域事务决定推进和退出 |
 
-多个候选同时已赋值是图结构错误（区域/分支设计矛盾），节点失败而非任选其一。
+同一 run 的状态变化在 per-run 排他门及对应 SQLite 事务内提交。等待 Agent、网络或人工输入
+不跨越该门；只有 Agent 执行创建并绑定 session。晚到和重复回报依据持久终态幂等拒绝。
 
-**Code 节点**是快执行器：在强制超时与沙箱内执行用户代码；输出写入变量池必须通过
-`pool.set` 的类型校验——fail-fast 不变量在节点边界保持成立。沙箱技术选型（deno、wasmtime 或
-嵌入式 JS 引擎）与资源限额另立 ADR。
+### D3：区域是外层黑盒，每个作用域仍是 DAG
 
-**HTTP / 远程子工作流节点**是异步执行器实例：`dispatch` 后台驱动、带 deadline、取消传播到远端
-stop。远程子工作流（含 Dify provider）的网络边界、secret 引用与崩溃恢复细节另立 ADR；本决策
-只固定它们不得持有 per-run 排他锁跨越任何等待。
+foreach 根据冻结 parent/entry 关系形成 region；while 使用 `containerId` 明确成员并将外层与
+body 分为独立 DAG。区域成员不进入外层 ready/current_nodes，区域内输出不会自动泄漏外层。
 
-### D7：运行状态变化以失效事件广播，观察者重查持久化状态
+结构校验在执行前拒绝：无有效入口/不可达成员、body 内 Output、嵌套复合、跨边界连边或指回
+body 的外层边，以及非法轮数配置。foreach 的安全上限至少为 1；while 为 `1..100`，body 必须
+有自己的 Start。每种区域的精确图形与变量规则由其后续 ADR 固定，不把 UI parentage 当执行归属。
 
-每次提交了 run 或 node-run 状态转移的事务，在提交后向应用事件总线发布一次失效事件；事件只标识
-哪个 run 的持久化状态发生了变化，不携带任何工作流状态。前端与其他观察者收到事件后重新查询既有
-读取接口——持久化状态是唯一事实源，事件只是触发重查的信号。
+### D4：foreach 与 while 的轮次均为持久事实，编码分别拥有
 
-为什么是失效事件而不是携带状态的事件：携带状态的事件会制造第二事实源，并引入事件流与数据库
-读取之间的排序义务；失效事件天然幂等、可合并、可丢弃——丢失只导致一次过期视图，下一次事件或
-刷新即收敛。这与既有 `AppEvent` 语义一致（`SessionTitleUpdated`、`PluginStatusChanged` 同为
-"该持久化行应重查"的失效信号）；当前 `AppEvent` 没有工作流变体，运行视图只能轮询或手动刷新，
-本决策补齐这一通道。
+foreach 的轮变量、按轮 node-run、分支决策及账本事务性提交；当前轮只读取本轮行，不能将上轮
+陈旧输出冒充本轮收集结果。while 的 round scope 保存一基轮次、独立变量池、分支决定和 carried
+values；旧轮结算与新轮启动或父 Loop 完成在同一事务提交。
 
-分工边界：Agent 输出的实时流由 ACP session 流承担（Theater 即时可见，不经此通道）；失效事件
-只覆盖调度波"提交了什么状态转移"。这以反应式方式获得 Dify 事件流（`GraphNodeEvent`/
-`NodeEvent`）的可观察价值，而不引入其内存态——引擎不为观察者持有任何状态。
+重算不依赖内存循环计数。终止、上限、早退及 resume 语义以
+[while-Loop 决策](20261013-while-loop-with-durable-round-scopes.md)为准；foreach 的数组长度
+与启动上限语义以[迭代决策](20260915-iteration-composite-runtime.md)为准。
+
+### D5：回报推进作用域，失败按明确的传播边界处理
+
+区域内完成回报触发新的调度波；在途行阻止外层提前结束。foreach 的 `continue` 仅吸收该区域
+内失败并记账，复合节点自身失败仍传播 run。while 的执行、取值或 cleanup 失败传播失败；取消
+关闭活动作用域，不能被晚到回报复活。foreach v1 禁止区域内 HITL，不把普通 Agent 的交互能力
+推导为所有复合区域的交互保证。
+
+### D6：变量、输出和并发由各自 owner 保证
+
+变量池以声明 owner 和类型验证写入，区域不能绕过该边界。Aggregator 是 swift runtime：候选
+输入只能有一个已赋值值，多值冲突失败。并发来自 DAG ready 集合与扇入规则，不需要并行容器。
+未来节点的 IO、沙箱、超时和失败恢复须由相应 ADR 决定；不能在注册表扩展名义下跨越调度锁等待。
+
+### D7：状态提交后发失效事件，观察者重查持久状态
+
+事件只标识受影响 run，不携带另一份工作流状态。前端重查读取接口，丢失、重复或乱序事件由后续
+重查收敛。Agent 的实时 ACP 流仍由 session 通道负责，不能用失效事件代替输出流。
 
 ## 为什么不是这些替代方案
 
-| 方案 | 否决理由 |
+| 方案 | 取舍 |
 | --- | --- |
-| 循环作为引擎核心的第四个 `match` 分支 | 首个复合节点起，每种控制流特例都进 `run_schedule`；特例与恢复、HITL、cancel 的交互构成组合爆炸的特例矩阵；`engine.rs` 已超出模块纪律，每个特例都加深上帝模块化，且不触碰任何不变量——问题恰恰在于它表面可行 |
-| 通用有环图 + token 数据流调度器 | 放弃 DAG 不变量：拓扑序、可达性、进度推导、恢复语义全部重写；无终止保障；现有 20+ 引擎测试的基础假设（fan-in、分支投影）全部失效 |
-| 事件驱动内存队列编排器（Dify `GraphEngine` 式 ready_queue + worker 池） | 组件级对照见下文：六组件中四个 Ora 已有等价或更强实现，一个由 D1 吸收，一个由 D7 补齐；内存态队列缺失桌面场景必需的崩溃恢复协议，补齐它等于重新推导反应式重算 |
-| 嵌入 Dify 引擎执行 Ora 工作流 | Python 服务全家桶依赖与修改版 Apache 2.0 License；无法驱动 ACP session、共享 worktree、角色/技能体系与 HITL 停靠——这些是 Ora 工作流的核心资产 |
-
-Dify 的 Iteration 节点本身也是结构化区域循环而非通用回边，其引擎同样校验 DAG；本决策与该实践
-同构，差异只在调度模型（Dify 内存队列 vs Ora 持久化重算），而后者是 Ora 有意保留的桌面场景
-优势。
-
-### 组件级对照：为什么不重建 Dify 式编排引擎
-
-"按 Dify 方式实现一套编排引擎"不是单一选择；把 `GraphEngine` 拆到组件级逐项审计，移植的净
-增量接近零：
-
-| Dify 引擎组件 | 解决的问题 | Ora 对应物 | 判定 |
-| --- | --- | --- | --- |
-| `ready_queue` + worker 池 + dispatcher | 内存态调度，ready 即派发 | 调度波 + 每 dispatch 一个 `tokio::spawn` + per-run 串行门 | 已有等价物 |
-| `BaseNode` 统一接口 + 节点工厂 | 节点类型开放扩展 | D1 的 `NodeRuntime` 注册表 | 唯一值得移植的部分，已吸收 |
-| `GraphNodeEvent`/`NodeEvent` 事件流 | 前端实时感知进度 | ACP session 流（Agent 输出）+ D7 失效事件（状态转移） | 由 D7 补齐 |
-| `parallel_id` 并行分支 | 分支并发执行 | 波次并行 + AND-join 扇入（既有 fan-in 测试族） | 已有 |
-| Iteration 节点 | 结构化循环 | D4 的 Loop 复合运行时 | 本决策覆盖 |
-| 断点恢复/检查点 | 进程中断后继续 | 反应式重算（任意时刻崩溃可恢复，含 HITL 停靠数天） | Ora 已有而 Dify 缺失 |
-
-最后一行是反向差距：Dify 的引擎是请求作用域的内存态机器，进程死亡即 run 失败，恢复靠用户整跑
-重试。这对分钟级、重跑便宜的 SaaS 运行是可接受的取舍；对桌面应用（合盖、进程被杀、HITL 停靠
-数天）不可接受。照搬该架构意味着要么接受"重启即失败"，要么自建检查点协议——而检查点协议做
-完整，本质上就是把反应式重算重新推导一遍。
-
-该方案在三个维度确实更优，明确承认并记录取舍：
-
-- 亚毫秒级派发：反应式每波重算（图解析 O(V+E) 与少量持久化读取）在桌面工作流规模（数十节点）
-  下为毫秒级，该优势无处兑现；出现千节点图时再评估。
-- Iteration 的 parallel 模式：多轮迭代并发执行。v1 串行迭代；并行迭代是区域机制的后续扩展，
-  不是架构障碍。
-- 运行时动态构造子图：Ora 区域在发布时冻结；冻结快照是审计资产，运行时子图不在路线图。
+| 通用有环图 / token 调度器 | 表达力更大，但重写 DAG、血缘和恢复基础，并失去结构化轮次边界 |
+| 请求期内存队列编排 | 可降低派发开销，但桌面进程中断后必须另建持久恢复协议 |
+| 全部节点塞进 Agent executor | 可复用入口，却把同步与复合语义绑在 session 生命周期上 |
+| 所有循环使用同一 iteration 字段 | 少一套存储，但不能直接表达 while 的隔离池、携带变量和早退清理 |
 
 ## 不变量
 
-1. 外层冻结图必须是 DAG；`WorkflowGraph::parse` 的环校验、可达性与闭包查询语义不变。
-2. 引擎无状态：每个调度决策从持久化重算；任意时刻进程崩溃，boot sweep 重放后可恢复到当前轮
-   或安全进入终态。
-3. 同一 run 的状态转移仍在 per-run 排他锁与单个 SQLite 事务内完成；快执行器不得在锁内执行任何
-   IO 或无界等待。
-4. 变量池写入必须经声明的 owner 与类型校验；未声明、类型不符、超长即失败，任何节点形态（含
-   Code、远程）不得绕过。
-5. 复合节点的区域内部节点不出现在外层投影的 ready 集合中。
-6. Loop 必须声明 `max_iterations >= 1`；到达上限仍未满足退出条件时节点失败，run 终态。
-7. 区域内不得包含 Output 节点与另一个复合节点；退出边目标不得在区域内。
-8. 只有 Agent 运行时创建 session 并绑定 node-run；其他运行时的 `session_id` 为 NULL。
-9. 不含新节点类型的冻结图，其执行行为与重构前一致（第一阶段验收标准）。
-10. 运行状态失效事件不携带工作流状态；持久化状态是唯一事实源，事件丢失或乱序只导致过期视图，
-    由重查收敛。
+1. 外层及每个 body 的冻结图均为 DAG。
+2. 调度从持久事实重算；恢复可续算或安全结束，不依赖内存轮计数。
+3. 同一 run 的状态变化串行并事务性提交；swift 计算无 IO/等待。
+4. 变量写入经过声明 owner 与类型校验。
+5. 区域内部节点不进入外层 ready/current_nodes。
+6. foreach 在启动边界验证数组长度；while 的最大轮数为 `1..100`，默认耗尽失败，显式 succeed
+   只改变耗尽结果；任何策略都不创建超限下一轮或掩盖实际执行/取值错误。
+7. body 无 Output 或嵌套复合，连边不能跨作用域。
+8. 只有 Agent 节点创建并绑定 session。
+9. 既有平图兼容，未知类型在执行前拒绝。
+10. 失效事件不携带工作流状态，SQLite 是唯一事实源。
 
-## 本决策未解决的问题
+## 后果与后续边界
 
-- **嵌套循环**：`iteration` 为整数列，嵌套需升级为路径形式并迁移；刻意留给后续 ADR，先把单层
-  做对。
-- **循环体失败重试**（`retry_iteration`、`{loop_id}.last_error`）：v1 失败即终止 run。
-- **Code 节点沙箱选型**与资源限额：属 Code 节点自身 ADR。
-- **远程子工作流节点**的网络边界、secret 引用（`secret` 类型变量已存在于值类型词汇表）、取消
-  传播与崩溃恢复：属远程节点 ADR。
-- **区域内 Condition 决策的按轮持久化编码**：语义已由 D4 固定（按轮记录、迭代投影只看当前
-  轮），具体 serde 形态在实现阶段确定。
-- **节点级错误策略（分支级容错）**：静态分支并行（就绪节点并发 + AND-join）已由既有调度波支
-  持，但任一节点失败仍终止整个 run。容错方向不引入并行容器节点——Dify 同样只有分支拓扑并行
-  而无容器节点，其分支容错由可失败节点（LLM/HTTP/Code/Tool）自身声明错误策略：失败时以默认
-  值替代继续，或转入一条专用的失败边（fail branch）进入用户自绘的降级子流程后汇合回主流。
-  节点级策略与任意拓扑组合、无需新节点类型，但需将"节点失败即 run 终态"放宽为节点声明的错
-  误策略，并保留节点级取消原语（首个完成即取消其余的竞速模式，今天只有 run 级取消）作为配
-  套。Dify 的已知缺陷提示设计风险：并行分支失败时全部并行节点被标记为相同错误、兄弟节点连
-  带失败的归因缺失——节点级策略缺少"组"边界，失败归因需要引擎显式建模，不能沿用全局失败
-  标记。
-- **并行迭代（parallel foreach）**：D4 的 Loop v1 为串行迭代。并行展开需两个前置：(a) 迭代级
-  变量隔离——串行模式的覆盖写（`{{#fix.output#}}` 解析为最新一轮）在并发下是写竞态，每轮需
-  解析到独立的迭代副本，Loop 完成时聚合为 `{loop_id}.outputs` 数组；(b) 迭代引用规则——循环
-  体引用上一轮产出的反馈式循环（审稿-修改）只能串行，处理独立列表项的批处理循环才可并行，
-  该区分可在冻结图上静态判定，编辑器可标注。Dify 的 Iteration 并行模式验证并细化了本预留的
-  语义：并发上限 10、超出排队分批；错误处理三模式中 `terminated`（任一项失败即停止）对应传
-  播，`continue-on-error`（跳过失败项继续）与 `remove-abnormal-output`（继续但最终输出过滤
-  失败项）将收集细分为保留与过滤失败数据点两种；聚合条目按 `{item, status, output, error}`
-  形态组织。其 Loop 节点严格串行、子节点失败立即终止，与 D4/D5 的 v1 选择一致。并发分支共
-  享同一 Worktree 的文件互踩属执行环境议题（Node/filesystem 领域），不在编排层解决。
-- **跨机器编排下的调度模型**：`decisions/controller/workflow/` 与 `decisions/cloud/` 已预留
-  领域目录。网络分区、controller 重启、节点失联等分布式故障模式同样要求持久化优先——内存
-  队列在这些条件下也无恢复能力；本决策预期反应式模型向该场景延伸，但 run 归属、租约与部分
-  失败边界属于 controller/cloud 领域 ADR。
-
-## 落地顺序
-
-- **Stage 1 纯重构（除可观察性外行为零变化）**：引入 `NodeRuntime` 与注册表；Start/Condition/
-  Output 迁移为快执行器；现有 `WorkflowRunNodeExecutor` 包装为 Agent 运行时；按 D7 在状态
-  转移事务后发布运行失效事件。完成条件：全部现有引擎测试原样通过；`run_schedule` 无节点类型
-  字面量匹配；前端运行视图可经事件驱动刷新。除失效事件外不引入任何新行为。
-- **Stage 2 区域机制**：`BranchProjection` 增加 scope 与 iteration 构造参数及 D3 的六条结构校
-  验。完成条件：现有图行为不变；区域校验有独立单测。
-- **Stage 3 Loop 复合运行时**：DB 迁移（`iteration` 列 + 索引）、`{loop_id}.index` 声明、状态
-  机与续算、HITL 回归、boot sweep 对 Running 复合节点的交还、prompt 轮次渲染、契约与前端。完成
-  条件：循环、循环内 HITL、循环内崩溃恢复各有端到端验证；`max_iterations` 超限进入失败终态。
-- **Stage 4+ 节点扩展**：变量聚合、Code、HTTP、远程子工作流按各自 ADR 以运行时实例接入。完成
-  条件：每个新节点的接入不修改引擎核心（注册表装配除外）。
-
-从 Stage 3 起，含 Loop 节点的图成为可执行对象；Stage 1、2 期间除新增失效事件外所有既有行为
-保持不变。
+显式运行时和持久作用域提高可恢复性，也增加了轮次事务与失败吸收的验证义务。嵌套、并行迭代、
+复合区域 HITL、Code/远程执行及跨机器 run ownership 分别需要后续决策；不能将这些预留写成
+已实现的系统承诺。节点级错误策略向任意节点的泛化、循环体失败重试也仍需后续 ADR；
+foreach 的 `FailurePropagation` 只覆盖当前区域失败吸收，不能代替这两项预留。
+相关核心用例保留实际的 Covered、Partial、Missing 证据状态。
