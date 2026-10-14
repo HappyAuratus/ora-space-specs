@@ -1,16 +1,17 @@
 # Sandbox Server 的 Docker 标签解析
 
-依据[已批准的 Docker 标签解析决策](../../../decisions/cluster/sandbox-server/0-docker-label-resolver.md)。
+依据[已实现的 Docker 标签解析决策](../../../decisions/cluster/sandbox-server/0-docker-label-resolver.md)。
 本文件登记 Sandbox Server 把 `ate-target-actor` 解析为 Docker 容器中 Node 地址的承诺；中继的透传、
 close code 与 ping/pong 语义见 cluster `README.md`，Controller 侧的失败分类见
-[传输核心用例](../../node/protocol/frame-channel-transports.md)，本文不重复登记。证据来自 ora-space/cluster 仓库（cluster#3），路径相对该仓库根目录。
+[传输核心用例](../../node/protocol/frame-channel-transports.md)，本文不重复登记。证据来自 ora-space/cluster 仓库（核对基线 `aef10f3`），路径相对该仓库根目录。
+Cloud 模式的 Controller 不经此路由，直连见[Node 直连用例](direct-node-connection.md)。
 
 ## Docker Target Resolves To Exactly One Running Node On The Sandbox Network
 
 ### 风险
 
 解析把连接送到错误的 Node：同一 sandbox ID 的多个容器被任选其一，或者使用宿主机发布端口、其他网络
-上的地址，使不做鉴权的 Node 入口暴露在路由之外；或缓存了容器重建前的旧地址。
+上的地址，使经路由到达的明文 Node 入口暴露在路由之外；或缓存了容器重建前的旧地址。
 
 ### 前置状态
 
@@ -82,6 +83,7 @@ Controller 请求的 target 分别处于：无匹配容器；匹配容器未运�
 | D3 映射表的每一行 | `sandbox-server/internal/route/docker_test.go` 的 `TestDockerResolveFailures` 覆盖无匹配、未运行、不在网络、端口标签非法、多个匹配与 Docker 报错的错误分类；`sandbox-server/internal/server/server_test.go` 的 `TestDiscoveryFailuresMapToFixedResponses` 断言三类错误分别为 `404`／`503`／`502` | Covered |
 | 响应体不含内部细节 | `sandbox-server/internal/server/server_test.go` 的 `TestDiscoveryFailuresMapToFixedResponses`：错误携带容器与网络细节，断言响应体等于固定短语 | Covered |
 | 启动自检 | `cmd/sandbox-server` 已实现 `_ping` 自检与互斥校验，尚无测试 | Missing |
+| 只接受 unix socket | `sandbox-server/internal/docker/docker_test.go` 的 `TestNewRejectsNonUnixHosts` 断言 `tcp://`、`http://`、空路径与裸路径都被拒绝 | Covered |
 
 ### 决策依据
 
