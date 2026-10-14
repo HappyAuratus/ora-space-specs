@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 把 operation 的 plugin 步骤派发为 Node 执行，不再调用 Substrate 插件 effect
@@ -9,7 +9,9 @@ Substrate，而是像 clone 步骤一样：用 operation 快照中的 `request.p
 `RemovePlugins` 执行，派发给该 Workspace 当前 generation 的 Node，接管结果后推进或 defer。Controller 不
 解释插件载荷，也不决定安装哪些插件。
 
-本 ADR 处于 `approved`（已评审，待实现），是 `controller/plugin` 的根决策（本目录范围：“Plugin 期望状态、Node 安装计划和
+本 ADR 处于 `implemented`，实现位于 desktop 的 `apps/ora-controller/src/cloud/operations/plugin.rs` 与
+`apps/ora-controller/src/cloud/plugins/`，验证见[plugin 步骤派发用例](../../../test-cases/controller/plugin/plugin-step-dispatch.md)。
+它是 `controller/plugin` 的根决策（本目录范围：“Plugin 期望状态、Node 安装计划和
 运行状态汇总”；第一版只承担安装计划的派发，期望状态与汇总在 Cloud）。继承
 [Controller 驱动 Workspace 沙盒](../node-management/0-controller-drives-workspace-sandboxes.md) 的 operation
 推进与 clone 步骤规则；步骤语义见 [Cloud operation 后续决策](../../cloud/operation/20260928-plugin-step-and-run-workspace-release.md)，
@@ -29,8 +31,10 @@ Node 语义见 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-
 
 - 目标 Node 没有会话时按 `NODE_UNAVAILABLE` defer，与 clone 步骤一致。
 - 执行输入取自快照的 `plugin_input`，已登记的执行取自 `plugin_executions`；快照没有 `plugin_input` 时直接推进。
-- Controller 删除 `substrate` 客户端中插件 effect 的请求与证据映射；遇到历史快照中已计划的插件 effect，
-  只做对账读取，不再执行。
+- Controller 不再请求插件 effect；遇到历史快照中已计划的插件 effect，只做对账读取，不再执行。
+- 云端派发使用 `ControlledPlugins`，携带 Cloud 为该执行签发的短期许可（Node 侧规则见
+  [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-installs-plugins-into-workspace-home.md) D3）。沙盒的
+  控制闸门已关闭时不登记新执行。插件执行计入未完成责任，Controller 在它有结果前不报告 idle。
 
 ### D2：Node 必须声明插件能力
 
@@ -52,16 +56,5 @@ Node 语义见 [Node plugin-runtime 根决策](../../node/plugin-runtime/0-node-
 
 ## 落地
 
-替换 `steps.rs` 的 `plugin` 步骤实现与 `substrate.rs` 的插件映射；以假 Cloud 与假 Node 的测试覆盖表中五种
-情况与能力缺失。
-
-## 运行控制接线（随实现同步）
-
-插件执行继承当前 clone 的 runtime control 围栏：云端使用 `ControlledPlugins` 携带原始插件命令和
-Cloud 为该 execution 签发的短期许可；接受与开始落盘前分别校验。未携带许可的插件命令仅用于未启用
-runtime control 的本地入口，不能绕过已持久化的围栏。插件执行计入未完成责任，阻止提前报告 idle。
-
-Node 在同一进程内按已接受责任完成安装；本地未围栏执行重启后清理临时目录并重跑。云端 Node 重启后，
-旧 incarnation 的许可不授权新的安装变更，因此该执行以 `plugins_failed{interrupted}` 收尾，Cloud
-按既有失败重试规则登记新执行并签发新许可。此处收窄原先无条件“重启重跑”的承诺，防止自动恢复绕过
-后来引入的运行控制关闭与 incarnation 隔离。
+`steps.rs` 的 `plugin` 步骤改为派发 Node 执行，测试以假 Cloud gRPC 与假 Node 覆盖表中各情况与能力缺失；跨仓库
+派发由 cluster 的插件步骤验收覆盖。保持不变：clone 步骤与 operation 推进规则。开始改变：插件不再经 Substrate。

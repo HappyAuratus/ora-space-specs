@@ -1,6 +1,6 @@
 # Agent 运行的协议消息
 
-依据[已批准的 Node 协议后续决策](../../../decisions/node/protocol/20260928-streamed-thread-events-and-session-commands.md)。
+依据[已实现的 Node 协议后续决策](../../../decisions/node/protocol/20260928-streamed-thread-events-and-session-commands.md)。
 消息与校验已在 desktop `crates/node-protocol` 合并（desktop#629），证据来自
 `crates/node-protocol/tests/protocol/{plugin,agent_session,revision}.rs`。协议往返测试只证明线上形状，
 持久化、重放与恢复由 Node/Controller 测试承担，因此相应义务为 `Partial` 或 `Missing`。

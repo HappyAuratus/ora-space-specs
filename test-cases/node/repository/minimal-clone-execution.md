@@ -1,6 +1,6 @@
 # 最小 clone 执行契约
 
-依据[已批准的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
+依据[已实现的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
 以及修改其 D6 的[中断失败判定](../../../decisions/node/repository/20260925-terminated-clone-attempt-fails-as-interrupted.md)。
 本文件登记首版行为义务。协议、schema v3 和 Linux 受管 clone 已接通，已有真实 HTTPS／SSH 与恢复证据；
 已有 Worktree／process 测试不替代这些业务证据。端到端职责另见[结果边界](clone-and-result-boundaries.md)；

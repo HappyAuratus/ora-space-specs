@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: implemented
 ---
 
 # 云端 Controller 派发 Agent 会话与 Revision 交付，按序中继 Thread 事件与命令，不自行决定运行阶段
@@ -9,11 +9,14 @@ Workspace 的 Node；把 Node 的 Thread 事件按序批量交给 Cloud 接管�
 结束请求投递给 Node；为交付执行向 Cloud 申请上传授权并转交 Node。Controller 不判断会话何时结束、不决定
 是否释放沙盒，这些都是 Cloud 的阶段转换；Controller 也不持有对象存储凭据。
 
-本 ADR 处于 `proposed`，是 `controller/session` 的根决策（本目录范围：“Session 业务记录、生命周期和
+本 ADR 处于 `implemented`，是 `controller/session` 的根决策（本目录范围：“Session 业务记录、生命周期和
 Node 会话编排”；这里的 Session 指 Agent 会话，不是 Controller–Node 连接会话）。契约见
 [gRPC 后续决策](../../cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)，
 Node 侧消息见 [Node 协议后续决策](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md)。
-会话接线与 Revision 交付、授权转交均已形成待评审实现；本文仍保持 `proposed`，不以代码完成代替设计批准。
+实现位于 desktop 的 `apps/ora-controller/src/cloud/agents.rs`、`apps/ora-controller/src/cloud/deliveries.rs` 与
+`apps/ora-controller/src/session/relay.rs`，验证见[Agent 会话中继用例](../../../test-cases/controller/session/agent-session-relay.md)。
+本文从 `proposed` 直接转为 `implemented`：设计在实现评审中定型，正文按合入的实现同步。续接运行前的 Revision
+恢复由 [Revision 恢复契约](../../cloud/controller-integration/20261010-revision-restore-contract.md)规定，本文不重复。
 
 它复用 [Controller 驱动 Workspace 沙盒](../node-management/0-controller-drives-workspace-sandboxes.md) 维护的
 “sandbox → Node 会话”映射与代报，不改变 operation 的推进方式。涉及 desktop `apps/ora-controller` 的云端
@@ -108,9 +111,9 @@ Controller 按既有步骤推进；其 quiesce 的 idle 证据来自派发账本
 - Desktop 本机（SQLite 持久）模式下的 Agent 会话。
 - 多 Controller worker 下按运行分区中继。
 
-## 落地顺序
+## 落地
 
-1. 领取与派发会话/交付工作项；中继队列与批量接管；以假 Cloud 与假 Node 的 Rust 测试覆盖顺序、冲突不确认、
-   终态晚于事件。
-2. 命令领取与投递；上传授权转交。
-3. 经 cluster 与 Cloud 联调。
+会话与交付的领取派发、按执行串行的中继队列与批量接管、命令投递和上传授权转交已合入，以假 Cloud gRPC 与假
+Node 的测试覆盖顺序、冲突不确认、终态晚于事件、重启重放与授权不落日志；跨仓库链路由 cluster 的 Agent 会话与
+Revision 验收覆盖。保持不变：operation 的推进方式与 SQLite 模式。开始改变：云端 Controller 承担 Agent 会话与
+Revision 交付的中继。

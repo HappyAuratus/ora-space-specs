@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 本机 Controller 持久接管执行，Node 固定归属单一 Controller
@@ -8,22 +8,24 @@ status: approved
 Controller 先持久保存派发责任，再请求 Node 执行；结果持久接管后才确认。两侧可以独立重启，
 断连不取消已受理执行，也不产生新执行身份。
 
-Eric 已批准本文的单 Controller 归属、本机 IPC、持久接管及恢复契约，状态为 approved；
-批准不表示实现或验收完成。本决策覆盖 Linux 本机 clone 协调，不接 Desktop UI，
-不切换 Backend 写入入口，不引入密钥、令牌、证书或 Cloud 权威存储。
+本 ADR 处于 `implemented`：Node 侧归属记录在 desktop 的 `crates/node-db`（`ControllerMismatch`），Controller 的
+本机持久协调是 `apps/ora-controller` 的 `SqliteStore`，验证见
+[本机归属与结果接管用例](../../../test-cases/controller/persistence/local-controller-node-ownership.md)。本决策覆盖 Linux
+本机 clone 协调，不接 Desktop UI，不切换 Backend 写入入口，不引入密钥、令牌、证书或 Cloud 权威存储。持久化接口
+后来抽象为 `CoordinationStore`，本文规则由 SQLite 适配器承担（见
+[持久协调双适配器](20260922-coordination-store-with-sqlite-and-cloud-adapters.md)）。
 
 ## 依据与继承
 
-这是 Controller 本机持久协调的根决策。参考的协议根文档仍为 proposed；本文不将其中
-Cloud、bootstrap credential、mTLS 或其他未实施能力一并视为批准。
+这是 Controller 本机持久协调的根决策。
 
 | 来源与约定 | 本文处理 |
 |---|---|
 | [clone 执行契约](../../node/repository/20260918-minimal-clone-execution-contract.md)：Node 执行、原身份恢复、结果持久化 | 继承，不变；Controller 不在自身环境代跑 Git |
-| [Controller–Node Protocol](../../node/protocol/0-controller-node-protocol.md)：统一消息、查询与确认分离 | 采用其本机可靠性语义；继续使用现有长度前缀 JSON codec，不在此切换编码 |
+| [Controller–Node Protocol](../../node/protocol/0-controller-node-protocol.md)：统一消息、查询与确认分离 | 采用其本机可靠性语义；帧编码与本机 IPC 见 [FrameChannel 传输](../../node/protocol/20260924-frame-channel-with-ipc-and-websocket.md) |
 | 同协议中的 bootstrap credential、mTLS 和多种远端连接器 | 本机首版不采用；归属校验不是认证，远端与信任体系另行决策 |
-| [Internal Control Protocol](../protocol/0-internal-control-protocol.md)：Cloud 由 API Server 持久接管 | Cloud 不变且不在本文范围；本机由 Controller 自身持久存储接管 |
-| 现有 Worktree 和 Backend | 保留，不迁移其业务入口；新协调首版只派发 clone |
+| Cloud 场景由 Cloud 持久接管（[Cloud 拥有的 gRPC 契约](../../cloud/controller-integration/0-cloud-owned-internal-grpc-contract.md)） | 不在本文范围；本机由 Controller 自身持久存储接管 |
+| 现有 Backend | 保留，不迁移其业务入口；本机协调只派发 clone（Worktree 已被放弃，见 [clone 根决策](../../node/repository/0-clone-selected-repository-branch.md) D3） |
 
 ## D1：归属固定，连接可替换
 
@@ -112,15 +114,13 @@ Node 新增归属记录需要识别旧 schema、安全迁移并保留旧执行�
 Controller 数据丢失不等于 Node 责任消失；首版可能需要保留未接管事件并暂停受影响任务。
 单会话拒绝抢占会使异常连接的重连等待受超时限制，这是避免并行控制的明确代价。
 
-## 后续边界与落地顺序
+## 后续边界
 
-重新绑定／历史导入、多 Controller 高可用、认证与远端传输、Cloud 持久化、Desktop UI／订阅
-以及 Backend 入口切换均不由本文实现。暂不建设通用任务插件框架或部署编排系统。
+重新绑定／历史导入、多 Controller 高可用、认证与远端传输、Desktop UI／订阅以及 Backend 入口切换均不由本文
+实现。Cloud 场景的持久化与认证分别由 Cloud 契约和运行时控制决策承担。
 
-1. 本机 Node 会话：验证绑定、单会话、断连不取消、重连主动重放及 endpoint 文件保护。
-2. Controller 持久协调：验证原输入接受、派发前落盘、查询／事件统一接管和提交后确认。
-3. 独立进程验收：真实 IPC、SQLite、HTTPS／SSH Git，覆盖两侧强杀、重复连接、派发回复丢失、
-   查询与事件乱序、提交失败及 Ack 丢失，检查原身份、实际 checkout 和唯一结果。
+## 落地
 
-[本机归属与结果接管核心用例](../../../test-cases/controller/persistence/local-controller-node-ownership.md)
-登记上述验收义务，当前直接证据为 Missing。完成本切片仍不代表 Client 可观察的完整产品闭环已完成。
+本机 Node 会话（绑定、单会话、断连不取消、重连重放、endpoint 文件保护）、Controller 持久协调（原输入接受、
+派发前落盘、查询与事件统一接管、提交后确认）与独立进程验收（真实 IPC、SQLite、HTTPS／SSH Git）已合入。
+仍缺的故障组合登记在核心用例中。完成本切片不代表 Client 可观察的完整产品闭环已完成。
