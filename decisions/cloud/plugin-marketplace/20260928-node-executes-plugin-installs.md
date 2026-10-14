@@ -24,6 +24,7 @@ Agent 行见 [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolate
 | D3：目录同步语义 | 继承，不变 |
 | D4：`plugin_ensure` effect 载荷与 `installed=true` 证据 | 修改：载荷成为 Node 执行输入的元素，证据为 Node 执行的逐插件结果（D1） |
 | v1 边界：新建 workspace 的自动补装为后续 phase | 修改：由 `plugin` 步骤补装（D2） |
+| [管理员维护决策](20260927-admin-selection-and-idle-maintenance.md) D4：未接线执行器/新实例不补装 | 修改：执行结果由 Node 提供（D1），create/start 的 plugin 步骤补装当前期望（D2）；管理员门控、持久等待与维护互斥继承不变 |
 | v1 边界：真实 Node 执行器接线为后续工作，simulator 扮演 Node | 修改：由 desktop Node 执行；simulator 保留用于 Cloud 测试 |
 | 不变量 4：sha256 校验必选 | 继承，由 Node 在安装前校验 |
 | desktop 本期零改动 | 修改：desktop Node 增加安装能力 |

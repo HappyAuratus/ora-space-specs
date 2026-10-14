@@ -8,7 +8,7 @@ status: implemented
 持有操作会话、无活动/未知执行及项目生命周期槽位，再取得系统维护资格。接受期望不等于安装
 完成，持久 pending 在条件变化和恢复扫描时继续收敛。
 
-本决策的后端已实现。生产插件由 Node 执行，D4 依据 20260928 后续规则同步；完整联合故障矩阵
+本决策的管理员门控和维护等待后端已实现；执行面演进见 D4 的后续决策指针。完整联合故障矩阵
 由[后续 ADR](../execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接。
 证据见[管理员维护用例](../../../test-cases/cloud/plugin-marketplace/admin-selection-and-idle-maintenance.md)。
 
@@ -19,7 +19,6 @@ status: implemented
 | [市场根决策](0-plugin-marketplace.md)的期望/实例两级与固定版本、摘要 | 继承，不变 | Cloud 冻结目录快照和版本 |
 | 成员可改变 Space 插件 | 修改 | 仅当前管理员写期望 |
 | 忙时整体拒绝、pending 需重点击 | 修改 | 期望持久保存，等待后自动继续 |
-| 本 ADR 旧 D4 的未接线执行器/新实例不补装 | 被[Node 执行后续决策](20260928-node-executes-plugin-installs.md)修改 | Node 回报真实结果；create/start 的 plugin 步骤补装当时 Space 期望 |
 
 ## 决策
 
@@ -44,19 +43,12 @@ pending 保存等待原因及目标实例，恢复扫描重新检查可用条件
 
 ### D4：Node 执行及新 Workspace 补装以后续决策为准
 
-Controller 派发 Cloud 自包含安装/移除载荷给 Node，Node 在安装前检查目标和 SHA-256，Cloud
-只接管与计划版本一致的逐插件结果。create/start 的 plugin 步骤安装进入步骤时 Space 的
-installed 期望集合；此后新选择由自己的 fan-out 处理。agent 插件的 Space Agent 行按选择及
-聚合维护，单次运行安装失败不把 Agent 从全空间 @ 列表删掉。
+本 ADR 原 D4 对未接线执行器及新实例不补装的限制由
+[20260928 Node 执行决策](20260928-node-executes-plugin-installs.md)修改，载荷、结果和补装规则
+以该后续 ADR 为准，不在此复制。该后续 ADR 保持 `approved`，其独立验收不能由本决策
+管理员门控/维护等待的 `implemented` 状态推导完成。
 
-旧文本“生产执行器未接线”及“新实例补装留后续”不再是当前限制。缺真实 Node 能力时仍须明确
-拒绝/等待，不能用 simulator 宣告安装成功；pack、secret 下发和运行中自动升级另由其决策拥有。
-
-## 实际同步与不变量
-
-以已实现 Node 路径取代历史 Substrate plugin effect 叙述，保持固定输入、版本、摘要和维护互斥。
-未覆盖的迟到结果、真实下载/进程、删除与装卸竞争保留 approved 后续验证，不把模拟 Node 测试
-当成真实文件系统和进程故障证据。
+## 不变量
 
 1. 只有当前管理员改变 Space 期望，普通成员拒绝无写副作用。
 2. 安装和移除都不能抢占人类会话或与其它写活动并行。

@@ -54,10 +54,7 @@ status: implemented
 创建者离开不转移普通成员权限或删除数据，管理员须经安全交接再操作。
 [仓库凭据连续性](../project/20260927-repository-credential-continuity.md)由自身后续决策处理。
 
-## 实际同步与不变量
-
-移除旧核查基线和同类产品推测，承诺以已实现授权规则为准。原文要求的浏览器呈现和全部历史
-快照矩阵已拆出，不因后端 implemented 宣告完整产品体验已完成。
+## 不变量
 
 1. 当前角色、owner、creator、actor 和 session 不能互相替代。
 2. 资源 ID、旧链接、历史成功或界面可见不授予使用权。
