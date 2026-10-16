@@ -1,19 +1,20 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 模型用量按网关 HTTP 尝试独立登记，保留部分观测与未知值
 
 Model Gateway 为每次已授权的上游 HTTP 发送意图建立独立、无正文的持久台账，供会话分析读取。
-不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本提案随实现提交审查，
-尚未由 owner 批准；关键新增代价是登记不可用时返回 503，不发送上游请求。
+不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本决策已获批准，状态为
+`approved`；配套实现仍需审查合并与验收。接受台账与模型请求共用 Cloud 已依赖的 PostgreSQL
+可用性边界：登记不可用时返回 503，不发送上游请求。
 
 ## 继承与修改
 
 | 前序决策 | 本文处理 |
 | --- | --- |
 | [个人模型连接与代理](0-personal-model-connections-and-run-scoped-proxy.md) D2–D5 | 继承：冻结绑定、当前授权、凭据隔离、流式转发与不自动重发生成请求。新增发送前登记与结束观察 |
-| [执行器槽位绑定](20261015-executor-slot-mappings-and-per-slot-run-bindings.md) | 继承请求必须使用所持 binding/execution 的冻结归属；本提案不实现槽位配置或工作流执行 |
+| [执行器槽位绑定](20261015-executor-slot-mappings-and-per-slot-run-bindings.md) | 继承请求必须使用所持 binding/execution 的冻结归属；本决策不实现槽位配置或工作流执行 |
 | [Thread 根决策](../thread/0-durable-agent-thread-with-user-turns.md) | 继承原始记录和 Thread 状态机；网关台账是独立来源，不把模型文本或 turnEnded 当 HTTP 次数 |
 
 ## D1：先持久化发送意图，每次尝试有独立身份
@@ -56,7 +57,7 @@ OpenAI input 包含缓存，Anthropic input 不含缓存读写；推理是输出
 
 摘要与明细是不同读取快照，活动请求期间可以短暂不一致。前端趋势只描述当前页观察：
 真实零保留，缺失标记与数值轴分开，虚线只能连接已知端点并说明中间缺失，不插值或累计。
-未来 Agent/ACP 报告仍为另一来源，不与 Gateway 相加；本提案不依赖 Desktop token_usage 扩展。
+未来 Agent/ACP 报告仍为另一来源，不与 Gateway 相加；本决策不依赖 Desktop token_usage 扩展。
 
 ## 不变量
 
@@ -84,4 +85,5 @@ OpenAI input 包含缓存，Anthropic input 不含缓存读写；推理是输出
 取消后收尾、并发不同完成结果、故障不重发、未知/零/部分覆盖率、越权与旧会话。
 长期未完成行的恢复、台账保留期限、增量汇总及大 Run 查询成本留给后续设计；当前全 Run 聚合
 仍受 Core 事务串行边界约束。真实供应商账单一致性不由合成协议测试证明。
-批准后按最终结论维护核心测试用例，不在 proposed 阶段预先标注批准状态。
+核心验证义务与直接证据见[已登记 HTTP 尝试统计](../../../test-cases/cloud/model-access/recorded-http-attempt-statistics.md)。
+测试覆盖以各义务声明的边界为准，不据合成供应商响应宣布真实供应商或部署验收完成。
