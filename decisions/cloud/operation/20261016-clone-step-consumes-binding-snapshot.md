@@ -193,8 +193,8 @@ delete_project 的 quiesce 步骤在原有条件（各 Workspace 没有活动、
 发现仍有未结束的 Operation 时，不把它交给 Controller，而是置为 `retry_wait`、错误码 `repository_operation_running`，`retry_at`
 为 10 秒后，并按 D2 的“领取不因等待者落空”继续选下一个；不计入任何尝试次数，也不失败该 operation。
 
-- 进入删除流程（Project 变为 `deleting`）的事务里，外部线把尚未 `running` 的同步与发布 Operation 以 `cancelled` 结束，并且
-  只有 `active` 的 Project 能创建新的同步与发布（外部线 `cloud/project` 同步 ADR）。一个 Operation 至多进入一次 `running`，
+- 进入删除流程（Project 变为 `deleting`）的事务里，底座把尚未 `running` 的同步与发布 Operation 以 `cancelled` 结束；
+  `deleting` 的 Project 不能新建任何同步与发布（契约 ADR D5 第 3 项的生命周期表）。一个 Operation 至多进入一次 `running`，
   租约过期时同步以失败结束、发布进入次数有上限的 `uncertain` 核验（契约 ADR D5、落地顺序第 1 步）。所以 quiesce 只需要等
   已经 `running` 的 Operation 收尾，等待有界。
 - 为什么等待而不是直接继续删除：`running` 的同步或发布可能正在向 Git Server 写 ref，或正在向外部仓库推送。删除流程先确认
