@@ -52,6 +52,7 @@ Binding 是 Project 与一个外部仓库分支的绑定：
 | `repositoryUrl` | 外部仓库地址，第一阶段只接受 `https://`，不能带用户信息（`user:pass@`）、查询串和片段 |
 | `branch` | 要同步的分支短名，必须是具体分支，不能是 `HEAD` |
 | `credentialRefId` | 凭据引用；为空表示公开仓库（D4） |
+| `resyncRequested` | 发布成功时已有同步在 `running`，需要在它结束后再同步一次（D3、发布 ADR D6）；外部线在底座的 Binding 表上增加 |
 | `version` | 乐观版本 |
 
 - 第一阶段每个 Project 恰好一个 Binding，数据库以 `UNIQUE(project_id)` 保证；多 Binding 留给后续决策。
@@ -112,7 +113,13 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
   见执行器根决策的重放规则。Git Server 的 `pre-receive` 拒绝（`hook declined`）不是 `superseded`，而是 `failed(git_server_rejected)`。
 - 取消只能发生在 `running` 之前。`running` 中的同步不能取消：推送一旦开始就由 Git Server 的原子性和 CAS 决定结果，取消只会
   让 Cloud 失去结果。
-- **Project 删除**：只有 `active` 的 Project 能创建同步与发布 Operation。Project 进入删除流程（`deleting`）的事务里，该 Project
+- **Project 的生命周期**：
+  - `provisioning` 的 Project 只有两种同步：建 Project 时由底座建立的那一行，以及它按 D3 的自动重放。手动同步、候选凭据同步和
+    发布只限 `active` 的 Project。
+  - 首次同步以不再重放的终态失败时，main Workspace 的 clone 步骤以 `repository_sync_failed` 结束，内部线在同一事务里把 Project
+    置为 `active`（clone 步骤消费快照决策）。之后用户可以提交候选凭据（D5）、手动同步，或者删除 Project；仓库地址或分支填错只能
+    删除后重建（D1）。
+- **Project 删除**：Project 进入删除流程（`deleting`）的事务里，该 Project
   尚未进入 `running` 的同步与发布 Operation 一律以 `cancelled(project_deleting)` 结束；已经 `running` 的照常收尾，它们写入的
   ref 随 Project 的仓库一起由删除流程处理。delete_project 等这些 Operation 结束后才开始（内部线在领取 delete_project 时检查）；
   发布的 `uncertain` 核验有次数上限（发布 ADR D5），所以等待总会结束。
@@ -123,7 +130,7 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
 | --- | --- | --- |
 | `project_created` | 底座在创建 Project 的事务内同时建立 Binding 和一行 `pending` 的同步 Operation（契约落地顺序第 1 步） | 本文的 worker 领取并执行这一行。Project 的创建本身不等待同步完成；main Workspace 的 clone 步骤等待这次同步（D9） |
 | `manual` | 有 Project 修改权限的成员在界面或 API 触发 | 带 `Idempotency-Key`；已有未结束的同步时返回它 |
-| `after_publish` | 发布 Operation 成功（包括 `uncertain` 核验为成功）且目标分支等于 Binding 的分支 | 由发布 ADR 规定 |
+| `after_publish` | 发布 Operation 成功（包括 `uncertain` 核验为成功）且目标分支等于 Binding 的分支 | 由发布 ADR 规定。已有同步处于 `running` 时不能复用它（它可能在发布生效前就 fetch 完了）：发布在 Binding 上记下 `resync_requested`，那个同步登记终态的同一事务里检查并清除它，再新建一个 `after_publish` 同步 |
 | `credential_candidate` | 管理员为 Binding 提交候选凭据引用 | 用候选引用同步一次，证明读取能力；成功后原子切换（D5） |
 
 - **建 run Workspace 时不隐式同步。** Workspace 的代码输入总是当前快照（契约 D5 第 1 项）。隐式同步会让 Workspace 的创建
@@ -145,7 +152,7 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
 
 - 匿名 fetch 时外部仓库要求认证（HTTP 401，或平台对私有仓库返回的 404），同步以 `failed(repository_requires_credential)` 结束，
   界面提示绑定凭据。不尝试任何部署级的默认凭据（凭据连续性 D4）。
-- 公开仓库也必须先同步一次，Workspace 的 clone 步骤才能继续。Node 不再直接访问外部仓库，这一点对公开仓库同样成立（契约落地顺序第 3 步）。
+- 公开仓库也必须先同步一次，Workspace 的 clone 步骤才能继续。Node 不再直接访问外部仓库，这一点对公开仓库同样成立（契约落地顺序第 2 步）。
 
 ### D5：推进当前快照
 

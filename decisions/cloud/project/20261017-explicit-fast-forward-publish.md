@@ -169,7 +169,13 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 ### D6：发布后自动同步
 
 发布以 `succeeded` 结束（包括核验确认的成功），并且 `targetBranch` 等于 Binding 的分支时，Cloud 在同一事务内为该 Binding 触发
-一次 `after_publish` 同步（同步 ADR D3；已有未结束的同步时不重复创建）。
+一次 `after_publish` 同步（同步 ADR D3）：
+
+- 该 Binding 没有未结束的同步：新建一个。
+- 已有同步处于 `pending` 或 `leased`：复用它。它还没有 fetch 外部仓库，fetch 时发布已经生效。
+- 已有同步处于 `running`：它可能在发布生效之前就 fetch 完了，不能复用。发布在 Binding 上置 `resync_requested = true`；那个同步
+  登记终态的同一事务里检查并清除该标记，再新建一个 `after_publish` 同步。这样“发布成功”之后，当前快照最终一定会包含发布的提交
+  （除非外部仓库随后又被改写）。
 
 - 同步结果通常是 `sourceCommit`，但外部仓库可能在发布后又前进了，当前快照总是以同步得到的为准（契约 D5 第 2 项：外部内容只经
   同步进入当前快照，发布不直接改写它）。
