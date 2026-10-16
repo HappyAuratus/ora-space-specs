@@ -8,7 +8,8 @@ status: proposed
 Cloud 创建一个持有租约的同步 Operation，调用 [Repo Executor](../repo-executor/0-repo-executor-sole-external-git-boundary.md)；
 执行器在临时裸仓库里 fetch 外部分支，再经 Git Server 的服务仓库监听，一次原子推送写入以提交 OID 命名的快照 ref 和跟踪 ref。
 Cloud 经 ref 查询核验两个 ref 都指向报告的提交之后，才在事务内推进 Binding 的当前快照。Workspace 只从当前快照取得代码输入，
-没有当前快照的 Binding 不能创建 Workspace，公开仓库也要先同步一次。
+没有当前快照时，Workspace 的 clone 步骤只能等待，不回退为访问外部仓库，公开仓库也要先同步一次；等待只在 Binding 还有
+同步在进行时成立，同步以“没有快照”收尾时，等待它的 operation 在同一事务中结束（D9）。
 
 本 ADR 处于 `proposed`，是 `cloud/project` 领域在[仓库凭据连续性](20260927-repository-credential-continuity.md)之后的后续决策，
 遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约”）的 D4、D5、D6。
@@ -116,7 +117,7 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
 
 | 触发 | 时机 | 说明 |
 | --- | --- | --- |
-| `project_created` | 创建 Project 的事务内同时创建 Binding 和同步 Operation | Project 的创建本身不等待同步完成；同步结果决定能否创建 Workspace |
+| `project_created` | 创建 Project 的事务内同时创建 Binding 和同步 Operation | Project 的创建本身不等待同步完成；main Workspace 的 clone 步骤等待这次同步（D9） |
 | `manual` | 有 Project 修改权限的成员在界面或 API 触发 | 带 `Idempotency-Key`；已有未结束的同步时返回它 |
 | `after_publish` | 发布 Operation 成功（包括 `uncertain` 核验为成功）且目标分支等于 Binding 的分支 | 由发布 ADR 规定 |
 | `credential_candidate` | 管理员为 Binding 提交候选凭据引用 | 用候选引用同步一次，证明读取能力；成功后原子切换（D5） |
@@ -136,7 +137,7 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
 
 - 匿名 fetch 时外部仓库要求认证（HTTP 401，或平台对私有仓库返回的 404），同步以 `failed(repository_requires_credential)` 结束，
   界面提示绑定凭据。不尝试任何部署级的默认凭据（凭据连续性 D4）。
-- 公开仓库也必须先同步一次才能创建 Workspace。Node 不再直接访问外部仓库，这一点对公开仓库同样成立（契约落地顺序第 3 步）。
+- 公开仓库也必须先同步一次，Workspace 的 clone 步骤才能继续。Node 不再直接访问外部仓库，这一点对公开仓库同样成立（契约落地顺序第 3 步）。
 
 ### D5：推进当前快照
 
@@ -216,7 +217,40 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
   | `invalid_configuration` | 仓库地址或分支不合法，需要重新创建 Project |
 
 - “立即同步”按钮：有修改权限的成员可见；已有未结束的同步时显示进度并禁用；Binding 无效或凭据不可用时禁用并说明原因。
-- 没有当前快照时，Workspace 的创建入口禁用，并说明“需要先完成一次同步”。
+- 没有当前快照、但有同步在进行时，等待中的 Workspace 显示“等待首次同步”；没有当前快照、也没有同步在进行时，Workspace 的
+  创建入口禁用，并说明“需要先完成一次同步”。
+- 等待中的 operation 因同步失败而结束时（D9），Workspace 的失败说明沿用上表，并给出“立即同步”的入口。
+
+### D9：等待快照的 operation 怎样结束
+
+内部线的 `cloud/operation` 后续 ADR 规定：Binding 没有当前快照时，Workspace 的 clone 步骤以 `retry_wait`、错误码
+`snapshot_not_ready` 等待，不计入 clone 的尝试次数，也不触发同步。等待本身由内部线负责，本文规定**等待成立的条件**和
+**等待的结束**，保证 operation 不会无限期占着 Project 的操作槽。
+
+**等待成立的条件**：该 Binding 有未结束的同步 Operation（`pending`、`leased`、`running`）。
+
+- 条件成立：clone 步骤继续等待，不设时间上限。同步总会结束，结束时按下一条处理。
+- 条件不成立：快照不会自己出现（例如迁移来的 Project 从没同步过，或首次同步已经失败）。clone 步骤不进入等待，直接以
+  `failed(repository_not_synced)` 结束。
+
+**同步以“没有快照”收尾时结束等待者**：同步 Operation 进入终态（`failed`、`superseded`、`cancelled`），Binding 仍然没有当前
+快照，并且同一事务里没有按 D3 创建自动重放的新 Operation 时，在登记终态的**同一事务**中，把该 Binding 下所有处于
+`snapshot_not_ready` 等待的 operation 以 `failed(repository_sync_failed)` 结束，并记录这次同步的 Operation ID 与错误码
+（例如 `credential_rejected`、`upstream_branch_missing`），界面据此说明真正的原因。
+
+- 自动重放（`lease_lost`、`executor_unreachable`，D3）在同一事务中创建新的同步 Operation，条件仍然成立，等待者继续等待；
+  三次重放用完后的那次终态才结束等待者。
+- 同步成功时不需要额外处理：当前快照写入后，等待者在下一次 `retry_at` 冻结输入继续执行。
+- 并发：判断“是否进入等待”和“同步收尾”都先锁定 Binding 行（`SELECT … FOR UPDATE`），两者串行。这样不会出现等待者在同步
+  收尾之后才进入等待、从而无人唤醒的情况。
+- 唯一没有上限的情形是同步停在 `pending`、`leased` 不前进，即同步 worker 整体不可用。这属于基础设施故障，与其他
+  `retry_wait` 的 operation 一样等待恢复，不另设超时：超时只会把一次可恢复的故障变成用户需要重新创建的失败。
+
+结束后怎样重新创建 Workspace，沿用内部线对失败的 create_project / create_workspace 的处理，本文不改变。
+
+为什么用“有没有同步在进行”而不是固定的等待时长：首次同步的耗时取决于仓库大小，从几秒到十分钟（执行器根决策 D4）。固定时长
+要么太短，让大仓库的首次创建失败；要么太长，让凭据错误这种立刻就能确定的失败也要等满。同步本身的终态才是“快照会不会出现”的
+准确答案。
 
 ## 不变量
 
@@ -230,6 +264,8 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 8. 不可用的凭据引用不会被用于新的同步；公开 Binding 不使用任何凭据。
 9. 创建 run Workspace 不触发同步。
 10. 迁移不改写 `projects` 的原有列，不猜测分支和凭据归属。
+11. 只有在 Binding 有未结束的同步时，operation 才会以 `snapshot_not_ready` 等待。
+12. 同步以“没有快照”收尾且没有自动重放时，等待该 Binding 的 operation 在同一事务中结束。
 
 ## 为什么不是这些替代方案
 
@@ -243,6 +279,8 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 | 同步 tag 和所有分支 | 契约第一阶段只消费一个快照；全量同步放大数据量和凭据的使用面，namespace 已留出位置 |
 | 同步时递归 submodule、下载 LFS | 一个 Binding 的凭据会访问别的仓库或别的存储；需要独立的 Binding 模型和配额 |
 | 迁移时把 `HEAD` 改成 `main` 或解析远端 HEAD | 猜测会写入不存在的分支；Cloud 也不访问远端（默认分支决策） |
+| `snapshot_not_ready` 设固定的等待上限 | 实现简单，不依赖同步的状态；但上限无法同时适应大仓库和立即可知的失败（D9） |
+| 同步失败后让等待者继续等，直到用户手动同步成功 | 修好凭据后不用重新创建 Workspace；但等待期间 Project 的操作槽一直被占，其他操作都返回 busy，而用户可能根本不知道要去修 |
 
 ## 本决策未解决的问题
 
@@ -258,7 +296,7 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
    到 Binding 的迁移、Git Server 上同步 Operation 的上下文来源。完成条件：迁移在新库和升级库上都通过；Git Server 对同步 Operation
    的授权符合契约 D5 第 3 项，有真实 `git` 客户端的集成测试。
 2. **执行器接入**：Cloud 调用执行器完成同步，核验并推进当前快照；公开仓库和私有仓库都打通。完成条件：下面的独立验收全部通过。
-3. **界面**：代码来源区块、同步按钮、错误说明，Workspace 创建入口的禁用条件。
+3. **结束等待者与界面**：D9 的条件与收尾，代码来源区块、同步按钮、错误说明，Workspace 创建入口的禁用条件。
 4. **汇合**：内部线切换 Workspace 输入（契约落地顺序第 3 步）时，本文的当前快照已经可用。
 
 保持不变：Project 的成员授权、默认分支规则、Revision 交付。从第 2 步开始改变：Project 的代码来源由同步得到。
@@ -288,6 +326,9 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 | worker 在 `running` 中被杀 | Operation 以 `failed(lease_lost)` 结束；之后用旧 Operation ID 访问服务仓库监听被拒绝；新 Operation 重放后 `succeeded` |
 | 预置的跟踪 ref 被改动（模拟失联的旧执行器） | `superseded`；当前快照不变 |
 | 超过大小上限 | `failed(repository_too_large)`；Git Server 上没有新的 ref |
+| 首次同步失败结束等待者 | 预置工具为 Binding 写一个处于 `snapshot_not_ready` 等待的 operation（替身），再用错误的 token 同步：同步 `failed(credential_rejected)` 的同一事务里，该 operation 以 `failed(repository_sync_failed)` 结束并记录同步的错误码 |
+| 自动重放期间不结束等待者 | 同上的替身；在 `running` 中杀掉 worker：等待者仍在等待；重放成功后当前快照写入，等待者没有被结束 |
+| 没有同步时不进入等待 | 迁移来的、从未同步的 Binding：判定入口返回 `repository_not_synced`，不返回等待 |
 | 迁移 | 升级库中每个 Project 都有一个 Binding；`HEAD` 分支的 Project 的 Binding 为 `invalid_configuration`，同步被拒绝 |
 | 秘密扫描 | 用 canary token 跑完以上场景后，Cloud 与执行器日志、Git Server 仓库、Cloud 数据库、执行器临时目录中都找不到 canary |
 
