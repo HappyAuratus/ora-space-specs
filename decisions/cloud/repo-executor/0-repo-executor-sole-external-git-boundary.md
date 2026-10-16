@@ -31,7 +31,7 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 | --- | --- |
 | 契约 D2：服务仓库监听只接受 `spiffe://ora.local/repo-executor` 服务证书；证书只证明身份，不带权限 | 继承，不变。执行器访问 Git Server 只用这张证书（D2） |
 | 契约 D3：服务仓库监听上的请求必须且只带 `Ora-Git-Operation-Id`；授权按 Cloud 当前状态逐请求、`pre-receive` 再判定 | 继承，不变。执行器的每个 Git 请求都带本次 Operation 的 ID（D5、D6） |
-| 契约 D4、D5 第 3 项：同步可写本 Binding 的快照 ref（create-only）与跟踪 ref（tracking-cas）；发布只能读源 ref，不能写 | 继承，不变。执行步骤只使用这些权限（D5、D6） |
+| 契约 D4、D5 第 3 项：同步可写本 Binding 的快照 ref（create-only）与跟踪 ref（tracking-cas）；发布可读整个 Project 仓库（契约 D3）、不能写 | 继承，不变。发布只取 Operation 记录的源 ref 与源提交。执行步骤只使用这些权限（D5、D6） |
 | 契约 D6：执行器报告结果，Cloud 经 ref 查询核验后登记 | 继承，不变。执行器不登记任何东西（D1） |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md) D4：执行端按引用选择凭据，不回退全局凭据；凭据临时提供，结束后回收，不进工作目录和日志 | 继承。执行端从 Controller/Node 改为本执行器，兑换与销毁的方式见 D3 |
 | [默认分支决策](../operation/20260926-require-concrete-default-branch.md)：Cloud 不向用户给出的地址发起请求 | 继承，不变。访问外部地址的只有执行器，并受出口策略约束（D4） |
@@ -148,6 +148,8 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 1. 在任务目录 `git init --bare`。
 2. **取已有的跟踪 ref 作为基础**（可选优化）：带 `Ora-Git-Operation-Id` 从服务仓库监听 fetch
    `refs/ora/upstreams/<bindingId>/heads/<branch>`。获授权的请求可读整个 Project 仓库（契约 D3），这一步让下一步只从外部下载增量。
+   `expectedTrackingOid` 为全零（首次同步）时跳过这一步：此时 Project 仓库可能还不存在，Git Server 对不存在的仓库的读请求
+   返回 `403`，跟踪 ref 也还没有。这一步出任何错误（`403`、ref 不存在、网络）都只放弃优化、继续第 3 步，不影响同步结果。
 3. 加固的 fetch：`fetch --quiet --no-tags --no-write-fetch-head --no-recurse-submodules -- <repository>
    +refs/heads/<branch>:refs/heads/ora-sync`。之后检查任务仓库里除第 2 步的 ref 外只有 `refs/heads/ora-sync`。
    外部仓库没有该分支时报告 `upstream_branch_missing`。
