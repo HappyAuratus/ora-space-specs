@@ -118,8 +118,8 @@ clone 步骤需要冻结输入、而 Binding 没有当前快照时，Cloud 读�
   维护控制归还；run Workspace 走原失败释放路径，项目主 Workspace 留存。
 - create_project 以 `repository_sync_failed` 结束时，同一事务把 Project 从 `provisioning` 置为 `active`，与管理员强停取消初始化
   的做法相同（`internal/core/runtime_force_stop.go`）。否则 Project 永远停在 `provisioning`：删除、建 Workspace、手动同步都要求
-  `active`，私有仓库只要 token 填错或分支不存在，这个 Project 就既救不回来也删不掉。置为 `active` 后，用户可以修正 Binding 或
-  凭据、手动同步，再新建 Workspace；也可以删除 Project。没有快照的 main Workspace 保持准入关闭，不能接受任务。
+  `active`，私有仓库只要 token 填错或分支不存在，这个 Project 就既救不回来也删不掉。置为 `active` 后，用户可以换凭据、手动同步，
+  再新建 Workspace；也可以删除 Project（仓库地址或分支填错只能删除重建，见外部线的同步决策）。没有快照的 main Workspace 保持准入关闭，不能接受任务。
 
 **领取不因等待者落空。** 现有的领取（`internal/core/control.go` 的 `claim`）每次只按创建时间取最早的一个可领取 operation
 （`queued`、到期的 `retry_wait`，以及 `running`），Controller 一次只推进一个 operation，领取返回空时要等下一次信号或定时领取。
