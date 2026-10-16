@@ -88,7 +88,19 @@ source_identity = (source_namespace, identifier, package_version, package_sha256
 - 大小上界：压缩包 ≤ 16 MiB、解压后总量 ≤ 64 MiB、归档条目数 ≤ 512。超限以
   `asset_package_too_large` / `asset_package_expansion_too_large` 拒绝整个包。包体只承载 JSON
   文本，上界要在「覆盖真实包」与「限制 Cloud 从远端取字节的风险面」之间取；解压上界才是真正的
-  控制（防 zip bomb），压缩上界只是提前失败。这三个数值是可评审的取值，不是从既有常量推导的。
+  控制（防 zip bomb），压缩上界只是提前失败。三条各自依据如下：
+  - **条目数 512 是从本文的文档上限推出的**：每份文档占一个条目，份数上限 256（与 desktop 的
+    `MAX_WORKFLOWS_PER_PACKAGE` 一致），余量留一倍给 `orax.toml`、README、Logo 这类辅助文件。
+    desktop 的通用默认是 5000 个条目（`crates/utils/src/archive/limits.rs` 的
+    `ExtractLimits::default()`），插件安装只上调字节预算、条目与路径上限仍沿用这个默认
+    （`crates/plugin-manager/src/limits.rs` 的 `package_extract_limits`）。workflow 包只有文档，
+    用不到那个量级，而条目上限正是防「大量空目录/空文件」的那一层。
+  - **两个字节上界是取值，不是推导来的**：desktop 的插件安装自报 512 MiB 压缩 / 1024 MiB 解压
+    （`crates/plugin-manager/src/limits.rs` 的 `MAX_PACKAGE_ARCHIVE_BYTES`、
+    `MAX_PACKAGE_TOTAL_BYTES`），通用默认是 50 MiB / 200 MiB——前者为运送 CLI 二进制而放宽，后者
+    为文本包而设。Cloud 从远端取字节且只读 JSON，取比通用默认更紧的一档：16 MiB 意味着 256 份
+    文档平均每份可占 64 KiB，远超一份图 JSON 的量级（真实包通常只带几份文档），64 MiB 是解压后的
+    硬顶。这两个数值请 owner 直接改。
 - 下载、校验、解压与解析全部在数据库事务外；只有逐文档结果在事务内落库（根决策不变量 2）。
 
 **明确扩展与明确不扩展**：本文扩展「Cloud 不下载包」，仅限资产导入这一处。不扩展的是「安装落盘
