@@ -11,15 +11,15 @@ Cloud 签发的一次性授权兑换一次。`read` 由第一次成功的同步�
 `git-receive-pack` 的 ref 广告，不写入任何内容。
 
 本 ADR 处于 `proposed`，是 `cloud/identity-access` 领域在[用户 Git 提交身份](20260928-user-git-commit-identity.md)之后的后续决策。
-它按 #172 Q7 的推荐方案回答两项安全规则：个人 token 的入口（D3）与推送能力的验证（D4）；第三项“发布的审批人”的使用规则在
+它按评审中推荐的方案回答两项安全规则：个人 token 的入口（D3）与推送能力的验证（D4）；第三项“发布的审批人”的使用规则在
 D5 给出约束，审批流程由 [发布 ADR](../project/20261017-explicit-fast-forward-publish.md) 承担。涉及 Cloud（凭据引用、提交授权、
 能力验证、设置页）、Credential Store、Repo Executor 与边缘反向代理。
 
 兼容性边界：
 
 - 不给 `cloud/AGENTS.md` 的硬规则开例外：Cloud 仍然不接收、不保存、不记录、不返回任何 token。
-- 现有 `credential_refs` 的行全部保留；它们引用的是部署侧的秘密，不在 Credential Store 中，迁移后标为“未托管”，不能用于新的
-  同步与发布，用户重新提交 token 后才可用（D1）。
+- **破坏性切换**（契约范围边界）：不设过渡开关，不做数据迁移。`credential_refs` 直接改为本文的形状，已有的开发环境数据在切换后
+  重建；部署侧预置凭据的路径不再保留。
 - 凭据连续性 ADR 的归属与冻结规则不变；本文只把“真实凭据由部署侧保管”改为“由 Credential Store 保管”。
 
 ## 继承与修改
@@ -29,7 +29,7 @@ D5 给出约束，审批流程由 [发布 ADR](../project/20261017-explicit-fast
 | [identity-access 根决策](0-gateway-mediated-external-identity.md)：外部 provider token 不持久化、不进入 Cloud；Cloud 是授权权威 | 继承，不变。用户托管的 Git token 同样不进入 Cloud（D3）；谁能使用哪个凭据由 Cloud 判定（D5） |
 | [用户 Git 提交身份](20260928-user-git-commit-identity.md)：git 身份是自述的提交署名，不是认证身份，不参与授权 | 继承，不变。提交身份与访问外部仓库的凭据无关，凭据的所有者也不由提交作者推断 |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md) D1、D2：团队、个人、未知三类；关联成员离开后个人和未知引用冻结，重新加入不自动解冻 | 继承，不变（D1） |
-| 凭据连续性开头：“Ora 管理凭据引用，真实凭据仍由部署侧保管”；D3：管理员选择部署侧已配置的团队引用 | 修改：真实凭据由 Credential Store 保管，用户和管理员经浏览器直接提交（D2、D3）。部署侧预置的旧引用标为“未托管”（D1） |
+| 凭据连续性开头：“Ora 管理凭据引用，真实凭据仍由部署侧保管”；D3：管理员选择部署侧已配置的团队引用 | 修改：真实凭据由 Credential Store 保管，用户和管理员经浏览器直接提交（D2、D3）。部署侧预置凭据的路径删除 |
 | 凭据连续性 D3：“只验证读取不能被记录为已经拥有推送权限” | 继承并具体化：`read` 与 `publish` 分别验证，验证方式见 D4 |
 | 凭据连续性 D4：执行端按引用选择，临时提供，不回退全局凭据 | 继承。执行端是 Repo Executor，兑换方式见[执行器根决策](../repo-executor/0-repo-executor-sole-external-git-boundary.md) D3 |
 | `cloud/AGENTS.md`：凭据只是基础设施引用，Cloud 不接收、不保存、不记录、不返回 token | 继承，不开例外（D3） |
@@ -43,7 +43,7 @@ Cloud 的 `credential_refs` 是凭据的唯一元数据权威，保留现有列�
 
 | 字段 | 含义 |
 | --- | --- |
-| `secretState` | `awaiting_secret`（已创建，等待浏览器提交）、`stored`（Credential Store 中有当前版本）、`unmanaged`（迁移来的部署侧引用）、`revoked` |
+| `secretState` | `awaiting_secret`（已创建，等待浏览器提交）、`stored`（Credential Store 中有当前版本）、`revoked` |
 | `storeVersion` | Credential Store 中的当前版本号；每次提交新 token 加一 |
 | `capabilities` | 已对 `storeVersion` 验证的能力集合，取值 `read`、`publish`；列名沿用，取值从旧的 `clone`/`push` 改为新词表 |
 | `requestedCapabilities` | 创建时用户声明需要的能力，只决定是否自动发起 `publish` 验证，不授予任何权限 |
@@ -59,13 +59,11 @@ Cloud 的 `credential_refs` 是凭据的唯一元数据权威，保留现有列�
   的权限可能不同。
 - **可用状态**：沿用凭据连续性的 `available`、`frozen`、`invalid`。外部仓库以认证失败拒绝时，该版本标为 `invalid`；提交新 token
   后回到 `available`（冻结的引用除外，冻结仍需管理员处理）。
-- **迁移**：现有行 `secretState = unmanaged`，`capabilities` 清空，其余不变。未托管的引用不能签发兑换授权，使用它的同步和发布
-  以 `credential_not_in_store` 拒绝，界面提示重新提交 token。现有代码对这些引用本来就以 `repository_credential_executor_unavailable`
-  拒绝，所以迁移不会让任何当前能工作的路径失效。
+- `secretState` 不是 `stored` 的引用不能签发兑换授权，使用它的同步和发布以 `credential_not_in_store` 拒绝。
 
 ### D2：Credential Store
 
-Credential Store 是独立程序，沿用 cloud#64 的 `internal/credentialstore`，不与 Cloud 共享数据库或卷：
+Credential Store 是独立程序，参考未合并的旧实现中 `internal/credentialstore` 的设计新写（不依赖其代码），不与 Cloud 共享数据库或卷：
 
 - **加密**：信封加密。每个秘密一个随机 32 字节 DEK，以 AES-256-GCM 加密 token，附加数据是凭据 ID；DEK 再以 KEK 用 AES-256-GCM
   包裹，附加数据是 KEK 的 ID。KEK 是部署挂载的只读 keyring 文件，有一个主密钥，可以保留旧密钥用于解包；KEK 缺失时拒绝启动。
@@ -83,9 +81,9 @@ Credential Store 是独立程序，沿用 cloud#64 的 `internal/credentialstore
   | 密钥接口（mTLS） | 只认 KEK 运维身份 | KEK 轮换 |
   | 浏览器入口（HTTPS，无客户端证书） | 持有一次性提交授权的浏览器 | 提交一个新版本（D3） |
 
-  每个身份只有一项能力，同时持有两项能力的证书在启动时被拒绝（cloud#64 的规则）。
+  每个身份只有一项能力，同时持有两项能力的证书在启动时被拒绝（旧实现的规则）。
 
-相对 cloud#64 的改动：去掉 Cloud 写入明文的 `ingress-writer` 能力，改为浏览器入口；兑换身份从 `broker-resolver` 改为执行器的
+相对旧实现设计的不同：去掉 Cloud 写入明文的 `ingress-writer` 能力，改为浏览器入口；兑换身份从 `broker-resolver` 改为执行器的
 服务身份；兑换的用途从 `clone`、`mirror_prepare`、`push` 改为 `sync`、`publish`、`probe`。
 
 **撤销的时效**：Credential Store 不读 Cloud 的数据库，无法在兑换时知道 Operation 是否仍然有效。撤销的顺序是：Cloud 先在事务内
@@ -157,15 +155,14 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
   （凭据连续性 D3）。撤销是收紧方向的操作，允许管理员执行。
 - 个人凭据被所有者绑定到 Project，等于所有者同意该 Project 的同步用它读取；同步不逐次批准。发布逐次批准，因为发布以所有者的
   名义改变外部仓库。
-- 所有者离开租户时，个人凭据按凭据连续性冻结；之后的发布需要改绑团队凭据。这是 #172 Q7.2 推荐方案接受的代价。
+- 所有者离开租户时，个人凭据按凭据连续性冻结；之后的发布需要改绑团队凭据。这是推荐方案接受的代价。
 
 ### D6：设置页
 
-- 凭据列表：名称、仓库、归属、状态（等待提交、可用、冻结、失效、未托管、已撤销）、`read` 与 `publish` 是否已验证及时间。
+- 凭据列表：名称、仓库、归属、状态（等待提交、可用、冻结、失效、已撤销）、`read` 与 `publish` 是否已验证及时间。
 - 新建与轮换：token 输入框的内容只发往 Credential Store 的浏览器入口，提交后立即从页面状态中清除；Cloud 的请求不含 token。
 - “验证推送权限”按钮，显示最近一次验证的结果分类。
 - 团队凭据的新建入口只对管理员显示。
-- 未托管的旧引用显示“需要重新提交 token”。
 
 ## 不变量
 
@@ -178,13 +175,13 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 7. `publish` 只能由一次成功的 receive-pack 广告请求证明；`read` 只能由一次成功的同步证明。
 8. 租户管理员不能绑定他人的个人凭据，也不能批准用它发布。
 9. 撤销之后不再签发授权；Credential Store 的撤销完成后不能再兑换。
-10. 迁移不删除旧引用，未托管的引用不能被兑换。
+10. 只有 `secretState = stored` 的引用能被兑换。
 
 ## 为什么不是这些替代方案
 
 | 方案 | 否决理由 |
 | --- | --- |
-| token 经 Cloud 转交给 Credential Store（cloud#64） | 实现最简单，前端只调一个 API；但要给硬规则开例外，并持续证明 Cloud 的所有路径不泄露 token（D3） |
+| token 经 Cloud 转交给 Credential Store（旧实现） | 实现最简单，前端只调一个 API；但要给硬规则开例外，并持续证明 Cloud 的所有路径不泄露 token（D3） |
 | token 经 Gateway 转交 | Gateway 也是 Cloud 仓库中处理全部用户请求的组件，同样需要例外；边界从一个进程扩大为一组路由 |
 | Cloud 数据库加密保存 token | Cloud 失陷即可解密；违反不变量 1 |
 | 部署侧保管、管理员在配置文件中预置（凭据连续性的现状） | 用户无法自助；个人凭据无从提交 |
@@ -199,13 +196,16 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 - **多仓库作用范围**：一个 token 在多个仓库上的能力需要逐仓库验证，留给多 Binding 的后续决策。
 - **KEK 的外部 KMS**：第一阶段是挂载的 keyring 文件。
 - **Credential Store 多副本与备份**：与 Git Server 一样第一阶段单实例。
+- **兑换时核对仓库作用域**（纵深安全加固，契约“本决策未解决的问题”）：第一阶段 Credential Store 兑换时只核对授权中的凭据与版本，
+  不核对授权中的仓库是否等于凭据的 `repositoryScope`；作用域由 Cloud 签发授权前检查，并由 `git-credential-ora` 按 host 与 path
+  限制凭据只发给作用域内的请求。让 Credential Store 自己也核对，留给后续决策。
 
 ## 落地顺序
 
-1. **Credential Store 改造**：在摘出的 `credentialstore` 上增加浏览器入口、提交授权、管理接口，替换身份与兑换用途。完成条件：
+1. **Credential Store**：参考旧实现的设计新写，包含浏览器入口、提交授权、管理接口、执行器的兑换身份与兑换用途。完成条件：
    提交、确认、兑换、撤销的测试；同一提交授权、同一执行授权都只能使用一次。
-2. **Cloud 的引用与授权**：`credential_refs` 新列与迁移、提交授权签发、确认、撤销顺序、能力字段。完成条件：迁移在升级库上通过；
-   Cloud 的 API 拒绝带 `token` 的请求。
+2. **Cloud 的引用与授权**：`credential_refs` 的新形状、提交授权签发、确认、撤销顺序、能力字段。完成条件：Cloud 的 API 拒绝带
+   `token` 的请求。
 3. **能力验证**：`read` 接入同步登记，`publish` 接入执行器的 `probe`。
 4. **设置页**：改为直接提交。
 
@@ -230,7 +230,6 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 | 撤销 | 撤销后的同步与发布被拒绝；Credential Store 中该凭据的密文已销毁 |
 | 管理员与个人凭据 | 管理员绑定他人的个人凭据、批准用它发布，都被拒绝；管理员撤销它成功 |
 | 成员离开 | 个人凭据冻结；重新加入后仍冻结 |
-| 迁移 | 旧引用成为 `unmanaged`，使用它的同步以 `credential_not_in_store` 拒绝 |
 | 秘密扫描 | canary token 经浏览器提交、兑换、同步、发布、撤销全程后，在所有日志、Cloud 数据库导出、Git Server 仓库、执行器任务目录、Credential Store 卷的明文部分中都找不到 |
 
 **最终验收**：用 owner 提供的 GitHub 私有测试仓库与真实 token，经浏览器提交、确认，完成 `publish` 验证；再用一个只读的
