@@ -51,7 +51,10 @@ sha256 校验为必选项。desktop 仓本期零改动,其本地同步与安装�
   pull --ff-only(go-git 只支持 fast-forward merge,非 ff 报错,与 desktop gitlancer 同语义)。
 - 单飞准入:并发 Sync 直接返回(不排队);失败保留上一版目录快照,只写
   `plugin_sources.sync_error`,下个 tick 重试。
-- 扫描镜像 desktop 校验(≤1MiB、resolver=1、8 种 kind、slug 标识符、文本策略、sha256、
+- 扫描镜像 desktop 校验(≤1MiB、resolver=1、8 种 kind（`workbench`、`agent`、`webview`、
+  `skill`、`mcp`、`hook`，以及 [Extension Pack 决策](../../desktop/plugin/extension-pack/0-extension-pack.md)
+  加入的 `pack` 与 [Workflow 插件类别根决策](../../desktop/plugin/category/workflow/0-workflow-package-format.md)
+  加入的 `workflow`）、slug 标识符、文本策略、sha256、
   url/targets 互斥、pack 无 release、canonical 三元组白名单);损坏条目单独跳过,同 canonical
   id 按路径序首个胜出;`marketplace_visible=false` 不进目录;README 截断、logo 只存组合描述。
 

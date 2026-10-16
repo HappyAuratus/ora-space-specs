@@ -9,6 +9,12 @@ status: implemented
 但其值现在是 HTTPS URL 或对象 key 的 `ReleaseLocator`；具体相容性由所属 Marketplace Source 的
 Direct HTTPS / S3 SigV4 获取方式决定。本文下述仅允许 HTTPS 的表述以后者为准。
 
+**`kind` 枚举已由后续决策扩展为八种**：
+[Extension Pack 决策](../extension-pack/0-extension-pack.md) 加入 `pack`（只允许 release 形态），
+[Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md) 加入 `workflow`。
+本文 D4 的配对表与正文枚举只列了前六种，以这两份决策为准；`pack` 与 `workflow` 都没有专属
+section，也都不允许 target 形态。
+
 每个 Ora 插件用一份 `orax.toml` 自述身份、`kind`、版本与 kind 专属声明。该清单存在两种形态：
 marketplace 源仓库中的 **release 形态**（可携带可下载资产的地址与摘要），以及 `.orax` 包内随包
 分发的 **installed 形态**（描述已落盘的这一份包）。两种形态共用同一套字段、同一套语义校验和
@@ -86,6 +92,8 @@ installed 形态允许省略 `resolver` 的代价是：包内清单无法表达�
 | `hook` | 禁止 | 禁止 | 是；installed `[artifact]` 必需 |
 | `skill` | 禁止 | 禁止 | 否 |
 | `mcp` | 禁止 | 禁止 | 否 |
+
+（表中 `pack` 与 `workflow` 两行见文首说明：两者都不携带专属 section，也不允许 target 形态。）
 
 未知 `kind` 拼写不被接受。这是 D2 的显式例外：未知字段可以忽略，未知 kind 不能。`kind` 决定
 运行时权限、生命周期与允许携带的 section；把未知 kind 降级成某种默认插件运行，等于在一个未定义
