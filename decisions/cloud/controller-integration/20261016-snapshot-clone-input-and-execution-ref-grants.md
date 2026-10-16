@@ -45,6 +45,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 | 交付输入去 bundle D2：Controller 原样转交 Cloud 固定的输入，不签发、不持有、不转交任何 Git 访问凭据 | 继承，并扩展到 clone 输入（D2） |
 | [Git Server 根决策](../git-server/0-sandbox-scoped-git-server-over-https.md) D3：每个请求按证书目标、声明的执行与 Cloud 当前状态判定 | 继承；判定结果按契约 ADR D3 改为写入规则集，执行类型的映射由本文给出（D5） |
 | [Cloud Revision 后续决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md) D5：交付执行读写；带前序的会话只读；clone 与不带前序的会话无权限 | 修改：clone 执行与所有 Agent 会话都能访问；读不再区分执行类型（契约 ADR D3）；Agent 会话可写自己的 Workspace 分支；交付执行另可快进 `workspaceRef`（D5、D6） |
+| Cloud Revision 后续决策不变量 7：Git Server 只在运行处于 `delivering` 且交付执行尚无结果时授予写权限；只在输入带前序时授予会话读权限 | 修改：Agent 会话在运行期间可写本 Workspace 前缀下的分支；clone 执行与所有 Agent 会话可读（D5）。交付执行的写权限条件不变 |
 | 契约 ADR D4 “沙盒”一列：只能写本 Workspace 分支和当前执行的交付 ref | 继承；D5 的映射不超出这一列 |
 
 ## 决策
@@ -134,7 +135,7 @@ Git Server 解析沙盒请求时，先按 [Git Server 根决策](../git-server/0
 
 | 执行 | 有效性（任一不满足即 `403`） | `writable` |
 | --- | --- | --- |
-| clone（Workspace operation 的 clone 执行） | `clone_executions` 中属于该 Workspace 的执行，尚无结果，未被强停；所属 operation 处于 `running` 且 `step = clone`；执行的目标 Node 是该 Workspace 当前 Node；operation 的发起人仍能使用该运行时；Project 有效；输入的 `repositoryUrl` 指向请求的仓库 | 空（只读） |
+| clone（Workspace operation 的 clone 执行） | `clone_executions` 中属于该 Workspace 的执行，尚无结果，未被强停；所属 operation 处于 `running` 且 `step = clone`；执行的目标 Node 是该 Workspace 当前 Node；operation 的发起人仍能使用该运行时；Project 未删除且 `lifecycle ∈ {provisioning, active}`（main Workspace 的 clone 发生在 create_project 期间，此时 Project 还是 `provisioning`；现有判定只接受 `active`）；输入的 `repositoryUrl` 指向请求的仓库 | 空（只读） |
 | Agent 会话 | 与 [Cloud Revision 后续决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md) D5 相同：已登记、尚无结果、未被强停；运行 `phase ∈ {starting, running}`，没有取消请求，`thread_state` 不是 `ending` 或 `ended`；维护绑定已确认。删除“输入必须带 `priorRevision`”这一条 | `refs/heads/workspaces/<证书中的 workspaceId>/`（前缀），fast-forward |
 | 交付 | 不变（Cloud Revision 后续决策 D5） | 输入中的 `deliveryRef`，create-only；输入中的 `workspaceRef`，fast-forward（D6） |
 | 其他（插件执行） | — | 拒绝访问 |
