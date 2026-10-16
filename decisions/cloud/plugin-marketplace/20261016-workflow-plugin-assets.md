@@ -102,7 +102,10 @@ source_identity = (source_namespace, identifier, package_version, package_sha256
 | 结果 | 内容 |
 | --- | --- |
 | `imported` | `workflow_id`、`snapshot_version` |
-| `failed` | 有界错误码：`document_invalid_json`、`document_without_name`、`document_not_executable_graph`、`name_conflict`、`version_not_addressable` |
+| `failed` | 有界错误码：`document_invalid_json`、`document_without_name`、`document_not_executable_graph`、`name_conflict` |
+
+`snapshot_version` 是 Cloud 发布规则分配的下一个整数，不是文档里写的版本，所以没有「版本不可寻址」
+这一类失败（见 [workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md) D1）。
 
 - **逐文档失败，不整包失败**：一份坏 JSON 或非法图只让该文档失败，同包其他文档照常导入。这与
   skill 插件的整包校验相反，理由不同：skill 贡献集合是插件身份的一部分，而这里每份文档都是彼此
