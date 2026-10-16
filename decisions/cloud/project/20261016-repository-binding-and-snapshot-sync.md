@@ -37,7 +37,7 @@ Cloud 经 ref 查询核验两个 ref 都指向报告的提交之后，才在事�
 | 契约 D4：快照 ref create-only、名称等于目标；跟踪 ref tracking-cas，允许非快进 | 继承，不变。执行器的一次推送同时写两者（D2） |
 | 契约 D5 第 2 项：每个 Binding 一个当前快照，只在核验后写，总是最新一次核验通过的同步结果 | 继承，不变。本文规定由哪些同步、在什么时机推进它（D3、D5） |
 | 契约 D5 第 3 项：同步 Operation 的上下文（类型、Project、Binding、租约、可读可写） | 继承。本文规定 Operation 的状态、租约和 expected old 的取得方式（D2） |
-| 契约落地顺序第 1 步：Binding 与当前快照两张表由底座建立 | 继承。本文在其上增加同步 Operation 与迁移（落地顺序第 1 步） |
+| 契约落地顺序第 1 步：Binding 与当前快照两张表由底座建立 | 继承，并请底座再建立两样东西：`repository_operations` 的最小存储（Operation ID、类型、Binding、状态），以及结束等待者的函数（D9）。本文在其上增加租约、结果等字段和迁移（落地顺序第 1 步） |
 
 ## 决策
 
@@ -246,6 +246,16 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 - 唯一没有上限的情形是同步停在 `pending`、`leased` 不前进，即同步 worker 整体不可用。这属于基础设施故障，与其他
   `retry_wait` 的 operation 一样等待恢复，不另设超时：超时只会把一次可恢复的故障变成用户需要重新创建的失败。
 
+**实现归属**：两条线判断的是同一件事，必须是同一段代码。
+
+- 判断“有没有未结束的同步”，读的是底座建立的 `repository_operations` 最小存储（ID、类型、Binding、状态）。
+- “按 Binding 把 `snapshot_not_ready` 的 operation 以 `repository_sync_failed` 结束，并记录同步 Operation 的 ID 与错误码”
+  是底座提供的一个 Cloud 函数。本文在登记同步终态的事务里调用它；内部线的 clone 步骤读同一份存储，预置工具推进同步状态时
+  也调用它。
+
+这两样都放在底座，而不是任何一条线。这样外部线不依赖内部线的代码，内部线也不依赖外部线的租约与执行器，两边都能用预置工具
+独立验收。
+
 结束后怎样重新创建 Workspace，沿用内部线对失败的 create_project / create_workspace 的处理，本文不改变。
 
 为什么用“有没有同步在进行”而不是固定的等待时长：首次同步的耗时取决于仓库大小，从几秒到十分钟（执行器根决策 D4）。固定时长
@@ -292,7 +302,8 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 
 ## 落地顺序
 
-1. **同步 Operation 与迁移**：在底座建立的 Binding 与当前快照两张表之上，增加 `repository_operations`、租约 worker、`projects`
+1. **同步 Operation 与迁移**：在底座建立的 Binding、当前快照两张表，以及 `repository_operations` 最小存储与结束等待者的函数
+   （D9）之上，增加租约与结果字段、租约 worker、`projects`
    到 Binding 的迁移、Git Server 上同步 Operation 的上下文来源。完成条件：迁移在新库和升级库上都通过；Git Server 对同步 Operation
    的授权符合契约 D5 第 3 项，有真实 `git` 客户端的集成测试。
 2. **执行器接入**：Cloud 调用执行器完成同步，核验并推进当前快照；公开仓库和私有仓库都打通。完成条件：下面的独立验收全部通过。
