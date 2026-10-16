@@ -244,7 +244,12 @@ Git Server 解析 `Ora-Git-Operation-Id` 时，从 Cloud 读取以下信息：
   查询结果不一致，按核验失败处理；网络失败不接管，可以重放。
 - Workspace 分支：Cloud 不逐次登记，需要时按需查询。
 
-ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，仍然只接受 Cloud 的固定身份。
+ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，仍然只接受 Cloud 的固定身份。查询有两种形式：
+
+- 查询单个 ref 指向的提交（现有）；
+- 按前缀列出一个 Project 仓库中的 ref 及其提交，前缀必须落在本文的某个 namespace 内（例如
+  `refs/heads/workspaces/<workspaceId>/`）。Cloud 用它展示一个 Workspace 的分支，例如作为发布的源 ref 供用户选择。
+  列出的结果只是查询时刻的事实，Cloud 不据此登记任何东西。
 
 ### D7：第一阶段的存储与运维
 
@@ -312,6 +317,9 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 
 1. **底座**：实现 D3 的规则集和 `pre-receive` 改造，只产出现有的交付规则；同时提供只用于验收的预置工具，可以直接写入任意
    namespace 的 ref 和 D5 的当前快照记录，不进生产镜像。
+   - 预置工具还能写入验收所需的最小 Cloud 记录，不启动沙盒与 Node：Workspace 记录（带创建者，使运行时使用权限的检查可以进行）、
+     处于给定步骤和状态的 Workspace operation（例如等待快照的 clone 步骤）。外部线用它验收发布的源 ref 权限和结束等待者，
+     不需要内部线的 Controller 与 Node。
    - D5 第 2 项需要的 Binding 与当前快照两张表也由底座建立。
    - 底座同时建立同步与发布 Operation 的最小存储：Operation ID、类型（`repository_sync`、`repository_publish`）、Binding、状态。
      外部线在其上增加租约、结果等字段；内部线读它判断一个 Binding 有没有未结束的同步，以决定 Workspace 的 clone 步骤是否等待快照。
