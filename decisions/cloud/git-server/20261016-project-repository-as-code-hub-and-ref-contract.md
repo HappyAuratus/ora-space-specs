@@ -126,8 +126,10 @@ Grant {
 
 - **沙盒执行**：沿用根决策 D3 的有效性条件。执行属于证书中的运行时和当前代次，未结束，未被强停，Workspace 处于允许的阶段。
   授权内容由执行类型决定，具体映射由 `cloud/controller-integration` 后续 ADR 规定，但不能超出 D4 中“沙盒”一列允许的范围。
-- **Operation**：Operation 必须存在，处于持有租约的运行状态，租约未过期，Project 与 Binding 匹配。授权内容由 Operation 类型
-  决定（见 D5），不能超出 D4 中“执行器”一列允许的范围。
+- **Operation**：Operation 必须存在，处于 `running` 且租约未过期，Project 与 Binding 匹配，Project 未删除。授权不要求 Project
+  处于 `active`：首次同步发生在 `provisioning` 期间，进入 `deleting` 时已经 `running` 的 Operation 也要能照常收尾（见 D5 第 3 项的
+  生命周期表）；现有的沙盒判定要求 `active`，Operation 的判定不能照抄。授权内容由 Operation 类型决定（见 D5），不能超出 D4 中
+  “执行器”一列允许的范围。
 - `pre-receive` 在写入前重新解析同一份授权，逐个 ref 核对规则。两次请求之间执行结束、代次变化或 Operation 被取消，写入都会被拒绝。
 - 数据库不可用或判定出错，一律返回 `503`，不缓存授权。
 
@@ -243,6 +245,29 @@ Git Server 解析 `Ora-Git-Operation-Id` 时，从 Cloud 读取以下信息：
 - 一个 Operation 至多进入一次 `running`，不会被重新领取。`running` 中租约过期时，同步以失败结束、由新的 Operation 重放；发布进入
   `uncertain`，按发布 ADR 核验。这样旧执行器无法借新租约以同一个 ID 写入。
 
+**Operation 的状态与生命周期**（两条线都按这里实现，不各自定义）：
+
+| 类型 | 未结束 | 终态 |
+| --- | --- | --- |
+| 同步 `repository_sync` | `pending`、`leased`、`running` | `succeeded`、`failed`、`superseded`、`cancelled` |
+| 发布 `repository_publish` | `awaiting_approval`、`pending`、`leased`、`running`、`uncertain` | `succeeded`、`conflict`、`rejected`、`failed`、`cancelled` |
+
+- `uncertain` 算未结束，但核验次数有上限，用完后进入终态，所以任何 Operation 都会在有限时间内结束。
+- 每个 Binding 至多一个未结束的同步，由部分唯一索引保证。登记同步终态的事务至多新建一个后继同步：自动重放与发布后补同步同时
+  需要时只建一个，并清除 Binding 上的补同步标记。系统触发的同步因条件不满足建不了时，只记录原因，不让所在事务回滚。
+- 按 Project 的生命周期，能新建哪些 Operation：
+
+| Project | 同步 | 发布 |
+| --- | --- | --- |
+| `provisioning` | 只有建 Project 时底座建立的那一行，以及它的自动重放 | 不能新建 |
+| `active` | 全部触发方式 | 可以新建 |
+| `deleting` | 不能新建；进入 `deleting` 的事务清除补同步标记 | 不能新建 |
+
+- 进入 `deleting` 的事务把该 Project 尚未进入 `running` 的同步与发布（`pending`、`leased`、`awaiting_approval`）以
+  `cancelled`、`project_deleting` 结束；已在 `running` 或 `uncertain` 的照常收尾。delete_project 等到该 Project 没有未结束的
+  Operation 才开始。这段取消逻辑和“未结束”的判定都在底座，两条线共用。
+- create_project 无论因什么原因失败，同一事务都把 Project 从 `provisioning` 置为 `active`，Project 不会停在 `provisioning`。
+
 为什么把这三项放进 Git Server 的 ADR：它们是两条线之间唯一的耦合点。在这里固定下来，内部线可以用预置的快照独立开发和验收，
 外部线可以用预置的 Workspace 分支独立开发和验收，互不等待。
 
@@ -334,18 +359,36 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 ## 落地顺序
 
 1. **底座**：实现 D3 的规则集和 `pre-receive` 改造，只产出现有的交付规则；同时提供只用于验收的预置工具，不进生产镜像。
-   - Cloud 存储：Binding、当前快照，以及同步与发布 Operation 的最小存储（ID、类型、Binding、状态）。状态枚举一次定全，并划分
-     终态：同步为 `pending/leased/running/succeeded/failed/superseded/cancelled`，发布另加 `awaiting_approval` 与 `uncertain`；
-     `uncertain` 的核验次数有上限，超出后进入终态。外部线在其上增加租约、结果等字段，不增删状态。
-   - 建 Project 的事务同时建立它的 Binding 和一行 `pending` 的同步 Operation。两条线看到的 Project 从一开始就是这个形状，
-     替身和真实流程同形。
+   - **Cloud 存储**：Binding、当前快照，以及同步与发布 Operation 的最小存储，字段一次定齐：`id`、`type`、`tenant_id`、`project_id`、
+     `binding_id`、`state`、`trigger`、`error_code`、`created_at`、`finished_at`；Binding 上的补同步标记 `resync_requested`。
+     状态枚举与终态按 D5 第 3 项，以 CHECK 约束固定；每个 Binding 至多一个未结束同步的部分唯一索引也在这里建。外部线只增加
+     租约、凭据版本、结果明细等字段，不增删状态；内部线只读这些字段。
+   - **建 Project**：同一事务建立它的 Binding 和一行 `pending`、`trigger = project_created` 的同步 Operation。两条线看到的 Project
+     从一开始就是这个形状，替身和真实流程同形。
+   - **生命周期**：实现 D5 第 3 项中进入 `deleting` 时的取消、“未结束”的判定，以及 create_project 失败时把 Project 置为 `active`。
    - Workspace 的 clone 步骤怎样等待和结束，由内部线在领取时复核：有当前快照就继续；没有快照、而该 Binding 最近的同步已经以
-     失败结束，就以失败结束；否则继续等待。底座不提供额外的“结束等待者”函数。
-   - 预置工具：直接写入任意 namespace 的 ref、D5 的当前快照记录，以及给定状态的同步、发布 Operation。
-   - ref 查询的扩展（D6）：覆盖本文全部 namespace，并支持按前缀列出。现有实现只接受交付 ref；外部线的核验、`expectedTrackingOid`
-     的读取和发布源校验都依赖它，所以放在底座，两条线开工时就已可用。
-   - 共享的契约断言：检查 Git Server 上的 ref 和 Cloud 的记录是否符合 D5。内部线用它确认预置数据，外部线用它确认真实同步的
-     结果，保证两边验收的是同一份契约。
+     终态失败，就以失败结束；否则继续等待。底座不提供额外的“结束等待者”函数。
+   - **ref 查询的扩展**（D6）：覆盖本文全部 namespace，并支持按前缀列出。现有实现只接受交付 ref；外部线的核验、
+     `expectedTrackingOid` 的读取和发布源校验都依赖它。
+   - **部署**：Git Server 以三个监听接进 cluster 的 Compose。服务仓库监听在底座就开启，并由管理面签发 Repo Executor 的服务证书与 CA，
+     外部线开工时不必再改 Git Server 的部署和启动参数。
+   - **预置工具** `git-server-preset`：Go 程序，放在 cloud 仓库的 `cmd/`，随开发镜像（devsetup）进入 cluster 开发栈，不进生产镜像。
+     它在 Git Server 容器里直接操作仓库卷（不存在时以根决策 D1 的原子方式建仓），并直接写 Cloud 数据库。子命令：
+
+     | 子命令 | 作用 |
+     | --- | --- |
+     | `snapshot --project <id> [--commit <oid> \| --synthetic <n>]` | 写入 `snapshots/<oid>` 与跟踪 ref，登记一行 `succeeded` 的同步，推进当前快照；`--synthetic` 生成一条有 n 个提交的历史 |
+     | `ref --project <id> --ref <name> --commit <oid>` | 写入任意 namespace 的一个 ref，例如作为发布源的 Workspace 分支 |
+     | `operation --project <id> --type <sync\|publish> --state <state> [--error-code <code>]` | 写入一行给定状态的 Operation，用于等待、失败、删除等场景 |
+     | `check --project <id>` | 契约断言：检查 Git Server 上的 ref 与 Cloud 记录是否符合 D5 |
+
+     输出一行 JSON（`{"ok": true, ...}` 或 `{"ok": false, "violations": [...]}`）；成功退出码为 0，断言失败为 1，用法错误为 2。
+     内部线的验收脚本和外部线都调用它。`check` 也用于外部线确认真实同步的结果，保证两边验收的是同一份契约。
+   - **公开 API 的约定**：两条线新增的公开路由都放在现有前缀 `/api/v1/tenants/{tenantId}/` 下，Project 相关的放在
+     `/api/v1/tenants/{tenantId}/projects/{projectId}/` 下。运行公开的 `preparation` 新增 `syncErrorCode`：clone 步骤以
+     `repository_sync_failed` 结束时，填入该同步 Operation 的 `error_code`（只取外部线定义的安全错误码），否则为 `null`。
+   - **迁移编号**：迁移 append-only，文件名就是迁移身份。两条线不预占号段，各自的 PR 在合并前按 main 上的最新编号顺延重编号；
+     底座的表一次建齐，减少两条线的迁移互相依赖。
    - 完成条件：交付行为不变，现有测试全部通过。
 2. **内部线和外部线并行**：
    - 内部线：git-access 签发、沙盒的 workspace 规则、Node 从快照 clone 与 `ora-git`，以及按
