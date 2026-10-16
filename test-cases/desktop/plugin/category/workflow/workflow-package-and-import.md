@@ -103,8 +103,8 @@
 
 ### 前置状态
 
-- 一个包携带多份文档，其中至少一份是无效 JSON、缺少名称、图不可执行、与既有工作流同名，或声明了
-  不可寻址的版本。
+- 一个包携带多份文档，其中至少一份是无效 JSON、缺少名称、图不可执行、与既有工作流同名，或带有
+  不可寻址的版本候选（例如声明 `draft`、`a/b` 或空白）。
 - 工作流库的 tenant 级名称唯一性规则与发布门禁都生效。
 
 ### 触发
@@ -114,11 +114,11 @@
 ### 必须成立
 
 - 返回与输入同序的逐文档结果：成功带 `workflow_id` 与发布版本，失败带原因（无效 JSON、未声明
-  名称、图不可执行、名称冲突、版本不可寻址）。
+  名称、图不可执行、名称冲突，以及创建或发布环节自身的失败）。
 - 一份失败不改变其余文档的结果，也不移除投递它的包。
 - 一份成功的文档产生一份工作流与一个已发布快照；名称冲突不改名、不覆盖。
-- 发布版本按 文档自述 `version` → 文件名词干 → 工作流标题 的优先级取；候选不可寻址时拒绝该文档
-  而不清洗。
+- 发布版本按 文档自述 `version` → 文件名词干 → 工作流标题（词干为空时）的优先级取；不可寻址的
+  候选不被采用、也不被清洗，三个来源都不可用时按自动版本发布，文档仍然导入。
 - 存储的图是文档原文。
 
 ### 禁止结果
@@ -137,8 +137,10 @@
 | 一份坏文档独立失败而不影响同批其余文档 | `ora_application::workflow::import::tests::reports_one_bad_document_without_stopping_the_batch` | `Covered` |
 | 未声明名称与不可执行图被拒绝 | `ora_application::workflow::import::tests::refuses_documents_without_a_name`; `ora_application::workflow::import::tests::refuses_documents_whose_graph_cannot_execute` | `Covered` |
 | 名称冲突逐文档失败，不改名也不覆盖 | `ora_application::workflow::import::tests::refuses_a_duplicate_workflow_name` | `Covered` |
-| 发布版本按优先级派生，不可寻址时拒绝 | `ora_application::workflow::import::tests::derives_publish_versions_in_precedence_order` | `Covered` |
+| 发布版本按优先级派生，不可寻址的候选不被采用、也不被清洗 | `ora_application::workflow::import::tests::derives_publish_versions_in_precedence_order` | `Covered` |
 | 安装结局与导入结局分别返回，导入失败不移除包 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 同一次响应里同时给出 `outcome` 与逐文档结果 | `Covered` |
+
+「回落自动版本」那一支的直接证据在发布处理器一侧：`ora_application::workflow::tests::publish_uses_the_injected_clock_for_automatic_versions` 与 `…::publish_retries_automatic_versions_that_collide_at_the_same_clock_value`。导入侧只断言派生函数对不可寻址候选返回 `None`，还没有一条端到端的「词干不可寻址 → 文档导入成功且拿到自动版本」测试。
 
 ### 决策依据
 
