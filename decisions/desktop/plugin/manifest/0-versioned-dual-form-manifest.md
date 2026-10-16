@@ -4,16 +4,12 @@ status: implemented
 
 # 插件清单：resolver 版本化的双形态 `orax.toml` 与单一验证域模型
 
+> 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。D4 的配对表与正文枚举只列了前六种，以这两份决策为准；`pack` 与 `workflow` 都没有专属 section，也都不允许 target 形态。
+
 **release `url` 的类型已由
 [Source 级插件包获取决策](../registry/20260904-source-configured-artifact-retrieval.md) 修改**：字段名保持不变，
 但其值现在是 HTTPS URL 或对象 key 的 `ReleaseLocator`；具体相容性由所属 Marketplace Source 的
 Direct HTTPS / S3 SigV4 获取方式决定。本文下述仅允许 HTTPS 的表述以后者为准。
-
-**`kind` 枚举已由后续决策扩展为八种**：
-[Extension Pack 决策](../extension-pack/0-extension-pack.md) 加入 `pack`（只允许 release 形态），
-[Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md) 加入 `workflow`。
-本文 D4 的配对表与正文枚举只列了前六种，以这两份决策为准；`pack` 与 `workflow` 都没有专属
-section，也都不允许 target 形态。
 
 每个 Ora 插件用一份 `orax.toml` 自述身份、`kind`、版本与 kind 专属声明。该清单存在两种形态：
 marketplace 源仓库中的 **release 形态**（可携带可下载资产的地址与摘要），以及 `.orax` 包内随包
