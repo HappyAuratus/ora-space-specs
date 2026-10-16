@@ -46,6 +46,7 @@ desktop 的 Node 协议（`crates/node-protocol`）、Node 的 clone 执行与�
 | Git 副作用移出 worker D1–D5；中断失败判定 D1–D4 | 继承，不变；它们同样适用于 clone 中工作负载身份的命令（D4） |
 | 交付推送决策 D1：带证书的 Git 访问以 Node 身份在私有传输仓库中执行，不读取 checkout 的配置、钩子或 ref | 继承，并扩展到 clone、`ora-git` 的 fetch 与推送（D2、D6、D7） |
 | 交付推送决策 D2、D3：交付把最终提交推到交付 ref，冻结计划后重放 | 继承，由内部线实现；交付另把最终提交快进到 `workspaceRef`，不影响交付结果（D8） |
+| 交付推送决策 D1“交付 ref 必须在 `refs/ora/deliveries/` 下”、不变量 5“交付只推送输入给出的那一个 ref” | 修改：交付推送交付 ref 之后，再推送一次输入给出的 `workspace_ref`（必须在 `refs/heads/workspaces/` 下）；仍不推送其他 ref 或 tag（D8） |
 | 交付推送决策 D5 第 5 步：`checkout --force -B <默认分支> <finalCommit>`，`origin/<默认分支>` 不动 | 修改：本地分支是 Workspace 分支短名；checkout 没有 origin（D9） |
 | 交付推送决策 D5 第 6 步、[恢复决策](../revision/20261010-restore-prior-revision-before-session.md) D4：前序 `baseCommit` 不是 `origin/<默认分支>` 的祖先时提示 | 修改：改为不是本 Workspace 快照提交的祖先时提示（D9） |
 | 恢复决策不变量 4：恢复不改 `origin` 的远端跟踪分支与仓库配置 | 修改：checkout 没有 origin；恢复不改 `refs/remotes/ora/**` 与仓库配置（D9） |
@@ -227,10 +228,13 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
 | --- | --- |
 | 更新成功，或远端已是 `C` | 成功；更新账本，并以工作负载身份把 checkout 的 `refs/remotes/ora/workspaces/<self>/<branch>` 设为 `C` |
 | 旧值不符（stale info） | 读取远端当前值 `R`：`R = C` 时按成功处理（上一次推送已写入，但账本没来得及更新）；否则 `conflict`，提示中给出 `R` |
-| `pre-receive` 以非快进拒绝 | `not_fast_forward` |
+| 推送前本地判定为非快进（见下） | `not_fast_forward`，不发起推送 |
 | 其他 ref 更新被拒、`401`、`403` | `denied`，不重试 |
 | `5xx`、网络、TLS、时限 | 重试，共 3 次，间隔 5 秒、30 秒；耗尽为 `unavailable` |
 
+- 非快进在推送前由 Node 在传输仓库里判定：`O` 存在且 `git merge-base --is-ancestor <O> <C>` 不成立，就是 `not_fast_forward`。
+  Git Server 的 `pre-receive` 只返回统一的拒绝信息（现有 hook 输出 `ora: push rejected`），Node 无法从应答区分非快进与其他拒绝；
+  本地判定之后仍被拒的，一律按 `denied` 处理。
 - 推送只写这一个 ref，不推 tag，不推其他分支。
 - 推送不改变 checkout 的本地分支、HEAD、工作区与 index。
 - 交付与此无关：交付仍把最终提交推到交付 ref（交付推送决策 D2），Workspace 分支是否推送过不影响 Revision。
@@ -272,8 +276,8 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
 - `O` 取 D6 的账本，与 `ora-git push` 共用；成功后更新账本。远端已是最终提交时按成功处理，所以重启后按冻结计划重放也不会出错。
 - 结果只影响 Workspace 分支，不影响交付：快进被拒（Agent 让本地分支偏离了已推送的分支）、旧值不符、`403` 都不重试，记一条
   有限的分类日志后继续交付；`5xx` 与网络错误沿用交付推送决策 D4 的重试，耗尽后同样继续交付。交付结果不增加字段。
-- 最终提交是交付的内部快照提交，它的父提交是会话结束时的 HEAD（交付推送决策所继承的 Node Revision 根决策 D2）。Agent 推送过
-  的分支只要仍是 HEAD 的祖先，这次推送就是快进；`unchanged` 时最终提交等于基础提交或前序最终提交，分支不存在时就以它新建。
+- 会话结束时工作区有未提交改动，最终提交是交付的内部快照提交，父提交为会话结束时的 HEAD；工作区干净时，最终提交就是 HEAD
+  本身（交付推送决策所继承的 Node Revision 根决策 D2）。两种情况下，Agent 推送过的分支只要仍是 HEAD 的祖先，这次推送就是快进；`unchanged` 时最终提交等于基础提交或前序最终提交，分支不存在时就以它新建。
 - `workspace_ref` 必须在 `refs/heads/workspaces/` 下，且等于 clone 记录中的值，否则 Node 拒绝该交付输入。
 
 为什么放在交付 ref 之后、而且失败不影响交付：交付 ref 是 Revision 的核验对象，必须先成功；Workspace 分支只是让 run 的成果出现在
@@ -430,10 +434,10 @@ echo fixture 同步增加相同标记。
 
 | # | 场景 | 断言 |
 | --- | --- | --- |
-| 1 | **从快照 clone 并校验**：替身写快照后创建 Project，再对一个 Issue @Echo，提问 `[write]` | `psql`：clone 执行的 `result.commit` 等于快照提交，Workspace 的 `base_commit_id` 相同。会话中 `docker exec -u <工作负载 UID>` 进沙盒：`git -C <checkout> remote` 为空；`git config --list` 不含 `remote.`、`http.`、`credential.`；`git symbolic-ref HEAD` 为 `refs/heads/main`；`rev-parse HEAD` 等于快照提交；`objects/info/alternates` 不存在 |
+| 1 | **从快照 clone 并校验**：经公开 API 创建 Project（Binding 与第一行同步随之建立），替身再写入快照 ref 与当前快照记录，然后对一个 Issue @Echo，提问 `[write]` | `psql`：clone 执行的 `result.commit` 等于快照提交，Workspace 的 `base_commit_id` 相同。会话中 `docker exec -u <工作负载 UID>` 进沙盒：`git -C <checkout> remote` 为空；`git config --list` 不含 `remote.`、`http.`、`credential.`；`git symbolic-ref HEAD` 为 `refs/heads/main`；`rev-parse HEAD` 等于快照提交；`objects/info/alternates` 不存在 |
 | 2 | **commit 后 push-workspace**：Issue A，提问 `[write] [commit] [push]` | 回复含 `[push: ok]`。在 Git Server 容器里 `git for-each-ref refs/heads/workspaces/`：A 的 `workspaces/<A>/main` 指向新提交，其父提交是快照提交 |
 | 3 | **第二个 Workspace fetch、merge 再推送**：A 完成后，Issue B @Echo，提问 `[fetch <A>] [write] [commit] [push]` | 回复含 `[push: ok]`；Git Server 上 `workspaces/<B>/main` 的祖先包含 A 的提交；B 的 checkout 中有 `refs/remotes/ora/workspaces/<A>/main`。`workspaces/<A>/main` 不变 |
-| 4 | **交付、Revision 登记、续作恢复**：另一个 Issue C 提问 `[write] [commit]`，不推送，结束会话；然后 A 运行结束；同一 Issue 再 @Echo 一次（续作 A 的 Revision），提问 `[push]` | `psql`：A 的 `revisions.delivery_ref` 存在，Git Server 上该 ref 指向登记的最终提交；交付顺带把 `workspaces/<A>/main` 快进到 A 的最终提交。C 从未推送，交付后 `workspaces/<C>/main` 指向 C 的最终提交，其父提交是 C 的 `[commit]`。续作运行：Agent 启动前 checkout 的 `main` 指向 A 的最终提交；新 Workspace 的 `base_commit_id` 是快照提交；`[push: ok]` 后 `workspaces/<新 Workspace>/main` 指向 A 的最终提交。替身先写一份无关的快照再续作时，首条提问末尾出现历史改写的提示；写子提交快照时不出现 |
+| 4 | **交付、Revision 登记、续作恢复**：另一个 Issue C 提问 `[write] [commit]`，不推送，结束会话；然后 A 运行结束；同一 Issue 再 @Echo 一次（续作 A 的 Revision），提问 `[push]` | `psql`：A 的 `revisions.delivery_ref` 存在，Git Server 上该 ref 指向登记的最终提交；交付顺带把 `workspaces/<A>/main` 快进到 A 的最终提交。C 从未推送，交付后 `workspaces/<C>/main` 指向 C 的最终提交；C 的工作区在 `[commit]` 之后是干净的，所以最终提交就是 C 的 `[commit]` 提交。续作运行：Agent 启动前 checkout 的 `main` 指向 A 的最终提交；新 Workspace 的 `base_commit_id` 是快照提交；`[push: ok]` 后 `workspaces/<新 Workspace>/main` 指向 A 的最终提交。替身先写一份无关的快照再续作时，首条提问末尾出现历史改写的提示；写子提交快照时不出现 |
 | 5a | **没有快照**：新 Project 不写快照 | 见 [clone 步骤消费快照决策](../../cloud/operation/20261016-clone-step-consumes-binding-snapshot.md) 的验收：同步未结束时停在 `snapshot_not_ready`，同步失败后以 `repository_sync_failed` 结束；两种情况都没有 clone 执行，Node 不访问外部地址 |
 | 5b | **写别人的分支**：会话中以工作负载身份运行 `ora-git push main:refs/heads/workspaces/<A>/main` 与 `ora-git push --force` | 两者都是 `usage`（退出码 2）；再以 Node 身份直接推送到 `workspaces/<A>/main`（[快照 clone 输入与执行授权决策](../../cloud/controller-integration/20261016-snapshot-clone-input-and-execution-ref-grants.md) 的验收）被 Git Server 拒绝；Git Server 上该 ref 不变 |
 | 5c | **非快进**：B 推送后，以工作负载身份在 B 的 checkout 中 `git reset --hard <快照提交>`、提交一个新提交，再 `ora-git push` | 退出码 8，`not_fast_forward`；Git Server 上 `workspaces/<B>/main` 不变 |
