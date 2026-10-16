@@ -10,7 +10,8 @@ Git Server 不再只存放交付 ref。从本决策起，它是每个 Project �
 - **沙盒执行**：经现有仓库监听、用 git-access 证书访问，写 Workspace 分支和交付 ref；
 - **Repo Executor**：经新的服务仓库监听、用服务证书访问，写外部仓库同步得到的快照和跟踪 ref。
 
-每个请求带一个上下文头。Git Server 按 Cloud 当前状态把它解析成一份 ref 规则集，`pre-receive` 再按规则逐个 ref 判定。
+每个请求带一个上下文头。Git Server 按 Cloud 当前状态判定这个请求能不能访问该 Project 仓库，再把它解析成一份写入规则集，
+由 `pre-receive` 按规则逐个 ref 判定。读侧不做 ref 隐藏：同一 Project 内的代码对获授权的身份共享，隔离边界是 Project 仓库本身。
 Cloud 仍然不写 Git Server，只在事务外查询、在事务内登记。外部仓库只经 Repo Executor 访问，Node、Workspace 与 Git
 Server 不接触外部凭据。
 
@@ -32,9 +33,11 @@ Server 不接触外部凭据。
 
 范围边界：
 
-- Revision 的交付与续作继承 [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)，本文不改；
+- Revision 的交付与续作继承 [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)，本文不改它的
+  规则，由内部线一并实现；
 - 会话 JSONL 仍在对象存储；
-- 本文不迁移已有的 bundle Revision；
+- **破坏性切换**：Cloud 目前没有用户，本组决策不设过渡开关、不做数据迁移，也不保留 bundle 与外部 clone 的旧路径。已有的开发
+  环境数据（Project、Workspace、bundle Revision）在切换后重建，不承诺可用；
 - 不承诺多副本、备份和 ref 回收（见“本决策未解决的问题”）；
 - 不改变沙盒的出网策略。本文保证的是：平台管理的代码输入、协作和交付都只经 Git Server，沙盒里没有外部仓库凭据。Agent 在沙盒里
   自行访问公开网络上的仓库，不在本文约束之内；由于没有凭据，它无法以平台的名义读取私有仓库或写入外部仓库。
@@ -47,6 +50,7 @@ Server 不接触外部凭据。
 4. Workspace 的推送不会触达外部仓库。
 5. 权限撤销、Workspace 代次变化、执行结束、Operation 结束后，新的 Git 操作立即被拒绝。
 6. 内部线与外部线能并行开发、分别验收：两边只经本文规定的 ref 与数据形状交接。
+7. 目标是先跑起来、行为正确；纵深的安全加固留到后续决策（见“本决策未解决的问题”）。
 
 ## 继承与修改
 
@@ -61,6 +65,7 @@ Server 不接触外部凭据。
 | 根决策 D7：Node 照旧从上游 clone，Git Server 不镜像上游、也不推回上游 | 修改：上游内容只经 Repo Executor 进入 Git Server；Workspace 的代码输入只来自 Git Server 的快照（D5）。这正是根决策 D7 为后续 ADR 预留的方向 |
 | [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)：Revision 记录交付 ref 与最终提交 | 继承，不变。不另建 Revision ref（D4） |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md)：Cloud 只管理凭据引用；执行端按引用选择，不回退全局凭据 | 继承。凭据只在 Repo Executor 中使用，本文不涉及凭据本身 |
+| [运行时 Workspace 使用权限](../workspace/20260927-runtime-workspace-use-permissions.md) D2：代码、分支详情只供可使用目标者（创建者或管理员） | 修改，只改 Git 层面：同一 Project 内的 Workspace 分支与交付 ref，对该 Project 中获授权的沙盒执行与执行器共享，可以 fetch、merge，也可以作为发布源（D3）。界面上谁能查看代码与分支详情，仍按原规则 |
 
 ## 决策
 
@@ -94,6 +99,8 @@ outbox 或 reconciler。
 - 服务证书与沙盒证书由不同的 CA 签发，每个监听只信自己的 CA。
 - 服务证书只证明“这是 Repo Executor”，不携带仓库或 ref 权限。
 - 服务身份沿用现有 trust domain `ora.local`，用途段在前，格式与 `git-access` 一致。
+- 仓库配置按监听注入（现有实现已经按请求以环境变量注入配置）：仓库监听保持 `receive.denyNonFastForwards=true`；服务仓库监听
+  关闭它，以便跟踪 ref 跟随外部 force-push（D4）。两个监听都保持 `receive.denyDeletes=true`。
 
 为什么不让执行器走仓库监听：仓库监听只在沙盒网络。执行器持有外部凭据，让它加入沙盒网络，就等于把它放到工作负载能直接
 访问的地方。分开监听，根决策 D6 的网络隔离得以保持。
@@ -111,10 +118,9 @@ Git Server 按“证书身份 + 上下文 + 目标 Project”读取 Cloud 数据
 
 ```text
 Grant {
-  project:  (tenantId, projectId)
-  readable: [ref 或 ref 前缀]                  // 本次请求能看到的 ref
+  project:  (tenantId, projectId)              // 获授权后可读整个 Project 仓库
   writable: [{ ref 或 ref 前缀, rule, expectedOld? }]
-            // rule ∈ create-only | fast-forward | tracking-cas
+            // rule ∈ create-only | fast-forward | tracking-cas；为空表示只读
 }
 ```
 
@@ -125,15 +131,17 @@ Grant {
 - `pre-receive` 在写入前重新解析同一份授权，逐个 ref 核对规则。两次请求之间执行结束、代次变化或 Operation 被取消，写入都会被拒绝。
 - 数据库不可用或判定出错，一律返回 `503`，不缓存授权。
 
-**ref 广告**：读取（upload-pack）和推送（receive-pack）开始时，Git 都会先列出仓库里的 ref 和它们指向的 OID。Git Server
-按 `readable` 为每次请求注入 `transfer.hideRefs`，让两种广告都只列出授权内的 ref；推送时再加上本次可写的 ref，以便客户端
-知道旧值。不能只隐藏读取的广告：否则执行器同步推送时、沙盒推送 Workspace 分支时，都能看到整个 Project 的全部 ref。
+**读侧不做 ref 隐藏**：获授权的请求可以读整个 Project 仓库，ref 广告列出仓库里的全部 ref。授权只回答两件事：能不能访问这个
+Project 仓库，以及能写哪些 ref。隔离边界是 Project 仓库本身：每个 Project 是独立的裸仓库，跨 Project、跨租户的对象天然不可达。
 
-**按 OID 读取**：显式把 `uploadpack.allowAnySHA1InWant`、`allowTipSHA1InWant`、`allowReachableSHA1InWant` 设为 `false`，
-未广告的对象不能按 OID 直接请求。protocol v0 与 v2 下的这一行为，都必须有集成测试证明。
+为什么不按 ref 隐藏：
 
-**边界**：同一 Project 仓库内，ref 可见性是最小权限的整理，**不是**对象级的保密边界。保密边界是 Project 仓库本身：跨 Project、
-跨租户的对象永远不可达。同一 Project 的 Workspace 本来就是协作关系。
+- 隐藏做不成边界。实测 protocol v2 下，即使用 `transfer.hideRefs` 隐藏 ref，并把 `uploadpack.allowAnySHA1InWant`、
+  `allowTipSHA1InWant`、`allowReachableSHA1InWant` 都设为 `false`，客户端仍能按 OID 取到被隐藏 ref 引用的对象；现有实现会
+  把客户端的 `Git-Protocol` 头透传给 `git http-backend`，线上实际走 v2。
+- 隐藏推送广告会让客户端看不到服务端已有的对象。实测一个 50 个提交的仓库，只广告交付 ref 时推送 150 个对象，完整广告时只推 3 个；
+  每次交付都会接近全量上传。
+- 同一 Project 的 Workspace 本来就是协作关系（运行时使用权限的修改见“继承与修改”）。
 
 为什么改成规则集：现有实现的判定结果只有 `Mode` 和一个 `DeliveryRef`，`pre-receive` 也只认这一个 ref。新增调用方后，如果
 继续在判定函数里写 if-else，每加一种调用方都要同时改 SQL、返回结构和 hook。改成规则集后，“谁能写什么”由 Cloud 的数据一处决定，
@@ -143,17 +151,17 @@ Git Server 只负责执行规则。这也让两条线可以各自添加自己的
 
 | ref | 写入者 | 规则 | 读取者 |
 | --- | --- | --- | --- |
-| `refs/ora/upstreams/<bindingId>/snapshots/<commitOid>` | 执行器（同步 Operation） | create-only；名称中的 OID 必须等于 ref 的目标 | 该 Project 中获授权的沙盒执行；执行器 |
+| `refs/ora/upstreams/<bindingId>/snapshots/<commitOid>` | 执行器（同步 Operation） | create-only；名称中的 OID 必须等于 ref 的目标 | 本 Project 的任何获授权身份 |
 | `refs/ora/upstreams/<bindingId>/heads/<branch>` | 执行器（同步 Operation） | tracking-cas：旧值必须等于 Operation 记录的 expected old（零表示首次创建）；新值必须有对应的快照 ref，可以是仓库里已有的，也可以是同一次推送里新建的；允许非快进 | 同上 |
-| `refs/heads/workspaces/<workspaceId>/<branch>` | 沙盒（该 Workspace 当前代次的执行） | fast-forward：只能新建或快进 | 该 Project 中获授权的沙盒执行；执行器（发布 Operation） |
-| `refs/ora/deliveries/<deliveryWorkId>` | 沙盒（对应的交付执行） | create-only（根决策 D4，不变） | Cloud ref 查询；续作执行；执行器（发布 Operation） |
+| `refs/heads/workspaces/<workspaceId>/<branch>` | 沙盒（该 Workspace 当前代次的执行） | fast-forward：只能新建或快进 | 同上 |
+| `refs/ora/deliveries/<deliveryWorkId>` | 沙盒（对应的交付执行） | create-only（根决策 D4，不变） | 同上；另有 Cloud ref 查询 |
 
 其他规则：
 
 - 任何调用方都不能删除 ref，也不能写表外的 ref。
 - 沙盒永远不能写 `refs/ora/upstreams/**`；执行器永远不能写 `refs/heads/workspaces/**` 和 `refs/ora/deliveries/**`。
-- 仓库级的 `receive.denyNonFastForwards` 改为由 hook 按 namespace 执行：跟踪 ref 要能跟随外部 force-push，其余 namespace
-  仍然拒绝非快进。`receive.denyDeletes` 保留为仓库级配置。
+- 快进约束有两道：`pre-receive` 按 namespace 执行规则；仓库监听上 `receive.denyNonFastForwards` 保持开启（D2）。服务仓库监听关闭
+  它，跟踪 ref 才能跟随外部 force-push，其余 namespace 由 hook 拒绝非快进。
 - Workspace 分支的 CAS 由 Git 本身承担：receive-pack 在 ref 锁内比对客户端声明的旧值，`pre-receive` 再核对快进关系。并发推送时，
   后到的一方收到冲突。
 - 不新增 `refs/ora/revisions/*`。交付 ref 已经不可变，Revision 记录交付 ref 与提交即可。
@@ -221,16 +229,19 @@ Git Server 解析 `Ora-Git-Operation-Id` 时，从 Cloud 读取以下信息：
 | 类型 | `repository_sync` | `repository_publish` |
 | Project、Binding | 必填 | 必填 |
 | 状态与租约 | 必须持有未过期的租约 | 同左 |
-| 可写 | 本 Binding 下 `snapshots/` 中名称与目标一致的新 ref（create-only）；`heads/<branch>`（tracking-cas，expected old 在 Operation 创建时记录） | 无 |
-| 可读 | 该 Binding 的 upstream namespace | 只有 Operation 指定的源 ref |
+| 可写 | 本 Binding 下 `snapshots/` 中名称与目标一致的新 ref（create-only）；`heads/<branch>`（tracking-cas，expected old 在进入 `running`、签发执行授权之前读取并记录） | 无 |
+| 可读 | 整个 Project 仓库（D3） | 整个 Project 仓库；执行器只取 Operation 记录的源 ref 与源提交 |
+| 源 | — | 本 Project 的 Workspace 分支或交付 ref（可以直接发布一次 run 的 Revision） |
 
 - 同步的快照授权是按前缀给出的，不是某个具体 OID：创建 Operation 时，Cloud 还不知道外部仓库会同步到哪个提交，执行器 fetch
   之后才知道。约束靠 D4 的 create-only 和“名称与目标一致”两条规则。
-- 发布 Operation 记录“源 ref + 源提交”，执行器只读源 ref。创建之后，源 ref（比如 Workspace 分支）可能继续前进；但 Workspace
+- 发布 Operation 记录“源 ref + 源提交”，执行器从源 ref 取得源提交。交付 ref 不可变，以它为源时源提交就是它的目标。创建之后，源 ref（比如 Workspace 分支）可能继续前进；但 Workspace
   分支只能快进（D4），源提交始终是它顶端的祖先，所以从源 ref 一定取得到源提交。以后如果允许 Workspace 分支非快进改写，必须
   同时保证进行中的发布仍然取得到源提交。
 - 权限跟着 Operation 走：同一个执行器进程处理不同 Operation 时，各自只有对应的权限；Operation 结束、取消或租约过期，同一个
   ID 立即失效。
+- 一个 Operation 至多进入一次 `running`，不会被重新领取。`running` 中租约过期时，同步以失败结束、由新的 Operation 重放；发布进入
+  `uncertain`，按发布 ADR 核验。这样旧执行器无法借新租约以同一个 ID 写入。
 
 为什么把这三项放进 Git Server 的 ADR：它们是两条线之间唯一的耦合点。在这里固定下来，内部线可以用预置的快照独立开发和验收，
 外部线可以用预置的 Workspace 分支独立开发和验收，互不等待。
@@ -267,12 +278,13 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 5. 快照 ref 和交付 ref 只能新建；任何 ref 都不能删除。
 6. 跟踪 ref 只能以 CAS 方式更新，新值必须有对应的快照 ref。
 7. Workspace 分支只能新建或快进。
-8. 读取和推送的 ref 广告都只列出授权内的 ref；protocol v0 和 v2 下按 OID 请求未广告对象的行为都有测试证据。
+8. 获授权的请求可读整个 Project 仓库；写入只限规则集列出的 ref。
 9. 跨租户、跨 Project 的对象不可达。
 10. 沙盒访问不到服务仓库监听和 ref 查询监听。
 11. Workspace 的代码输入总是固定的快照和提交。
 12. Binding 的当前快照只在 Cloud 核验快照 ref 之后更新，总是等于最新一次核验通过的同步结果。
 13. Cloud 不写 Git Server。
+14. 一个 Operation 至多进入一次 `running`。
 
 ## 为什么不是这些替代方案
 
@@ -285,6 +297,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 | 快照按 sync-id 命名 | 重复同步同一提交会让 ref 无限增长；OID 命名天然幂等 |
 | 执行器走仓库监听 | 持有外部凭据的组件会进入沙盒网络，破坏根决策 D6 的网络隔离 |
 | 每个 Workspace 一个仓库 | 多份存储；协作要跨仓库 fetch；与 Project 级的 Revision 不一致。它的优点是对象级隔离更强，但同一 Project 的 Workspace 本来就是协作关系，不需要这层隔离 |
+| 同一 Project 内按 ref 隐藏、按运行时使用权限收窄读权限 | protocol v2 下隐藏不住对象（D3 的实测）；要做成边界就得强制 v0，还要为每种写入补上基础 ref 的广告，否则交付推送近乎全量。同一 Project 的协作本来就需要共享 |
 | Gitea、Forgejo | 自带用户、权限和 Token 体系，与 Cloud 的租户和授权重复；本期不需要 PR、Review、Issue |
 
 ## 本决策未解决的问题
@@ -293,6 +306,11 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 - **快照、Workspace 分支和交付 ref 的回收与保留期**：第一阶段全部保留，回收策略要和 Revision 的保留策略一起定。
 - **Workspace 分支的非快进改写**：需要另行设计受控的改写操作，并保证进行中的发布仍然取得到源提交（D5）。
 - **多分支、Tag 的全量同步，以及 LFS 和 submodule**：由 `cloud/project` 的同步 ADR 决定第一阶段怎样处理，本文的 namespace 已经为多分支留出位置。
+- **纵深安全加固**：第一阶段以跑通与正确为目标，以下留给后续决策，各后续 ADR 在自己的“未解决的问题”里登记：
+  - Node 以 Node 身份读取 checkout 对象库（借用 alternates）时，工作负载可控文件带来的攻击面；工作负载与插件进程读不到 git-access 私钥的前提；
+  - 执行器出口检查的 DNS rebinding；
+  - 发布审批展示 diff、限制目标分支、防止经 workflow 读取外部仓库的 secrets；
+  - Credential Store 兑换时核对仓库作用域。
 
 ## 对现有 Git Server 实现的复用
 
@@ -302,42 +320,39 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
   - `pre-receive` 的 token 加 socket 通道；
   - 原子建仓；
   - 交付 ref 规则；
-  - Sandbox Server 按根决策 D2 签发 git-access 身份。
+  - 未合并的 cluster#17 只作参考：Sandbox Server 签发 git-access 身份由内部线重新实现。
 - **重写**：
   - 判定函数和返回结构，改为 D3 的规则集；
   - `pre-receive` 的逐 ref 判定，改为按 namespace 执行规则；
-  - 仓库级的 `denyNonFastForwards`，改为由 hook 执行。
+  - 仓库配置按监听注入（D2）。
 - **新增**：
-  - 读取和推送两种 ref 广告的 `transfer.hideRefs` 注入；
+  - 去掉对客户端 `Git-Protocol` 头的任何假设：读侧不隐藏，v0、v2 行为一致；
   - 服务仓库监听和服务身份；
   - Operation 上下文的解析；
   - 配额。
 
 ## 落地顺序
 
-1. **底座**：实现 D3 的规则集和 `pre-receive` 改造，只产出现有的交付规则；同时提供只用于验收的预置工具，可以直接写入任意
-   namespace 的 ref 和 D5 的当前快照记录，不进生产镜像。
-   - 预置工具还能写入验收所需的最小 Cloud 记录，不启动沙盒与 Node：Workspace 记录（带创建者，使运行时使用权限的检查可以进行）、
-     处于给定步骤和状态的 Workspace operation（例如等待快照的 clone 步骤）。外部线用它验收发布的源 ref 权限和结束等待者，
-     不需要内部线的 Controller 与 Node。
-   - D5 第 2 项需要的 Binding 与当前快照两张表也由底座建立。
-   - 底座同时建立同步与发布 Operation 的最小存储：Operation ID、类型（`repository_sync`、`repository_publish`）、Binding、状态。
-     外部线在其上增加租约、结果等字段；内部线读它判断一个 Binding 有没有未结束的同步，以决定 Workspace 的 clone 步骤是否等待快照。
-   - 底座提供一个 Cloud 函数：按 Binding 把等待快照的 Workspace operation 以失败结束，并记录导致失败的同步 Operation 与错误码。
-     外部线在登记同步终态的事务里调用它，预置工具推进同步状态时也调用它。
-   - 这些存储与函数放在底座，两条线开工前交接的存储与规则就已经存在：两条线都只依赖底座，判断的是同一段代码。
-   - 底座同时提供共享的契约断言：检查 Git Server 上的 ref 和 Cloud 的记录是否符合 D5。内部线用它确认预置数据，外部线用它确认
-     真实同步的结果，保证两边验收的是同一份契约。
+1. **底座**：实现 D3 的规则集和 `pre-receive` 改造，只产出现有的交付规则；同时提供只用于验收的预置工具，不进生产镜像。
+   - Cloud 存储：Binding、当前快照，以及同步与发布 Operation 的最小存储（ID、类型、Binding、状态）。状态枚举一次定全，并划分
+     终态：同步为 `pending/leased/running/succeeded/failed/superseded/cancelled`，发布另加 `awaiting_approval` 与 `uncertain`；
+     `uncertain` 的核验次数有上限，超出后进入终态。外部线在其上增加租约、结果等字段，不增删状态。
+   - 建 Project 的事务同时建立它的 Binding 和一行 `pending` 的同步 Operation。两条线看到的 Project 从一开始就是这个形状，
+     替身和真实流程同形。
+   - Workspace 的 clone 步骤怎样等待和结束，由内部线在领取时复核：有当前快照就继续；没有快照、而该 Binding 最近的同步已经以
+     失败结束，就以失败结束；否则继续等待。底座不提供额外的“结束等待者”函数。
+   - 预置工具：直接写入任意 namespace 的 ref、D5 的当前快照记录，以及给定状态的同步、发布 Operation。
+   - 共享的契约断言：检查 Git Server 上的 ref 和 Cloud 的记录是否符合 D5。内部线用它确认预置数据，外部线用它确认真实同步的
+     结果，保证两边验收的是同一份契约。
    - 完成条件：交付行为不变，现有测试全部通过。
-   - 意义：两条线从这一步之后都能用预置数据独立验收。
 2. **内部线和外部线并行**：
-   - 内部线：沙盒的 workspace 规则、`transfer.hideRefs` 注入；
-   - 外部线：服务仓库监听、服务身份、Operation 规则。
-   - 两者改动的是不同的规则来源和监听，互不阻塞。
+   - 内部线：git-access 签发、沙盒的 workspace 规则、Node 从快照 clone 与 `ora-git`，以及按
+     [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)实现交付推送与续作拉取，同时删除
+     bundle 的代码与协议字段。
+   - 外部线：服务仓库监听、服务身份、Operation 规则、执行器、Credential Store、同步与发布。
+   - 两者改动的是不同的规则来源和监听，互不阻塞；各自用预置工具替代对方，独立做端到端验收。
    - 完成条件：不变量 1–10 有使用真实 `git` 客户端的集成测试证据，测试同时带两种身份。
-3. **汇合**：Workspace 的输入切换为 D5 的快照输入。从这一步起，Node 不再从外部仓库 clone；这一步依赖外部线的同步（包括公开仓库）
-   已经可用。
-4. **清理**：删除 bundle 的协议字段和对象存储中的代码路径。
+3. **全链路验收**：两条线都合并后，用真实外部仓库跑一遍从同步到 Workspace、交付、发布再同步的完整链路。
 
-保持不变：交付和续作的行为、会话 JSONL 的存放位置、根决策的网络划分。
-从第 3 步开始改变：Workspace 的代码来源。
+从第 2 步内部线合并起，Workspace 只从快照 clone，不再有外部 clone 与 bundle；外部线合并之前，只有用预置工具准备了快照的
+Project 能创建 Workspace。保持不变：会话 JSONL 的存放位置、根决策的网络划分。
