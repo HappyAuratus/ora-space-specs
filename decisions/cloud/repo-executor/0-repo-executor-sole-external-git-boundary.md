@@ -20,7 +20,9 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 
 兼容性边界：
 
-- 未合并的 ora-space/cloud#64、ora-space/cluster#23 只作参考；其中的基础件按“复用边界”一节原样摘出，其余按本文重写。
+- 早先未合并的凭据执行器实现与其部署（下称“旧实现”）一概不依赖，最多作参考：本文需要的基础件按“复用边界”一节新写，或参考其设计
+  摘出后作为新代码连同测试评审，其余按本文重写。
+- 破坏性切换（契约范围边界）：不设过渡开关，不保留外部 clone 与 bundle 的旧路径，不做数据迁移。
 - 本文不改变沙盒、Node 与 Git Server 的任何约定；执行器不接入沙盒网络。
 
 ## 现状与继承
@@ -33,7 +35,7 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 | 契约 D6：执行器报告结果，Cloud 经 ref 查询核验后登记 | 继承，不变。执行器不登记任何东西（D1） |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md) D4：执行端按引用选择凭据，不回退全局凭据；凭据临时提供，结束后回收，不进工作目录和日志 | 继承。执行端从 Controller/Node 改为本执行器，兑换与销毁的方式见 D3 |
 | [默认分支决策](../operation/20260926-require-concrete-default-branch.md)：Cloud 不向用户给出的地址发起请求 | 继承，不变。访问外部地址的只有执行器，并受出口策略约束（D4） |
-| cloud#64 的 clone 执行器与 mirror 发布（未合并） | 不沿用其 clone、checkout 交付和直接写 Git Server 卷的 mirror 发布；基础件按“复用边界”摘出 |
+| 未合并的旧执行器实现：clone 执行器与 mirror 发布 | 不依赖，只作参考。不沿用其 clone、checkout 交付和直接写 Git Server 卷的 mirror 发布；基础件按“复用边界”新写或参考摘出 |
 
 ## 决策
 
@@ -64,7 +66,7 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 执行器只接受 Cloud 的固定客户端身份。为什么由 Cloud 调用：Operation 的租约、代次和终态都在 Cloud；由 Cloud 发起，执行器就
 不需要数据库连接和队列，也不需要另一种“执行器领取任务”的身份。
 
-**一次性授权**沿用 cloud#64 的 `cloneauth` 格式：`base64url(payload).base64url(Ed25519 签名)`，签名覆盖原始字节；验证方持有
+**一次性授权**采用旧实现中 `cloneauth` 的格式（参考其设计）：`base64url(payload).base64url(Ed25519 签名)`，签名覆盖原始字节；验证方持有
 公钥集合，以便轮换签名密钥。签名私钥只在 Cloud。本文在原有用途之外新增三种用途，并让它们与原用途互斥：
 
 | 用途 | 必填的绑定字段 | 执行器能做的事 |
@@ -76,8 +78,11 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 公共字段：`authorizationId`、`executorIdentity`（必须等于 `spiffe://ora.local/repo-executor`）、`issuedAt`、`expiresAt`。
 `sync`、`publish`、`probe` 都禁止携带 Node 和运行时的围栏字段，`clone`、`mirror_prepare`、`push` 三个旧用途不再签发。
 
-- 有效期上限沿用 `MaxLifetime = 15 分钟`，实际签发不超过 2 分钟，并且**早于 Operation 的租约到期**。这样同一个 Operation
-  不会同时存在两份有效授权（cloud#64 的 `PushDispatchLease` 用同样的不等式）。
+- **授权只约束“开始任务并兑换凭据”这一步**：有效期上限 `MaxLifetime = 15 分钟`，实际签发不超过 2 分钟；执行器收到任务时
+  授权必须有效，Credential Store 兑换时也以有效期判定。兑换之后，任务能跑多久不由授权决定，而由 Operation 的租约决定：
+  Cloud 的 worker 在任务期间持续续约，Git Server 对每个请求按租约判定（契约 D3）。同步大仓库可能远超 2 分钟，用授权的有效期
+  约束任务时长会让它们必然失败。
+- 一个 Operation 至多进入一次 `running`（契约不变量 14），授权只在进入 `running` 时签发一次，所以同一个 Operation 不会有两份授权。
 - 执行器先在本地验证签名和有效期，再逐项比对任务与授权的绑定字段，任何一项不一致就拒绝，不兑换凭据。
 - **单次使用**由 Credential Store 保证：兑换时以授权 ID 独占创建记录，第二次兑换被拒绝。公开仓库的 `sync` 不兑换凭据，
   其单次性由 Operation 只进入一次 `running`（同步 ADR D2）和 Git Server 的租约检查保证。
@@ -105,7 +110,8 @@ Cloud 的任何字段。捕获的 stderr 在截断前先把明文替换为 `[red
 ### D4：进程与资源边界
 
 **进程**：每个 Git 子进程沿用 `processgroup.Isolate`：`Setpgid`，取消时向整个进程组发 `SIGKILL`，`WaitDelay` 5 秒；容器以
-`init: true` 运行，由 init 回收孤儿进程。每个任务有总超时（同步默认 10 分钟，发布与 probe 默认 2 分钟），且不晚于授权到期。
+`init: true` 运行，由 init 回收孤儿进程。每个任务有总超时（同步默认 30 分钟，发布与 probe 默认 5 分钟），由 Cloud 在任务请求中给出，不超过部署的上限；它与授权的
+有效期无关。Cloud 在任务结束前一直续约；worker 失联、租约过期后，执行器后续对 Git Server 的请求会被拒绝。
 
 **输出**：stdout 与 stderr 各用有界缓冲 `capture.Buffer`（每流 64 KiB），写满后只计数，不阻塞子进程；stdout 被截断时，结果
 不作为事实采用。报告给 Cloud 的错误摘录先脱敏、再截断到 2 KiB。
@@ -113,7 +119,7 @@ Cloud 的任何字段。捕获的 stderr 在截断前先把明文替换为 `[red
 **环境**：从空环境构造：`GIT_CONFIG_NOSYSTEM=1`、`GIT_CONFIG_GLOBAL=/dev/null`、`HOME` 指向任务目录、固定 `PATH`、`LC_ALL=C`、
 `GIT_TERMINAL_PROMPT=0`、`GIT_ASKPASS=`、`SSH_ASKPASS=`、`GIT_LFS_SKIP_SMUDGE=1`、`GIT_OPTIONAL_LOCKS=0`；stdin 为空。
 
-**加固的 Git 配置**（沿用 cloud#64 两份相同的列表，合并为一份）：
+**加固的 Git 配置**（参考旧实现中两份相同的列表，合并为一份）：
 
 ```text
 protocol.allow=never  protocol.https.allow=always  protocol.{ssh,file,ext}.allow=never
@@ -141,7 +147,7 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 
 1. 在任务目录 `git init --bare`。
 2. **取已有的跟踪 ref 作为基础**（可选优化）：带 `Ora-Git-Operation-Id` 从服务仓库监听 fetch
-   `refs/ora/upstreams/<bindingId>/heads/<branch>`。它在授权的可读范围内（契约 D5 第 3 项），让下一步只从外部下载增量。
+   `refs/ora/upstreams/<bindingId>/heads/<branch>`。获授权的请求可读整个 Project 仓库（契约 D3），这一步让下一步只从外部下载增量。
 3. 加固的 fetch：`fetch --quiet --no-tags --no-write-fetch-head --no-recurse-submodules -- <repository>
    +refs/heads/<branch>:refs/heads/ora-sync`。之后检查任务仓库里除第 2 步的 ref 外只有 `refs/heads/ora-sync`。
    外部仓库没有该分支时报告 `upstream_branch_missing`。
@@ -153,23 +159,30 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
    git push --atomic --porcelain --no-verify \
      --force-with-lease=refs/ora/upstreams/<b>/heads/<branch>:<expectedTrackingOid> \
      <git-server> <commitOid>:refs/ora/upstreams/<b>/snapshots/<commitOid> \
-                  +<commitOid>:refs/ora/upstreams/<b>/heads/<branch>
+                  <commitOid>:refs/ora/upstreams/<b>/heads/<branch>
    ```
 
    全零的 `expectedTrackingOid` 表示跟踪 ref 必须不存在。Git Server 的 `pre-receive` 再按 create-only 和 tracking-cas 判定
    （契约 D4）。两个 ref 要么一起写入，要么都不写。
+
+   **refspec 不带 `+`**。带 `+` 时 Git 客户端把这个 ref 当作强制更新，`--force-with-lease` 声明的旧值不再生效，连“必须不存在”
+   也会被覆盖（实测）。不带 `+` 时，lease 正确地以 `stale info` 拒绝旧值不符的更新；旧值相符时，`--force-with-lease` 本身允许
+   非快进，服务仓库监听又关闭了 `receive.denyNonFastForwards`（契约 D2），所以跟踪 ref 仍能跟随外部 force-push。
 6. 报告 `{commitOid, snapshotRef, trackingRef, forced}`。
 
 **重放**：同一提交再次同步时，两个 ref 已经是目标值，Git 不发送更新命令，推送是空操作，按成功报告。
 
-**CAS 失败**：推送因 lease 被拒时，执行器重新读取跟踪 ref：
+**推送被拒**：执行器按 porcelain 报告区分两种拒绝，二者含义不同：
 
-- 已经等于 `<commitOid>` 且快照 ref 存在：说明同一结果已经写入（例如上一次同一提交的写入），按成功报告；
-- 否则报告 `superseded`，附观察到的值，不重试。
+| 拒绝原因 | 含义 | 处理 |
+| --- | --- | --- |
+| `stale info`（lease 不符） | 跟踪 ref 不等于 `expectedTrackingOid` | 重新读取跟踪 ref：已经等于 `<commitOid>` 且快照 ref 存在，说明同一结果已经写入，按成功报告；否则报告 `superseded`，附观察到的值 |
+| `pre-receive hook declined` | Git Server 按授权或规则拒绝：Operation 已结束、租约过期、写了表外的 ref、快照名与目标不符 | 报告 `failed(git_server_rejected)`，附 Git Server 返回的原因，不判为 `superseded` |
 
 ### D6：publish 的执行步骤
 
-输入是 `publish` 授权及同名任务字段。执行器在 Git Server 上没有写权限，只能读 `sourceRef`（契约 D5 第 3 项）。
+输入是 `publish` 授权及同名任务字段。执行器在 Git Server 上没有写权限；它可读整个 Project 仓库（契约 D3），但只取 Operation
+记录的源 ref 与源提交（契约 D5 第 3 项）。
 
 1. 在任务目录 `git init --bare`。
 2. 带 `Ora-Git-Operation-Id` 从服务仓库监听 fetch `sourceRef`。源 ref 可能已经前进，但 Workspace 分支只能快进、交付 ref 不可变
@@ -190,10 +203,10 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
    `--force-with-lease` 在这里的作用是比较并交换：外部平台在 ref 锁内比对旧值。快进已由第 3 步保证，所以它不会产生非快进写入。
 6. **后置核验**：再次 `ls-remote` 读取 `targetRef`，与推送报告一起按 D8 分类。
 
-为什么推送前也要 `ls-remote`：cloud#64 只在推送被拒后才读取。前置读取让最常见的冲突（外部已经前进）在不打开 receive-pack 的
+为什么推送前也要 `ls-remote`：旧实现只在推送被拒后才读取。前置读取让最常见的冲突（外部已经前进）在不打开 receive-pack 的
 情况下被发现，审计里也能记录冲突时外部的实际值；真正的原子性仍由第 5 步的 lease 保证，前置读取不替代它。
 
-为什么不复用 cloud#64 的 PushRequest：它要求新提交已经在外部仓库的对象中（`push.go:481-505`），只能把外部 ref 移到外部
+为什么不复用旧实现的 PushRequest：它要求新提交已经在外部仓库的对象中，只能把外部 ref 移到外部
 已有的提交上，无法把 Workspace 的内容带出去。本文的源对象来自 Git Server，执行器把它们推送到外部，这是它与旧路径的根本区别。
 
 ### D7：probe 的执行步骤
@@ -214,11 +227,11 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 | 分类 | 含义 | 是否可能已改变外部或 Git Server |
 | --- | --- | --- |
 | `applied` | 写入已确认：同步的原子推送成功或重放为空操作；发布的推送报告 `ok` | 是，已知 |
-| `superseded` | 同步的 CAS 失败，跟踪 ref 被别人推进 | 否 |
+| `superseded` | 同步的 lease 以 `stale info` 失败，跟踪 ref 被别人推进 | 否 |
 | `conflict` | 发布的前置核验或 lease 发现外部 ref 不等于 `expectedOldOid` | 否 |
 | `rejected` | 外部平台明确拒绝了更新（保护分支、hook、无权限），后置核验确认目标仍是 `expectedOldOid` | 否 |
 | `not_fast_forward`、`source_unavailable` | 本地判定不满足前提，没有访问外部仓库的写入接口 | 否 |
-| `failed` | 推送开始之前的确定失败：授权不符、兑换失败、外部认证失败、fetch 失败、超时、超限 | 否 |
+| `failed` | 确定没有写入的失败：授权不符、兑换失败、外部认证失败、fetch 失败、超时、超限、Git Server 的 `pre-receive` 拒绝 | 否 |
 | `uncertain` | 推送请求可能已经发出，但没有得到可解析的结果：连接中断、超时、报告缺失或被截断，且后置核验也无法给出结论 | 可能 |
 
 发布的推送报告与后置核验的组合：
@@ -235,7 +248,7 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 | 无报告、被截断、连接中断 | 其他值或读取失败 | `uncertain` |
 
 **`uncertain` 不由执行器重试**。执行器不重推，也不在同一任务里反复轮询；之后的核验由 Cloud 以新的 `probe` 授权发起
-（发布 ADR D5），核验只读。为什么不像 cloud#64 那样重新派发同一推送：重新派发可能发生在批准很久之后，那时外部 ref 也许被别人
+（发布 ADR D5），核验只读。为什么不像旧实现那样重新派发同一推送：重新派发可能发生在批准很久之后，那时外部 ref 也许被别人
 回退到 `expectedOldOid`，重推就会在用户不知情时再次发布；只读核验永远不会产生新的外部写入。
 
 ### D9：部署
@@ -256,15 +269,15 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 
 ## 复用边界
 
-| 来自 cloud#64 | 处理 | 边界 |
+| 来自旧实现| 处理 | 边界 |
 | --- | --- | --- |
-| `internal/cloneauth` | 原样摘出 | 保留格式、签名、公钥集合与 `MaxLifetime`；新增 `sync`、`publish`、`probe` 三种用途及其字段校验；旧用途停止签发 |
-| `internal/credentialmaterial`、`cmd/git-credential-ora` | 原样摘出 | 不变 |
-| `internal/processgroup`、`internal/capture` | 原样摘出 | 不变 |
-| `internal/credentialstore` | 原样摘出，改动入口 | 见 identity-access 后续决策 D2：新增浏览器入口与兑换身份，去掉 Cloud 写入明文的能力 |
+| `internal/cloneauth` | 参考摘出，作为新代码评审 | 保留格式、签名、公钥集合与 `MaxLifetime`；新增 `sync`、`publish`、`probe` 三种用途及其字段校验；旧用途停止签发 |
+| `internal/credentialmaterial`、`cmd/git-credential-ora` | 参考摘出，作为新代码评审 | 行为不变 |
+| `internal/processgroup`、`internal/capture` | 参考摘出，作为新代码评审 | 行为不变 |
+| `internal/credentialstore` | 参考其设计新写 | 见 identity-access 后续决策 D2：新增浏览器入口与兑换身份，去掉 Cloud 写入明文的能力 |
 | `cloneexec/git.go` 与 `mirrorpublish/fetch.go` 的加固参数 | 合并为一份 | 两份列表相同，执行器只保留一份；新增目录占用上限 |
 | `cloneexec/push.go`、`pushgit.go` 的 lease 推送与报告解析 | 参考后重写 | 源对象改为从 Git Server 取得；新增前置 `ls-remote`；`uncertain` 不重推 |
-| `core/push_worker.go` 的租约与代次栅栏 | 参考后重写 | 授权有效期早于租约到期的不等式保留；“重新领取并重推”改为只读核验 |
+| `core/push_worker.go` 的租约与代次栅栏 | 参考后重写 | 授权只在进入 `running` 时签发一次；“重新领取并重推”改为只读核验 |
 | mirror store、mirror 发布器、匿名 mirror 监听、clone 与 checkout 交付 | 不保留 | 与契约冲突：直接写 Git Server 卷绕过授权（契约“替代方案”） |
 
 ## 不变量
@@ -285,10 +298,10 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 | 方案 | 否决理由 |
 | --- | --- |
 | 执行器轮询 Cloud 领取任务 | 执行器要么连数据库，要么需要另一套领取接口和身份；Cloud 已经持有租约，直接调用最简单。轮询的优点是 Cloud 不需要知道执行器地址，但单实例部署下这不是约束 |
-| 执行器直接写 Git Server 的仓库卷（cloud#64 的 mirror 发布） | 绕过契约 D3 的授权和 `pre-receive`，违反契约不变量 1 |
+| 执行器直接写 Git Server 的仓库卷（旧实现的 mirror 发布） | 绕过契约 D3 的授权和 `pre-receive`，违反契约不变量 1 |
 | 凭据经环境变量或 `http.extraHeader` 交给 Git | 会进入进程参数或环境，同一用户可读；违反不变量 4 |
 | 执行器长期缓存凭据或仓库 | 加快重复同步，但凭据撤销和成员离开就无法立即生效；失陷时泄露面更大 |
-| `uncertain` 时重新派发同一推送（cloud#64） | 可能在用户不知情时再次发布（D8）；只读核验足以判定 |
+| `uncertain` 时重新派发同一推送（旧实现） | 可能在用户不知情时再次发布（D8）；只读核验足以判定 |
 | 能力验证与核验复用 `publish` 授权 | 只读的动作获得了写能力，违反最小权限（D2） |
 | 部署层出口代理代替执行器的地址检查 | 代理配置错误时就失去保护；执行器本身拒绝内部地址，代理只作附加限制 |
 | 把执行器并入 Git Server | 少一个进程，但 Git Server 会同时持有外网出口和外部凭据，与“Git Server 不接触外部凭据”（契约需求 3）冲突 |
@@ -298,11 +311,15 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 - **SSH 地址与 GitHub App 身份**：第一阶段只支持 `https://` 加 token。App 身份需要执行器向平台换取安装 token，留给后续决策。
 - **多实例执行器**：第一阶段单实例；多实例需要 Cloud 选择实例和容量协调。
 - **LFS 与 submodule**：执行器禁用二者，真正支持见同步 ADR 的未决项。
+- **纵深安全加固**（契约“本决策未解决的问题”，第一阶段以跑通与正确为目标）：
+  - 出口检查的 DNS rebinding：执行器在连接前解析并检查地址，但 Git 进程自己再解析一次，两次解析之间可能得到不同的地址。
+    彻底解决需要把解析结果固定给 Git（例如经执行器内的出口代理），留给后续决策；
+  - 大仓库的任务目录：第一阶段是 tmpfs，大仓库会占用大量内存，改用有配额的磁盘卷留给后续决策。
 
 ## 落地顺序
 
-1. **基础件摘出**：`cloneauth`、`credentialmaterial`、`git-credential-ora`、`processgroup`、`capture`、`credentialstore` 连同测试
-   单独提交，不接入任何流程。完成条件：测试原样通过。这一步不依赖底座，可以最先做。
+1. **基础件**：`cloneauth`、`credentialmaterial`、`git-credential-ora`、`processgroup`、`capture` 参考旧实现摘出或新写，连同测试
+   作为新代码单独提交，不接入任何流程；不以旧实现合并为前提。完成条件：测试通过。这一步不依赖底座，可以最先做。
 2. **执行器骨架**：`cmd/repo-executor`、mTLS 任务接口、授权校验、凭据兑换、进程与资源边界、出口检查。完成条件：对本地 fixture
    的 `probe` 可以运行；秘密扫描通过。
 3. **sync**：依赖底座和服务仓库监听（契约落地顺序第 1、2 步）。完成条件：同步 ADR 的独立验收。
@@ -315,7 +332,7 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 
 不依赖内部线和 Node，不启动沙盒。
 
-**起栈**：Cloud、Git Server（服务仓库监听与 ref 查询监听）、Credential Store、执行器，以及参照 cluster#23 的两个本地 Git 托管
+**起栈**：Cloud、Git Server（服务仓库监听与 ref 查询监听）、Credential Store、执行器，以及参照旧部署实现的两个本地 Git 托管
 fixture：
 
 - `private-git-fixture`：带 TLS、要 token 才能读；
@@ -334,11 +351,13 @@ fixture 的地址经执行器的允许列表放行。**替身**：底座的预�
 | 发布：成功、`conflict`、`rejected`、`not_fast_forward` | 见发布 ADR 的独立验收 |
 | `docker pause` 外部 fixture 后发布 | 执行器在超时后报告 `uncertain`；不重推；进程组被回收 |
 | `drop` 模式发布 | 推送生效但响应丢失，后置核验确认，报告 `applied` |
-| 身份边界 | 执行器用服务证书写 `refs/heads/workspaces/**` 和 `refs/ora/deliveries/**` 被拒；发布 Operation 读取源 ref 以外的 ref 失败，在 ref 广告里也看不到 |
+| 身份边界 | 执行器用服务证书写 `refs/heads/workspaces/**` 和 `refs/ora/deliveries/**` 被拒；用发布 Operation 的 ID 推送任何 ref 都被拒 |
+| lease 与 `+` | 预置工具先把跟踪 ref 写成另一个提交，再让同步以旧的 `expectedTrackingOid` 推送：以 `stale info` 失败、报告 `superseded`，跟踪 ref 不变；Operation 结束后用同一 ID 推送：以 `hook declined` 失败、报告 `failed(git_server_rejected)` |
+| 长任务 | 同步一个需要数分钟的大仓库：兑换后授权过期不影响任务，任务期间租约持续续约，同步成功 |
 | 出口 | 指向回环、私有地址或内部服务名的仓库地址被拒绝；外部地址 302 到内部地址时不跟随 |
 | 超限 | 任务目录超过上限时进程组被杀，报告 `too_large`，没有新的 ref |
 | 进程回收 | 任务超时后任务目录与材料目录都不存在，没有遗留的 Git 进程 |
-| 秘密扫描 | 参照 cluster#23 的 `log-secret-scan-acceptance.py`：每轮生成 canary token，按字面、base64、base64url（含不补齐）、百分号编码和共享前缀等形式，扫描所有容器日志、Git Server 仓库（包括对象和 reflog）、Cloud 数据库导出、执行器任务目录；先用阳性对照证明扫描器能找到 |
+| 秘密扫描 | 参照旧部署实现中的 `log-secret-scan-acceptance.py`：每轮生成 canary token，按字面、base64、base64url（含不补齐）、百分号编码和共享前缀等形式，扫描所有容器日志、Git Server 仓库（包括对象和 reflog）、Cloud 数据库导出、执行器任务目录；先用阳性对照证明扫描器能找到 |
 
 **最终验收**：用 owner 提供的 GitHub 私有测试仓库，以真实 token 完成同步、`probe receive-pack`、发布和一次断网造成的 `uncertain`
 核验。
