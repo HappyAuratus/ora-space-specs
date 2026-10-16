@@ -53,7 +53,7 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 
 | 字段 | 校验 |
 | --- | --- |
-| `sourceRef` | 只能是本 Project 仓库中的 `refs/heads/workspaces/<workspaceId>/<branch>` 或 `refs/ora/deliveries/<deliveryWorkId>`；调用者必须能使用对应 Workspace 的内容（运行时使用权限）。Cloud 经 ref 查询确认它存在 |
+| `sourceRef` | 只能是本 Project 仓库中的 `refs/heads/workspaces/<workspaceId>/<branch>` 或 `refs/ora/deliveries/<deliveryWorkId>`；调用者必须能使用对应 Workspace 的内容（运行时使用权限：Workspace 的创建者或租户管理员；run Workspace 的创建者是触发运行的用户）。交付 ref 按它所属的 Workspace 判定。已删除的 Workspace 的分支仍可读，但只有租户管理员能以它为源发起。Cloud 经 ref 查询确认它存在 |
 | `sourceCommit` | 完整 OID。Cloud 只能查到 ref 的当前值，无法判定祖先关系，祖先关系由执行器判定（执行器根决策 D6 第 2 步） |
 | `targetBranch` | 具体分支短名，组成 `refs/heads/<targetBranch>`；不能是 `HEAD` |
 | `expectedOldOid` | 完整 OID 或全零；等于 `sourceCommit` 时以 `400 nothing_to_publish` 拒绝 |
@@ -183,7 +183,8 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 
 ### D8：界面
 
-- **发起**：Workspace 的分支列表中，每个分支有“发布到外部仓库”。对话框显示源分支与源提交、目标分支（默认 Binding 的分支，可改为
+- **发起**：Workspace 的分支列表中，每个分支有“发布到外部仓库”。分支列表由 Cloud 经 ref 查询按前缀
+  `refs/heads/workspaces/<workspaceId>/` 列出（需要 ref 查询支持按前缀列出，见契约 D6）。对话框显示源分支与源提交、目标分支（默认 Binding 的分支，可改为
   新分支名）、`expectedOldOid`（显示为“基于外部的 `<短 OID>`”）、可选的凭据（只列出已验证 `publish` 的），以及根据凭据算出的
   审批人（“需要 @所有者 批准”或“需要管理员批准”）。发起人就是审批人时，按钮写作“发布”，否则写作“请求发布”。
 - **审批**：Project 详情页的“发布”列表，以及审批人的待办提示。审批人看到完整字段、凭据和源提交与 `expectedOldOid` 之间的提交数，
@@ -250,7 +251,7 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 要 token；可切换 `normal`、`refuse`、`moved`、`slow-post`、`drop`）。
 
 **替身**：底座的预置工具在 Git Server 上写 `refs/heads/workspaces/<ws>/<branch>`，内容是 fixture 当前 `main` 的一个后代提交；
-预置工具同时写入对应 Workspace 的最小记录，使运行时使用权限的检查可以进行。Binding 的当前快照先经一次真实同步得到，并通过底座
+预置工具同时写入对应 Workspace 的最小记录（不启动沙盒与 Node），使运行时使用权限的检查可以进行；这项能力由底座的预置工具提供（契约落地顺序第 1 步）。Binding 的当前快照先经一次真实同步得到，并通过底座
 的共享契约断言。
 
 | 场景 | 必须成立 |

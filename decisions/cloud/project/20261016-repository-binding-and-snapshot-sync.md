@@ -112,6 +112,9 @@ pending ──lease──▶ leased ──issue authorization──▶ running �
   的重放规则。
 - 取消只能发生在 `running` 之前。`running` 中的同步不能取消：推送一旦开始就由 Git Server 的原子性和 CAS 决定结果，取消只会
   让 Cloud 失去结果。
+- **Project 删除**：只有 `active` 的 Project 能创建同步与发布 Operation。Project 进入删除流程（`deleting`）的事务里，该 Project
+  尚未进入 `running` 的同步与发布 Operation 一律以 `cancelled(project_deleting)` 结束；已经 `running` 的照常收尾，它们写入的
+  ref 随 Project 的仓库一起由删除流程处理。Project 删除的 quiesce 步骤等待这些 Operation 结束，和等待其他 Project 级操作一样。
 
 ### D3：触发时机
 
@@ -337,7 +340,7 @@ Operation 状态变化后，沿用 [Space 事件流](../api-boundary/0-space-api
 | worker 在 `running` 中被杀 | Operation 以 `failed(lease_lost)` 结束；之后用旧 Operation ID 访问服务仓库监听被拒绝；新 Operation 重放后 `succeeded` |
 | 预置的跟踪 ref 被改动（模拟失联的旧执行器） | `superseded`；当前快照不变 |
 | 超过大小上限 | `failed(repository_too_large)`；Git Server 上没有新的 ref |
-| 首次同步失败结束等待者 | 预置工具为 Binding 写一个处于 `snapshot_not_ready` 等待的 operation（替身），再用错误的 token 同步：同步 `failed(credential_rejected)` 的同一事务里，该 operation 以 `failed(repository_sync_failed)` 结束并记录同步的错误码 |
+| 首次同步失败结束等待者 | 预置工具为 Binding 写一个 Workspace 及其处于 `snapshot_not_ready` 等待的 operation（替身，不需要沙盒与 Node），再用错误的 token 同步：同步 `failed(credential_rejected)` 的同一事务里，该 operation 以 `failed(repository_sync_failed)` 结束并记录同步的错误码 |
 | 自动重放期间不结束等待者 | 同上的替身；在 `running` 中杀掉 worker：等待者仍在等待；重放成功后当前快照写入，等待者没有被结束 |
 | 没有同步时不进入等待 | 迁移来的、从未同步的 Binding：判定入口返回 `repository_not_synced`，不返回等待 |
 | 迁移 | 升级库中每个 Project 都有一个 Binding；`HEAD` 分支的 Project 的 Binding 为 `invalid_configuration`，同步被拒绝 |
