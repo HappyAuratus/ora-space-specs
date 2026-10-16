@@ -11,15 +11,16 @@ Workspace 的推送只到达 Git Server，永远不会触达外部仓库。要�
 `uncertain`，由 reconciler 以只读的 `ls-remote` 判定，从不重推。发布成功后自动同步一次，让当前快照反映外部仓库。
 
 本 ADR 处于 `proposed`，是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
-它按 #172 的推荐方案回答 Q5（只快进）和 Q7.2（审批人），遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)
-（下称“契约”）D5 第 3 项：发布 Operation 只能读源 ref，在 Git Server 上没有写权限。涉及 Cloud（API、审批、状态机、reconciler、
+它按评审中推荐的方案确定只快进发布和审批人，遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)
+（下称“契约”）D5 第 3 项：发布 Operation 在 Git Server 上没有写权限，执行器只取 Operation 记录的源 ref 与源提交。涉及 Cloud（API、审批、状态机、reconciler、
 审计、前端）与 Repo Executor。凭据能力由 [identity-access 后续决策](../identity-access/20261016-git-credentials-in-independent-credential-store.md)
 规定。
 
 兼容性边界：
 
 - 新增 API 与状态；不改变 Workspace 推送、Revision 交付和同步的任何行为。
-- cloud#64 的 PushRequest（`/workspaces/{wid}/pushes`）未合并，不沿用，也不迁移其数据。
+- 破坏性切换（契约范围边界）：不设过渡开关，不做数据迁移。
+- 未合并的旧实现中的 PushRequest（`/workspaces/{wid}/pushes`）不沿用。
 - 不支持非快进发布、删除外部 ref、发布 tag（见“本决策未解决的问题”）。
 
 ## 继承与修改
@@ -31,10 +32,9 @@ Workspace 的推送只到达 Git Server，永远不会触达外部仓库。要�
 | 同步 ADR D3：`after_publish` 触发 | 继承，由本文 D6 规定触发条件 |
 | 同步 ADR D6：外部 force-push 后旧快照保留 | 继承。基于旧快照的发布以 `conflict` 结束（D4） |
 | [凭据连续性](20260927-repository-credential-continuity.md) D2：凭据不可用时拒绝新的远程操作；已开始的任务可以收尾 | 继承。批准与派发前各检查一次；`running` 中的发布可以收尾（D2、D3） |
-| [运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)：运行时内容只供创建者与租户管理员使用 | 继承。从 Workspace 分支发起发布属于使用该 Workspace 的内容（D1） |
+| [运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)：运行时内容只供创建者与租户管理员使用 | 契约已在 Git 层面修改：同一 Project 内的 Workspace 分支与交付 ref 可以作为发布源。本文据此不按 Workspace 的创建者或管理员校验发布源，只校验发起人与审批人（D1、D2） |
 | identity-access 后续决策 D4、D5：`publish` 能力必须验证；个人凭据只有所有者能批准 | 继承，不变（D2） |
 | 契约 D4：Workspace 分支只能快进；交付 ref 不可变 | 继承。因此源提交总能从源 ref 取到（D1） |
-| #172 Q5：Publish 只做快进发布 | 采纳（D4） |
 
 ## 决策
 
@@ -45,6 +45,7 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 {
   "sourceRef":      "refs/heads/workspaces/<workspaceId>/<branch>",
   "sourceCommit":   "<40 位小写 OID>",
+  // 或者只给 "revisionId": "<id>"，直接发布一次 run 的 Revision
   "targetBranch":   "main",
   "expectedOldOid": "<40 位小写 OID，或 40 个 0 表示新建分支>",
   "credentialRefId": "<可选，缺省用 Binding 的凭据>"
@@ -53,12 +54,14 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 
 | 字段 | 校验 |
 | --- | --- |
-| `sourceRef` | 只能是本 Project 仓库中的 `refs/heads/workspaces/<workspaceId>/<branch>` 或 `refs/ora/deliveries/<deliveryWorkId>`；调用者必须能使用对应 Workspace 的内容（运行时使用权限：Workspace 的创建者或租户管理员；run Workspace 的创建者是触发运行的用户）。交付 ref 按它所属的 Workspace 判定。已删除的 Workspace 的分支仍可读，但只有租户管理员能以它为源发起。Cloud 经 ref 查询确认它存在 |
+| `sourceRef` | 本 Project 仓库中任意 Workspace 的分支 `refs/heads/workspaces/<workspaceId>/<branch>`，或任意交付 ref `refs/ora/deliveries/<deliveryWorkId>`；不按 Workspace 的创建者校验（契约 D3 的修改）。Cloud 经 ref 查询确认它存在 |
+| `revisionId` | 与 `sourceRef`、`sourceCommit` 二选一：直接发布一次 run 的 Revision。Cloud 从 Revision 的登记记录取出交付 ref 和最终提交，作为 `sourceRef` 与 `sourceCommit`；这两个值是 Cloud 核验过的（Revision Git 交付决策） |
 | `sourceCommit` | 完整 OID。Cloud 只能查到 ref 的当前值，无法判定祖先关系，祖先关系由执行器判定（执行器根决策 D6 第 2 步） |
 | `targetBranch` | 具体分支短名，组成 `refs/heads/<targetBranch>`；不能是 `HEAD` |
 | `expectedOldOid` | 完整 OID 或全零；等于 `sourceCommit` 时以 `400 nothing_to_publish` 拒绝 |
 | `credentialRefId` | 必须作用于 Binding 的仓库，`secretState = stored`，`available`，能力集合包含 `publish`；否则 `409 credential_publish_unverified` 等明确错误 |
 
+- **发起人**：拥有 Project 发布权限的人，或所用个人凭据的所有者。其他成员不能发起。
 - 界面在目标分支等于 Binding 分支时，用 Binding 的当前快照预填 `expectedOldOid`：Workspace 就是从它开始的，这正是用户期望覆盖的
   外部状态。目标是新分支时预填全零。
 - 字段在创建后不可变。批准针对的是这一组字段，任何改动都要新建 Operation。
@@ -99,7 +102,7 @@ awaiting_approval ──approve──▶ pending ──lease──▶ leased ─
 | `awaiting_approval` | 等待审批人 | 否 |
 | `pending` | 已批准，等待 worker 领取 | 否 |
 | `leased` | worker 持有租约，尚未签发授权 | 否 |
-| `running` | 已签发 `publish` 授权，执行器在运行；Git Server 只在此状态下接受它读取源 ref | 可能 |
+| `running` | 已签发 `publish` 授权，执行器在运行；Git Server 只在此状态下接受它读取 Project 仓库 | 可能 |
 | `succeeded` | 外部的目标分支已经是 `sourceCommit` | 是 |
 | `conflict` | 外部的目标分支不等于 `expectedOldOid`，没有写入 | 否 |
 | `rejected` | 外部平台明确拒绝了写入（保护分支、hook、权限），或本地判定不是快进 | 否 |
@@ -150,13 +153,18 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 
 3. 读取失败（网络、平台故障）或凭据不可用时保持 `uncertain`，按指数退避重试，最长间隔 1 小时；界面显示“正在核验”和最近一次
    失败的原因，并提供“立即核验”按钮。
+4. **核验次数有上限**（契约落地顺序第 1 步）：自动核验最多 20 次（按退避约跨 24 小时），用尽后以 `failed(outcome_unknown)` 终态
+   结束，审计记录每次核验的失败原因，界面提示“无法确认外部仓库是否已更新，请同步后查看”。上限保证 `uncertain` 不会永远是
+   未结束的 Operation，删除 Project 等待它们时总会结束（同步 ADR D2）。状态枚举由底座定全，所以用 `failed` 加错误码表达，
+   不新增状态。
+5. 第一次核验不早于执行器任务的截止时间（Cloud 在任务请求中给出，执行器根决策 D4）。这样核验时执行器已经不可能再发起推送。
 
-等于 `expectedOldOid` 时为什么可以判定未生效：核验发生在执行器任务结束（或其授权过期）之后，执行器已经不可能再发起推送；
+等于 `expectedOldOid` 时为什么可以判定未生效：核验发生在执行器任务的截止时间之后（第 5 条），执行器已经不可能再发起推送；
 外部平台对单个 ref 的更新是原子的，推送若已生效，目标分支不会停留在旧值上，除非之后又被别人改回。后一种情况的结果对用户而言
 同样是“外部没有我的提交”，判为未生效、让用户重新发起是安全的。
 
 为什么从不重推：重推的时刻可能远晚于批准，外部状态和批准时不同；核验只读，永远不会产生用户没有预期的外部写入。
-cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行器根决策 D8）。
+未合并的旧实现在租约过期后重新派发同一推送，本文不沿用（执行器根决策 D8）。
 
 ### D6：发布后自动同步
 
@@ -206,7 +214,7 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 2. 每个发布在进入 `pending` 之前都由凭据决定的审批人批准；租户管理员不能批准使用他人的个人凭据。
 3. 批准绑定 Operation 的全部字段和凭据版本；任何变化都需要新的 Operation。
 4. 发布只做快进，以 `expectedOldOid` 作为外部 ref 的比较值。
-5. 发布 Operation 在 Git Server 上只能读源 ref。
+5. 发布 Operation 在 Git Server 上没有写权限。
 6. 一个发布 Operation 至多进入一次 `running`；`running` 中失去租约或连接进入 `uncertain`。
 7. `uncertain` 的核验只读；系统从不自动重推。
 8. 同一 `(bindingId, targetBranch)` 同时至多一个 `leased` 或 `running` 的发布。
@@ -221,9 +229,9 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 | 租户管理员也能批准使用个人凭据（Q7.2 备选） | 所有者离开后仍能发布，减少改绑的麻烦；但外部平台上的写入者与 Ora 的批准人不一致（D2） |
 | 发起即发布，不设审批 | 对“发起人就是审批人”的情况等价，本文已经这样处理；其余情况会让任何成员用别人的凭据写外部仓库 |
 | 允许非快进发布（Q5 备选） | 需要另行设计改写的审批与告警；第一阶段的 Workspace 分支也只能快进 |
-| `uncertain` 时重推（cloud#64） | 可能在用户不知情时再次发布（D5） |
+| `uncertain` 时重推（旧实现） | 可能在用户不知情时再次发布（D5） |
 | 用 `uncertain` 互斥同一目标分支 | 一次网络故障就能永久阻塞一个分支；比较并交换已经保证并发安全 |
-| 复用 cloud#64 的 PushRequest | 只能移动到外部已有的提交，无法发布 Workspace 的内容（执行器根决策 D6） |
+| 复用旧实现的 PushRequest | 只能移动到外部已有的提交，无法发布 Workspace 的内容（执行器根决策 D6） |
 | Cloud 在创建时判定快进 | Cloud 只能查询 ref 的值，不读取对象；判定放在已经取回对象的执行器里，不需要给 Cloud 读对象的能力 |
 
 ## 本决策未解决的问题
@@ -232,6 +240,11 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 - **按 Project 细分的发布权限**：第一阶段 Project 发布权限即租户 `admin`/`owner`；更细的角色需要成员授权表，留给后续决策。
 - **发布到 Binding 之外的仓库**：第一阶段只能发布到 Binding 的仓库。
 - **创建外部 PR**：需要平台 API，不是 Git 协议的一部分。
+- **纵深安全加固**（契约“本决策未解决的问题”，第一阶段以跑通与正确为目标）：
+  - 审批界面不展示 diff，审批人只看到字段、凭据和提交数；
+  - 不限制目标分支：可以发布到外部仓库的任意分支，包括会触发外部 CI 的分支；
+  - 因此发布的内容可能修改外部仓库的 workflow，借外部 CI 读取该仓库的 secrets。展示 diff、限制目标分支、对 workflow 文件的改动
+    单独提示，留给后续决策。
 
 ## 落地顺序
 
@@ -250,8 +263,8 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 **起栈**：Cloud、Git Server（服务仓库监听与 ref 查询监听）、Credential Store、执行器，加可写的 `push-git-fixture`（带 TLS、
 要 token；可切换 `normal`、`refuse`、`moved`、`slow-post`、`drop`）。
 
-**替身**：底座的预置工具在 Git Server 上写 `refs/heads/workspaces/<ws>/<branch>`，内容是 fixture 当前 `main` 的一个后代提交；
-预置工具同时写入对应 Workspace 的最小记录（不启动沙盒与 Node），使运行时使用权限的检查可以进行；这项能力由底座的预置工具提供（契约落地顺序第 1 步）。Binding 的当前快照先经一次真实同步得到，并通过底座
+**替身**：底座的预置工具在 Git Server 上写 `refs/heads/workspaces/<ws>/<branch>`，内容是 fixture 当前 `main` 的一个后代提交。
+发布源不按 Workspace 的创建者校验，所以不需要 Workspace 记录。Binding 的当前快照先经一次真实同步得到，并通过底座
 的共享契约断言。
 
 | 场景 | 必须成立 |
@@ -267,7 +280,9 @@ cloud#64 在租约过期后重新派发同一推送，本文不沿用（执行�
 | `docker pause` fixture 后发布 | `uncertain`；恢复 fixture 后 reconciler 判定为 `succeeded` 或 `failed(not_applied)`，与 fixture 的实际状态一致；全程 fixture 只收到一次更新命令 |
 | `drop` 模式 | 推送生效、响应丢失；后置核验确认，`succeeded` 并标注由核验确认 |
 | worker 在 `running` 中被杀 | `uncertain`；之后用该 Operation ID 访问服务仓库监听被拒绝；reconciler 给出结论 |
-| 身份边界 | 发布 Operation 的 ID 读取源 ref 以外的 ref 失败；用它向 Git Server 推送任何 ref 都被拒绝 |
+| 身份边界 | 用发布 Operation 的 ID 向 Git Server 推送任何 ref 都被拒绝 |
+| 发起人 | 没有 Project 发布权限、也不是个人凭据所有者的成员发起被拒绝 |
+| `uncertain` 上限 | fixture 一直不可达：核验次数用尽后以 `failed(outcome_unknown)` 结束；随后删除 Project 不再等待它 |
 | 秘密扫描 | 以上场景结束后，canary token 不出现在日志、Cloud 数据库导出（含审计）、Git Server 仓库和执行器任务目录 |
 
 **最终验收**：用 owner 提供的 GitHub 私有测试仓库与真实 token：一次成功发布、一次 `conflict`（在 GitHub 上先推送一个提交）、
