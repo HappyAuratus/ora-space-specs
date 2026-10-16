@@ -42,6 +42,7 @@
 | release 与 installed manifest 都接受 workflow kind，且拒绝其他 kind 的专属 section 与 target 形态 | `ora_plugin_manifest::tests::parses_workflow_kind_installed_manifest`; `ora_plugin_manifest::tests::workflow_kind_rejects_workbench_and_webview_sections`; `ora_plugin_manifest::tests::workflow_kind_rejects_artifact_section` | `Partial` |
 | 一份或多份直接子层文档被解析为贡献，并按文件名稳定排序 | `ora_plugin_manager::tests::discovers_workflow_package_documents`; `ora_plugin_manager::workflow::tests::accepts_one_or_more_workflow_documents` | `Covered` |
 | README、子目录与其他扩展名被忽略而不导致失败 | `ora_plugin_manager::workflow::tests::ignores_files_that_are_not_workflow_documents` | `Covered` |
+| 扩展名比较忽略 ASCII 大小写（`.JSON` 与 `.json` 等价） | 实现按 `name.to_ascii_lowercase()` 判断后缀，尚无一份大写扩展名的 fixture | `Missing` |
 | 缺失、空目录与零份文档的包被拒绝 | `ora_plugin_manager::tests::rejects_workflow_package_without_documents`; `ora_plugin_manager::workflow::tests::rejects_missing_empty_and_documentless_asset_directories` | `Covered` |
 | 超过文档数上限的包被拒绝 | `ora_plugin_manager::workflow::tests::rejects_more_documents_than_the_budget` | `Covered` |
 | 符号链接被忽略且不可越过包根 | 实现按不跟随链接的文件类型判断，尚无符号链接 fixture 的直接测试 | `Partial` |
