@@ -105,7 +105,12 @@
   `TestWorkflowAssetImportFromInstalledPlugin` 让包从 `1.0.0` 升到 `1.1.0`：同一路径的 `workflowId`
   不变、该 workflow 的快照数仍为 1，升级前后分别读取活稿与 `v1` 快照的 `graph::text` 并逐字节
   比较，两者都没有变化，新版本只新增 `hotfix.json`；卸载插件后 live workflow 仍在，
-  `workflow_snapshots` 计数与卸载前相同。更广的快照不可变证据是 `TestWorkflowSnapshotPublishServices`
+  `workflow_snapshots` 计数与卸载前相同。cloud#83 的
+  `TestWorkflowAssetImportKeepsUserEditsAcrossUpgrade`
+  （[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/pull/83/files)）
+  把同一断言延伸到用户已接手的副本：编辑活稿并发布 v2 快照后升级包，活稿、导入产生的 v1 与用户
+  发布的 v2 三者的 `graph::text` 逐字节不变，升级内容不出现，仅新增路径导入。更广的快照不可变证据
+  是 `TestWorkflowSnapshotPublishServices`
   与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
   （表上没有 `updated_at`，发布只 INSERT）；运行侧由 `TestWorkflowRunValidatesAgainstTheVersionItRuns`
   证明执行的是所选快照。
