@@ -142,6 +142,9 @@ skip_key      = (source_namespace, identifier, document_path)
 
 `snapshot_version` 是 Cloud 发布规则分配的下一个整数，不是文档里写的版本，所以没有「版本不可寻址」
 这一类失败（见 [workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md) D1）。
+`document_not_executable_graph` 覆盖发布门禁的全部拒绝：首期不执行的节点 kind、首期不执行的 agent
+配置字段、以及节点引用了未声明的槽位；失败结果带上门禁的问题列表（节点、槽位或字段），与编辑器
+发布时的报错同源。
 
 - **逐文档失败，不整包失败**：一份坏 JSON 或非法图只让该文档失败，同包其他文档照常导入。这与
   skill 插件的整包校验相反，理由不同：skill 贡献集合是插件身份的一部分，而这里每份文档都是彼此
