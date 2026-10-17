@@ -228,8 +228,13 @@ Desired 或 declaration wakeup 会重置旧 retry sequence。Prepared 或 Applie
 普通 reconcile 不根据路径、名称或相似内容猜测结果，也不会创建第二次 mutation。startup 和每次
 普通 claim 前的 recovery scan 会把过期且未终结的 Operation、Attempt、TargetStatus 与
 ResourceStatus 原子隔离为 RecoveryRequired，保留 Artifacts，写入 blocking/manual Conditions，
-并令 claim 查询排除相关 Target。仍持有有效 worker lease 的 Operation 不会被误隔离；恢复需要未来
-提供能够验证 exact adapter state 的显式路径。
+并令 claim 查询排除相关 Target。仍持有有效 worker lease 的 Operation 不会被误隔离；恢复只能通过
+能够验证 exact adapter state 的显式受控命令完成：`recoverEffectTarget` 对每个被隔离的 Operation
+用 Resource adapter 证明其精确状态——证明达到 exact planned 状态则终结 journal 并保留 ownership；
+证明仍处 exact expected 基线则以 `FinalizedWithoutEffect` 关闭且不授予任何 ownership；两者都不
+匹配则拒绝恢复并保留隔离。恢复不重放 mutation、不猜测、不伪造历史；关闭最后一个 journal 后，
+request 回到调度，manual Conditions 清除，普通 reconcile 按当前 Desired State 重新收敛，
+retiring Target 额外推进 Scope epoch 使空投影落到新的不可变 identity。
 
 Planner 产生 blocking Conditions 时，repository 会在同一事务中保存 Target/Resource statuses 与
 Conditions，把 request 转为 Blocked，并释放本轮 Resource claims。这个提交只保留未来必须重新
