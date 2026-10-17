@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Git Server 成为每个 Project 的代码中心：ref namespace、规则集授权与两类写入者的契约
@@ -15,7 +15,7 @@ Git Server 不再只存放交付 ref。从本决策起，它是每个 Project �
 Cloud 仍然不写 Git Server，只在事务外查询、在事务内登记。外部仓库只经 Repo Executor 访问，Node、Workspace 与 Git
 Server 不接触外部凭据。
 
-本 ADR 处于 `proposed`，是 [Git Server 根决策](0-sandbox-scoped-git-server-over-https.md) 的第一个后续决策。它的定位是
+本 ADR 已经 owner 批准，处于 `approved`：决策内容是两条线实现时必须遵守的契约，核心测试用例见[代码中心契约用例](../../../test-cases/cloud/git-server/project-repository-code-hub-contract.md)。底座（落地顺序第 1 步）实现后仍为 `approved`，内部线和外部线都落地并验收后才改为 `implemented`。它是 [Git Server 根决策](0-sandbox-scoped-git-server-over-https.md) 的第一个后续决策。它的定位是
 **两条开发线共同遵守的契约**：
 
 - 内部线：Git Server 与 Node 之间；
