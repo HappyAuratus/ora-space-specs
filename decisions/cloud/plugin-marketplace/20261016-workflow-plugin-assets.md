@@ -46,12 +46,16 @@ status: proposed
 来源记录至少包含：
 
 ```text
-source_identity = (source_namespace, identifier, package_version, package_sha256, document_path)
+source_record = (source_namespace, identifier, document_path, package_version, package_sha256)
+                + 结果 + 触发 space + 时间
+skip_key      = (source_namespace, identifier, document_path)
 ```
 
 - `(source_namespace, identifier)` 是 canonical Plugin ID，`document_path` 是包内路径
   （`assets/workflows/<name>.json`）。canonical 身份用显式列对保存，不塞进 JSON。
-- 记录还保存触发它的 space、导入结果与时间；用户对副本改名、编辑、归档都不改写这条记录。
+- `package_version` 与 `package_sha256` 说明这条结果出自哪个包版本，只用于对账与展示，**不参与
+  「是否跳过」的判定**：判定键是 `skip_key`，跨包版本成立（D4）。
+- 记录还保存触发它的 space、最近一次尝试的结果与时间；用户对副本改名、编辑、归档都不改写这条记录。
 - 来源不构成所有权：副本可编辑、可改名、可归档；任何地方都不能用「它来自某个插件」阻止用户改动，
   也不能因为插件卸载、来源删除或市场下架而回收副本。
 
@@ -125,11 +129,19 @@ source_identity = (source_namespace, identifier, package_version, package_sha256
   sha256 保证，不再由「每份文档都合法」承担。
 - **名称冲突不改名、不覆盖**：按现有 tenant 级唯一规则让该文档失败（`name_conflict`）。自动改名
   会让同一份来源在不同租户导入出不同名字，来源记录无法复核。
-- **幂等与升级只增不改**：`(canonical Plugin ID, package version, document_path)` 是来源身份；
-  同一来源身份最多导入一次，重试、进程重启、重复安装都不重复创建。包升级时，旧版本已导入的来源
-  路径**不再导入**（用户的副本可能已被编辑，覆盖就是数据损失），只导入新版本新增的路径；新版本
-  删掉的路径不删副本。包内版本提升导致的文档内容变化，只能由用户在副本上显式操作。
-- 导入结果必须独立持久化并可单独读取（按来源身份与文档路径），不能只作为插件安装结果的一个字段。
+- **判定键跨版本，且只认成功**：是否跳过一份文档，只看 `skip_key`
+  `(canonical Plugin ID, document_path)` 下是否已有一条 `imported` 记录，与 `package_version` /
+  `package_sha256` 无关。`failed` 不占用这个键：上次失败（例如 `name_conflict`）的路径，在导入
+  步骤下次被触发（重复安装、重装、新版本、显式重试）时重新尝试，并把记录里的结果与时间刷新为这一
+  次。这样 [circus#68](https://github.com/ora-space/circus/issues/68) 结论 6 的「失败按来源身份
+  幂等重试」与「同一路径最多导入一次」是同一句话的两面——幂等约束的是成功的结果，不是尝试本身。
+- **升级只增不改**：包升级时，判定键已被占用的路径**不再导入**（用户的副本可能已被编辑，覆盖就是
+  数据损失），只导入从未成功导入过的路径：新版本新增的路径，以及此前失败、这次可能成功的路径；
+  新版本删掉的路径不删副本。包内版本提升导致的文档内容变化，只能由用户在副本上显式操作。
+- **不复活用户处置过的副本**：用户删除或归档副本都不改写来源记录，判定键仍被占用，因此重新安装
+  插件不会把它再导入一次。删除与归档是用户对这份数据的明确处置，导入不能替用户撤销。要重新拿到
+  同一份文档，用户走编辑器的复制/新建，与来源无关。
+- 导入结果必须独立持久化并可单独读取（按 `skip_key`），不能只作为插件安装结果的一个字段。
 
 ### D5：四种证据分离
 
@@ -156,7 +168,8 @@ source_identity = (source_namespace, identifier, package_version, package_sha256
 2. 卸载插件、包升级与来源消失都不删除或改写已导入的副本与既有快照。
 3. 下载、校验、解压与解析都在数据库事务外；导入结果落库在事务内。
 4. sha256 校验先于任何解析，且下载与解压都有上界。
-5. 同一来源身份（canonical Plugin ID + package version + document path）最多导入一次。
+5. 是否跳过一份文档只由 `(canonical Plugin ID, document_path)` 决定：同一路径最多成功导入一次，
+   跨包版本成立；`failed` 不占用这个键，因此失败可以反复重试。
 6. 插件身份不出现在 `workflows` 行的身份里；tenant 级名称唯一性不变，冲突逐文档失败。
 7. 资产导入不改变插件安装状态；插件安装状态也不宣称任何资产可用。
 
