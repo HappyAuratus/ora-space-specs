@@ -58,22 +58,24 @@
   导入步骤在数据库事务外解析、事务内落库。
 - 触发：导入含 `document_invalid_json`、`document_without_name`、`document_not_executable_graph`
   或 `name_conflict` 的文档；`document_invalid_json` 的文档可能能解析但含 PostgreSQL `jsonb` 拒绝
-  的文本（转义 NUL、未配对代理项、非法 UTF-8）；同包其他文档合法。
+  的文本（转义 NUL、未配对代理项、非法 UTF-8）或超出 `numeric` 存储范围的数字（如 `1e-20000`）；
+  同包其他文档合法。
 - 必须成立：每份文档一个结果，坏文档只让自己失败，同包其他文档照常导入并各得一个已发布快照；
-  失败码限于四个有界值；`document_invalid_json` 的 `reason` 区分 `unsupported_unicode_escape`
-  与 `invalid_utf8`，合法代理项对照常导入；`document_not_executable_graph` 带门禁的问题列表
-  （节点 id 与 kind、槽位、字段名），与编辑器发布同源；名称冲突不改名、不覆盖；下载、校验或解压
-  失败是包级结果，不产生任何文档结果，下一次触发重试。
+  失败码限于四个有界值；`document_invalid_json` 的 `reason` 区分 `unsupported_unicode_escape`、
+  `invalid_utf8` 与 `numeric_out_of_range`，合法代理项对与可表示的边界数字照常导入；
+  `document_not_executable_graph` 带门禁的问题列表（节点 id 与 kind、槽位、字段名），与编辑器
+  发布同源；名称冲突不改名、不覆盖；下载、校验或解压失败是包级结果，不产生任何文档结果，下一次
+  触发重试。
 - 禁止结果：整包因一份文档失败、失败码之外的自由文本成为唯一原因、自动改名后导入、名称冲突时
-  覆盖既有 workflow、包级失败仍留下部分文档结果、无法保存的文本让结果事务回滚并把源行留在
+  覆盖既有 workflow、包级失败仍留下部分文档结果、无法保存的文本或数字让结果事务回滚并把源行留在
   `importing`。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 逐文档失败不牵连同包其他文档 | 真实 HTTP + PostgreSQL：混入坏文档的包导入后，其余文档各有 workflow 与快照，坏文档只有一条 `failed` | Covered |
-| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；`document_invalid_json` 按 `reason` 区分两种无法保存的文本；图不可执行时问题列表点名节点/槽位/字段 | Covered |
-| 无法原样保存的文本在落库前被逐文档拒绝 | 真实 PostgreSQL：含转义 NUL、未配对代理项或非法 UTF-8 的文档失败，合法代理项对与正常文档照常导入，结果事务提交 | Covered |
+| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；`document_invalid_json` 按 `reason` 区分无法保存的文本与越界数字；图不可执行时问题列表点名节点/槽位/字段 | Covered |
+| 无法原样保存的文本与数字在落库前被逐文档拒绝 | 真实 PostgreSQL：含转义 NUL、未配对代理项或非法 UTF-8 的文档，以及含越界数字（如 `1e-20000`）的文档失败，合法代理项对与可表示的边界数字、正常文档照常导入，结果事务提交 | Covered |
 | 门禁拒绝与编辑器发布同源 | 同一份不可执行图在导入与发布两条路径得到同一组问题（逐项比较） | Covered |
 | 名称冲突不改名、不覆盖 | 真实 PostgreSQL：同名文档失败为 `name_conflict`，既有 workflow 的名称与图不变 | Covered |
 
@@ -89,7 +91,11 @@
   与 [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
   覆盖。`TestWorkflowAssetImportRejectsTextPostgresCannotStore` 把转义 NUL、未配对代理项与非法
   UTF-8 放进同一个包：三份文档各得 `document_invalid_json` 及各自的 `reason`，正常文档与合法
-  代理项对照常导入，包结果为 `completed`，源行没有停在 `importing`。名称冲突用例预置了同名
+  代理项对照常导入，包结果为 `completed`，源行没有停在 `importing`。
+  `TestWorkflowAssetImportRejectsNumbersPostgresCannotStore` 把 `1e-20000` 与正常文档放在同一个
+  包：越界数字得 `numeric_out_of_range`，正常文档照常导入，包结果为 `completed`，源行没有停在
+  `importing`；去掉落库前检查时同一用例以 SQLSTATE 22003 失败，直接证明缺了它就会整包回滚。
+  名称冲突用例预置了同名
   workflow，失败后该行的名称与图不变；名称释放后同一路径转为 `imported`，证明没有自动改名或覆盖。
 
 ## The Asset Fetch Stays Inside The Declared Outbound Boundary
