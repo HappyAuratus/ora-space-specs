@@ -29,7 +29,7 @@ Server 不接触外部凭据。
 | Node 怎样 clone、fetch、推送 Workspace 分支 | `node/repository` |
 | 外部仓库的 Binding、同步与发布的业务流程 | `cloud/project` |
 | 凭据管理 | `cloud/identity-access` |
-| 执行器程序本身 | `cloud/repo-executor` 根决策 |
+| 执行器程序本身；它访问外部仓库的出网必须遵守 D2 的“执行器出网”约束 | `cloud/repo-executor` 根决策 |
 
 范围边界：
 
@@ -65,6 +65,7 @@ Server 不接触外部凭据。
 | 根决策 D7：外部仓库只经持有外部凭据的组件进出 Git Server；Workspace 的代码输入只来自 Git Server | 继承。这个组件是 Repo Executor，经服务仓库监听写快照和跟踪 ref（D2、D4）；Workspace 的代码输入是固定的快照（D5） |
 | [Revision Git 原生交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)：Revision 记录交付 ref 与最终提交 | 继承，不变。不另建 Revision ref（D4） |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md)：Cloud 只管理凭据引用；执行端按引用选择，不回退全局凭据 | 继承。凭据只在 Repo Executor 中使用，本文不涉及凭据本身 |
+| [部署方共享出网决策](../model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)：模型转发与 Cloud 资产下载共用 `deployment-egress.json` 的白名单与部署方 DNS；D7 明确不覆盖其他调用方 | 继承 D1–D6，Repo Executor 作为新的平台出网调用方遵守它们（D2“执行器出网”）。该决策 D7 调用方表里的 Repo Executor 一行，在 `cloud/repo-executor` 根决策落地时追加 |
 | [运行时 Workspace 使用权限](../workspace/20260927-runtime-workspace-use-permissions.md) D2：代码、分支详情只供可使用目标者（创建者或管理员） | 修改，只改 Git 层面：同一 Project 内的 Workspace 分支与交付 ref，对该 Project 中获授权的沙盒执行与执行器共享，可以 fetch、merge，也可以作为发布源（D3）。界面上谁能查看代码与分支详情，仍按原规则 |
 
 ## 决策
@@ -104,6 +105,22 @@ outbox 或 reconciler。
 
 为什么不让执行器走仓库监听：仓库监听只在沙盒网络。执行器持有外部凭据，让它加入沙盒网络，就等于把它放到工作负载能直接
 访问的地方。分开监听，根决策 D6 的网络隔离得以保持。
+
+**执行器出网**：Repo Executor 访问外部仓库（包括企业内网的 Git 托管）属于平台出网，必须遵守
+[部署方共享出网决策](../model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)，`cloud/repo-executor` 根决策不能放宽：
+
+- 读取与 Cloud、model-gateway 同一份只读挂载的 `deployment-egress.json`，不另设仓库白名单，也不接受用户、Binding 或请求
+  覆盖配置路径。未配置时保持公网模式，沿用部署 DoH；企业模式下只连接白名单中精确的 `host:port`，未命中的目标在 DNS 查询前拒绝
+  （共享决策 D1、D2）。
+- 检查解析得到的全部地址：cluster 网段、宿主地址、回环和链路本地始终拒绝，私网地址需要该目标显式许可（共享决策 D3）。
+- 只用部署方 resolver 或静态映射解析，不读系统 DNS、搜索域或环境代理，失败时不回退（共享决策 D4）。
+- 每次新拨号都重新解析并检查完整地址集合，只向已验证的数字地址连接，TLS 仍按原 hostname 校验，不跟随重定向（共享决策 D5）。
+  执行器调用 `git` 时同样不能让它自行按域名解析和拨号。这一条同时处理 DNS rebinding：拨号前检查全部解析结果、只连已验证的
+  数字地址，域名在检查之后改指别处也连不过去。
+- 配置只在启动时加载；更换配置按共享决策 D6 的停服务、换文件、再启动进行，Repo Executor 加入需要一起重启和比对摘要的服务。
+
+出网准入只回答“能不能连到这个外部地址”，不授予仓库权限：同步与发布仍只能用 Operation 指定的 Binding 和凭据，凭据规则由
+`cloud/identity-access` 规定。
 
 ### D3：每个请求解析为一份 ref 规则集，`pre-receive` 再判定一次
 
@@ -314,6 +331,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 12. Binding 的当前快照只在 Cloud 核验快照 ref 之后更新，总是等于最新一次核验通过的同步结果。
 13. Cloud 不写 Git Server。
 14. 一个 Operation 至多进入一次 `running`。
+15. Repo Executor 只连接部署方出网配置允许、经部署方解析且全部地址通过检查的外部目标，不回退系统 DNS，不连 cluster 与宿主地址。
 
 ## 为什么不是这些替代方案
 
@@ -337,7 +355,6 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 - **多分支、Tag 的全量同步，以及 LFS 和 submodule**：由 `cloud/project` 的同步 ADR 决定第一阶段怎样处理，本文的 namespace 已经为多分支留出位置。
 - **纵深安全加固**：第一阶段以跑通与正确为目标，以下留给后续决策，各后续 ADR 在自己的“未解决的问题”里登记：
   - Node 以 Node 身份读取 checkout 对象库（借用 alternates）时，工作负载可控文件带来的攻击面；工作负载与插件进程读不到 git-access 私钥的前提；
-  - 执行器出口检查的 DNS rebinding；
   - 发布审批展示 diff、限制目标分支、防止经 workflow 读取外部仓库的 secrets；
   - Credential Store 兑换时核对仓库作用域。
 
@@ -399,7 +416,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
    - 内部线：git-access 签发、沙盒的 workspace 规则、Node 从快照 clone 与 `ora-git`，以及按
      [Revision Git 原生交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)实现交付推送与续作拉取，同时删除
      bundle 的代码与协议字段。
-   - 外部线：服务仓库监听、服务身份、Operation 规则、执行器、Credential Store、同步与发布。
+   - 外部线：服务仓库监听、服务身份、Operation 规则、执行器（出网按 D2 的“执行器出网”接入共享出网配置，并在共享出网决策 D7 的调用方表追加 Repo Executor）、Credential Store、同步与发布。
    - 两者改动的是不同的规则来源和监听，互不阻塞；各自用预置工具替代对方，独立做端到端验收。
    - 完成条件：不变量 1–10 有使用真实 `git` 客户端的集成测试证据，测试同时带两种身份。
 3. **全链路验收**：两条线都合并后，用真实外部仓库跑一遍从同步到 Workspace、交付、发布再同步的完整链路。

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Git Server 是 Project 的代码中心：Cloud 仓库中的独立 HTTPS 服务，证书只认证身份，授权按 Cloud 当前状态逐请求判定
@@ -10,7 +10,7 @@ Workspace 协作与 Revision 交付的唯一存放处。它只提供 smart HTTP�
 直接读取 Cloud 数据库，按证书身份、上下文与当前状态判定能否访问该仓库、能写哪些 ref，推送在 `pre-receive` 中再判定一次。
 Git Server 不保存授权状态，不持有外部仓库凭据，也不访问外部仓库；Cloud 不写 Git Server，只在事务外查询、在事务内登记。
 
-本 ADR 处于 `proposed`，是 `cloud/git-server` 领域的根决策。它取代
+本 ADR 已经 owner 批准，处于 `approved`，是 `cloud/git-server` 领域的根决策；它的不变量与契约 ADR 共用一组核心测试用例，见[代码中心契约用例](../../../test-cases/cloud/git-server/project-repository-code-hub-contract.md)。现有 Git Server 实现与本文的程序形态、协议和沙盒认证一致，契约 ADR 的两条开发线都落地并验收后，本文才改为 `implemented`。它取代
 [Git Server 接收沙盒推送的原根决策](0-sandbox-scoped-git-server-over-https.md)：原根决策写在 Git Server 只存交付 ref、
 Node 仍从外部仓库 clone 的设计上，Git Server 成为 Project 代码中心之后整体作废；本文按新设计重新写出当前的根决策，
 不需要再读原文。ref namespace、规则集授权、各监听接受的身份与两条开发线交接的数据形状，由

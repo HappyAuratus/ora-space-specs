@@ -1,6 +1,8 @@
 # Project 仓库代码中心：授权、ref 规则与两条线交接
 
-依据[已批准的代码中心契约决策](../../../decisions/cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)。
+依据已批准的 [Git Server 根决策](../../../decisions/cloud/git-server/0-project-code-hub-git-server-over-https.md)与
+[代码中心契约决策](../../../decisions/cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)。
+下文“决策依据”中的“根决策”指前者，其余 D 编号与不变量编号指契约决策。
 本文登记契约本身的义务：Git Server 一侧的授权与 ref 规则、Cloud 的 Binding/快照/Operation 存储与生命周期。
 clone 消费快照、Revision 交付、执行器同步与发布的端到端义务，由内部线和外部线的后续决策各自登记。
 
@@ -93,3 +95,18 @@ clone 消费快照、Revision 交付、执行器同步与发布的端到端义�
 - 验证义务与证据：**Partial** — `internal/gitserver/service_test.go` 的 `TestRepositoryBoundaryResponses`（其他租户的路径返回 `403`）。
 - 仍缺：服务仓库监听上的跨 Project 访问，以及按对象 ID 取对象的直接测试。
 - 决策依据：D1、D3，不变量 9。
+
+## Repo Executor Egress Stays Within The Deployment Allowlist And Resolver
+
+- 风险：执行器按 Binding 里的地址直连任意目标，被用来探测 cluster、宿主或企业内网；域名在检查之后改指内部地址（DNS rebinding）；
+  `git` 自行解析域名绕过检查。
+- 前置状态：部署使用 `deployment-egress.json`，分别处于公网模式与企业模式；Binding 的外部仓库地址分别命中、不命中白名单，
+  或解析到私网、cluster、宿主、回环地址；resolver 超时或返回畸形响应。
+- 触发：同步与发布 Operation 访问外部仓库；连接复用或重新拨号之间 DNS 结果改变；更换出网配置。
+- 必须成立：企业模式下只连白名单中精确的 `host:port`；全部解析地址通过检查后，只向已验证的数字地址拨号，TLS 按原 hostname
+  校验；只用部署方 resolver 或静态映射，失败不回退；配置在启动时加载，按共享出网决策的重启流程生效。
+- 禁止结果：未命中白名单的目标被查询或连接；任一地址落在 cluster、宿主、回环、链路本地仍被连接；回退系统 DNS、环境代理或跟随
+  重定向；出网许可被当作仓库或凭据权限。
+- 验证义务与证据：**Missing** — 执行器与它的出网接入由外部线实现，需要真实 DNS 与 Git 托管 fixture 的白名单、地址类别、
+  rebinding 与 resolver 故障测试。
+- 决策依据：契约 D2“执行器出网”，不变量 15；[部署方共享出网决策](../../../decisions/cloud/model-access/20261017-deployment-owned-egress-and-explicit-resolution.md) D1–D6。
