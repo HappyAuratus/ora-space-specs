@@ -1,9 +1,9 @@
 # 模型请求统计：发送意图、不可变收尾与未知用量
 
-决策依据：[已登记 HTTP 尝试统计](../../../decisions/cloud/model-access/20261016-recorded-http-attempt-statistics.md)（`approved`）。
-直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的
-[`feae6e39f6cd9647784e6ff923778e65fa8f7f92`](https://github.com/ora-space/cloud/tree/feae6e39f6cd9647784e6ff923778e65fa8f7f92)。
-`Covered` 只证明该提交所列测试边界内的义务，不表示已合并或真实部署已验收。
+决策依据：[已登记 HTTP 尝试统计](../../../decisions/cloud/model-access/20261016-recorded-http-attempt-statistics.md)（`implemented`）。
+直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的合并提交
+[`7c9cd8551f6b39b752265d4ba60f8aba2a33701a`](https://github.com/ora-space/cloud/tree/7c9cd8551f6b39b752265d4ba60f8aba2a33701a)。
+`Covered` 只证明该提交所列自动化测试边界内的义务；部署验收独立记录，不能替代证据缺口。
 Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯通测试使用真实 PostgreSQL 和受控 TLS
 上游，不能代替真实供应商、Node 或浏览器验收。
 
@@ -96,11 +96,11 @@ Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯�
 | 升级时历史 Run/Revision/Thread 全量保真 | 迁移测试保留一条身份，未在 0034 阶段植入完整历史 Run/Revision/Thread；旧会话测试也不是升级夹具 | Partial |
 | 真实部署的先迁移后启动及迁移身份隔离 | 迁移单测不证明实际发布顺序或身份配置；需部署验收 | Missing |
 
-[core]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/core/model_attempts_db_test.go
-[attempt]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/modelgateway/attempt_test.go
-[failure]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/modelgateway/attempt_failure_test.go
-[gateway-http]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/integration/model_attempt_gateway_test.go
-[usage]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/modelgateway/usage_test.go
-[statistics-http]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/integration/session_statistics_test.go
-[metrics-ui]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/session-metrics/session-metrics.test.tsx
-[metrics-page]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/sessions/session-metrics-page.test.tsx
+[core]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/core/model_attempts_db_test.go
+[attempt]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/modelgateway/attempt_test.go
+[failure]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/modelgateway/attempt_failure_test.go
+[gateway-http]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/integration/model_attempt_gateway_test.go
+[usage]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/modelgateway/usage_test.go
+[statistics-http]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/integration/session_statistics_test.go
+[metrics-ui]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/frontend/src/features/session-metrics/session-metrics.test.tsx
+[metrics-page]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/frontend/src/features/sessions/session-metrics-page.test.tsx

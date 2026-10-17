@@ -1,13 +1,13 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 模型用量按网关 HTTP 尝试独立登记，保留部分观测与未知值
 
 Model Gateway 为每次已授权的上游 HTTP 发送意图建立独立、无正文的持久台账，供会话分析读取。
-不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本决策已获批准，状态为
-`approved`；配套实现仍需审查合并与验收。接受台账与模型请求共用 Cloud 已依赖的 PostgreSQL
-可用性边界：登记不可用时返回 503，不发送上游请求。
+不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本决策状态为 `implemented`，
+覆盖 Gateway 台账、Cloud 授权读取和 Dashboard 展示。台账与模型请求共用 Cloud 已依赖的
+PostgreSQL 可用性边界：登记不可用时返回 503，不发送上游请求。
 
 ## 继承与修改
 
