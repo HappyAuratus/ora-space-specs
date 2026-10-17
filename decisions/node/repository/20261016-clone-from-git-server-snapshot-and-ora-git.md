@@ -7,7 +7,7 @@ status: proposed
 Node 的 clone 不再接受外部仓库地址，也不再使用部署凭据。clone 输入是
 [Git Server 代码中心决策](../../cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约 ADR”）D5 第
 1 项的快照输入 `{repository_url, snapshot_ref, base_commit, workspace_ref}`。Node 沿用
-[Node 交付推送决策](../revision/20261012-push-delivery-ref-and-fetch-prior-revision.md)（下称“交付推送决策”）D1 的私有传输仓库：
+[Node 交付推送与 Git 恢复决策](../revision/20261017-push-delivery-ref-and-restore-from-git-server.md)（下称“交付推送决策”）D1 的私有传输仓库：
 以 Node 身份、带 git-access 证书把 `snapshot_ref` 拉进传输仓库，核对它指向 `base_commit`，再以工作负载身份从传输仓库把
 对象取入新的 checkout，检出名为 Workspace 分支短名的本地分支。checkout 不配置任何 remote，也不留下任何与证书有关的配置；
 成功前校验 HEAD 等于 `base_commit`。会话期间，Agent 用沙盒里的 `ora-git` 命令发起 fetch 与推送：命令只有固定的几个动词，
@@ -24,7 +24,8 @@ Node 的 clone 不再接受外部仓库地址，也不再使用部署凭据。cl
 desktop 的 Node 协议（`crates/node-protocol`）、Node 的 clone 执行与核实（`apps/ora-node/src/repository/`、
 `crates/gitlancer/src/git/branch_clone.rs`）、git-access 配置（`apps/ora-node/src/git_access.rs`）、新的 `ora-git` 命令与 Node
 的本地 socket 服务；cluster 的 Sandbox Server（git-access 身份签发）、Compose、Node 镜像、echo agent fixture 与验收脚本。内部线同时按
-[交付推送决策](../revision/20261012-push-delivery-ref-and-fetch-prior-revision.md) 实现交付推送与续作拉取，删除 bundle 的代码与协议字段。
+[交付推送决策](../revision/20261017-push-delivery-ref-and-restore-from-git-server.md) 实现交付推送（含 Workspace 分支的快进）与续作恢复，删除 bundle 的代码与协议字段；
+这两部分的规则都由交付推送决策承担，本文只给出它们用到的 clone 记录与账本。
 
 兼容性边界：**破坏性切换**（契约 ADR 范围边界）。Node 协议与 Cloud、Controller 同时发布，旧形状的命令被拒绝；不迁移 Node
 数据库中的旧 clone 记录与已有的 checkout，开发环境的 Workspace 在切换后重建。
@@ -45,11 +46,8 @@ desktop 的 Node 协议（`crates/node-protocol`）、Node 的 clone 执行与�
 | clone 契约 D8：网络 Git 使用 `network_timeout_ms` | 继承，并用于传输仓库的拉取、`ora-git` 的 fetch 与推送 |
 | Git 副作用移出 worker D1–D5；中断失败判定 D1–D4 | 继承，不变；它们同样适用于 clone 中工作负载身份的命令（D4） |
 | 交付推送决策 D1：带证书的 Git 访问以 Node 身份在私有传输仓库中执行，不读取 checkout 的配置、钩子或 ref | 继承，并扩展到 clone、`ora-git` 的 fetch 与推送（D2、D6、D7） |
-| 交付推送决策 D2、D3：交付把最终提交推到交付 ref，冻结计划后重放 | 继承，由内部线实现；交付另把最终提交快进到 `workspaceRef`，不影响交付结果（D8） |
-| 交付推送决策 D1“交付 ref 必须在 `refs/ora/deliveries/` 下”、不变量 5“交付只推送输入给出的那一个 ref” | 修改：交付推送交付 ref 之后，再推送一次输入给出的 `workspace_ref`（必须在 `refs/heads/workspaces/` 下）；仍不推送其他 ref 或 tag（D8） |
-| 交付推送决策 D5 第 5 步：`checkout --force -B <默认分支> <finalCommit>`，`origin/<默认分支>` 不动 | 修改：本地分支是 Workspace 分支短名；checkout 没有 origin（D9） |
-| 交付推送决策 D5 第 6 步、[恢复决策](../revision/20261010-restore-prior-revision-before-session.md) D4：前序 `baseCommit` 不是 `origin/<默认分支>` 的祖先时提示 | 修改：改为不是本 Workspace 快照提交的祖先时提示（D9） |
-| 恢复决策不变量 4：恢复不改 `origin` 的远端跟踪分支与仓库配置 | 修改：checkout 没有 origin；恢复不改 `refs/remotes/ora/**` 与仓库配置（D9） |
+| 交付推送决策 D2、D3：交付把最终提交推到交付 ref，再带账本中的旧值快进 `workspace_ref`，冻结计划后重放 | 继承，由内部线实现；本文提供 `workspace_ref` 的来源（clone 记录）与共用的账本（D6、D8） |
+| 交付推送决策 D5：恢复把 Workspace 本地分支移到前序最终提交，改写提示以本 checkout 的 `base_commit` 判定，不改 `refs/remotes/ora/**` 与配置 | 继承，由内部线实现；本文提供分支短名与 `base_commit`（D9） |
 | 交付推送决策 D7：Cloud 模式必须配置 `git_access` | 继承；clone 也需要它，Node 只在配置了 `git_access` 时声明 clone 能力（D10） |
 | [Git Server 根决策](../../cloud/git-server/0-sandbox-scoped-git-server-over-https.md) D5：Node 执行 Git 访问，证书只在当次命令中传入，不新增 remote | 继承，不变 |
 | Git Server 根决策 D5：Agent 在会话中自己执行 `git push` 没有凭据，会失败；成果只经交付执行进入 Git Server | 修改：Agent 仍然没有凭据，但可以经 `ora-git` 请求 Node 推送自己的 Workspace 分支（D5、D6） |
@@ -81,8 +79,8 @@ Controller 原样转交。Node 受理时校验：
 
 一次 clone 分两段，身份不同：
 
-1. **拉取快照（Node 身份）。** Node 在 Node home 下建立该执行私有的裸传输仓库（`clone-transport/<sha256(execution)>/`，
-   `0700`，属主 Node），以交付推送决策 D1 的同一组调用级配置运行
+1. **拉取快照（Node 身份）。** Node 按交付推送决策 D1 建立该执行私有的裸传输仓库
+   （`<repository_root>/.ora-transport/clone-<sha256(execution)>`，`0700`，属主 Node），以同一组调用级配置运行
    `git fetch --no-tags <repository_url> <snapshot_ref>:refs/ora/input`：证书、私钥、CA 与 `Ora-Execution-Id: <clone 执行 ID>`
    只在命令行上传入，禁用 credential helper、重定向、系统与全局配置、终端提示，只允许 `https`。然后确认 `refs/ora/input`
    是提交且等于 `base_commit`。
@@ -91,7 +89,8 @@ Controller 原样转交。Node 受理时校验：
    依次执行：`git init --template=`；从传输仓库路径取入 `refs/ora/input`，建立本地分支 `refs/heads/<branch>` 指向
    `base_commit`；让 HEAD 指向这个分支并检出工作区。只有取入这一条命令放开 `file` 协议（与恢复时的取入相同）。
 
-完成后（无论成败）删除传输仓库；Node 启动时清空 `clone-transport/`。
+完成后（无论成败）删除传输仓库；Node 启动时按交付推送决策 D1 清理残留，只保留工作负载段尚未完成本地取入的 clone 传输仓库
+（这一步之前不会再拉取快照，它的 Run 也可能仍在 guardian 下读取传输仓库）。
 
 checkout 的结果：
 
@@ -271,34 +270,15 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
 
 ### D8：交付时把最终提交快进到 `workspaceRef`
 
-交付输入增加 `workspace_ref`（快照 clone 输入与执行授权决策 D6），等于本 checkout clone 输入中的 `workspace_ref`。交付推送决策 D2
-的推送成功后、上传 JSONL 之前，Node 在同一个传输仓库中按 D6 的方式推送一次：
+交付输入增加 `workspace_ref`（快照 clone 输入与执行授权决策 D6），必须等于本 checkout clone 记录中的值。交付怎样在推送交付
+ref 之后快进它、失败为什么不影响交付，由交付推送决策 D2 承担。本文只规定它与 `ora-git push` 共用 D6 的账本：快进带账本中的
+已知值作为声明的旧值，成功后更新账本；与 `ora-git push` 不同，交付的快进不做本地祖先检查，非快进由 Git Server 拒绝。
 
-`git push --porcelain --force-with-lease=<workspace_ref>:<O> <git_repository_url> <最终提交>:<workspace_ref>`
+### D9：续作恢复用到的 clone 记录
 
-- `O` 取 D6 的账本，与 `ora-git push` 共用；成功后更新账本。远端已是最终提交时按成功处理，所以重启后按冻结计划重放也不会出错。
-- 结果只影响 Workspace 分支，不影响交付：快进被拒（Agent 让本地分支偏离了已推送的分支）、旧值不符、`403` 都不重试，记一条
-  有限的分类日志后继续交付；`5xx` 与网络错误沿用交付推送决策 D4 的重试，耗尽后同样继续交付。交付结果不增加字段。
-- 会话结束时工作区有未提交改动，最终提交是交付的内部快照提交，父提交为会话结束时的 HEAD；工作区干净时，最终提交就是 HEAD
-  本身（交付推送决策所继承的 Node Revision 根决策 D2）。两种情况下，Agent 推送过的分支只要仍是 HEAD 的祖先，这次推送就是快进；`unchanged` 时最终提交等于基础提交或前序最终提交，分支不存在时就以它新建。
-- `workspace_ref` 必须在 `refs/heads/workspaces/` 下，且等于 clone 记录中的值，否则 Node 拒绝该交付输入。
-
-为什么放在交付 ref 之后、而且失败不影响交付：交付 ref 是 Revision 的核验对象，必须先成功；Workspace 分支只是让 run 的成果出现在
-协作的地方，它被拒通常是因为 Agent 自己改写了历史，不应拖垮交付。
-
-### D9：续作恢复的相应修改
-
-交付推送决策 D5 的恢复步骤继承，改动三处：
-
-- 第 2 步的协商起点“本次 clone 的基础提交”就是 clone 记录中的 `base_commit`。
-- 第 5 步改为 `git checkout --force -B <Workspace 分支短名> <finalCommit>`：本地分支是 clone 时检出的那个分支；checkout 没有
-  origin，没有需要“保持不动”的远端跟踪分支。
-- 第 6 步改为：前序的 `baseCommit` 不是本 checkout `base_commit` 的祖先（或本地没有它）时，在首条提问末尾追加提示。恢复
-  决策 D4 的提示文本相应改为：本次运行续接了前序最终提交；它依赖的基础提交不在本 Workspace 快照的历史中（外部仓库的历史
-  被改写）；本地分支指向续接的成果；可以用 `ora-git fetch upstream` 查看外部仓库的最新内容并调和。
-
-恢复仍在 Agent 启动之前（恢复决策 D1），所以恢复期间 `ora-git` 的 socket 还没有交给 Agent。恢复不改 `refs/remotes/ora/**` 与
-仓库配置。
+续作恢复由交付推送决策 D5 承担。它从本 checkout 的 clone 记录取得两项输入：协商起点与改写提示的判定基准 `base_commit`，以及
+`checkout --force -B` 的本地分支名（`workspace_ref` 的分支短名，即 clone 时检出的分支）。恢复仍在 Agent 启动之前，所以恢复期间
+`ora-git` 的 socket 还没有交给 Agent；恢复不改 `refs/remotes/ora/**` 与仓库配置。
 
 ### D10：Node 协议与持久记录的相应修改
 
@@ -308,7 +288,7 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
   `base_commit`、`workspace_ref`，校验见 D1。`CloneRepositoryUrl` 的 SSH 分支与外部地址规则从协议中删除。
 - `CloneReady`：形状不变，`commit` 必须等于 `spec.base_commit`，`spec` 是新形状。
 - `CloneFailureCode`：增加 `SnapshotUnavailable`、`BaseCommitMismatch`；`BranchNotFound` 只出现在历史记录中。
-- `DeliverRevision`：按交付推送决策 D8 删除 bundle、增加仓库地址与交付 ref；另增加 `workspace_ref`（D8）。
+- `DeliverRevision`：按交付推送决策 D8 删除 bundle、增加仓库地址、交付 ref 与 `workspace_ref`（D8）。
 - 会话的 `AgentSession`：按交付推送决策 D8 改 `PriorRevision`；增加 `workspace_directory`，Node 原样用于 `ora-git list`，不据此做
   任何判断。仓库地址、`workspaceId`、分支短名、`bindingId` 与 `base_commit` 从 `checkout_execution_id` 指向的 clone 记录取得。
 - Controller–Node 协议不增加消息：`ora-git` 是工作负载与 Node 之间的本地接口；Workspace 分支的状态由 Cloud 需要时经 ref 查询
@@ -332,9 +312,9 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 6. `ora-git` 只能推送 `refs/heads/workspaces/<自己的 workspaceId>/` 下的分支，每次只推一个 ref，带声明的旧值。
 7. `ora-git fetch` 只写 checkout 的 `refs/remotes/ora/**` 与对象。
 8. 推送的旧值与 fetch 的协商起点只来自 Node 账本与 `base_commit`，不来自 checkout 中 Agent 可写的 ref。
-9. 恢复把本地分支 `<branch>` 移到前序最终提交，提示的判定以本 checkout 的 `base_commit` 为准。
+9. 恢复与交付快进所用的分支短名、`base_commit` 与 `workspace_ref` 都来自本 checkout 的 clone 记录。
 10. 旧形状的 clone 命令被拒绝。
-11. 交付先推交付 ref，再快进 `workspaceRef`；后者的任何失败都不改变交付结果。
+11. 交付对 `workspace_ref` 的快进与 `ora-git push` 共用同一份账本。
 
 ## 为什么不是这些替代方案
 
@@ -378,9 +358,8 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
    没有 remote、HEAD 等于 `base_commit`；ref 缺失与 `403` 为 `SnapshotUnavailable`；ref 指向别的提交为 `BaseCommitMismatch`；
    `503` 重试后成功与耗尽；拉取阶段重启后重做且有上限；工作负载段被终止为 `Interrupted`；现有正常停止、命令超时、强杀恢复、
    guardian 丢失的测试原样通过。
-4. **交付与恢复改走 Git**：按交付推送决策实现交付推送、冻结计划、恢复拉取与 `git_access` 必填，删除 bundle 的生成、上传与下载；
-   加上 D8 的 `workspaceRef` 快进与 D9 的恢复修改。完成条件：交付推送决策“核心测试用例”一节列出的各项；`workspaceRef` 快进
-   成功、被拒时交付仍成功、重放不失败；恢复后本地分支名与提示判定正确。
+4. **交付与恢复改走 Git**：按交付推送决策实现交付推送与 `workspaceRef` 快进、冻结计划、恢复与 `git_access` 必填，删除 bundle 的
+   生成、上传与下载。完成条件：交付推送决策落地顺序第 3、4 步的完成条件。
 5. **`ora-git` 与 socket 服务**：动词、参数校验、socket 身份、错误码、push 与 fetch、`list` 附带目录（D5–D7）。完成条件：测试覆盖
    不变量 4–8，包括 checkout 中恶意的 `credential.helper`、`http.<url>.sslVerify`、`url.<base>.insteadOf` 与
    `objects/info/alternates` 不生效；对端 UID 不符被拒；会话结束后 socket 消失；推送重放时 stale info 但远端等于 `C` 按成功处理。

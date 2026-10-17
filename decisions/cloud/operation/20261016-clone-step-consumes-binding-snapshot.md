@@ -70,7 +70,7 @@ Cloud 在自己的写事务中把快照输入写入 operation 的 `request.clone
 
 | 字段 | 来源 |
 | --- | --- |
-| `repositoryUrl` | `git_server.repository_base_url`（[Cloud Revision 后续决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md) D2 的同一配置）加 Workspace 的 `tenantId`、`projectId` |
+| `repositoryUrl` | `git_server.repository_base_url`（[Cloud Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) D2 的同一配置）加 Workspace 的 `tenantId`、`projectId` |
 | `snapshotRef`、`baseCommit` | 该 Project 的 Binding 当前快照记录（契约 ADR D5 第 2 项）的 `snapshotRef` 与 `commitOid` |
 | `workspaceRef` | `refs/heads/workspaces/` 加 Workspace ID 加 `requested_ref`（D3） |
 
@@ -247,7 +247,7 @@ delete_project 的 quiesce 步骤在原有条件（各 Workspace 没有活动、
 1. **底座（契约 ADR 落地顺序第 1 步）**：Binding、当前快照、同步与发布 Operation 的最小存储；建 Project 时同时建立 Binding
    与一行 `pending` 的同步 Operation；预置工具与共享契约断言。本文从这一步开始只读这些存储。
 2. **Cloud 实现**（契约 ADR 落地顺序第 2 步中的内部线）：D1 的冻结、D2 的领取复核与“领取不因等待者落空”、D3 的分支规则与
-   `baseCommit` 核对、D5 的删除、D6 的删除等待。同一步按 [Cloud Revision 后续决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)
+   `baseCommit` 核对、D5 的删除、D6 的删除等待。同一步按 [Cloud Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)
    实现交付与续作改走 Git，删除 bundle 的代码。完成条件：PostgreSQL 集成测试证明不变量 1–9，包括：最近的同步未结束时等待、
    没有 `clone_executions` 行且尝试次数不变；最近的同步失败时以 `repository_sync_failed` 结束并记录同步 Operation；自动重放后
    继续等待；等待者排在最前时，同一次领取仍交出后面可领取的 operation；快照登记后同一 operation 冻结一次并推进；冻结后更新
