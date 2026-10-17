@@ -102,7 +102,8 @@
 - 决策依据：D2（资产生命周期不改写快照）、D3（来源不进入运行契约）、不变量 2、3。
 - 直接证据：**Covered（第一行）、Partial（第二至四行）** — cloud#77 的
   `TestWorkflowAssetImportFromInstalledPlugin` 让包从 `1.0.0` 升到 `1.1.0`：同一路径的 `workflowId`
-  不变、该 workflow 的快照数仍为 1，新版本只新增 `hotfix.json`；卸载插件后 live workflow 仍在，
+  不变、该 workflow 的快照数仍为 1，升级前后分别读取活稿与 `v1` 快照的 `graph::text` 并逐字节
+  比较，两者都没有变化，新版本只新增 `hotfix.json`；卸载插件后 live workflow 仍在，
   `workflow_snapshots` 计数与卸载前相同。更广的快照不可变证据是 `TestWorkflowSnapshotPublishServices`
   与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
   （表上没有 `updated_at`，发布只 INSERT）；运行侧由 `TestWorkflowRunValidatesAgainstTheVersionItRuns`

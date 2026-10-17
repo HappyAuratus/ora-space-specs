@@ -27,8 +27,9 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 判定键跨包版本，只有 `imported` 占用 | 真实 HTTP + PostgreSQL：`v1` 导入后升级 `v2`，同一路径不再产生新副本与快照 | Covered |
-| `failed` 不占用判定键，下次触发重试并刷新记录 | 真实 PostgreSQL：名称冲突修复后再次触发，同一路径从 `failed` 转为 `imported`，记录时间被刷新 | Covered |
+| 判定键跨包版本，只有 `imported` 占用 | 真实 HTTP + PostgreSQL：`v1` 导入后升级 `v2`，同一路径的 `workflowId`、快照数与图/快照的 `jsonb` 文本都不变 | Covered |
+| 重装使扫描后、领取前的旧待办作废 | 真实 PostgreSQL：同批扫描两个插件，第一个下载时重装第二个；第二个的旧包内容不导入，下一轮按新包导入 | Covered |
+| `failed` 不占用判定键，下次触发重试并刷新记录 | 真实 PostgreSQL：名称冲突修复后再次触发，同一路径从 `failed` 转为 `imported`，文档结果与来源尝试的时间都前移 | Covered |
 | 删除/归档副本后重装不复活 | 真实 PostgreSQL：软删除或归档副本后重装，`skip_key` 仍被占用，副本数不变 | Covered |
 | 结果独立于安装结果持久化 | 真实 PostgreSQL：无 live workspace 的租户也有按 `skip_key` 可读的逐文档结果 | Covered |
 
@@ -37,34 +38,43 @@
 - 说明：本用例只管「跳过与重试」的判定，不重复「导入产物是已发布快照」那部分义务，后者记在
   [资产导入与已发布快照用例](../workflow/asset-import-and-published-snapshots.md)。
 - 直接证据：**Covered** — cloud#77 的 `TestWorkflowAssetImportFromInstalledPlugin` 先导入
-  `v1.0.0`，再安装 `v1.1.0`：`release.json` 的 `workflowId` 与快照数都不变，只有新增的
-  `hotfix.json` 产生副本；同名路径在两个版本里内容不同也不覆盖。`TestWorkflowAssetImportDocumentFailuresAreIndependent`
-  让四份失败文档在修复后的包里重新导入，并让 `name_conflict` 在名称释放后转为 `imported`；
-  `ok.json` 保持第一次的 `workflowId`。同一用例把 `Release Kit` 归档后重装，live 列表里不再出现
-  它，而 `workflows` 里的那一行仍在。零 workspace 的导入、成员读取、跨租户拒绝都在
-  `TestWorkflowAssetImportFromInstalledPlugin` 中直接断言。
+  `v1.0.0`，再安装 `v1.1.0`：`release.json` 的 `workflowId`、快照数与 `graph::text` 都不变，
+  且升级前后活稿与快照的 `jsonb` 文本逐字节相同；只有新增的 `hotfix.json` 产生副本，同名路径在
+  两个版本里内容不同也不覆盖。`TestWorkflowAssetImportDocumentFailuresAreIndependent` 让四份失败
+  文档在修复后的包里重新导入，并让 `name_conflict` 在名称释放后转为 `imported`；`ok.json` 保持
+  第一次的 `workflowId`。重试前把失败文档结果的 `updated_at` 与来源行的 `attempted_at` 回拨一小时，
+  重试后两处都前移，证明失败会被重新尝试并刷新记录。扫描到领取之间的重装由
+  `TestWorkflowAssetImportDiscardsAJobSupersededBeforeClaim` 覆盖：第二个插件的任务在第一个下载时
+  被升级取代，旧包不导入、来源行保持 `pending`，下一轮按新包导入；下载期间的重装由
+  `TestWorkflowAssetImportFencesAReinstallDuringDownload` 覆盖。同一用例把 `Release Kit` 归档后
+  重装，live 列表里不再出现它，而 `workflows` 里的那一行仍在。零 workspace 的导入、成员读取、
+  跨租户拒绝都在 `TestWorkflowAssetImportFromInstalledPlugin` 中直接断言。
 
 ## One Bad Document Fails Alone With A Bounded Reason
 
-- 风险：一份坏 JSON 或非法图让整包文档都不导入，用户丢掉其余可用工作流；或失败原因无界，用户
-  无法分辨是 JSON、缺名字、图不可执行还是名称冲突。
+- 风险：一份坏 JSON、无法原样保存的文本或非法图让整包文档都不导入，用户丢掉其余可用工作流；
+  或失败原因无界，用户无法分辨是 JSON、缺名字、图不可执行还是名称冲突。
 - 前置状态：包内有多份 `assets/workflows/*.json`，其中至少一份非法；租户里可能已有同名 workflow；
   导入步骤在数据库事务外解析、事务内落库。
 - 触发：导入含 `document_invalid_json`、`document_without_name`、`document_not_executable_graph`
-  或 `name_conflict` 的文档；同包其他文档合法。
+  或 `name_conflict` 的文档；`document_invalid_json` 的文档可能能解析但含 PostgreSQL `jsonb` 拒绝
+  的文本（转义 NUL、未配对代理项、非法 UTF-8）；同包其他文档合法。
 - 必须成立：每份文档一个结果，坏文档只让自己失败，同包其他文档照常导入并各得一个已发布快照；
-  失败码限于四个有界值；`document_not_executable_graph` 带门禁的问题列表（节点 id 与 kind、槽位、
-  字段名），与编辑器发布同源；名称冲突不改名、不覆盖；下载、校验或解压失败是包级结果，不产生任何
-  文档结果，下一次触发重试。
+  失败码限于四个有界值；`document_invalid_json` 的 `reason` 区分 `unsupported_unicode_escape`
+  与 `invalid_utf8`，合法代理项对照常导入；`document_not_executable_graph` 带门禁的问题列表
+  （节点 id 与 kind、槽位、字段名），与编辑器发布同源；名称冲突不改名、不覆盖；下载、校验或解压
+  失败是包级结果，不产生任何文档结果，下一次触发重试。
 - 禁止结果：整包因一份文档失败、失败码之外的自由文本成为唯一原因、自动改名后导入、名称冲突时
-  覆盖既有 workflow、包级失败仍留下部分文档结果。
+  覆盖既有 workflow、包级失败仍留下部分文档结果、无法保存的文本让结果事务回滚并把源行留在
+  `importing`。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 逐文档失败不牵连同包其他文档 | 真实 HTTP + PostgreSQL：混入坏文档的包导入后，其余文档各有 workflow 与快照，坏文档只有一条 `failed` | Covered |
-| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；图不可执行时问题列表点名节点/槽位/字段 | Covered |
-| 门禁拒绝与编辑器发布同源 | 同一份不可执行图在导入与发布两条路径得到同一组问题 | Covered |
+| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；`document_invalid_json` 按 `reason` 区分两种无法保存的文本；图不可执行时问题列表点名节点/槽位/字段 | Covered |
+| 无法原样保存的文本在落库前被逐文档拒绝 | 真实 PostgreSQL：含转义 NUL、未配对代理项或非法 UTF-8 的文档失败，合法代理项对与正常文档照常导入，结果事务提交 | Covered |
+| 门禁拒绝与编辑器发布同源 | 同一份不可执行图在导入与发布两条路径得到同一组问题（逐项比较） | Covered |
 | 名称冲突不改名、不覆盖 | 真实 PostgreSQL：同名文档失败为 `name_conflict`，既有 workflow 的名称与图不变 | Covered |
 
 - 决策依据：D4（逐文档结果、有界失败码、名称冲突不改名不覆盖）；[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)
@@ -72,12 +82,15 @@
 - 直接证据：**Covered** — cloud#77 的 `TestWorkflowAssetImportDocumentFailuresAreIndependent`
   把坏 JSON、缺名称、不可执行图与名称冲突放在同一个包里：包结果仍是 `completed`，`ok.json` 正常
   导入并发布快照，四份失败各得一个码，`graph.json` 带 `failureDetail.problems`，失败文档没有留下
-  workflow 或快照。导入在 `parseWorkflowAssetDocument` 里直接调用编辑器发布所用的
-  `validateWorkflowGraph`，同一用例证明导入路径确实经过它；门禁本身的节点、字段、槽位矩阵仍由
+  workflow 或快照。同一用例把 `graph.json` 的图再走一次编辑器发布，逐项比较导入的
+  `failureDetail.problems` 与发布拒绝的 `params.problems`，证明两条路径同源；门禁本身的节点、
+  字段、槽位矩阵仍由
   [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
   与 [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
-  覆盖。名称冲突用例预置了同名 workflow，失败后该行的名称与图不变；名称释放后同一路径转为
-  `imported`，证明没有自动改名或覆盖。
+  覆盖。`TestWorkflowAssetImportRejectsTextPostgresCannotStore` 把转义 NUL、未配对代理项与非法
+  UTF-8 放进同一个包：三份文档各得 `document_invalid_json` 及各自的 `reason`，正常文档与合法
+  代理项对照常导入，包结果为 `completed`，源行没有停在 `importing`。名称冲突用例预置了同名
+  workflow，失败后该行的名称与图不变；名称释放后同一路径转为 `imported`，证明没有自动改名或覆盖。
 
 ## The Asset Fetch Stays Inside The Declared Outbound Boundary
 
