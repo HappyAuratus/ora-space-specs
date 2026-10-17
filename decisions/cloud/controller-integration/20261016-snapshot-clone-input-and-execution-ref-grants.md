@@ -20,7 +20,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 “续作时快照输入与前序交付 ref 怎样组合”。Cloud 一侧的步骤规则见
 [clone 步骤消费快照决策](../operation/20261016-clone-step-consumes-binding-snapshot.md)，Node 一侧见
 [Node 从快照 clone 决策](../../node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)。涉及 Cloud 的
-`proto/ora/cloud/internal/v1/{executions,agent_executions}.proto`、`internal/controlgrpc`、`internal/core`（clone 登记与接管、交付
+`proto/ora/cloud/internal/v1/{executions,agent_executions,operations}.proto`、`internal/controlgrpc`、`internal/core`（clone 登记与接管、交付
 与会话的工作项、Git 授权），以及 desktop 的 Controller。
 
 兼容性边界：**破坏性切换**（契约 ADR 范围边界）。契约直接替换、不保留旧字段，与交付输入去 bundle 决策的 bundle 删除在同一次
@@ -92,6 +92,11 @@ enum CloneFailureReason {
 clone 还在。为什么不新增一个 oneof 成员（例如 `SnapshotCloneSpec`）：clone 只剩一种形状，并存两个成员没有意义。
 
 ### D2：Controller 原样转交 clone 输入，不参与等待快照
+
+Internal Control 的 `OperationSnapshot` 增加 `optional CloneSpec clone_input = 10`，由 Cloud 从持久化的
+`request.clone` 投影；operation 中的 JSON 和执行输入统一带 `kind: "clone"`，四个业务字段逐字相同。
+`OperationProject` 只保留 `id`，删除 `repository_url`、`default_branch`、`credential_ref` 并保留其字段编号
+与名称，避免外部仓库与凭据引用继续流向 Controller。删除与 D1 同属本次破坏性契约切换。
 
 - Controller 从 `ClaimOperation` 返回的 operation 中读取 `request.clone`，原样作为 `CloneSpec` 转交给 `RecordDispatch`，再原样
   放进 Node 的 clone 命令。它不再读取 Project 的仓库字段或 Workspace 的 `requested_ref`。

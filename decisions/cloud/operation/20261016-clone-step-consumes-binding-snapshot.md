@@ -60,6 +60,7 @@ Cloud 在自己的写事务中把快照输入写入 operation 的 `request.clone
 
 ```json
 {
+  "kind": "clone",
   "repositoryUrl": "https://ora-git-server:8445/<tenantId>/<projectId>.git",
   "snapshotRef": "refs/ora/upstreams/<bindingId>/snapshots/<commitOid>",
   "baseCommit": "<commitOid>",
