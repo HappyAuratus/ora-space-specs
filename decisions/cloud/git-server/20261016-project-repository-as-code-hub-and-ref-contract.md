@@ -266,6 +266,10 @@ Git Server 解析 `Ora-Git-Operation-Id` 时，从 Cloud 读取以下信息：
 - 进入 `deleting` 的事务把该 Project 尚未进入 `running` 的同步与发布（`pending`、`leased`、`awaiting_approval`）以
   `cancelled`、`project_deleting` 结束；已在 `running` 或 `uncertain` 的照常收尾。delete_project 等到该 Project 没有未结束的
   Operation 才开始。这段取消逻辑和“未结束”的判定都在底座，两条线共用。
+- 删除可能被回滚：Node 拒绝 quiesce 时，Project 从 `deleting` 回到 `active`。如果进入 `deleting` 时取消了 `pending` 或 `leased`
+  的同步，或者清除了补同步标记，恢复准入的同一事务把这次同步补回来：新建一行 `pending`、`trigger = deletion_aborted` 的同步；
+  该 Binding 仍有未结束的同步（进入 `deleting` 时已在 `running`、还没收尾）时，改为重新置上补同步标记，由它收尾时建后继同步。
+  被取消的发布不恢复，由用户重新发起。进入 `deleting` 时没有取消同步、也没有补同步标记的，回滚时不新建同步。
 - create_project 无论因什么原因失败，同一事务都把 Project 从 `provisioning` 置为 `active`，Project 不会停在 `provisioning`。
 
 为什么把这三项放进 Git Server 的 ADR：它们是两条线之间唯一的耦合点。在这里固定下来，内部线可以用预置的快照独立开发和验收，
@@ -365,7 +369,8 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
      租约、凭据版本、结果明细等字段，不增删状态；内部线只读这些字段。
    - **建 Project**：同一事务建立它的 Binding 和一行 `pending`、`trigger = project_created` 的同步 Operation。两条线看到的 Project
      从一开始就是这个形状，替身和真实流程同形。
-   - **生命周期**：实现 D5 第 3 项中进入 `deleting` 时的取消、“未结束”的判定，以及 create_project 失败时把 Project 置为 `active`。
+   - **生命周期**：实现 D5 第 3 项中进入 `deleting` 时的取消、删除被回滚时补回同步、“未结束”的判定，以及 create_project 失败时把
+     Project 置为 `active`。
    - Workspace 的 clone 步骤怎样等待和结束，由内部线在领取时复核：有当前快照就继续；没有快照、而该 Binding 最近的同步已经以
      终态失败，就以失败结束；否则继续等待。底座不提供额外的“结束等待者”函数。
    - **ref 查询的扩展**（D6）：覆盖本文全部 namespace，并支持按前缀列出。现有实现只接受交付 ref；外部线的核验、
@@ -379,7 +384,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
      | --- | --- |
      | `snapshot --project <id> [--commit <oid> \| --synthetic <n>]` | 写入 `snapshots/<oid>` 与跟踪 ref，登记一行 `succeeded` 的同步，推进当前快照；`--synthetic` 生成一条有 n 个提交的历史 |
      | `ref --project <id> --ref <name> --commit <oid>` | 写入任意 namespace 的一个 ref，例如作为发布源的 Workspace 分支 |
-     | `operation --project <id> --type <sync\|publish> --state <state> [--error-code <code>]` | 写入一行给定状态的 Operation，用于等待、失败、删除等场景 |
+     | `operation --project <id> --type <sync\|publish> --state <state> [--error-code <code>]` | 写入一个给定状态的 Operation，用于等待、失败、删除等场景。同步改写该 Binding 未结束的同步（例如建 Project 时的那一行），没有时才新写一行，因此任何同步状态都能预置；发布总是新写一行 |
      | `check --project <id>` | 契约断言：检查 Git Server 上的 ref 与 Cloud 记录是否符合 D5 |
 
      输出一行 JSON（`{"ok": true, ...}` 或 `{"ok": false, "violations": [...]}`）；成功退出码为 0，断言失败为 1，用法错误为 2。
