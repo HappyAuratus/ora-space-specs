@@ -13,7 +13,7 @@
 [cloud#72](https://github.com/ora-space/cloud/pull/72) 的堆叠：§1 第一行多了一类拒绝（condition 配置，按 [circus#202](https://github.com/ora-space/circus/issues/202)
 的 owner 结论），§4 的两行从 `Partial` 升为 `Covered`（同一事务的绑定回滚与从快照行收集槽位都有直接用例）。
 关于拒绝码：启动门禁的**信封码**是 `409 workflow_executor_unconfigured`，每个缺口在 `params.slots[]` 里的 `reason`
-才是 `slot_not_configured`；本文件此前的 `409 slot_not_configured` 是错的，已改。
+才是 `slot_not_configured`。本文件提到 `slot_not_configured` 时指的都是后者；把信封码写成 `409 slot_not_configured` 是错的。
 
 ## Publishing Refuses An Unsupported Node Or Configuration And Names It
 
