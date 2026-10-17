@@ -1,9 +1,10 @@
 # 资产导入与已发布快照：导入即发布、门禁先于落库、快照不可变
 
 依据[资产导入与已发布快照决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)
-（`approved`），以及它继承的[工作流执行根决策](../../../decisions/cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md)。
-资产导入本身尚未实现（落地阶段 1 是 ora-space/circus#73），因此导入侧义务今天都是 `Missing`；
-能引用直接证据的是 Cloud 既有的发布与快照规则，它们证明导入将要复用的那部分契约成立。
+（`implemented`），以及它继承的[工作流执行根决策](../../../decisions/cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md)。
+导入已随 [cloud#77](https://github.com/ora-space/cloud/pull/77) 落地：逐文档导入在同一个
+事务里创建 workflow 与首个已发布快照，走与编辑器发布相同的 `validateWorkflowGraph`，失败文档不
+留下任一行。下表把导入侧的直接证据与既有发布/运行规则分开标注。
 
 ## An Imported Document Leaves A Published Snapshot Runs Can Freeze
 
@@ -23,24 +24,24 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 导入成功必然留下 workflow 与已发布快照 | 真实 HTTP + PostgreSQL：导入后两份行都存在，运行能按该 `snapshot_id` 创建 | Missing |
-| 版本由 Cloud 分配，文档版本与文件名不参与 | 真实 PostgreSQL：自述版本冲突的文档导入后仍是下一个整数 | Missing |
+| 导入成功必然留下 workflow 与已发布快照 | 真实 HTTP + PostgreSQL：导入后两份行都存在，运行能按该 `snapshot_id` 创建 | Partial |
+| 版本由 Cloud 分配，文档版本与文件名不参与 | 真实 PostgreSQL：自述版本冲突的文档导入后仍是下一个整数 | Covered |
 | 快照 append-only，发布与编辑不改写既有快照 | 真实 PostgreSQL：连续发布得到递增版本，历史版本内容逐字节不变，活稿编辑不影响它们 | Covered |
 | 运行按 `snapshot_id` 读取，不读活稿 | 真实 HTTP + PostgreSQL：改了活稿后运行仍执行所选版本 | Partial |
 
 - 决策依据：D1（一份文档 = 一份 workflow 加一个已发布快照、快照版本由 Cloud 分配）、D2（快照
   append-only）、不变量 1、2。
-- 直接证据：**Covered（第三行）、Partial（第四行）** — [`integration/workflow_snapshot_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_snapshot_test.go)
-  的 `TestWorkflowSnapshotPublishServices` 断言首发布为 `v1`、再发布为 `v2`/`v3`，每版内容不被后续
-  发布改写，发布不提升活稿版本，归档后历史被隐藏；版本分配在
-  [`internal/core/workflow.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow.go)
-  里是 `COALESCE(MAX(version),0)+1`，迁移
+- 直接证据：**Covered（第二、三行）、Partial（第一、四行）** — cloud#77 的
+  `TestWorkflowAssetImportFromInstalledPlugin` 导入后同时断言文档行里的 `workflowId`/`snapshotVersion`
+  与 `GET .../workflows/{id}/snapshots` 里那一条已发布快照；`release.json` 自述 `"version":7`，快照
+  仍由 Cloud 分配为 `v1`，升级到 `v1.1.0` 也不给已导入路径追加版本。快照的 append-only 与版本分配
+  仍由 [`integration/workflow_snapshot_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_snapshot_test.go)
+  的 `TestWorkflowSnapshotPublishServices` 与迁移
   [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
-  用 `(tenant_id, workflow_id, version)` 唯一索引兜住并发撞号。第四行：`TestWorkflowRunValidatesAgainstTheVersionItRuns`
-  与 `TestWorkflowRunSnapshotIsScopedToItsWorkflow` 证明运行按所选版本校验与执行；`TestWorkflowSnapshotRestore`
-  证明恢复是「把快照写回活稿」，不是改动快照。
-- 仍缺：导入路径不存在，前两行 `Missing`。第四行的 `Partial` 指运行侧规则已有直接证据，但没有一份
-  用例针对「导入产生的快照」执行同样的断言。
+  的 `(tenant_id, workflow_id, version)` 唯一索引证明；运行侧由
+  `TestWorkflowRunValidatesAgainstTheVersionItRuns` 与 `TestWorkflowRunSnapshotIsScopedToItsWorkflow` 证明。
+- Partial 的原因：第一行还没有「用导入产生的 `snapshot_id` 创建一次运行」的用例；第四行的运行侧规则
+  已有直接证据，但没有针对导入快照重复同一断言。
 
 ## Import Refuses Graphs Cloud Cannot Execute
 
@@ -61,21 +62,21 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 门禁按首期子集拒绝并点名节点、字段、槽位 | 真实 HTTP：各类不可执行图发布被拒，问题列表逐项可定位 | Covered |
-| 导入调用同一门禁，失败不留下 workflow 或快照 | 真实 HTTP + PostgreSQL：导入不可执行文档后两表都无对应行 | Missing |
-| 失败逐文档，不影响同包其他文档 | 真实 HTTP + PostgreSQL：混入不可执行文档的包仍有其他文档导入成功 | Missing |
+| 导入调用同一门禁，失败不留下 workflow 或快照 | 真实 HTTP + PostgreSQL：导入不可执行文档后两表都无对应行 | Covered |
+| 失败逐文档，不影响同包其他文档 | 真实 HTTP + PostgreSQL：混入不可执行文档的包仍有其他文档导入成功 | Covered |
 
 - 决策依据：D1（门禁的连带后果与包制作约束、#76 只能在首期子集内制作）、D4（同一份图 schema、
   没有豁免）；[插件资产决策](../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md)
   D4（`document_not_executable_graph` 覆盖门禁全部拒绝并带问题列表）。
-- 直接证据：**Covered（第一行）** — [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
-  的 `TestWorkflowPublishValidatesTheGraphAndSavingDoesNot`（`tool` 节点被拒、问题点名 id 与 kind、
-  `workflow_snapshots` 计数为 0）与 `TestWorkflowPublishRefusesUnusedAgentConfiguration`（`retry` /
-  `skills` 被逐项点名，改回首期配置后发布成功），加上
+- 直接证据：**Covered（三行）** — cloud#77 的 `parseWorkflowAssetDocument` 直接调用
+  `validateWorkflowGraph`，`TestWorkflowAssetImportDocumentFailuresAreIndependent` 导入含
+  `nodes`/`edges` 但没有 `start` 的文档后得到 `document_not_executable_graph` 与问题列表，并断言
+  `workflows`/`workflow_snapshots` 里没有它的行；同包的 `ok.json` 照常导入并发布。门禁本身的节点、
+  字段、槽位矩阵仍由 [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
+  的 `TestWorkflowPublishValidatesTheGraphAndSavingDoesNot` 与
+  `TestWorkflowPublishRefusesUnusedAgentConfiguration`，以及
   [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
-  的 `TestValidateWorkflowGraph` 与 `TestRequireValidWorkflowGraphIsOneStableFault`。这些证明门禁本身
-  成立，不证明导入接线。
-- 仍缺：导入调用门禁、错误码映射与「失败不落库」都随导入步骤才有对象，后两行 `Missing`。第一行
-  的 `Covered` 只覆盖编辑器发布这条路径；导入复用同一函数是决策，不是今天的测试事实。
+  的 `TestValidateWorkflowGraph` 覆盖。
 
 ## Provider Uninstall Or Upgrade Never Rewrites Imported Snapshots
 
@@ -93,18 +94,22 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 升级不触碰已成功导入的路径 | 真实 HTTP + PostgreSQL：升级后副本的图与快照逐字节不变 | Missing |
-| 卸载不删除副本、不改写快照 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，仍可发布、仍可运行 | Missing |
+| 升级不触碰已成功导入的路径 | 真实 HTTP + PostgreSQL：升级后副本的图与快照逐字节不变 | Covered |
+| 卸载不删除副本、不改写快照 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，仍可发布、仍可运行 | Partial |
 | 已冻结运行与副本后续变化无关 | 真实 PostgreSQL：编辑或归档副本后，既有运行仍读到冻结的图 | Partial |
 | `workflow_snapshots` 只有 INSERT | 仓库级检查：不存在更新快照的 SQL 或写入路径 | Partial |
 
 - 决策依据：D2（资产生命周期不改写快照）、D3（来源不进入运行契约）、不变量 2、3。
-- 直接证据：**Partial（第三、四行）** — `TestWorkflowSnapshotPublishServices` 断言历史版本不被后续
-  发布改写，[`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
-  的表上没有 `updated_at`，`publishWorkflow` 只 INSERT；运行侧由
-  `TestWorkflowRunValidatesAgainstTheVersionItRuns` 证明执行的是所选快照。没有测试断言「归档副本后
-  既有运行仍可读图」，也没有对「仓库里不存在 UPDATE 快照路径」的自动检查，所以两行都是 `Partial`。
-- 仍缺：升级与卸载两条义务完全依赖尚不存在的导入步骤，记 `Missing`。
+- 直接证据：**Covered（第一行）、Partial（第二至四行）** — cloud#77 的
+  `TestWorkflowAssetImportFromInstalledPlugin` 让包从 `1.0.0` 升到 `1.1.0`：同一路径的 `workflowId`
+  不变、该 workflow 的快照数仍为 1，新版本只新增 `hotfix.json`；卸载插件后 live workflow 仍在，
+  `workflow_snapshots` 计数与卸载前相同。更广的快照不可变证据是 `TestWorkflowSnapshotPublishServices`
+  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
+  （表上没有 `updated_at`，发布只 INSERT）；运行侧由 `TestWorkflowRunValidatesAgainstTheVersionItRuns`
+  证明执行的是所选快照。
+- Partial 的原因：卸载后的测试只断言 workflow 行仍在、快照数不变，没有真的再发布或启动一次运行，
+  所以「仍可发布、仍可运行」仍是缺口；没有测试断言「归档副本后既有运行仍可读图」，也没有对
+  「仓库里不存在 UPDATE 快照路径」的自动检查。
 
 ## Imported Workflows Carry No Author Or Publisher
 
@@ -121,13 +126,17 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 导入不写作者/发布者，表结构也没有该列 | 真实 PostgreSQL：导入后两张表的列与行都不含作者信息 | Missing |
-| 触发者只记在来源记录 | 真实 PostgreSQL：来源记录有触发 space 与时间，workflow 行没有 | Missing |
-| 作者不是权限、可见性或运行的输入 | 真实 HTTP：不同管理员与触发者停用后，副本的读取、目录投影与运行结果一致 | Missing |
+| 导入不写作者/发布者，表结构也没有该列 | 真实 PostgreSQL：导入后两张表的列与行都不含作者信息 | Covered |
+| 触发者只记在来源记录 | 真实 PostgreSQL：来源记录有触发 space 与时间，workflow 行没有 | Covered |
+| 作者不是权限、可见性或运行的输入 | 真实 HTTP：不同管理员与触发者停用后，副本的读取、目录投影与运行结果一致 | Partial |
 
 - 决策依据：D1（导入的 workflow 与快照不记创建者或发布者）、不变量 7；[个人槽位映射决策](../../../decisions/cloud/model-access/20261015-executor-slot-mappings-and-per-slot-run-bindings.md)
   确立的运行身份范围。
-- 仍缺：三条都 `Missing`。表结构今天确实没有作者列（[`0027_workflows.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0027_workflows.sql)、
-  [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)），
-  但那是「还没有实现导入」，不是导入遵守了这条约束的测试证据；`@` 目录投影与运行身份里也没有任何
-  作者相关的直接用例。
+- 直接证据：**Covered（第一、二行）、Partial（第三行）** — cloud#77 的
+  `TestWorkflowAssetImportFromInstalledPlugin` 在导入后查询 `information_schema.columns`，断言
+  `workflows`、`workflow_snapshots` 没有任何 author/creator/publisher 列，并确认来源记录行带有触发
+  space、租户与 `attempted_at`。[`0027_workflows.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0027_workflows.sql)
+  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
+  的列定义支持同一结论。
+- Partial 的原因：表里没有作者列，导入也就无从把作者写进权限、可见性或运行输入；但没有一条用例
+  让不同管理员先后触发后，再对 `@` 目录投影与运行结果做横向断言。

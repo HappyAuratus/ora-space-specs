@@ -1,11 +1,13 @@
 # workflow 插件资产导入：逐文档导入、跨版本幂等与出网边界
 
 依据[workflow 插件资产决策](../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md)
-（`approved`）与它的[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)。
+（`implemented`）与它的[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)。
 
-资产导入尚未实现：落地阶段 1 是 ora-space/circus#73，Cloud 仓库里还没有导入步骤、来源记录表与
-逐文档结果。因此本文件今天没有 `Covered` 行；能引用的直接证据只有 Cloud 既有的目录定位符校验与
-出网客户端原语——它们证明被复用的规则本身成立，不证明导入步骤已经接上它们（那部分记 `Missing`）。
+资产导入已随 [cloud#77](https://github.com/ora-space/cloud/pull/77) 实现：来源记录、取包与
+逐文档导入、独立读取接口与前端展示。下表的直接证据以
+[`integration/workflow_assets_test.go`](https://github.com/ora-space/cloud/pull/77/files) 与
+[`internal/workflowasset`](https://github.com/ora-space/cloud/pull/77/files) 为准；`Partial` 行
+列出仍未覆盖的那一段。既有安装不回填：只有生效后的安装或重装写入触发记录（ADR「落地」）。
 
 ## A Document Path Is Imported At Most Once Across Package Versions
 
@@ -25,16 +27,22 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 判定键跨包版本，只有 `imported` 占用 | 真实 HTTP + PostgreSQL：`v1` 导入后升级 `v2`，同一路径不再产生新副本与快照 | Missing |
-| `failed` 不占用判定键，下次触发重试并刷新记录 | 真实 PostgreSQL：名称冲突修复后再次触发，同一路径从 `failed` 转为 `imported`，记录时间被刷新 | Missing |
-| 删除/归档副本后重装不复活 | 真实 PostgreSQL：软删除或归档副本后重装，`skip_key` 仍被占用，副本数不变 | Missing |
-| 结果独立于安装结果持久化 | 真实 PostgreSQL：无 live workspace 的租户也有按 `skip_key` 可读的逐文档结果 | Missing |
+| 判定键跨包版本，只有 `imported` 占用 | 真实 HTTP + PostgreSQL：`v1` 导入后升级 `v2`，同一路径不再产生新副本与快照 | Covered |
+| `failed` 不占用判定键，下次触发重试并刷新记录 | 真实 PostgreSQL：名称冲突修复后再次触发，同一路径从 `failed` 转为 `imported`，记录时间被刷新 | Covered |
+| 删除/归档副本后重装不复活 | 真实 PostgreSQL：软删除或归档副本后重装，`skip_key` 仍被占用，副本数不变 | Covered |
+| 结果独立于安装结果持久化 | 真实 PostgreSQL：无 live workspace 的租户也有按 `skip_key` 可读的逐文档结果 | Covered |
 
 - 决策依据：D1（来源记录与 `skip_key`）、D4（判定键跨版本且只认成功、升级只增不改、不复活用户
   处置过的副本），不变量 1、5；[circus#68](https://github.com/ora-space/circus/issues/68) 结论 6。
 - 说明：本用例只管「跳过与重试」的判定，不重复「导入产物是已发布快照」那部分义务，后者记在
   [资产导入与已发布快照用例](../workflow/asset-import-and-published-snapshots.md)。
-- 仍缺：无直接证据。导入落库与触发路径都不存在，四条义务全部 `Missing`。
+- 直接证据：**Covered** — cloud#77 的 `TestWorkflowAssetImportFromInstalledPlugin` 先导入
+  `v1.0.0`，再安装 `v1.1.0`：`release.json` 的 `workflowId` 与快照数都不变，只有新增的
+  `hotfix.json` 产生副本；同名路径在两个版本里内容不同也不覆盖。`TestWorkflowAssetImportDocumentFailuresAreIndependent`
+  让四份失败文档在修复后的包里重新导入，并让 `name_conflict` 在名称释放后转为 `imported`；
+  `ok.json` 保持第一次的 `workflowId`。同一用例把 `Release Kit` 归档后重装，live 列表里不再出现
+  它，而 `workflows` 里的那一行仍在。零 workspace 的导入、成员读取、跨租户拒绝都在
+  `TestWorkflowAssetImportFromInstalledPlugin` 中直接断言。
 
 ## One Bad Document Fails Alone With A Bounded Reason
 
@@ -54,21 +62,22 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 逐文档失败不牵连同包其他文档 | 真实 HTTP + PostgreSQL：混入坏文档的包导入后，其余文档各有 workflow 与快照，坏文档只有一条 `failed` | Missing |
-| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；图不可执行时问题列表点名节点/槽位/字段 | Missing |
-| 门禁拒绝与编辑器发布同源 | 同一份不可执行图在导入与发布两条路径得到同一组问题 | Partial |
-| 名称冲突不改名、不覆盖 | 真实 PostgreSQL：同名文档失败为 `name_conflict`，既有 workflow 的名称与图不变 | Missing |
+| 逐文档失败不牵连同包其他文档 | 真实 HTTP + PostgreSQL：混入坏文档的包导入后，其余文档各有 workflow 与快照，坏文档只有一条 `failed` | Covered |
+| 失败码有界且可定位 | 真实 HTTP：四类失败分别返回四个错误码；图不可执行时问题列表点名节点/槽位/字段 | Covered |
+| 门禁拒绝与编辑器发布同源 | 同一份不可执行图在导入与发布两条路径得到同一组问题 | Covered |
+| 名称冲突不改名、不覆盖 | 真实 PostgreSQL：同名文档失败为 `name_conflict`，既有 workflow 的名称与图不变 | Covered |
 
 - 决策依据：D4（逐文档结果、有界失败码、名称冲突不改名不覆盖）；[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)
   D1（导入走发布门禁）。
-- 门禁原语的直接证据：**Partial** — [`internal/core/workflow_graph.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph.go)
-  的 `validateWorkflowGraph` 已经按首期子集拒绝并携带问题列表，[`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
-  的 `TestWorkflowPublishValidatesTheGraphAndSavingDoesNot` 与
-  `TestWorkflowPublishRefusesUnusedAgentConfiguration` 在真实 HTTP 上断言了节点与字段被点名，单元矩阵是
-  [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
-  的 `TestValidateWorkflowGraph`。这只证明「门禁会拒绝并点名」，不证明导入步骤调用了它、也不证明
-  导入把问题列表放进 `document_not_executable_graph`；后者 `Missing`。
-- 仍缺：导入路径整体不存在，除门禁原语外三条义务全部 `Missing`。
+- 直接证据：**Covered** — cloud#77 的 `TestWorkflowAssetImportDocumentFailuresAreIndependent`
+  把坏 JSON、缺名称、不可执行图与名称冲突放在同一个包里：包结果仍是 `completed`，`ok.json` 正常
+  导入并发布快照，四份失败各得一个码，`graph.json` 带 `failureDetail.problems`，失败文档没有留下
+  workflow 或快照。导入在 `parseWorkflowAssetDocument` 里直接调用编辑器发布所用的
+  `validateWorkflowGraph`，同一用例证明导入路径确实经过它；门禁本身的节点、字段、槽位矩阵仍由
+  [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
+  与 [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
+  覆盖。名称冲突用例预置了同名 workflow，失败后该行的名称与图不变；名称释放后同一路径转为
+  `imported`，证明没有自动改名或覆盖。
 
 ## The Asset Fetch Stays Inside The Declared Outbound Boundary
 
@@ -88,22 +97,28 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 定位符只允许两种形态，`https` 之外一律拒绝 | 目录同步拒绝 `http`、`s3://`、带 fragment 或带凭据的 URL；S3 object key 被识别 | Partial |
+| 定位符只允许两种形态，`https` 之外一律拒绝 | 目录同步拒绝 `http`、`s3://`、带 fragment 或带凭据的 URL；S3 object key 被识别 | Covered |
 | 连接前判定全部 DNS 应答，拒绝私有/环回/链路本地/保留网段 | 真实 HTTP：指向这些地址的包下载失败，且没有发出连接 | Partial |
-| 不跟随重定向 | 真实 HTTP：3xx 被记为包级失败，目标地址没有被请求 | Partial |
-| 超时与流式字节上界 | 真实 HTTP：慢响应在 10/30/60 秒边界被取消；超 16 MiB 的响应在读完前中断 | Missing |
-| 失败是包级且下一次触发重试 | 真实 PostgreSQL：下载失败不产生文档结果，重试后成功 | Missing |
+| 不跟随重定向 | 真实 HTTP：3xx 被记为包级失败，目标地址没有被请求 | Covered |
+| 超时与流式字节上界 | 真实 HTTP：慢响应在 10/30/60 秒边界被取消；超 16 MiB 的响应在读完前中断 | Partial |
+| 失败是包级且下一次触发重试 | 真实 PostgreSQL：下载失败不产生文档结果，重试后成功 | Covered |
 
 - 决策依据：D3（触发点与取包、出站请求的约束）、继承表「根决策 D3：目录快照由 Cloud git 同步，
   读取永远不出网 → 修改」、不变量 3、4、8。
-- 被复用原语的直接证据：**Partial** — [`internal/pluginmarket/manifest.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/pluginmarket/manifest.go)
-  的 `validateLocator` 已固定定位符形态；[`internal/modelgateway/transport.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/modelgateway/transport.go)
-  的 `publicAddress` / `secureDialer` 已实现「解析全部应答、任一落在禁止网段即拒绝、不用环境代理」；
-  [`internal/objectstore/verify.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/objectstore/verify.go)
-  的客户端用 `ErrUseLastResponse` 拒绝重定向。这些证明规则在原语层面成立，不证明导入步骤接上了它们，
-  也不证明使用了本文的 10/30/60 秒取值，因此按 `Partial` 记。
-- 仍缺：超时取值的直接证据与包级失败语义都随导入步骤才有对象，记 `Missing`；重定向与 SSRF 目前只有
-  原语证据，没有「导入请求因此失败」的端到端用例。
+- 直接证据：**Covered（1、3、5 行）、Partial（2、4 行）** — cloud#77 的
+  [`internal/workflowasset/fetch.go`](https://github.com/ora-space/cloud/pull/77/files) 把
+  定位符解析、sha256 先验、重定向拒绝与流式字节上界收在一个入口。`TestFetchRejectsHTTPSFailures`
+  断言 `http`、带 fragment、带凭据的 URL 与超界声明都成为有界包级失败；
+  `TestFetchUsesThePrivateObjectStoreForObjectKeys` 断言 S3 object key 走 Cloud 自己的对象存储端点；
+  `TestFetchRefusesRedirects` 断言 3xx 失败且目标地址一次都没有被请求；`TestFetchWithoutATransportFailsClosed`
+  断言没有注入受检传输时不会退回环境代理。包级失败的持久化与重试由
+  `TestWorkflowAssetImportPackageFailureRetriesOnNextTrigger` 覆盖：摘要不匹配时导入行 `failed`、
+  文档表为空，管理员重装同一版本后重试成功。
+- Partial 的原因：DNS 应答判定由注入的 `modelgateway` 受检传输完成，导入侧只证明「接上了它、未接线
+  时失败关闭」，没有一条从 `Fetch` 出发、目标解析到私有地址的端到端用例；60 秒整包超时是常量且
+  没有慢响应测试，流式上界只有声明大小与读计数两条路径。原语本身的证据仍在
+  [`internal/modelgateway/transport.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/modelgateway/transport.go)
+  与 [`internal/pluginmarket/manifest.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/pluginmarket/manifest.go)。
 
 ## Import Results Are Persisted Independently Of The Install Outcome
 
@@ -122,11 +137,17 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 无 live workspace 的 space 也会导入 | 真实 HTTP + PostgreSQL：零实例的 space 安装后出现 workflow 与快照 | Missing |
-| 导入结果独立持久化并可单独读取 | 真实 PostgreSQL：导入结果按 `skip_key` 读取，不依赖插件执行结果行 | Missing |
-| 安装结局与导入结局互不推导 | 真实 HTTP：Node 安装失败时导入结果仍为 `imported`，反之亦然 | Missing |
-| 卸载不回收副本 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，发布可用性不变 | Missing |
+| 无 live workspace 的 space 也会导入 | 真实 HTTP + PostgreSQL：零实例的 space 安装后出现 workflow 与快照 | Covered |
+| 导入结果独立持久化并可单独读取 | 真实 PostgreSQL：导入结果按 `skip_key` 读取，不依赖插件执行结果行 | Covered |
+| 安装结局与导入结局互不推导 | 真实 HTTP：Node 安装失败时导入结果仍为 `imported`，反之亦然 | Partial |
+| 卸载不回收副本 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，发布可用性不变 | Covered |
 
 - 决策依据：D3（触发不依赖 Node 安装结果）、D5（四种证据分离）、不变量 1、2、7。
-- 仍缺：导入步骤与来源记录都不存在，四条义务全部 `Missing`；既有插件聚合测试只覆盖安装状态，
-  不能当作本用例的证据。
+- 直接证据：**Covered（1、2、4 行）、Partial（3 行）** — `TestWorkflowAssetImportFromInstalledPlugin`
+  在一个没有任何 workspace 的空间里安装插件后导入成功：`workspace_plugin_instances` 与
+  `operations` 都是 0，workflow 与快照已经存在。结果从独立的 `GET .../plugins/assets` 读取，
+  space member 得到 200，停用成员得到 403，他租户的同路径得到 404；前端
+  `plugins-page.test.tsx` 把安装徽章与导入徽章分区断言。卸载插件后 live workflow 仍在、快照数不变。
+- Partial 的原因：Cloud 集成测试不运行 Node，也就没有「Node 安装失败但导入成功」或反向的真实
+  安装结局。用例证明的是导入不等待也不读取安装结果（零实例、零 operation），并证明界面不把两者
+  合成一个状态；Node 侧失败结局的交叉断言仍缺。

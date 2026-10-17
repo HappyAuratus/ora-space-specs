@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Workflow 插件资产由 Cloud 自行取包、逐文档导入为可编辑副本
@@ -14,7 +14,8 @@ status: approved
 四种证据——安装成功、接管成功、发布可用、执行可用——是四个可以分别判断的事实，任何一条都不能
 推导出另一条。
 
-本 ADR 已 `approved`：方案、边界与不变量经 owner 复审确认，核心用例见
+本 ADR 已 `implemented`：Cloud 侧实现见 [cloud#77](https://github.com/ora-space/cloud/pull/77)，
+方案、边界与不变量经 owner 复审确认，核心用例见
 [workflow 插件资产核心用例](../../../test-cases/cloud/plugin-marketplace/workflow-plugin-assets.md)。
 资产导入与运行契约的接缝写在
 [workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md)；包内容格式由
@@ -225,9 +226,10 @@ skip_key      = (source_namespace, identifier, document_path)
 
 ## 落地
 
-- 阶段 1（#73）：来源记录与逐文档结果落库、资产导入步骤（下载/校验/解压/逐文档导入）、幂等与
-  升级只增不改。完成条件是真实 registry `.orax` 加 HTTP 与 PostgreSQL 的证据，不以 Desktop 本地
-  SQLite import 或 `Installed(version)` 单独验收。
+- 阶段 1（#73）：已实现——来源记录与逐文档结果落库、资产导入步骤（下载/校验/解压/逐文档导入）、
+  幂等与升级只增不改。触发记录只由生效后的安装或重装写入；既有安装不做回填。证据是真实 registry
+  `.orax` 加 HTTP 与 PostgreSQL 的集成测试，不以 Desktop 本地 SQLite import 或 `Installed(version)`
+  单独验收。
 - 阶段 2（#76）：预置入口与官方示例包，以及用户显式的「从来源重新导入」入口。
 - 两个阶段都不改动插件安装与移除的既有路径；插件实例的状态仍只由 Node 执行结果的接管写入。
 - 核心用例见
