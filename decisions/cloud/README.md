@@ -20,6 +20,7 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
+| `issue-collaboration` | Issue 上的协作交互：`@` 目标与模式、评论/交互/运行的关系、Timeline、Workflow 发起表单与 Confirm 边界 |
 | `issue-run` | Issue 上 @Agent 的运行编排：运行 Workspace、阶段状态机、取消、交付与释放 |
 | `thread` | Agent 运行的对话记录：Thread 条目、用户追加消息、结束条件与实时刷新 |
 | `revision` | 对象存储配置、上传授权、Revision 校验与登记 |

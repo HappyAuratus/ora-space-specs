@@ -54,6 +54,22 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | thread | [会话分析读取](thread/session-analysis-read-model.md) | 当前权限、读取后撤权、归档完整性、只读身份、来源与未知值 |
 | model-access | [已登记 HTTP 尝试统计](model-access/recorded-http-attempt-statistics.md) | 发送前登记、幂等收尾、取消、未知用量、统计授权和无回填升级 |
 
+## 已批准的 Git 原生代码链路契约
+
+[Git Server 根决策](../../decisions/cloud/git-server/0-project-code-hub-git-server-over-https.md)与[代码中心契约决策](../../decisions/cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)经 owner 批准为 `approved`，契约是内部线与外部线共同遵守的边界，两篇共用一组核心用例。底座（落地顺序第 1 步）的直接证据在 [cloud#75](https://github.com/ora-space/cloud/pull/75) 与 [cluster#26](https://github.com/ora-space/cluster/pull/26)；真实同步、租约和 clone 消费由两条线接入，相应义务如实保留 Partial/Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| git-server | [代码中心契约](git-server/project-repository-code-hub-contract.md) | 监听与上下文头错配、ref 规则绕过、已结束 Operation 仍可写、删除回滚丢同步、快照领先 Git Server、跨 Project 可达、执行器出网越过部署白名单 |
+
+## 已实现的 Issue 协作交互
+
+[Issue 协作根决策](../../decisions/cloud/issue-collaboration/0-typed-targets-and-explicit-execution-intent.md)为 `implemented`，补登 Cloud 已上线的协作契约。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| issue-collaboration | [协作交互](issue-collaboration/collaboration-interactions.md) | 提及误触发执行、模式与作者伪造、Confirm 重复或绕过校验、发起表单字段覆盖作者声明、Timeline 顺序 |
+
 ## 既有实现证据基线
 
 | 仓库 | 提交 | PR | 交付职责 |
