@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 插件资产导入产出已发布快照：资产生命周期不改写快照，运行只冻结 snapshotId
@@ -10,7 +10,9 @@ status: proposed
 都不改写既有快照，也不影响已冻结的运行身份。来源不进入运行契约——运行不关心一份工作流是用户写的
 还是某个包投递的。
 
-本 ADR 处于 `proposed`。资产生命周期本身（模式 A、来源、T1b 取包、管理员显式安装、四种证据）写在
+本 ADR 已 `approved`：核心用例见
+[资产导入与已发布快照核心用例](../../../test-cases/cloud/workflow/asset-import-and-published-snapshots.md)。
+资产生命周期本身（模式 A、来源、T1b 取包、管理员显式安装、四种证据）写在
 [cloud/plugin-marketplace 后续决策](../plugin-marketplace/20261016-workflow-plugin-assets.md)；包内容
 格式由 [workflow 插件类别根决策](../../desktop/plugin/category/workflow/0-workflow-package-format.md)
 拥有。本文不新增 Controller 契约，也不新增运行门禁。
@@ -127,4 +129,5 @@ D4）。两边共享的承诺只有一条：一次成功的导入必然留下一
 - 阶段 1（#73）：随资产导入一起落地，不需要新的运行侧改动；完成条件是一份导入的 workflow 能被
   `@` 与直接运行按既有契约引用，且卸载提供方后仍可发布、仍可运行。
 - 本文不改动任何既有运行路径与既有迁移；`workflow_runs`、`workflow_snapshots` 的形状保持原样。
-- 核心测试用例在本 ADR 转为 `approved` 后按最终决策补充。
+- 核心用例见
+  [资产导入与已发布快照核心用例](../../../test-cases/cloud/workflow/asset-import-and-published-snapshots.md)。

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Workflow 插件资产由 Cloud 自行取包、逐文档导入为可编辑副本
@@ -14,9 +14,11 @@ status: proposed
 四种证据——安装成功、接管成功、发布可用、执行可用——是四个可以分别判断的事实，任何一条都不能
 推导出另一条。
 
-本 ADR 处于 `proposed`：方案、边界与不变量都需要 reviewer 在实现之前纠偏。资产导入与运行契约的
-接缝写在 [workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md)；包内容
-格式由 [workflow 插件类别根决策](../../desktop/plugin/category/workflow/0-workflow-package-format.md)
+本 ADR 已 `approved`：方案、边界与不变量经 owner 复审确认，核心用例见
+[workflow 插件资产核心用例](../../../test-cases/cloud/plugin-marketplace/workflow-plugin-assets.md)。
+资产导入与运行契约的接缝写在
+[workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md)；包内容格式由
+[workflow 插件类别根决策](../../desktop/plugin/category/workflow/0-workflow-package-format.md)
 拥有，本文不重复。本 ADR 不承担既有租户的回填迁移义务：只对生效后新触发的导入负责。
 
 ## 继承与修改
@@ -106,16 +108,16 @@ skip_key      = (source_namespace, identifier, document_path)
     `MAX_PACKAGE_TOTAL_BYTES`），通用默认是 50 MiB / 200 MiB——前者为运送 CLI 二进制而放宽，后者
     为文本包而设。Cloud 从远端取字节且只读 JSON，取比通用默认更紧的一档：16 MiB 意味着 256 份
     文档平均每份可占 64 KiB，远超一份图 JSON 的量级（真实包通常只带几份文档），64 MiB 是解压后的
-    硬顶。这两个数值请 owner 直接改。
+    硬顶。这两个数值是取值，经 owner 复审确认。
 - **出站请求的约束**（T1b 是新增出网点的代价，逐条固定）：
   - **定位符**：`universal.url` 在目录同步时已按 `validateLocator` 校验，只有两种形态——无凭据
     的 HTTPS URL（允许带签名的 query，不允许 fragment），或 S3 object key。前者由 Cloud 直接
     HTTPS GET；后者不使用公网，按 Cloud 自己的对象存储配置读取（与 `objectstore.Verify` 同一条
-    私有端点）。因此「出网」只发生在 HTTPS 形态。
+    私有端点）。因此「出网」只发生在 HTTPS 形态。S3 object key 形态本轮不变：Cloud 的插件之后会
+    统一放在 cluster 内部的插件专用 S3 上，该形态既不经过公网，也不新增凭据。
   - **scheme 与 host**：HTTPS 形态只接受 `https`（目录扫描已拒绝 `http`、`s3://` 与其他 scheme）。
     host 不设白名单：仓库可以用任意 CDN 或镜像域名发布包，逐域名单既不现实，也不比下面的地址判定
-    更安全；信任边界是「目录快照是受信输入」加连接时的地址判定。若 owner 更希望限定域名白名单，
-    这一条要改。
+    更安全；信任边界是「目录快照是受信输入」加连接时的地址判定。
   - **SSRF**：解析与连接沿用 Cloud 既有的出网策略（`internal/modelgateway/transport.go` 的
     `publicAddress` 与 `secureDialer`）：连接前解析全部 DNS 应答，任一落在私有、环回、链路本地、
     未指定或文档/保留网段即拒绝；不使用环境代理。判定在连接时做，所以被篡改的目录条目也打不到
@@ -123,7 +125,7 @@ skip_key      = (source_namespace, identifier, document_path)
   - **重定向**：不跟随（`CheckRedirect` 返回 `ErrUseLastResponse`），任何 3xx 按下载失败处理。
     跟随重定向会让刚做过的地址判定作废，且与 `objectstore.Verify`、模型网关客户端的既有做法不一致。
   - **超时与流式上界**：连接 10 秒、等待响应头 30 秒、从开始到读完整个包 60 秒；下载边读边计数，
-    超过 16 MiB 立即中断，不等读完再判断。三个超时是取值，请 owner 直接改。
+    超过 16 MiB 立即中断，不等读完再判断。三个超时是取值，经 owner 复审确认。
   - **失败归属**：下载、校验或解压失败是包级结果，不产生任何文档结果；下一次触发重试。
 - 下载、校验、解压与解析全部在数据库事务外；只有逐文档结果在事务内落库（根决策不变量 2）。
 
@@ -163,7 +165,8 @@ skip_key      = (source_namespace, identifier, document_path)
   新版本删掉的路径不删副本。包内版本提升导致的文档内容变化，只能由用户在副本上显式操作。
 - **不复活用户处置过的副本**：用户删除或归档副本都不改写来源记录，判定键仍被占用，因此重新安装
   插件不会把它再导入一次。删除与归档是用户对这份数据的明确处置，导入不能替用户撤销。要重新拿到
-  同一份文档，用户走编辑器的复制/新建，与来源无关。
+  同一份文档，用户走编辑器的复制/新建，与来源无关；显式的「从来源重新导入」入口留二期（#76），
+  且必须是用户对该路径的主动操作，不能由重装或升级自动触发。
 - 导入结果必须独立持久化并可单独读取（按 `skip_key`），不能只作为插件安装结果的一个字段。
 
 ### D5：四种证据分离
@@ -225,6 +228,7 @@ skip_key      = (source_namespace, identifier, document_path)
 - 阶段 1（#73）：来源记录与逐文档结果落库、资产导入步骤（下载/校验/解压/逐文档导入）、幂等与
   升级只增不改。完成条件是真实 registry `.orax` 加 HTTP 与 PostgreSQL 的证据，不以 Desktop 本地
   SQLite import 或 `Installed(version)` 单独验收。
-- 阶段 2（#76）：预置入口与官方示例包。
+- 阶段 2（#76）：预置入口与官方示例包，以及用户显式的「从来源重新导入」入口。
 - 两个阶段都不改动插件安装与移除的既有路径；插件实例的状态仍只由 Node 执行结果的接管写入。
-- 核心测试用例在本 ADR 转为 `approved` 后按最终决策补充。
+- 核心用例见
+  [workflow 插件资产核心用例](../../../test-cases/cloud/plugin-marketplace/workflow-plugin-assets.md)。
