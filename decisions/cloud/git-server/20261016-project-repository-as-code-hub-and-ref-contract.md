@@ -15,7 +15,7 @@ Git Server 不再只存放交付 ref。从本决策起，它是每个 Project �
 Cloud 仍然不写 Git Server，只在事务外查询、在事务内登记。外部仓库只经 Repo Executor 访问，Node、Workspace 与 Git
 Server 不接触外部凭据。
 
-本 ADR 已经 owner 批准，处于 `approved`：决策内容是两条线实现时必须遵守的契约，核心测试用例见[代码中心契约用例](../../../test-cases/cloud/git-server/project-repository-code-hub-contract.md)。底座（落地顺序第 1 步）实现后仍为 `approved`，内部线和外部线都落地并验收后才改为 `implemented`。它是 [Git Server 根决策](0-sandbox-scoped-git-server-over-https.md) 的第一个后续决策。它的定位是
+本 ADR 已经 owner 批准，处于 `approved`：决策内容是两条线实现时必须遵守的契约，核心测试用例见[代码中心契约用例](../../../test-cases/cloud/git-server/project-repository-code-hub-contract.md)。底座（落地顺序第 1 步）实现后仍为 `approved`，内部线和外部线都落地并验收后才改为 `implemented`。它是 [Git Server 根决策](0-project-code-hub-git-server-over-https.md) 的第一个后续决策；下文的“根决策 Dn”都指这篇根决策。它的定位是
 **两条开发线共同遵守的契约**：
 
 - 内部线：Git Server 与 Node 之间；
@@ -33,7 +33,7 @@ Server 不接触外部凭据。
 
 范围边界：
 
-- Revision 的交付与续作继承 [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)，本文不改它的
+- Revision 的交付与续作继承 [Revision Git 原生交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)，本文不改它的
   规则，由内部线一并实现；
 - 会话 JSONL 仍在对象存储；
 - **破坏性切换**：Cloud 目前没有用户，本组决策不设过渡开关、不做数据迁移，也不保留 bundle 与外部 clone 的旧路径。已有的开发
@@ -56,14 +56,14 @@ Server 不接触外部凭据。
 
 | 前序约定 | 本文处理 |
 | --- | --- |
-| 根决策 D1：独立程序；只提供 smart HTTP；仓库 `/{tenantId}/{projectId}.git`；首次获授权的写入时建仓 | 继承程序形态、协议、路径和原子建仓。修改：Git Server 是 Project 的代码中心；获授权的写入可以来自交付执行，也可以来自同步 Operation（D1） |
-| 根决策 D2：认证只认沙盒 git-access 证书，SAN 为 `spiffe://ora.local/git-access/tenant/{t}/runtime/{ws}/generation/{g}` | 沙盒身份继承，不变。修改：新增只接受 Repo Executor 服务证书的服务仓库监听（D2） |
-| 根决策 D3：每个请求带 `Ora-Execution-Id`，按 Cloud 当前状态判定，数据库不可用返回 `503` | 继承逐请求判定和 fail closed。修改：判定结果从“模式 + 单个交付 ref”改为 ref 规则集；执行器请求带 `Ora-Git-Operation-Id`（D3） |
-| 根决策 D4：每次交付尝试一个只能新建的 `refs/ora/deliveries/<deliveryWorkId>`；`refs/heads` 留给后续 ADR | 交付 ref 继承，不变。修改：新增 upstream 和 workspace 两个 namespace 及其规则（D4） |
-| 根决策 D5：Node 执行 Git 访问，私钥不进入工作负载 | 继承，不变。Node 新增的操作由 `node/repository` 后续 ADR 规定 |
-| 根决策 D6：两个监听分开；ref 查询只读、只对 Cloud；Cloud 事务外核验、事务内登记；不由 Git Server 写收据 | 继承。修改：ref 查询可以查询本文新增 namespace 中的 ref，仍然只读（D6） |
-| 根决策 D7：Node 照旧从上游 clone，Git Server 不镜像上游、也不推回上游 | 修改：上游内容只经 Repo Executor 进入 Git Server；Workspace 的代码输入只来自 Git Server 的快照（D5）。这正是根决策 D7 为后续 ADR 预留的方向 |
-| [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)：Revision 记录交付 ref 与最终提交 | 继承，不变。不另建 Revision ref（D4） |
+| 根决策 D1：独立程序；只提供 smart HTTP；每个 Project 一个仓库 `/{tenantId}/{projectId}.git`；首次获授权的写入时原子建仓 | 继承。本文规定仓库里有哪些内容、写入者是谁（D1） |
+| 根决策 D2：每类访问者一种专用 `clientAuth` 证书，证书不携带权限；沙盒用 git-access 证书 | 继承。本文规定三个监听各自接受的身份，平台服务的身份是 Repo Executor 服务证书（D2） |
+| 根决策 D3：每个请求带一个上下文头，按身份、上下文与 Cloud 当前状态判定出一份授权，数据库不可用返回 `503` | 继承。本文规定两个上下文头，以及授权的规则集形状（D3） |
+| 根决策 D4：写入前在 `pre-receive` 复核，逐 ref 判定，任何 ref 不能删除，任一不合规则整次拒绝 | 继承。本文规定 ref namespace 与各自的写入规则（D4） |
+| 根决策 D5：持证组件自己执行 Git，私钥不进入工作负载 | 继承，不变。Node 新增的操作由 `node/repository` 后续 ADR 规定 |
+| 根决策 D6：每类身份一个监听；ref 查询只读、只对 Cloud；Cloud 事务外核验、事务内登记，不写 Git Server | 继承。本文把 ref 查询扩展到全部 namespace，并支持按前缀列出（D6） |
+| 根决策 D7：外部仓库只经持有外部凭据的组件进出 Git Server；Workspace 的代码输入只来自 Git Server | 继承。这个组件是 Repo Executor，经服务仓库监听写快照和跟踪 ref（D2、D4）；Workspace 的代码输入是固定的快照（D5） |
+| [Revision Git 原生交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)：Revision 记录交付 ref 与最终提交 | 继承，不变。不另建 Revision ref（D4） |
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md)：Cloud 只管理凭据引用；执行端按引用选择，不回退全局凭据 | 继承。凭据只在 Repo Executor 中使用，本文不涉及凭据本身 |
 | [运行时 Workspace 使用权限](../workspace/20260927-runtime-workspace-use-permissions.md) D2：代码、分支详情只供可使用目标者（创建者或管理员） | 修改，只改 Git 层面：同一 Project 内的 Workspace 分支与交付 ref，对该 Project 中获授权的沙盒执行与执行器共享，可以 fetch、merge，也可以作为发布源（D3）。界面上谁能查看代码与分支详情，仍按原规则 |
 
@@ -156,7 +156,7 @@ Git Server 只负责执行规则。这也让两条线可以各自添加自己的
 | `refs/ora/upstreams/<bindingId>/snapshots/<commitOid>` | 执行器（同步 Operation） | create-only；名称中的 OID 必须等于 ref 的目标 | 本 Project 的任何获授权身份 |
 | `refs/ora/upstreams/<bindingId>/heads/<branch>` | 执行器（同步 Operation） | tracking-cas：旧值必须等于 Operation 记录的 expected old（零表示首次创建）；新值必须有对应的快照 ref，可以是仓库里已有的，也可以是同一次推送里新建的；允许非快进 | 同上 |
 | `refs/heads/workspaces/<workspaceId>/<branch>` | 沙盒（该 Workspace 当前代次的执行） | fast-forward：只能新建或快进 | 同上 |
-| `refs/ora/deliveries/<deliveryWorkId>` | 沙盒（对应的交付执行） | create-only（根决策 D4，不变） | 同上；另有 Cloud ref 查询 |
+| `refs/ora/deliveries/<deliveryWorkId>` | 沙盒（对应的交付执行） | create-only（现有交付规则，不变） | 同上；另有 Cloud ref 查询 |
 
 其他规则：
 
@@ -319,7 +319,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
 
 | 方案 | 否决理由 |
 | --- | --- |
-| Node 直接访问外部仓库（维持根决策 D7） | 外部凭据会进入 Node，违反需求 3；多 Workspace 协作也没有共同的仓库 |
+| Node 直接访问外部仓库（[原根决策](0-sandbox-scoped-git-server-over-https.md) D7 的做法） | 外部凭据会进入 Node，违反需求 3；多 Workspace 协作也没有共同的仓库 |
 | 执行器写共享卷，匿名监听按来源 IP 和容器 label 识别 Workspace | 身份依赖部署拓扑，与 git-access 证书形成两套认证；执行器绕过授权直接写仓库，违反不变量 1 |
 | 执行器 checkout 后交给 Workspace | 执行器要挂载 Workspace 卷，耦合部署拓扑；内容来源不经 Git Server，违反需求 1 |
 | 新增 `refs/ora/revisions/*`，由 Cloud 经内部写接口创建，再配 outbox 和 reconciler | 交付 ref 已经不可变，再加一层只是重复；Cloud 写接口违反根决策 D6，并引入跨库的最终一致和对账 |
@@ -397,7 +397,7 @@ ref 查询监听可以查询本文所有 namespace 中的 ref，仍然只读，�
    - 完成条件：交付行为不变，现有测试全部通过。
 2. **内部线和外部线并行**：
    - 内部线：git-access 签发、沙盒的 workspace 规则、Node 从快照 clone 与 `ora-git`，以及按
-     [Revision Git 交付决策](../revision/20261012-git-server-delivery-and-verified-delivery-refs.md)实现交付推送与续作拉取，同时删除
+     [Revision Git 原生交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)实现交付推送与续作拉取，同时删除
      bundle 的代码与协议字段。
    - 外部线：服务仓库监听、服务身份、Operation 规则、执行器、Credential Store、同步与发布。
    - 两者改动的是不同的规则来源和监听，互不阻塞；各自用预置工具替代对方，独立做端到端验收。
