@@ -183,7 +183,7 @@ defer 原因（快照 clone 输入决策 D2）。
 
 - 租户级 clone 的语义是“Node 拿部署凭据访问任意外部地址”，正是契约 ADR 需求 3、4 要去掉的路径。
 - 改成从 Git Server clone 需要一个“没有 Workspace 的执行”的授权规则；Git Server 的沙盒身份按 Workspace 与代次签发
-  （[Git Server 根决策](../git-server/0-sandbox-scoped-git-server-over-https.md) D2），固定 Node 没有这个身份。
+  （[Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md) D2），固定 Node 没有这个身份。
 - 根 D2 保留它，是为了没有 Workspace 的部署和前端 clones 页。Cloud 部署都已改为每个 Workspace 一个沙盒，clones 页
   也没有业务调用方。
 
@@ -198,6 +198,8 @@ delete_project 的 quiesce 步骤在原有条件（各 Workspace 没有活动、
   `deleting` 的 Project 不能新建任何同步与发布（契约 ADR D5 第 3 项的生命周期表）。一个 Operation 至多进入一次 `running`，
   租约过期时同步以失败结束、发布进入次数有上限的 `uncertain` 核验（契约 ADR D5、落地顺序第 1 步）。所以 quiesce 只需要等
   已经 `running` 的 Operation 收尾，等待有界。
+- 删除可能被回滚：Node 拒绝 quiesce 时 Project 从 `deleting` 回到 `active`。进入 `deleting` 时被取消的同步，由底座在恢复准入的
+  同一事务里补回，被取消的发布不恢复（契约 ADR D5 第 3 项）；本文不另加规则。
 - 为什么等待而不是直接继续删除：`running` 的同步或发布可能正在向 Git Server 写 ref，或正在向外部仓库推送。删除流程先确认
   它们结束，cleanup 才不会与仍在进行的写入竞争；外部推送的结果也能被登记，而不是随 Project 一起丢失。
 - 为什么在领取时判断，而不是在 quiesce 推进时拒绝：Controller 在 quiesce 中先关闭各 Node 的派发、再报告空闲；Cloud 拒绝空闲

@@ -49,10 +49,11 @@ desktop 的 Node 协议（`crates/node-protocol`）、Node 的 clone 执行与�
 | 交付推送决策 D2、D3：交付把最终提交推到交付 ref，再带账本中的旧值快进 `workspace_ref`，冻结计划后重放 | 继承，由内部线实现；本文提供 `workspace_ref` 的来源（clone 记录）与共用的账本（D6、D8） |
 | 交付推送决策 D5：恢复把 Workspace 本地分支移到前序最终提交，改写提示以本 checkout 的 `base_commit` 判定，不改 `refs/remotes/ora/**` 与配置 | 继承，由内部线实现；本文提供分支短名与 `base_commit`（D9） |
 | 交付推送决策 D7：Cloud 模式必须配置 `git_access` | 继承；clone 也需要它，Node 只在配置了 `git_access` 时声明 clone 能力（D10） |
-| [Git Server 根决策](../../cloud/git-server/0-sandbox-scoped-git-server-over-https.md) D5：Node 执行 Git 访问，证书只在当次命令中传入，不新增 remote | 继承，不变 |
-| Git Server 根决策 D5：Agent 在会话中自己执行 `git push` 没有凭据，会失败；成果只经交付执行进入 Git Server | 修改：Agent 仍然没有凭据，但可以经 `ora-git` 请求 Node 推送自己的 Workspace 分支（D5、D6） |
+| [Git Server 根决策](../../cloud/git-server/0-project-code-hub-git-server-over-https.md) D5：沙盒里由 Node 进程执行 Git，证书与上下文头只在当次命令中传入，不写入 checkout 的 `.git/config`、全局配置、日志或 journal | 继承，不变；本文另规定 checkout 不配置任何 remote（D2） |
+| Git Server 根决策 D5：Agent 在会话中自己执行 `git push` 没有凭据，会失败；平台管理的写入只经持证组件进入 Git Server | 继承：Agent 仍然没有凭据，它的 Workspace 分支经 `ora-git` 请求 Node 这一持证组件推送（D5、D6） |
+| Git Server 根决策 D7：Workspace 的代码输入只来自 Git Server，Node 不为平台管理的代码输入访问外部仓库 | 继承；本文是它在 Node 一侧的落实：clone 只接受 Git Server 的快照输入（D1、D2） |
 | [Node 协议决策](../protocol/20260928-streamed-thread-events-and-session-commands.md)：会话执行的输入与事件 | 继承；会话输入增加 Workspace 目录，其余 Workspace 信息从 checkout 的 clone 记录取得（D10） |
-| Git Server 根决策 D2：Sandbox Server 按租户、Workspace、代次签发 git-access 身份 | 继承，由内部线实现（落地顺序第 1 步）；未合并的已有实现只作参考 |
+| Git Server 根决策 D2：沙盒持 Sandbox Server 按租户、Workspace、代次另签的 git-access 证书 | 继承，由内部线实现（落地顺序第 1 步）；未合并的已有实现只作参考 |
 
 ## 决策
 
@@ -347,9 +348,9 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 
 这些步骤都属于契约 ADR 落地顺序第 2 步中的内部线，在底座（第 1 步）之后进行，不依赖外部线。
 
-1. **git-access 身份与 Compose**（cluster）：Sandbox Server 按 [Git Server 根决策](../../cloud/git-server/0-sandbox-scoped-git-server-over-https.md)
+1. **git-access 身份与 Compose**（cluster）：Sandbox Server 按 [Git Server 根决策](../../cloud/git-server/0-project-code-hub-git-server-over-https.md)
    D2 为每个沙盒签发 git-access 客户端身份，存入管理 tmpfs；Compose 接入 Git Server，仓库监听只在沙盒网络、ref 查询只在默认网络
-   （根决策落地顺序第 1、3 步）；两个 Node 配置模板启用 `git_access`（交付推送决策 D7）。未合并的已有实现只作参考，按本组 ADR
+   （根决策 D6）；两个 Node 配置模板启用 `git_access`（交付推送决策 D7）。未合并的已有实现只作参考，按本组 ADR
    重新实现。完成条件：Sandbox Server 测试证明证书 SAN、用途与 WSS、model-access 身份分开；真实栈中沙盒只能连到仓库监听。
 2. **协议与校验**（desktop）：`node-protocol` 的新 `CloneExecutionSpec`、失败码、`DeliverRevision` 与会话输入的修改，以及交付推送
    决策 D8 的 bundle 删除（D1、D10）；锁定 Cloud 的新契约 commit。完成条件：协议测试覆盖每个字段的拒绝规则、旧形状被拒、

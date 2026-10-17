@@ -57,7 +57,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 | 20260926 D3：`ClaimWork` 只返回租户级 clone；Workspace 的 clone 由 `ClaimOperation` 领取 | 修改：`ClaimWork` 不再返回 clone 工作（D4）；Workspace 的 clone 继承 |
 | Cloud 交付决策 D1、D7：交付输入带仓库地址、交付 ref 与 `workspaceRef`；会话的 `priorRevision` 带仓库地址、交付 ref 与基础提交 | 继承；本文给出线上形状（D6、D9），会话输入另增加 Workspace 目录（D7），与快照输入的组合见 D8 |
 | 20260928 D1、20261010 D1：Controller 原样转交 Cloud 固定的输入 | 继承；Controller 不签发、不持有、不转交任何 Git 访问凭据，并扩展到 clone 输入（D2、D9） |
-| [Git Server 根决策](../git-server/0-sandbox-scoped-git-server-over-https.md) D3：每个请求按证书目标、声明的执行与 Cloud 当前状态判定 | 继承；判定结果按契约 ADR D3 改为写入规则集，执行类型的映射由本文给出（D5） |
+| [Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md) D3：每个请求按身份、声明的上下文与 Cloud 当前状态判定出一份授权，规则集形状由契约 ADR 规定 | 继承；沙盒执行类型到契约 ADR D3 写入规则集的映射由本文给出（D5） |
 | Cloud 交付决策 D5：交付执行与 Agent 会话执行的运行阶段条件；所有 Agent 会话都能访问，不要求带前序 | 继承；本文给出各执行类型的写入规则集，clone 执行另有自己的有效性条件（D5） |
 | 契约 ADR D4 “沙盒”一列：只能写本 Workspace 分支和当前执行的交付 ref | 继承；D5 的映射不超出这一列 |
 
@@ -147,7 +147,7 @@ Internal Control 的 `OperationSnapshot` 增加 `optional CloneSpec clone_input 
 
 ### D5：执行类型到写入规则的映射
 
-Git Server 解析沙盒请求时，先按 [Git Server 根决策](../git-server/0-sandbox-scoped-git-server-over-https.md) D3 确认证书目标
+Git Server 解析沙盒请求时，先按 [Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md) D3 确认证书目标
 `(tenantId, workspaceId, generation)` 是该 Workspace 当前存活的代次、请求路径中的 Project 是该 Workspace 的 Project，再按
 声明的执行查出类型。通过判定的请求可以读整个 Project 仓库（契约 ADR D3），本文只给出契约 ADR D3 的 `Grant.writable`：
 
