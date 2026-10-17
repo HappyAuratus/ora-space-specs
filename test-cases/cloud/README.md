@@ -44,6 +44,16 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [执行器槽位](workflow/executor-slots.md) | 槽位名变体、`hint` 被当兜底或被自动写入、旧图拒收或保留执行器 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
+## 已批准的会话分析与模型请求统计
+
+会话读取和 HTTP 尝试统计两份 ADR 为 `approved`；直接测试证据固定到 Cloud PR #69 的提交，
+各义务独立标记 Covered/Partial/Missing，不据受控 HTTP 或组件测试宣布真实部署已验收。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| thread | [会话分析读取](thread/session-analysis-read-model.md) | 当前权限、读取后撤权、归档完整性、只读身份、来源与未知值 |
+| model-access | [已登记 HTTP 尝试统计](model-access/recorded-http-attempt-statistics.md) | 发送前登记、幂等收尾、取消、未知用量、统计授权和无回填升级 |
+
 ## 既有实现证据基线
 
 | 仓库 | 提交 | PR | 交付职责 |
