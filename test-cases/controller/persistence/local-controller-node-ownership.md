@@ -1,6 +1,6 @@
 # 本机 Controller 归属与持久接管
 
-依据[已批准的根决策](../../../decisions/controller/persistence/0-local-controller-node-ownership.md)。
+依据[已实现的根决策](../../../decisions/controller/persistence/0-local-controller-node-ownership.md)。
 以下登记新会话与协调层的验证义务；现有 Node clone、SQLite 或消息 codec 测试不能替代
 Controller–Node 真实通信证据。当前已有真实本机 IPC 与持久接管实现，以下分别记录直接证据及仍缺失的故障组合。
 [持久协调双适配器后续决策](../../../decisions/controller/persistence/20260922-coordination-store-with-sqlite-and-cloud-adapters.md)

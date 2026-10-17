@@ -3,7 +3,7 @@
 决策依据:[插件市场:cloud 权威选择状态、目录快照与自闭合 effect 载荷](../../../decisions/cloud/plugin-marketplace/0-plugin-marketplace.md)。
 以下用例通过真实 PostgreSQL 集成测试(`integration/plugins_*.go`)验证。
 
-后续已批准的[管理员选择与空闲维护](admin-selection-and-idle-maintenance.md)收紧修改权限，并将忙时整体冲突改为持久等待。下列证据按原固定版本、隔离、effect 和聚合义务保留；新管理员门控、维护独占与真实执行器证据另为 `Missing`。
+后续已实现的[管理员选择与空闲维护](admin-selection-and-idle-maintenance.md)收紧修改权限，并将忙时整体冲突改为持久等待。下列证据按原固定版本、隔离、effect 和聚合义务保留；管理员门控与维护独占已有直接局部证据，整体为 `Partial`。真实执行及故障缺口分别见该用例与[Node 插件执行用例](node-executed-plugin-installs.md)，不将局部通过扩大为完整矩阵。
 
 ## Tenant membership grants plugin access and revocation rejects new reads
 

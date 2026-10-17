@@ -1,9 +1,9 @@
 # 仓库获取与结果边界
 
 依据[clone 根决策](../../../decisions/node/repository/0-clone-selected-repository-branch.md)，
-本文件登记已批准的目标与职责边界。目标目录、凭据、分支移动、checkout 形态及失败恢复策略
-已由[最小执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)批准，
-具体义务见[执行核心用例](minimal-clone-execution.md)。Node clone 已有直接证据；Controller／Client 闭环仍 Missing。
+本文件登记已实现的目标与职责边界。目标目录、凭据、分支移动、checkout 形态及失败恢复策略
+由[最小执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)规定，
+具体义务见[执行核心用例](minimal-clone-execution.md)。desktop 证据核对基线 `a37ca7e0`。
 
 ## Clone Uses The Requested Repository And Branch
 
@@ -70,8 +70,8 @@ Controller 本地 clone 冒充 Node 执行、尚未完成就展示成功、用 W
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| Node 执行事实经过 Controller 回到调用方 | 独立进程与实际 Git、持久结果、Client 可观察状态；尚无 | Missing |
-| 接受和完成分离，结果交接恢复保留身份 | 具体协议冻结后的交接故障与持久状态检查；尚无 | Missing |
+| Node 执行事实经过 Controller 回到调用方 | `apps/ora-controller/tests/workspaces.rs` 的 `create_and_stop_drive_the_workspace_sandbox_and_its_node` 断言 Controller 在 Workspace 创建中派发 clone、接管结果后才开放准入，Cloud 侧由模拟器代替；`apps/ora-node/tests/standalone/repository_controller.rs` 的 `independent_controller_replays_durable_takeover_after_lost_ack_and_kill` 以独立进程与实际 Git 验证 Controller 接管；真实 Cloud 与浏览器链路只有 cluster 的手工验收 | Partial |
+| 接受和完成分离，结果交接恢复保留身份 | `apps/ora-node/tests/standalone/repository_controller.rs` 的 `independent_controller_replays_durable_takeover_after_lost_ack_and_kill`：Controller 持久接管后、确认前被杀，独立的新 Controller 重放原结果，不再 clone | Covered |
 
 ### 决策依据
 

@@ -1,6 +1,6 @@
 # 独占恢复、原实例重连与故障隔离
 
-范围：当前 Linux 可信本机；完整 recovery 根决策仍 approved，已验证的 bootstrap 切片 implemented。
+范围：当前 Linux 可信本机；recovery 根决策与 bootstrap 切片均为 implemented，完整故障矩阵的缺口按下表登记。
 保留原英文 anchor，不因标题包含 Closes 就宣称 guardian 丢失时已有 Closed 证据。
 
 ## Guardian Bootstrap Transfers Exclusive Ownership Without Reinitializing State

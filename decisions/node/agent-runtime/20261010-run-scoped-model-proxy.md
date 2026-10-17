@@ -1,12 +1,11 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 通过专用模型身份领取临时授权，OpenCode 经平台代理调用冻结的模型
 
-本决策继承 [共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)，依据已批准的
-2026-10-10 M4 计划，将 D5 的部署共享凭据/默认模型改为用户的冻结连接与平台代理。
-真实上游 Key 保留在平台；Node 只取得当前运行的临时授权。状态 `approved`，整体真实模型验收未完成。
+本决策继承 [共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)，将 D5 的部署共享凭据/默认模型改为用户的冻结连接与平台代理。
+真实上游 Key 保留在平台；Node 只取得当前运行的临时授权。状态 `implemented`；证据与缺口见核心用例。
 
 ## 继承与修改
 
@@ -15,7 +14,7 @@ status: approved
 | 共享 ACP 运行时及只启动指定插件 | 继承，不变 |
 | D3：JSONL 与 Thread 顺序、D4：Git 环境身份、D6：结束收尾 | 继承，不变 |
 | D5：沙盒部署提供真实模型 Key，使用 agent 默认模型 | 修改：Cloud 固定模型绑定，Node 通过 mTLS 领取临时授权并为 OpenCode 生成配置 |
-| D2：忽略 stdio 关闭的孤儿进程尚未纳入 guardian | 继承已记录的落地差异，本决策不声称修复 |
+| D2：忽略 stdio 关闭的孤儿进程尚未纳入 guardian | 继承根决策 D2 记录的偏离，本决策不声称修复 |
 
 ## 决策
 

@@ -1,11 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 独占资格之后核实原实例，缺少清理证据就保留阻塞
 
 当前 Linux 宿主在稳定锁下恢复持久意图，重连原 guardian；连接失败不重启旧 Scope／Run。
-guardian 失效不接管活进程，也不承诺一定可以收尾。本文保留 approved，完整故障矩阵尚未验收；
+guardian 失效不接管活进程，也不承诺一定可以收尾。本 ADR 按 D1 表中的当前行为处于 `implemented`，完整故障
+矩阵的缺口登记在核心用例中；
 已交付的较窄启动／重连边界见[后续 ADR](20260917-rootless-guardian-bootstrap-and-reconnect.md)。
 
 ## 决策

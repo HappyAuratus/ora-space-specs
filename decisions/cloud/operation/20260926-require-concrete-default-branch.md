@@ -4,7 +4,7 @@ status: implemented
 
 # Project 必须给出具体默认分支，Cloud 不读取远端仓库解析 HEAD
 
-> 后续已批准决策：[普通停止与管理员强停](20260927-safe-stop-and-administrative-force-stop.md)继承本文分支规则并扩展生命周期控制，状态为 `approved`。本文保留原状态，新增强停尚未实现。
+> 后续已实现决策：[普通停止与管理员强停](20260927-safe-stop-and-administrative-force-stop.md)继承本文分支规则并扩展生命周期控制，后端状态为 `implemented`。强停 UI 与完整故障验收另由后续 ADR 承接；本文保留原状态。
 
 创建 Project 时 `defaultBranch` 由可选（缺省为 `HEAD`）改为必填，且不能是 `HEAD`；缺省、空白或 `HEAD`
 返回 `400 default_branch_required`，不写任何记录。isolated Workspace 的 `baseRef` 为 `HEAD` 时存为所属

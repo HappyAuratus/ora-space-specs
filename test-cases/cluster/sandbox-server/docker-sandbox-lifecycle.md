@@ -1,10 +1,11 @@
 # Sandbox Server 的 Docker 沙盒生命周期
 
-依据[已批准的 Docker 沙盒生命周期决策](../../../decisions/cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md)。
+依据[已实现的 Docker 沙盒生命周期决策](../../../decisions/cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md)。
 本文件登记 Sandbox Server 以 Cloud 的 Substrate effects 接口创建、终止沙盒与删除 Workspace 数据的承诺；
 标签路由见[Docker 标签解析用例](docker-label-resolution.md)，Cloud 侧步骤见
 [运行时 Workspace 生命周期用例](../../cloud/operation/workspace-runtime-lifecycle.md)。证据来自 ora-space/cluster 仓库
-（cluster#3），路径相对该仓库根目录；Docker 行为由内存替身 Engine 模拟，真实 Docker 仅手工验收。
+（核对基线 `aef10f3`），路径相对该仓库根目录；Docker 行为由内存替身 Engine 模拟，真实 Docker 仅手工验收。
+生命周期接口的认证、Cloud 许可与运行时围栏属于运行时控制决策，不在本文件登记。
 
 ## Sandbox Ensure Creates At Most One Container Per Effect And Per Workspace
 
@@ -30,7 +31,9 @@ Controller 以 effect ID `E` 发送 `PUT /effects/E`（`sandbox_ensure`，Worksp
 - 成功结果 `sandboxInstanceId = E`、`externalId = E`、`nodeId = workspace-W`；容器带根决策三个路由标签，
   只接入沙盒网络，不发布端口，挂载卷 `ora-workspace-W`。
 - `W` 已有其他 effect ID 的容器时 effect 失败为 `workspace_sandbox_live`，不创建容器。
-- `GET` 不创建任何东西；journal 为 `running` 时按容器名查询 Docker 据实返回。
+- `GET` 不创建任何东西；journal 为 `running` 且没有进行中的 `PUT` 时按容器名查询 Docker 据实返回。
+- 失败条目只带有界错误码（`node_image_missing`、`container_not_running`、`docker_failure` 等），响应为 `503`；
+  同一请求再次发送会重新执行。
 
 ### 禁止结果
 
@@ -46,6 +49,7 @@ Controller 以 effect ID `E` 发送 `PUT /effects/E`（`sandbox_ensure`，Worksp
 | 同名冲突与 Workspace 唯一性 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureAdoptsNameConflict` 与 `TestEnsureRefusesSecondContainerForWorkspace` | Covered |
 | 容器规格 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureCreatesLabelledContainer` 断言名称、五个标签、网络、镜像、卷挂载与完整 `ORA_NODE_CONFIG`，并以 Docker Resolver 解析到该容器；`sandbox-server/internal/docker/docker_test.go` 的 `TestCreateContainerSendsSpecWithoutPublishedPorts` 断言 Engine 请求体不含端口发布 | Covered |
 | `unsupported_kind` | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestRejectedRequestsWriteNothing` 以 `worktree_ensure`、`storage_delete` 等请求断言 `400`、无 journal 文件且无 Docker 调用 | Covered |
+| 有界失败码与失败后重试 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestEnsureFailureCodes` 断言镜像缺失、启动后退出、Docker 不可达分别为 `503` 与对应错误码，且错误码不含 Docker 原文；`TestFailedEnsureRetriesOnSameRequest` 断言失败后同一请求重发成功 | Covered |
 | `GET` 不创建、`running` 据实返回 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestGetUnknownEffectIs404AndCreatesNothing`（`404`，无 journal、无容器）与 `TestReconcileLeavesUnprovenEnsureRunning`（无容器证明时保持 `running`，无写调用） | Covered |
 
 ### 决策依据
@@ -70,9 +74,12 @@ Controller 发送 `sandbox_terminate`（`sandboxInstanceId = E`）；可能与 `
 
 ### 必须成立
 
-- terminate 与 `E` 的 ensure 共用按 ID 锁，先写终止墓碑；之后针对 `E` 的 ensure 以 `sandbox_terminated` 失败。
-- 只有 Docker 确认 `ora-sandbox-E` 不存在后才返回 `terminated: true`；停止使用 `-stop-timeout`。
-- 容器 Workspace 标签与请求不一致、Docker 报错或超时时 effect 为 `failed`。
+- 同一 Workspace 的 effect 串行；terminate 在第一次破坏性调用前写终止墓碑（容器不存在时也写），之后针对
+  `E` 的 ensure 以 `sandbox_terminated` 失败。
+- 只有 Docker 确认 `ora-sandbox-E` 不存在后才返回 `terminated: true, lateEnsureFenced: true`；停止使用
+  `-stop-timeout`。
+- 容器 Workspace 标签与请求不一致时 effect 为 `failed`、`sandbox_scope_mismatch`，不写墓碑、不动容器；Docker
+  报错或超时时 effect 为 `failed`。
 - 卷 `ora-workspace-W` 保留。
 
 ### 禁止结果
@@ -85,6 +92,7 @@ Controller 发送 `sandbox_terminate`（`sandboxInstanceId = E`）；可能与 `
 |---|---|---|
 | 以容器不存在为终止证据 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestTerminateReportsOnlyWhatDockerConfirms`（删除失败为 `failed`、重试成功）、`TestTerminateRemovesContainerAndBlocksLateEnsure`（成功且卷保留）、`TestReconcilePromotesTerminateOnlyWhenContainerGone`；尚缺停止超时的单独断言 | Partial |
 | 墓碑阻止迟到 ensure | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestTerminateRemovesContainerAndBlocksLateEnsure` 与 `TestTerminateOfUnknownSandboxSucceedsAndTombstones` 顺序断言终止后的 ensure 以 `sandbox_terminated` 失败；尚缺并发交错的断言 | Partial |
+| Workspace 不一致时拒绝 | `sandbox-server/internal/lifecycle/lifecycle_test.go` 的 `TestTerminateRejectsOtherWorkspace`：断言 `sandbox_scope_mismatch`、容器保留且没有写墓碑 | Covered |
 | 真实 Docker 停止 | 真实 Docker 中 clone 进行时终止，断言 Node 记录中断失败且卷中数据保留 | Missing |
 
 ### 决策依据

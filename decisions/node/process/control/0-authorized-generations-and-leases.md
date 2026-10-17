@@ -1,15 +1,16 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 当前信任本机 Node，宿主代次只用于旧会话失效
 
-> 后续已批准决策：[云端运行时控制同步交付](../../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)区分宿主代次与用户控制代次，要求云端管理/工作负载权限隔离，状态为 `approved`，尚未实现。不恢复本文延期的完整信任体系，本文保留原状态。
+> 后续已实现决策：[云端运行时控制同步交付](../../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)区分宿主代次与用户控制代次，建立云端管理/工作负载隔离边界，状态为 `implemented`；完整故障矩阵另行验收。不恢复本文延期的完整信任体系，本文保留原状态。
 
 当前不使用密钥、秘密令牌、Controller 授权或租约。可信 Node 通过受限本机端点请求 host；
 host 在稳定锁保护下持久推进宿主代次，guardian 使旧宿主会话失效。
-本文按 Eric 已确认的信任体系延期范围收紧；保留 approved，不把较窄的宿主会话机制称为
-原 Controller—Node 授权体系已实现。
+本叶子的当前主题收敛为“可信本机宿主会话控制”，本 ADR 按这一范围处于 `implemented`：实现位于 desktop 的
+`crates/process-runtime`（host／guardian 宿主绑定）。原 Controller—Node 授权体系不在本文范围，较窄的宿主会话
+机制不被描述为它已实现；云端的控制代次与权限隔离由运行时控制决策承担。
 
 ## 决策
 
@@ -51,4 +52,4 @@ Controller 授权与实例更替、凭据签发轮换、只读角色、Scope 授
 
 宿主绑定已有真实 guardian 接管、迟到字节和执行队列测试；原授权／租约用例继续标记
 未来范围、Missing。见[核心用例](../../../../test-cases/node/process/control/authorization-and-fencing.md)。
-是否将本叶子的当前主题正式收敛为“可信本机会话控制”并标 implemented，留待 Eric 确认。
+主题收敛与状态由 owner 在 specs 治理中确认。

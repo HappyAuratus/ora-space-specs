@@ -9,7 +9,7 @@
 - 触发：启用或禁用模型代理配置后创建 Node。
 - 必须成立：仅启用时签发独立 clientAuth 证书和独立私钥；身份固定许可目标；入口脚本放入管理 tmpfs；无原始模型 Key 注入。
 - 禁止结果：复用 WSS 私钥、客户端与服务端用途互换、材料进入恢复日志或 effect 结果。
-- 证据与义务：`sandbox-server/internal/management/model_identity_test.go` 的真实证书解析及独立密钥/用途/范围断言；Desktop 与 model-gateway mTLS 拒绝矩阵。状态 `Partial`：签发及用途边界有直接证据，材料不进入 journal/effect 的单独故障路径仍待直接测试。
+- 证据与义务：`sandbox-server/internal/management/model_identity_test.go` 的真实证书解析及独立密钥/用途/范围断言；`sandbox-server/internal/lifecycle/model_environment_test.go` 的 `TestSecuredEnsurePreservesNodeEnvAndIsolatesModelIdentity` 断言只有启用模型代理时才注入 `ORA_MODEL_*`，模型身份与 Node 身份不同且范围精确，正常路径下材料不出现在 Node 配置、effect 响应（含重放）、状态目录与日志中；Desktop 与 model-gateway mTLS 拒绝矩阵。状态 `Partial`：签发、用途边界与正常路径不泄露有直接证据，ensure 失败路径下材料不进入 journal/effect 仍待直接测试。
 
 ## M4 deployment must preserve encryption identity and isolate acceptance resources
 

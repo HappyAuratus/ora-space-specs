@@ -1,6 +1,8 @@
 # 独占操作、失权与安全交接
 
-依据[已批准的独占准入决策](../../../decisions/cloud/execution-admission/20260927-exclusive-runtime-control.md)。新增代码与部分直接证据已登记，完整验收仍有缺口。
+已实现服务承诺仍由原 ADR 拥有；下文的 UI 与完整联合故障矩阵改由[后续验收 ADR](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接。保留本文件与英文标题作为稳定引用，Partial/Missing 不因后端 implemented 而自动提高。
+
+依据[已实现后端的独占准入决策](../../../decisions/cloud/execution-admission/20260927-exclusive-runtime-control.md)。新增代码与部分直接证据已登记，完整验收仍有缺口。
 租约是有期限的操作资格，fencing 表示拒绝旧资格的新操作；两者都不是进程已结束的证明。
 
 ## One Runtime Has At Most One Effective Operator Session
@@ -15,12 +17,12 @@
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | PostgreSQL 原子获取与幂等 | 多连接及多服务实例同步竞争，完整检查允许结果、持久行与重复请求 | Partial |
-| 执行确认前不放行及界面冲突 | 延迟绑定确认的真实对端测试，管理员和同用户第二页面的界面测试 | Partial |
+| 执行确认前不放行 | 延迟绑定确认的真实对端测试 | Partial |
 
 - 决策依据：D1、D2、D5，不变量 1、3。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_control_test.go) 的同步获取、幂等/第二页面/确认前拒绝；[cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 的真实 Node 绑定。
-- 仍缺：多 Cloud 服务实例、UI 和响应丢失完整矩阵尚缺。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_control_test.go) 的同步获取、幂等/第二页面/确认前拒绝；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的真实 Node 绑定。
+- 仍缺：多 Cloud 服务实例和响应丢失完整矩阵尚缺；独占 UI 状态统一登记于[界面用例](runtime-control-ui-and-fault-acceptance.md#operator-controls-must-recheck-authority-after-disconnection)（后续 ADR D1）。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Conflicting Write Activities Are Exclusive Even Within One Session
 
@@ -32,8 +34,8 @@
 - 验证义务与证据：**Partial** — 需真实文件/Git/进程测试以及活动登记竞争，检查拒绝方无磁盘或进程副作用；尚未交付的产品入口保持关闭。
 - 决策依据：D1、D3，不变量 2、4。
 
-- 本次直接证据：**Partial** — [desktop crates/node-db/src/tests/repository.rs](https://github.com/wanglongan587/desktop/blob/codex/runtime-control/crates/node-db/src/tests/repository.rs) 的 runtime_mutex_spans_identities_and_started_work_survives_closure；Cloud ticket 唯一约束和插件维护等待。
-- 仍缺：真实文件/终端/Agent/插件入口尚未具备执行配套，保持关闭；不同入口实际进程竞争仍缺。
+- 本次直接证据：**Partial** — [desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 的 runtime_mutex_spans_identities_and_started_work_survives_closure；Cloud ticket 唯一约束和插件维护等待。
+- 仍缺：已开放入口的不同活动实际进程竞争仍缺；未开放文件/终端及完整 Agent 产品入口保持关闭，开放它们的后续 ADR 必须承接对应互斥和进程责任，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Expiry Or Disconnection Does Not Permit Handoff Before Old Work Ends
 
@@ -45,8 +47,8 @@
 - 验证义务与证据：**Partial** — 需真实 PostgreSQL 与 Node，控制响应丢失和断线时点，确认交接前后旧消息无新写入；必须与跨进程核心用例联合验证。
 - 决策依据：D2、D4，不变量 3–5。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_control_test.go)、[Cloud integration/runtime_connection_recovery_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_connection_recovery_test.go) 与 [desktop crates/node-db/src/tests/repository.rs](https://github.com/wanglongan587/desktop/blob/codex/runtime-control/crates/node-db/src/tests/repository.rs) 的关闭/恢复实际入口拒绝。
-- 仍缺：Cloud–Node 接受结果丢失、在途执行到期及交接的联合故障矩阵尚缺。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_control_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_control_test.go)、[Cloud integration/runtime_connection_recovery_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_connection_recovery_test.go) 与 [desktop crates/node-db/src/tests/repository.rs](https://github.com/ora-space/desktop/blob/cf166325d393e1b81a6b3f2fde7e6026d13cb128/crates/node-db/src/tests/repository.rs) 的关闭/恢复实际入口拒绝。
+- 仍缺：Cloud–Node 接受结果丢失、在途执行到期及交接的联合故障矩阵尚缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Membership Revocation Denies New Access While Preserving Accepted Execution Responsibility
 
@@ -58,6 +60,5 @@
 - 验证义务与证据：**Partial** — 需 HTTP、SSE、真实执行派发及 PostgreSQL 竞争的直接联合证据。既有成员停用 HTTP/SSE 测试只证明前序义务，不证明操作权撤回和远端执行约束。
 - 决策依据：D4、D5，不变量 5、6。
 
-- 本次直接证据：**Partial** — [Cloud integration/space_events_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/space_events_test.go)、runtime control 测试及 [cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 的成员停用步骤。
-- 仍缺：真实脚本已通过 HTTP/SSE、续期、新运行时准入及 Node 控制撤回联合验证；在途任务停用、未知接受及并发联合矩阵仍缺。
-
+- 本次直接证据：**Partial** — [Cloud integration/space_events_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/space_events_test.go)、runtime control 测试及 [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的成员停用步骤。
+- 仍缺：真实脚本已通过 HTTP/SSE、续期、新运行时准入及 Node 控制撤回联合验证；在途任务停用、未知接受及并发联合矩阵仍缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。

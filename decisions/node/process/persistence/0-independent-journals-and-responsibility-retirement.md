@@ -1,12 +1,13 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 宿主与 Guardian 分别提交日志，当前保留全部责任记录
 
 host.sqlite 保存管理意图和历史查询投影，guardian.sqlite 保存接受与运行事实；各自使用
 SQLite WAL 和 synchronous=FULL。接受回复晚于事务提交；不依赖跨库事务。
-原方案的输出持久化、结果接管、退休和压缩改由未来 ADR 负责，当前不执行 GC。
+原方案的输出持久化、结果接管、退休和压缩改由未来 ADR 负责，当前不执行 GC。本 ADR 按这一范围处于
+`implemented`，实现位于 desktop 的 `crates/process-runtime`（`host_state`、`guardian/journal.rs`）。
 
 ## 决策
 
@@ -48,5 +49,5 @@ guardian 先持久登记尝试，再调用平台执行；记录未知窗口不�
 ## 验收与状态
 
 真实 SQLite、接受／回复故障、日志拒写和宿主强杀已有直接证据；完整磁盘满、权限变化、
-迁移中断和物理断电矩阵未完成。保持 approved，证据按实际覆盖登记于
+迁移中断和物理断电矩阵未完成，证据按实际覆盖登记于
 [核心用例](../../../../test-cases/node/process/persistence/durability-and-retirement.md)。

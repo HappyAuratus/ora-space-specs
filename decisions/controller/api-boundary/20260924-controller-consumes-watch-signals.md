@@ -4,7 +4,7 @@ status: implemented
 
 # Controller 消费 Watch 信号流：信号驱动领取、断流退回周期领取、`Drain` 暂停领取直到新流建立
 
-> 后续已批准决策：[运行时控制同步交付](../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)增加服务认证、派发前许可检查与旧执行对账，状态为 `approved`，尚未实现。本文保留原状态及 Watch 信号语义。
+> 后续已实现决策：[运行时控制同步交付](../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)增加服务认证、派发前许可检查与旧执行对账，状态为 `implemented`；完整故障矩阵另行验收。本文保留原状态及 Watch 信号语义。
 
 云端持久模式的 Controller 在持有 Cloud 租约期间维持一条 `ControlSignalService.Watch` 服务端流，并把它
 作为领取的主要触发：流建立时与每个 `WorkAvailable` 到达时立即领取，另在每次租约续期后兜底领取一次；

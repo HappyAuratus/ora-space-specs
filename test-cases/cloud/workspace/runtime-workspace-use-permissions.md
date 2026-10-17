@@ -1,6 +1,8 @@
 # 运行时使用权限、创建者及历史兼容
 
-依据[已批准的运行时使用权限决策](../../../decisions/cloud/workspace/20260927-runtime-workspace-use-permissions.md)。
+已实现服务承诺仍由原 ADR 拥有；下文的 UI 与完整联合故障矩阵改由[后续验收 ADR](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接。保留本文件与英文标题作为稳定引用，Partial/Missing 不因后端 implemented 而自动提高。
+
+依据[已实现后端的运行时使用权限决策](../../../decisions/cloud/workspace/20260927-runtime-workspace-use-permissions.md)。
 新增代码与部分直接证据已登记；缺口逐项保留。既有租户成员与跨成员创建测试继续保留，不能代替新增内容权限和独占控制的验收。
 
 ## Runtime Content Access Requires Its Creator Or A Current Tenant Admin
@@ -15,12 +17,12 @@
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | 概况与内容分层、详情和重试入口一致 | 真实 HTTP 与 PostgreSQL 权限矩阵，逐项断言拒绝响应无受限内容及无写副作用 | Partial |
-| 前端有效操作与第一阶段无授权功能 | 创建者、管理员及他人运行时界面测试，绕过按钮直接调用仍拒绝 | Missing |
 
-- 决策依据：D1–D3，不变量 1–3。
+- 决策依据：D1–D3，不变量 1–3。前端有效操作与无授权 UI 的义务和状态统一登记于
+[权限界面用例](../execution-admission/runtime-control-ui-and-fault-acceptance.md#runtime-views-must-separate-shared-summaries-from-restricted-content)，依据后续 ADR D3。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_permissions_test.go) 的 TestRuntimeContentPermissionsAndReplay；[cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 的共享概况、main 内容与跨租户拒绝。
-- 仍缺：完整运行时操作界面尚未接入，文件/输出产品入口仍关闭。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_permissions_test.go) 的 TestRuntimeContentPermissionsAndReplay；[cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的共享概况、main 内容与跨租户拒绝。
+- 仍缺：完整运行时操作界面尚未接入，文件/输出产品入口仍关闭。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Runtime Creator Is Recorded Separately From Durable Ownership
 
@@ -30,10 +32,10 @@
 - 必须成立：运行时 owner 沿用项目，创建者为 bob；main 创建者来自项目创建请求；operation actor、任务发起者与当前操作者分别记录。管理员进入不转移上述身份。
 - 禁止结果：改写项目 owner、把最近操作者当创建者、拒绝合法跨成员创建。
 - 验证义务与证据：**Partial** — 需在既有 `TestDifferentMemberCanCreateRuntimeInSharedProject` 基础上直接断言新增创建者、身份保真及实际权限，原测试不能证明新增规则。
-- 决策依据：D1、D4，不变量 1、4。
+- 决策依据：D1、D4，不变量 1、5。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_permissions_test.go)、TestDifferentMemberCanCreateRuntimeInSharedProject 与 [cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 的 owner/creator 对比。
-- 仍缺：已有生命周期 actor 与创建者得到证明；完整任务/Agent 产品入口的联合验收仍缺。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_permissions_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_permissions_test.go)、TestDifferentMemberCanCreateRuntimeInSharedProject 与 [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 的 owner/creator 对比。
+- 仍缺：已有生命周期 actor 与创建者得到证明；完整任务/Agent 产品入口的联合验收仍缺。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Historical Creators Are Backfilled Only From Unique Creation Evidence
 
@@ -43,10 +45,10 @@
 - 必须成立：只从匹配目标且唯一的创建记录回填；不能证明的创建者明确未知且仅管理员使用。原 owner、时间、版本、operation/execution/effect、清理和审计引用保留；存量执行不被解释为空闲。
 - 禁止结果：改写历史 SQL、用 owner 或任意管理员填补缺失、未知资源对成员开放、迁移期间留下旧准入旁路。
 - 验证义务与证据：**Partial** — 需真实 PostgreSQL 新库/升级/重入与完整历史快照比对，结合旧执行对账后授权切换；0017 租户迁移证据不证明新迁移。
-- 决策依据：D4，不变量 4–6。
+- 决策依据：D4，不变量 1、5。
 
-- 本次直接证据：**Partial** — [Cloud integration/runtime_upgrade_test.go](https://github.com/wanglongan587/cloud/blob/codex/runtime-control/integration/runtime_upgrade_test.go) 的唯一/冲突/缺失证据、operation 完整快照、重复迁移及不可变创建者。
-- 仍缺：软删除、在途执行与所有历史表联合快照矩阵尚缺。
+- 本次直接证据：**Partial** — [Cloud integration/runtime_upgrade_test.go](https://github.com/ora-space/cloud/blob/b82834ec87ccb326859cba60c5ee2aa7befd0dc0/integration/runtime_upgrade_test.go) 的唯一/冲突/缺失证据、operation 完整快照、重复迁移及不可变创建者。
+- 仍缺：软删除、在途执行与所有历史表联合快照矩阵尚缺。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。
 
 ## Separate Runtimes Keep Their Code Tasks And Persistent Data Isolated
 
@@ -56,8 +58,7 @@
 - 必须成立：不同运行时普通执行可并行，代码、任务与数据分别归属；单个运行时处置不影响另一个。项目生命周期仍保持既有串行约束。
 - 禁止结果：共享同一可写目录、跨运行时任务终止或数据清理、以不同目录为由免除单运行时独占。
 - 验证义务与证据：**Partial** — 需真实 Cloud–Controller–Node 和部署存储链路，检查两套磁盘内容、执行及进程；模拟器独立 clone 不构成完整证据。
-- 决策依据：D1–D3，不变量 4；同批独占 D3 与强停 D5。
+- 决策依据：D1–D3，不变量 1–4；同批独占 D3 与强停 D5。
 
-- 本次直接证据：**Partial** — [cluster 真实验收脚本](https://github.com/wanglongan587/cluster/blob/codex/runtime-control/scripts/runtime-control-acceptance.py) 创建同项目两个真实 Node/Git/命名卷，并检查只在成员 clone 目录写入标记。
-- 仍缺：任意 shell、Agent 及完整停止/删除故障矩阵仍缺，未开放入口保持关闭。
-
+- 本次直接证据：**Partial** — [cluster 真实验收脚本](https://github.com/ora-space/cluster/blob/aef10f3b6de16bf0bed6797a37bf0b1b3d9bc7c5/scripts/runtime-control-acceptance.py) 创建同项目两个真实 Node/Git/命名卷，并检查只在成员 clone 目录写入标记。
+- 仍缺：任意 shell、Agent 及完整停止/删除故障矩阵仍缺，未开放入口保持关闭。未开放入口的后续 ADR 必须承接对应身份、互斥及隔离义务，见[未解决问题](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#本决策未解决的问题)。验收归属：[后续 ADR D4](../../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md#d4联合故障矩阵要求真正跨过所声称的边界)。

@@ -4,6 +4,8 @@ status: implemented
 
 # 插件分发：Git Marketplace Source 与派生 Registry 索引
 
+> 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。下文的条目模型与 kind 约束只列了前六种，以这两份决策为准；`workflow` 的包内布局与导入语义由该类别根决策拥有。
+
 Ora 的插件目录（marketplace）由一个或多个 **Git 仓库源**分发。后端把每个源检出到本地，扫描其
 `registry/` 目录下的插件清单，合并成一份轻量的 **派生索引** 供 UI 渲染；安装时再回到源检出中
 重新读取该条目的完整清单，取得下载地址与摘要。索引是缓存产物，源检出是唯一事实来源。
@@ -128,7 +130,8 @@ ora = ">=0.3"
   以 `.` 分隔、总长 ≤128 字节，如 `weather`、`ora-space.weather`。
 - `namespace` 不是清单字段：条目唯一标识为 `<namespace>/<identifier>`，但 namespace 段由发布该
   条目的 marketplace source 派生，不由作者声明（见来源派生 Namespace 决策）。
-- `kind` 是封闭集合：`workbench`、`agent`、`webview`、`skill`、`mcp`、`hook`。
+- `kind` 是封闭集合：`workbench`、`agent`、`webview`、`skill`、`mcp`、`hook`（另有 `pack` 与
+  `workflow`，见文首说明）。
   `[webview]` 是 `webview` 的必需且专属段；`[workbench]` 是 `workbench` 的专属可选段
   （纯静态页面可以不声明方法）。
 - `title` 可选，≤128 字节，缺省时回退为 `identifier`；`description` ≤1000 字节；
@@ -174,8 +177,8 @@ sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
 可安装架构”，而是打包错误。
 
 **只有可能内含原生可执行文件的 kind 允许使用 target 形态**：`hook` 与 `agent`
-（`PluginKind::may_ship_targeted_artifact`）。`workbench`、`webview`、`skill`、`mcp`
-声明 `[[targets]]` 会被拒绝。
+（`PluginKind::may_ship_targeted_artifact`）。`workbench`、`webview`、`skill`、`mcp`、`pack`、
+`workflow` 声明 `[[targets]]` 会被拒绝。
 
 ### 无可下载资产的条目
 

@@ -1,8 +1,10 @@
 ---
-status: proposed
+status: superseded
 ---
 
 # Git Server 以 HTTPS 接收沙盒推送，沙盒证书只认证身份，授权按 Cloud 当前状态逐请求判定
+
+> 已被取代：本决策由 [Git Server 是 Project 的代码中心（根决策）](0-project-code-hub-git-server-over-https.md) 取代，ref namespace 与写入规则由 [代码中心契约决策](20261016-project-repository-as-code-hub-and-ref-contract.md) 承担。原因：本决策写在 Git Server 只存交付 ref、Node 仍从外部仓库 clone 的设计上；Git Server 成为每个 Project 的代码中心之后，本决策整体改为 `superseded`，按新设计重新写出取代者，不在原文上续改。当前系统承诺以取代者为准。
 
 Revision 的代码改动不再以 bundle 形式上传到对象存储，而是像日常开发一样 `git push` 到一个独立的 Git Server。
 Git Server 是 Cloud 仓库中与 model-gateway 并列的独立程序，只提供 smart HTTP（HTTPS），不提供 SSH。

@@ -37,13 +37,13 @@ Stage 1 重构合入后，同一批既有引擎测试不修改断言地重新执
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 扇入节点在全部前驱完成前不就绪，任一 active 即就绪的行为不变 | `ora_application::workflow_run::engine::tests::fan_in_is_not_ready_until_every_predecessor_completes`、`ora_application::workflow_run::engine::tests::ready_set_handles_fan_in` | `Verified`（Stage 1 重构后同一测试原样通过） |
-| 其余既有引擎测试（分支、HITL、恢复）在 Stage 1 后原样通过 | 既有 `engine/tests.rs` 全量 + `ora-backend` `workflow::run` 全量（含 operations/interactive/recovery 测试）未修改断言地通过（`cargo test -p ora-application -p ora-backend`） | `Verified`（Stage 1 后执行） |
+| 扇入节点在全部前驱完成前不就绪，任一 active 即就绪的行为不变 | `ora_application::workflow_run::engine::tests::fan_in_is_not_ready_until_every_predecessor_completes`、`ora_application::workflow_run::engine::tests::ready_set_handles_fan_in` | `Covered`（Stage 1 重构后同一测试原样通过） |
+| 其余既有引擎测试（分支、HITL、恢复）在 Stage 1 后原样通过 | 既有 `engine/tests.rs` 全量 + `ora-backend` `workflow::run` 全量（含 operations/interactive/recovery 测试）未修改断言地通过（`cargo test -p ora-application -p ora-backend`） | `Covered`（Stage 1 后执行） |
 
 ### 决策依据
 
 [节点运行时编排决策](../../../../decisions/desktop/core/workflow/0-node-runtime-orchestration.md)
-不变量 9 与 Stage 1 完成条件。
+不变量 9（既有平图兼容）与 D1（按注册表分发）。
 
 ## The Scheduling Layer Contains No Node Type Literals
 
@@ -63,19 +63,21 @@ Agent 运行时。
 
 ### 必须成立
 
-- 引擎核心的调度路径（`run_schedule` 及其同层函数）不出现 `NodeType` 字面量匹配。
-- 节点类型到运行时的映射只存在于注册表装配处。
+- 主调度按运行时注册表分发；静态测试扫描的核心模块不新增越过政策缝隙的 `NodeType` 字面量。
+- 执行形态与元数据由注册表提供；ScopedLoop 和持久化事务的专用边界以 D1、D2 为准。
 
 ### 禁止结果
 
-- 以 `if node_type == ...` 形式出现的任何调度分支（注册表装配与测试除外）。
+- 绕过注册表新增执行策略，或把局部源码扫描结果当成整个引擎的通用扩展保证。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
-| 引擎核心无节点类型字面量的静态约束 | `ora_application::workflow_run::engine::tests::scheduling_core_contains_no_node_type_literals`（源码扫描测试：剥离测试模块与注释后扫描整个引擎核心模块 `engine.rs` 与注册表面 `node_runtime.rs`，豁免四处政策缝隙——注册表装配、按持久化字符串的注册表查找、运行时自身实现、开工图结构校验——断言其余部分无 `NodeType::` 字面量；不再只扫描 `run_schedule` 单个函数体，run-output 选择已改为运行时声明的 `run_output_rank` 元数据） | `Verified` |
+| 引擎核心无节点类型字面量的静态约束 | `ora_application::workflow_run::engine::tests::scheduling_core_contains_no_node_type_literals`：扫描 `composite_scheduler.rs`、`loop_scheduler.rs`、`engine.rs` 与 `node_runtime.rs`；核心/注册表扫描排除测试模块、注释、图结构校验函数、注册表装配函数及 `NodeType::from_str` 查找，断言其余范围无 `NodeType::`；不覆盖整个 engine 目录或运行时实现子模块 | `Covered` |
 
 ### 决策依据
 
-同上决策 D1 的验收判据。
+同上决策 D1、D2 的注册表与事务边界。该静态测试仅约束其扫描范围；
+Condition/Output 持久化与 ScopedLoop 专用事务仍由各自 owner 处理，
+不能据此推导所有新复合节点只需注册一行或整个 engine 目录没有类型分支。

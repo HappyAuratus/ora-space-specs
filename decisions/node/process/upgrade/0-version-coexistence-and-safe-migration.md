@@ -1,12 +1,13 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 不兼容时拒绝并保留旧责任，已知日志布局才允许迁移
 
 当前实现检查两套 wire 版本和日志 schema，只迁移明确识别的 host 布局。
 不兼容的活 guardian 必须保留兼容管理版本；不会通过重启同一 Scope 接管旧进程。
-本文保持 approved：完整版本共存、升级中断与发布恢复矩阵尚未验收。
+本 ADR 按上述拒绝与已知迁移的范围处于 `implemented`，实现位于 desktop 的 `crates/process-protocol` 与
+`crates/process-runtime`；完整版本共存、升级中断与发布恢复矩阵的缺口登记在核心用例中。
 
 ## 决策
 
