@@ -4,6 +4,10 @@ status: implemented
 
 # Workflow 插件资产由 Cloud 自行取包、逐文档导入为可编辑副本
 
+> 后续决策：[部署方共享出网策略](../model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)
+> 已批准将 D3 的 HTTPS 取包纳入与模型转发共用的 host:port 白名单和显式解析，尚待实现。
+> 本文 `implemented` 和既有证据不表示企业出网扩展已经落地；原公网行为仍用于非企业模式。
+
 `kind = "workflow"` 的插件包是「工作流文档的投递载体」，不是插件代码。Cloud 在**资产导入步骤**
 里自己下载该插件版本的 `.orax`、校验 sha256、限定大小，把 `assets/workflows/` 下的每份 `*.json`
 导入为该租户的一份普通工作流并发布首个快照。导入产物是**用户数据**（可编辑、可改名、可删除），
@@ -122,12 +126,15 @@ skip_key      = (source_namespace, identifier, document_path)
     私有端点）。因此「出网」只发生在 HTTPS 形态。S3 object key 形态本轮不变：Cloud 的插件之后会
     统一放在 cluster 内部的插件专用 S3 上，该形态既不经过公网，也不新增凭据。
   - **scheme 与 host**：HTTPS 形态只接受 `https`（目录扫描已拒绝 `http`、`s3://` 与其他 scheme）。
-    host 不设白名单：仓库可以用任意 CDN 或镜像域名发布包，逐域名单既不现实，也不比下面的地址判定
-    更安全；信任边界是「目录快照是受信输入」加连接时的地址判定。
-  - **SSRF**：解析与连接沿用 Cloud 既有的出网策略（`internal/modelgateway/transport.go` 的
+    非企业模式 host 不设白名单。企业模式按[共享出网后续决策 D1–D7](../model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)
+    使用与 model-gateway 相同的 `deployment-egress.json`、精确 host:port 集合及部署 DNS；未列出的
+    公网/私网均拒绝，目录快照受信不能代替网络准入。签名 query 继续有效，不套用模型 baseUrl 的无 query 限制。
+  - **SSRF**：非企业模式解析与连接沿用 Cloud 既有的公网出网策略（`internal/modelgateway/transport.go` 的
     `publicAddress` 与 `secureDialer`）：连接前解析全部 DNS 应答，任一落在私有、环回、链路本地、
     未指定或文档/保留网段即拒绝；不使用环境代理。判定在连接时做，所以被篡改的目录条目也打不到
-    内网。
+    内网。企业模式按共享策略显式许可私网，但 cluster/宿主/回环/link-local 拒绝不可覆盖；两者均
+    禁用环境代理、直接拨验证后的数字地址、按原 hostname 校验 TLS。企业 DNS 使用显式 resolver 或
+    静态映射，无系统回退；非企业使用共同部署 DoH 配置，下载器不能单独写死 Cloudflare。
   - **重定向**：不跟随（`CheckRedirect` 返回 `ErrUseLastResponse`），任何 3xx 按下载失败处理。
     跟随重定向会让刚做过的地址判定作废，且与 `objectstore.Verify`、模型网关客户端的既有做法不一致。
   - **超时与流式上界**：连接 10 秒、等待响应头 30 秒、从开始到读完整个包 60 秒；下载边读边计数，
@@ -214,7 +221,7 @@ skip_key      = (source_namespace, identifier, document_path)
    跨包版本成立；`failed` 不占用这个键，因此失败可以反复重试。
 6. 插件身份不出现在 `workflows` 行的身份里；tenant 级名称唯一性不变，冲突逐文档失败。
 7. 资产导入不改变插件安装状态；插件安装状态也不宣称任何资产可用。
-8. 资产导入的出站请求只发往目录快照记录的定位符：HTTPS 形态只连公网地址、不跟随重定向，S3
+8. 资产导入的出站请求只发往目录快照记录的定位符：HTTPS 形态在非企业模式只连公网，企业模式受共享部署白名单/地址策略约束且不跟随重定向，S3
    object key 形态走 Cloud 自己的对象存储；超时与字节上界先于解析。
 
 ## 为什么不是这些替代方案
