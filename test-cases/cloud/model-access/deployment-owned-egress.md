@@ -34,23 +34,23 @@
 ## Revocation must remain available when egress admission is unavailable
 
 - 风险：DNS 或策略拒绝阻止停用，导致旧绑定不能被永久撤销；纯停用成为修改目标的旁路。
-- 前置状态：连接有有效绑定，之后 host 被移出许可、地址进入禁区、DNS 故障或 D6 调用入口关闭。
+- 前置状态：服务运行且连接有有效绑定，之后 host 被移出当前许可、地址进入禁区或 DNS 故障。
 - 触发：分别提交纯 `enabled=false`、删除连接、清除 Key，以及重试、并发冲突和重新启用。
 - 必须成立：身份/归属/资源版本/幂等约束继续校验；纯停用接受原样历史配置且零 DNS/上游调用；三种降低权限操作均持久撤销绑定；重新启用重新准入且旧绑定永久失效。
-- 禁止结果：因旧 URL 不再符合准入而拒绝纯停用、关闭调用时一并关闭撤销、借停用附带改 URL/模型、幂等重放重新执行出口检查或复活旧授权。
+- 禁止结果：因旧 URL 不再符合准入而拒绝纯停用、借停用附带改 URL/模型、幂等重放重新执行出口检查或复活旧授权。
 - 决策依据：D2、D6、不变量 6、7；根决策 D1–D4。
 - 验证义务与证据：
 
 | 义务 | 直接证据要求 | 状态 |
 | --- | --- | --- |
-| 降低权限独立于准入 | 真实 HTTP/PostgreSQL/Gateway 覆盖三种操作与四种不可准入状态，断言永久撤销且 DNS/上游零调用 | Missing |
+| 降低权限独立于准入 | 真实 HTTP/PostgreSQL/Gateway 覆盖三种操作与三种不可准入状态，断言永久撤销且 DNS/上游零调用 | Missing |
 | 纯停用只降低权限 | 历史 URL 原样可停用，夹带修改配置拒绝，跨用户/版本冲突仍拒绝；启用后旧绑定继续无效 | Missing |
 | 幂等不受之后网络变化影响 | 保存成功后改变 DNS/策略，合法相同重试返回原结果；原有幂等冲突仍成立 | Missing |
 
 ## Private exceptions must never override infrastructure and special address denies
 
 - 风险：白名单或宽 CIDR 使模型代理访问 cluster 数据库、宿主或元数据服务。
-- 前置状态：同 target 分别省略/开启 `allowPrivate`，可选限定 CIDR；完整双栈 topology。
+- 前置状态：同 target 分别省略/开启 `allowPrivate`，可选限定 CIDR；自动采集生成双栈 topology，可有管理员补充项。
 - 触发：受控 DNS 或静态映射返回私网、特殊地址或混合 A/AAAA。
 - 必须成立：私网默认拒绝；显式允许后仍逐地址检查目标 CIDR、绝对禁区及保留类别；mapped IPv6 同义。
 - 禁止结果：跨 target 合并 CIDR、只检查首个答案、跳过坏答案、只支持 IPv4 的宿主拒绝。
@@ -62,7 +62,7 @@
 | 私网许可与可选 CIDR 独立 | RFC1918/ULA 的缺省拒绝、显式通过、CIDR 缺省和越界；另一个 target 许可无效 | Missing |
 | 不可覆盖拒绝 | 两调用方在白名单+allowPrivate+覆盖 CIDR 下，cluster 网络、宿主接口/网关/VIP、loopback、link-local 仍拒绝 | Missing |
 | 其他保留类别和全答案检查 | unspecified/multicast/documentation/benchmark/转换地址，A 允许+AAAA 拒绝及反向组合，mapped IPv6 | Missing |
-| 拓扑来源完整 | Docker 静态/动态池、默认桥、多宿主/双栈及声明 NAT 合并；缺来源/空表/未知池时启动不 ready | Missing |
+| 拓扑自动采集与可选补充 | 部署入口从 Docker 静态/动态 Node 池、默认桥和宿主接口生成双栈拒绝表，补充网段/地址只能合并；采集失败命令报错，未声明额外 NAT/VIP 不阻止启动 | Missing |
 
 ## Enterprise resolution must use only the configured resolver or static mapping
 
@@ -82,32 +82,31 @@
 
 ## Verified dialing and connection reuse must preserve the current target boundary
 
-- 风险：DNS 重绑定、长连接、HTTP/2 合并、代理或重定向绕过已经通过的检查。
+- 风险：新拨号未验证全部地址，或连接无限复用、HTTP/2 合并、代理与重定向绕过目标边界。
 - 前置状态：真实受控双栈 DNS/TLS 上游，有效授权，已建立 HTTP/1 或 HTTP/2 连接。
-- 触发：新请求、新拨号、TTL 到期地址变化、证书错误、3xx 和环境代理配置。
-- 必须成立：完整验证后只拨数字地址；每请求准入；TTL 到期先重验，peer 不在新集合或新集合含禁区时不复用；原 hostname TLS 不变。
-- 禁止结果：验证后系统再次解析、跨 authority/策略池复用、TLS 降级、跟随跳转、向环境代理发送认证头。
+- 触发：新请求、新拨号、达到连接最大存活时间或空闲超时、后续解析地址变化、证书错误、3xx 和环境代理配置。
+- 必须成立：每请求按启动快照检查目标；新拨号完整验证后只拨数字地址；连接按实现固定的有界存活时间/空闲超时回收，回收后新拨号重新检查；原 hostname TLS 不变。
+- 禁止结果：验证后系统再次解析、无限复用旧连接、跨 host HTTP/2 合并、TLS 降级、跟随跳转、向环境代理发送认证头或回收后自动重发生成。
 - 决策依据：D3、D5。
-- 验证义务与证据：`Missing`；需计数真实 DNS/dial/HTTP 边界，覆盖新 dial、keep-alive、HTTP/2、TTL 变更、错误证书、3xx、HTTP/SOCKS 代理与有限脱敏错误；纯匹配函数单测不够。
+- 验证义务与证据：`Missing`；需计数真实 DNS/dial/HTTP 边界，覆盖新 dial、keep-alive/HTTP/2 的最大存活与空闲回收、回收后混合坏地址拒绝、错误证书、3xx、HTTP/SOCKS 代理与有限脱敏错误；纯匹配函数单测不够。
 
-## Policy activation must fence old streams pools and inconsistent services
+## Policy configuration must take effect through restarting both services
 
-- 风险：新策略生效后旧 Gateway/池仍发送，或应用失败静默恢复宽许可。
+- 风险：仅改文件却误以为策略已生效，旧进程/池仍发送，或加载失败退回宽许可、摘要不一致未被发现。
 - 前置状态：旧快照已加载且存在活跃 SSE、HTTPS 资产下载与空闲连接；新快照移除目标或收紧 CIDR/topology。
-- 触发：预检失败、仅改文件、单服务重启、摘要不一致、受控应用成功/失败及显式回滚。
-- 必须成立：文件变动不热生效；预检失败留旧当前策略；切换由 handler 调用开关封入口，旧流/全部池停止；两端当前启动实例确认同代激活后新策略才生效；启动失败保持关闭，纯停用/撤销仍可用。
-- 禁止结果：新旧策略混合开放、healthz 非 200 但直连仍发送、只关 idle 池、旧实例/旧激活重放开放、自动回退 public/旧配置、自动重发中断的生成。
+- 触发：运行中仅改文件，或经部署入口停止两服务、换文件、再启动；配置加载失败、摘要不一致及显式回滚。
+- 必须成立：文件变动不热生效；确认两个服务旧进程退出后才换文件/启动，旧流与所有池已终止；有效新配置在启动时加载，失败进程不启动；`ora verify` 比对两端摘要，缺失/不一致报错。
+- 禁止结果：只关 idle 池或不确认退出就替换文件、无效配置自动回退 public/旧配置、摘要不一致仍宣称部署校验成功、自动重发中断的生成。
 - 决策依据：D1、D3、D6。
 - 验证义务与证据：
 
 | 义务 | 直接证据要求 | 状态 |
 | --- | --- | --- |
-| 严格 schema 与部署快照一致 | 缺文件、版本/字段/重复键、空 CIDR、冲突开关、摘要不一致、缺 topology 的双服务启动 | Missing |
-| 受控切换全链路 | 部署入口实际停旧 Gateway 并取消 SSE/资产下载/两端连接池，故障注入证明入口关闭；未完整取包的任务包级失败且零文档结果，成功后旧地址零调用 | Missing |
-| handler 与资产入口直接拒绝 | 在启动 closed、摘要不一致、半激活、激活失败时，使用有效旧 grant 直连 runtime、请求 grant 新建/续期、复用连接及触发后台资产 GET；模型为安全 503、资产为包级失败，无业务 DNS/上游调用，纯停用/撤销成功 | Missing |
-| 单端重启与确认失败 | 分别自动重启 Cloud/Gateway；新实例保持 closed，对端下次模型请求或资产 GET 识别新实例/超时并关闭、取消两类在途及清池；重新受控激活前上游零新增调用 | Missing |
-| 激活身份与准备状态 | 用户/Node 调管理通道及重放旧代次/旧启动实例激活均失败；控制预检可读 prepared，半激活不能伪报模型 ready，双端确认后才可调用 | Missing |
-| 回滚与拓扑变更 | 显式完整快照回滚、新增宿主/动态池先封出口并重新应用；禁止隐含旧许可复活 | Missing |
+| 配置加载失败不启动 | 两服务分别覆盖指定路径缺文件、版本/字段/重复键、空 CIDR、冲突开关及非法 topology，断言失败进程不监听业务端口、不回退 public | Missing |
+| 文件仅在启动加载 | 运行中修改文件不改变快照，按流程停止两个服务并替换配置后重启；新目标/拒绝项仅在重启后生效 | Missing |
+| 停止旧流和池 | 实际停止 Cloud 与 Gateway，证明 SSE/资产下载终止、旧池丢弃；未完整取包任务零文档结果，重启后新拨号按新策略拒绝旧目标；停止失败不换文件 | Missing |
+| 摘要比对 | 两端 healthz/管理接口报告规范化摘要与 schema；`ora verify` 对相同配置成功、摘要缺失/不一致报错，不依赖请求级对端确认 | Missing |
+| 回滚与拓扑变更 | 管理员显式选择旧文件后重复停止/替换/启动；拓扑重新自动采集并合并可选补充，未声明 NAT/VIP 不成为额外启动门槛 | Missing |
 
 ## Current policy must constrain frozen bindings without reviving revoked grants
 
@@ -122,7 +121,7 @@
 ## Model forwarding and asset downloads must share one deployment policy
 
 - 风险：资产下载器保留硬编码公网 DoH/独立白名单而无法取内网包，或借签名 query、对象存储/池复用绕过共同准入。
-- 前置状态：Cloud 与 Gateway 加载同一 `deployment-egress.json` 并激活；受控 HTTPS 模型与资产源返回双栈地址，目录含带签名 query 的合法 `.orax` URL 和 object key。
+- 前置状态：Cloud 与 Gateway 启动时加载同一 `deployment-egress.json`，`ora verify` 摘要一致；受控 HTTPS 模型与资产源返回双栈地址，目录含带签名 query 的合法 `.orax` URL 和 object key。
 - 触发：模型 POST 与后台资产 GET 分别访问白名单内/外目标，更换部署 resolver/静态映射，返回混合禁区地址、3xx、错误证书或超限包，并在取包期间应用新策略。
 - 必须成立：同一 host:port 集合、目标私网/CIDR、DNS 与拓扑规则用于两者；资产原路径/签名 query 被保留，模型 baseUrl 仍拒绝 query；无个人模型认证头进入资产 GET。资产大小/摘要/事务与包级失败语义保持，切换关闭同时停止两类出网。
 - 禁止结果：只有模型遵守策略、资产默认放行未许可公网/7.x、使用系统或写死 Cloudflare DNS、忽略 AAAA 坏答案、cluster HTTPS 源特例、把拒绝的 HTTPS 改为 object-key 取包、泄漏 query/Key 或取消后留下部分导入。
@@ -132,8 +131,8 @@
 | 义务 | 直接证据要求 | 状态 |
 | --- | --- | --- |
 | 两者使用同一集合与解析来源 | 同一部署快照的真实 Cloud Fetch/Gateway HTTP 贯通：许可内私网成功，未许可公网（含 7.x）/私网/错误端口拒绝；更换一个 resolver/静态映射同时影响两者，记录 DNS 目标而非只测共享函数 | Missing |
-| 全答案与不可覆盖拒绝 | 两入口分别覆盖 A/AAAA 混合禁区、cluster/宿主/loopback/link-local、TTL 变化；新池与复用池均无禁止外连 | Missing |
+| 全答案与不可覆盖拒绝 | 两入口分别覆盖 A/AAAA 混合禁区、cluster/宿主/loopback/link-local；新拨号完整校验，连接存活/空闲回收后重新解析，不建立禁止地址连接 | Missing |
 | URL 与凭据边界不同但准入一致 | 合法签名 query 下载成功、模型 query 拒绝；服务端断言原路径/query 且资产 GET 无模型认证头，日志/失败信息不含签名 URL；别名/重定向/错误证书均拒绝 | Missing |
 | 资产原完整性与失败边界 | 真实 Fetch+PostgreSQL 验证 16 MiB/10–30–60 秒、摘要失败先于解析、包级失败零文档结果及下次触发重试；导入 revision 围栏不被策略切换绕过 | Missing |
 | 内部对象存储不是 HTTPS 旁路 | object key 只走固定私有客户端且不能携带 host；同一 cluster 服务若作为 HTTPS URL 则被拒，无自动降级 | Missing |
-| 共同策略切换与激活 | 后台资产任务直接经过 closed/对端确认检查，移除任一 target 后两调用方旧池均不可用；取消未完整取包的任务无部分导入，旧 grant/单端重启不能开放模型或资产出口 | Missing |
+| 共同配置重启生效 | 同时停止两服务、替换文件并重启，移除任一 target 后两调用方按新快照拒绝且旧池已销毁；停止取消未完整取包任务无部分导入，摘要不一致时 verify 报错 | Missing |

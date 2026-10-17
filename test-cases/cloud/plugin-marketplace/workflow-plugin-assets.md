@@ -4,7 +4,7 @@
 （`implemented`）与它的[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)。
 
 企业 HTTPS 取包的新增规则见[部署方共享出网 ADR D7](../../../decisions/cloud/model-access/20261017-deployment-owned-egress-and-explicit-resolution.md#d7共享网络准入保留模型与资产各自的业务边界)。
-两调用方共用白名单/DNS/激活及企业内网取包义务见[共享出网用例](../model-access/deployment-owned-egress.md#model-forwarding-and-asset-downloads-must-share-one-deployment-policy)，
+两调用方共用白名单/DNS、配置重启生效及企业内网取包义务见[共享出网用例](../model-access/deployment-owned-egress.md#model-forwarding-and-asset-downloads-must-share-one-deployment-policy)，
 当前均为 `Missing`。下方 cloud#77 的 Covered/Partial 证据只覆盖其所列既有边界，不扩展为企业策略证据。
 
 资产导入已随 [cloud#77](https://github.com/ora-space/cloud/pull/77) 实现：来源记录、取包与
