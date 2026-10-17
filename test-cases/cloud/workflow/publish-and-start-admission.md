@@ -11,7 +11,8 @@
 
 本次更新（2026-10-17）叠加 [cloud#67](https://github.com/ora-space/cloud/pull/67) / [cloud#68](https://github.com/ora-space/cloud/pull/68) /
 [cloud#72](https://github.com/ora-space/cloud/pull/72) 的堆叠：§1 第一行多了一类拒绝（condition 配置，按 [circus#202](https://github.com/ora-space/circus/issues/202)
-的 owner 结论），§4 的两行从 `Partial` 升为 `Covered`（同一事务的绑定回滚与从快照行收集槽位都有直接用例）。
+的 owner 结论）；§4 第一行升为 `Covered`（它的两半分别由 #65 的 HTTP 用例与 #72 的绑定回滚用例覆盖），
+第二行维持 `Partial`（现有用例把同一份图同时写进活稿与快照，区分不出门禁读的是哪一份）。
 关于拒绝码：启动门禁的**信封码**是 `409 workflow_executor_unconfigured`，每个缺口在 `params.slots[]` 里的 `reason`
 才是 `slot_not_configured`。本文件提到 `slot_not_configured` 时指的都是后者；把信封码写成 `409 slot_not_configured` 是错的。
 
@@ -94,11 +95,11 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 槽位解析与运行创建在同一事务，拒绝不留运行行 | 真实 PostgreSQL：槽位不可解析的启动被拒且运行行、绑定行都不存在 | Covered |
-| 槽位从被运行的冻结文档收集 | 真实 HTTP + PostgreSQL：改活稿的槽位声明不影响已发布快照的启动判定 | Covered |
+| 槽位从被运行的冻结文档收集 | 真实 HTTP + PostgreSQL：改活稿的槽位声明不影响已发布快照的启动判定 | Partial |
 
 - 决策依据：D2（首期只用 `executorSlot`）、D3（逐槽位模型绑定），不变量 7；[槽位后续决策](../../../decisions/cloud/workflow/20261015-executor-slots-replace-agent-model-ids.md)与[个人槽位映射后续决策](../../../decisions/cloud/model-access/20261015-executor-slot-mappings-and-per-slot-run-bindings.md)；义务本身记在[个人槽位映射用例](../model-access/executor-slot-mappings.md#an-unresolvable-slot-is-reported-to-the-initiator-and-never-substituted)。
-- 本次直接证据：**Covered** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 先取要执行的快照行，再用 `requireWorkflowExecutorSlots(s.O("graph"), uid)` 按**快照里的图**收集并解析槽位，三个调用点都在创建运行的那个事务里；`TestWorkflowRunDefaultSlotGate` 与 `TestWorkflowRunNamedSlotGate` 在每次拒绝后都断言 `workflow_runs` 只存在被放行的那几次（前者 1 次、后者 0 次），`TestWorkflowRunValidatesAgainstTheVersionItRuns` 证明门禁读的确实是冻结文档而不是活稿（活稿加了必填变量后，对旧版本的一次提交照样通过）。[cloud#72](https://github.com/ora-space/cloud/pull/72) 补上原来空着的那一半：`TestWorkflowRunGateRefusesUnresolvedSlots` 在**同一个事务**里断言槽位不可解析时运行行与**绑定行**都不存在（回滚后 0 绑定），`TestWorkflowRunGateFreezesBindings` 证明槽位是从快照行读出的 `graph` 收集的、两个被引用的槽位各冻结一组绑定。五个原因码与"解析发起者映射、一次列出全部缺口"的证据按上面那条链接记在个人槽位映射用例里，本文件不再重复。
-- 仍缺：**"改活稿的 `executorSlots` 声明再启动一份已发布快照"的 HTTP 对拍**仍没有用例——当前证据是 DB 层"从快照行读 `graph`"，不是"活稿改了之后判定不变"。若把这一条读成硬要求，第二行应记 `Partial`；本条按"收集来源是快照行"这一可断言的事实记 `Covered`。desktop 没有对应的启动门禁，参考实现侧在这一条上同样是 `Missing`（它不是"有门禁但接线不同"，而是根本没有这层接线，可比的只有它本地启动时对具名 executor 的解析，那个不涉及发起者个人配置）。
+- 本次直接证据：**第一行 Covered，第二行 Partial** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 先取要执行的快照行，再用 `requireWorkflowExecutorSlots(s.O("graph"), uid)` 按**快照里的图**收集并解析槽位，三个调用点都在创建运行的那个事务里。第一行的两半各有直接用例，归属分开：[cloud#65](https://github.com/ora-space/cloud/pull/65) 的 `TestWorkflowRunDefaultSlotGate` 与 `TestWorkflowRunNamedSlotGate` 在每次拒绝后都断言 `workflow_runs` 只存在被放行的那几次（前者 1 次、后者 0 次），这是**不留运行行**那一半；[cloud#72](https://github.com/ora-space/cloud/pull/72) 的 `TestWorkflowRunGateRefusesUnresolvedSlots` 断言同一个事务回滚后 `run_model_bindings` 里 0 条**绑定行**，这是另一半。该用例的 `seedSlotGateScene` 预先插入了 `workflow_runs` 行，它不断言运行行不存在，所以"不留运行行"不要归给 #72。`TestWorkflowRunGateFreezesBindings` 证明两个被引用的槽位各冻结一组绑定，但它的图是同一份 JSON 同时写进 `workflows.graph` 与 `workflow_snapshots.graph`，实现就算读活稿它也会通过，因此它不是第二行的直接证据。五个原因码与"解析发起者映射、一次列出全部缺口"的证据按上面那条链接记在个人槽位映射用例里，本文件不再重复。
+- 仍缺：**"改活稿的 `executorSlots` 声明再启动一份已发布快照"的 HTTP 对拍**仍没有用例。第二行"所需直接证据"栏写的判据就是这一条，现有证据只是 DB 层"从快照行读 `graph`"，两者不等价，所以第二行记 `Partial`——判据是那一栏，不用"收集来源是快照行"重新解释。`TestWorkflowRunValidatesAgainstTheVersionItRuns` 对拍的是必填**变量**（活稿加了 `added-later` 后对旧版本提交照样通过），不是槽位声明，补不上这一条。要升 `Covered`，需先在 [cloud#72](https://github.com/ora-space/cloud/pull/72) 补一条"发布 v1 → 修改活稿的 `executorSlots` → 仍用 v1 启动"的用例。desktop 没有对应的启动门禁，参考实现侧在这一条上同样是 `Missing`（它不是"有门禁但接线不同"，而是根本没有这层接线，可比的只有它本地启动时对具名 executor 的解析，那个不涉及发起者个人配置）。
 
 ## The Start Form Names The Snapshot It Freezes
 
