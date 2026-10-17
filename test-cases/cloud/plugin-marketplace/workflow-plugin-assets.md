@@ -3,6 +3,10 @@
 依据[workflow 插件资产决策](../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md)
 （`implemented`）与它的[workflow 接缝决策](../../../decisions/cloud/workflow/20261016-asset-import-and-published-snapshots.md)。
 
+企业 HTTPS 取包的新增规则见[部署方共享出网 ADR D7](../../../decisions/cloud/model-access/20261017-deployment-owned-egress-and-explicit-resolution.md#d7共享网络准入保留模型与资产各自的业务边界)。
+两调用方共用白名单/DNS/激活及企业内网取包义务见[共享出网用例](../model-access/deployment-owned-egress.md#model-forwarding-and-asset-downloads-must-share-one-deployment-policy)，
+当前均为 `Missing`。下方 cloud#77 的 Covered/Partial 证据只覆盖其所列既有边界，不扩展为企业策略证据。
+
 资产导入已随 [cloud#77](https://github.com/ora-space/cloud/pull/77) 实现：来源记录、取包与
 逐文档导入、独立读取接口与前端展示。下表的直接证据以
 [`integration/workflow_assets_test.go`](https://github.com/ora-space/cloud/pull/77/files) 与
@@ -108,18 +112,19 @@
   签名 query、无 fragment）或 S3 object key；导入步骤在数据库事务外取包。
 - 触发：DNS 应答落在私有、环回、链路本地、未指定或文档/保留网段；服务端返回 3xx；响应体超过
   16 MiB；连接、响应头或整包超时；S3 object key 形态取包。
-- 必须成立：只接受 `https`（S3 object key 走 Cloud 对象存储的私有端点，不出公网、不加凭据）；host
-  不设白名单，但连接前解析全部 DNS 应答，任一答案落在上述网段即拒绝；不使用环境代理；不跟随重定向，
+- 必须成立：只接受 `https`（S3 object key 走 Cloud 对象存储的私有端点，不出公网、不加凭据）；非企业
+  模式 host 不设白名单，连接前解析全部 DNS 应答，任一答案落在上述网段即拒绝；企业模式改按共享
+  白名单、部署 resolver/静态映射及不可覆盖基础设施禁区判断，新增证据见共享出网用例；不使用环境代理；不跟随重定向，
   任何 3xx 按下载失败处理；连接 10 秒、响应头 30 秒、整包 60 秒；边读边计数，超过 16 MiB 立即中断；
   sha256 校验先于任何解析；失败是包级结果，下一次触发重试。
-- 禁止结果：连接私有或环回地址、经重定向换目标后再下载、读完再判断大小、把下载失败降级成逐文档
+- 禁止结果：非企业模式连接私网、企业模式访问未许可或绝对禁区地址、经重定向换目标后再下载、读完再判断大小、把下载失败降级成逐文档
   失败、S3 形态走公网或要求新凭据。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 定位符只允许两种形态，`https` 之外一律拒绝 | 目录同步拒绝 `http`、`s3://`、带 fragment 或带凭据的 URL；S3 object key 被识别 | Covered |
-| 连接前判定全部 DNS 应答，拒绝私有/环回/链路本地/保留网段 | 真实 HTTP：指向这些地址的包下载失败，且没有发出连接 | Partial |
+| 非企业公网地址原语判定全部 DNS 应答，拒绝私有/环回/链路本地/保留网段 | 真实 HTTP：指向这些地址的包下载失败，且没有发出连接；不覆盖企业私网例外 | Partial |
 | 不跟随重定向 | 真实 HTTP：3xx 被记为包级失败，目标地址没有被请求 | Covered |
 | 超时与流式字节上界 | 真实 HTTP：慢响应在 10/30/60 秒边界被取消；超 16 MiB 的响应在读完前中断 | Partial |
 | 失败是包级且下一次触发重试 | 真实 PostgreSQL：下载失败不产生文档结果，重试后成功 | Covered |

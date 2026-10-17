@@ -1,4 +1,4 @@
-# 部署方模型出口：身份、解析、拓扑与策略切换
+# 部署方共享出网：模型转发、资产下载、解析与策略切换
 
 决策依据：[部署方出口与显式解析 ADR](../../../decisions/cloud/model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)
 （`approved`）。以下都是新增/改变的验证义务，当前没有对应实现的直接证据，统一为 `Missing`。
@@ -8,12 +8,12 @@
 ## Public deployments must retain the existing HTTPS and trusted DNS policy
 
 - 风险：企业扩展悄悄改变默认公网规则或启用系统解析。
-- 前置状态：未配置策略路径，或显式 `mode: public`，已有公网连接和有效 grant。
-- 触发：保存连接、两协议请求和解析故障。
+- 前置状态：未配置策略路径，或显式 `mode: public`，已有公网连接、有效 grant 及 HTTPS 工作流资产源。
+- 触发：保存连接、两协议请求、资产取包和解析故障。
 - 必须成立：原公网 HTTPS/DoH 与数字 bootstrap 保持；全部答案校验、数字拨号、原 hostname TLS、无代理和无重定向。
 - 禁止结果：默认允许私网、系统/fake-IP 回退，或未启用 enterprise 却要求用户白名单。
 - 决策依据：D1、D4、D5。
-- 验证义务与证据：`Missing`；需要无配置与 public 配置两条真实保存/受控 TLS 转发回归，双栈混合保留地址与 DoH 故障均拒绝。
+- 验证义务与证据：`Missing`；需要无配置与 public 配置两条真实保存/受控 TLS 转发及资产下载回归，两调用方使用同一部署 DoH 配置，双栈混合保留地址与 DoH 故障均拒绝。
 
 ## Enterprise targets must match an exact canonical host and effective port
 
@@ -60,7 +60,7 @@
 | 义务 | 直接证据要求 | 状态 |
 | --- | --- | --- |
 | 私网许可与可选 CIDR 独立 | RFC1918/ULA 的缺省拒绝、显式通过、CIDR 缺省和越界；另一个 target 许可无效 | Missing |
-| 不可覆盖拒绝 | 白名单+allowPrivate+覆盖 CIDR 下，cluster 网络、宿主接口/网关/VIP、loopback、link-local 仍拒绝 | Missing |
+| 不可覆盖拒绝 | 两调用方在白名单+allowPrivate+覆盖 CIDR 下，cluster 网络、宿主接口/网关/VIP、loopback、link-local 仍拒绝 | Missing |
 | 其他保留类别和全答案检查 | unspecified/multicast/documentation/benchmark/转换地址，A 允许+AAAA 拒绝及反向组合，mapped IPv6 | Missing |
 | 拓扑来源完整 | Docker 静态/动态池、默认桥、多宿主/双栈及声明 NAT 合并；缺来源/空表/未知池时启动不 ready | Missing |
 
@@ -93,7 +93,7 @@
 ## Policy activation must fence old streams pools and inconsistent services
 
 - 风险：新策略生效后旧 Gateway/池仍发送，或应用失败静默恢复宽许可。
-- 前置状态：旧快照已加载且存在活跃 SSE、空闲连接；新快照移除目标或收紧 CIDR/topology。
+- 前置状态：旧快照已加载且存在活跃 SSE、HTTPS 资产下载与空闲连接；新快照移除目标或收紧 CIDR/topology。
 - 触发：预检失败、仅改文件、单服务重启、摘要不一致、受控应用成功/失败及显式回滚。
 - 必须成立：文件变动不热生效；预检失败留旧当前策略；切换由 handler 调用开关封入口，旧流/全部池停止；两端当前启动实例确认同代激活后新策略才生效；启动失败保持关闭，纯停用/撤销仍可用。
 - 禁止结果：新旧策略混合开放、healthz 非 200 但直连仍发送、只关 idle 池、旧实例/旧激活重放开放、自动回退 public/旧配置、自动重发中断的生成。
@@ -103,9 +103,9 @@
 | 义务 | 直接证据要求 | 状态 |
 | --- | --- | --- |
 | 严格 schema 与部署快照一致 | 缺文件、版本/字段/重复键、空 CIDR、冲突开关、摘要不一致、缺 topology 的双服务启动 | Missing |
-| 受控切换全链路 | 部署入口实际停旧 Gateway 并取消 SSE/连接，故障注入证明入口关闭，成功后旧地址零调用 | Missing |
-| handler 直接拒绝 | 在启动 closed、摘要不一致、半激活、激活失败时，使用有效旧 grant 直连 runtime、请求 grant 新建/续期及复用连接发送；均为安全 503、无模型 DNS/上游调用，纯停用/撤销成功 | Missing |
-| 单端重启与确认失败 | 分别自动重启 Cloud/Gateway；新实例保持 closed，对端下次请求识别新实例或确认超时并关闭、取消在途及清池；重新受控激活前上游零新增调用 | Missing |
+| 受控切换全链路 | 部署入口实际停旧 Gateway 并取消 SSE/资产下载/两端连接池，故障注入证明入口关闭；未完整取包的任务包级失败且零文档结果，成功后旧地址零调用 | Missing |
+| handler 与资产入口直接拒绝 | 在启动 closed、摘要不一致、半激活、激活失败时，使用有效旧 grant 直连 runtime、请求 grant 新建/续期、复用连接及触发后台资产 GET；模型为安全 503、资产为包级失败，无业务 DNS/上游调用，纯停用/撤销成功 | Missing |
+| 单端重启与确认失败 | 分别自动重启 Cloud/Gateway；新实例保持 closed，对端下次模型请求或资产 GET 识别新实例/超时并关闭、取消两类在途及清池；重新受控激活前上游零新增调用 | Missing |
 | 激活身份与准备状态 | 用户/Node 调管理通道及重放旧代次/旧启动实例激活均失败；控制预检可读 prepared，半激活不能伪报模型 ready，双端确认后才可调用 | Missing |
 | 回滚与拓扑变更 | 显式完整快照回滚、新增宿主/动态池先封出口并重新应用；禁止隐含旧许可复活 | Missing |
 
@@ -118,3 +118,22 @@
 - 禁止结果：旧运行自动换新 Key/URL/槽位、把临时网络拒绝误写为永久撤销、部署配置读取或注入真实 Key 给 Cloud/Node。
 - 决策依据：D5、D6；根决策 D1–D4 与槽位后续 ADR。
 - 验证义务与证据：`Missing`（企业策略组合）；需真实数据库+Gateway 贯通修改/撤销/恢复许可矩阵、原绑定字段核对和解密边界断言，不能只引用原永久撤销数据库测试。
+
+## Model forwarding and asset downloads must share one deployment policy
+
+- 风险：资产下载器保留硬编码公网 DoH/独立白名单而无法取内网包，或借签名 query、对象存储/池复用绕过共同准入。
+- 前置状态：Cloud 与 Gateway 加载同一 `deployment-egress.json` 并激活；受控 HTTPS 模型与资产源返回双栈地址，目录含带签名 query 的合法 `.orax` URL 和 object key。
+- 触发：模型 POST 与后台资产 GET 分别访问白名单内/外目标，更换部署 resolver/静态映射，返回混合禁区地址、3xx、错误证书或超限包，并在取包期间应用新策略。
+- 必须成立：同一 host:port 集合、目标私网/CIDR、DNS 与拓扑规则用于两者；资产原路径/签名 query 被保留，模型 baseUrl 仍拒绝 query；无个人模型认证头进入资产 GET。资产大小/摘要/事务与包级失败语义保持，切换关闭同时停止两类出网。
+- 禁止结果：只有模型遵守策略、资产默认放行未许可公网/7.x、使用系统或写死 Cloudflare DNS、忽略 AAAA 坏答案、cluster HTTPS 源特例、把拒绝的 HTTPS 改为 object-key 取包、泄漏 query/Key 或取消后留下部分导入。
+- 决策依据：D1、D3–D7、不变量 1、5、8、9；[工作流资产 ADR D3–D5](../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md)。
+- 验证义务与证据：
+
+| 义务 | 直接证据要求 | 状态 |
+| --- | --- | --- |
+| 两者使用同一集合与解析来源 | 同一部署快照的真实 Cloud Fetch/Gateway HTTP 贯通：许可内私网成功，未许可公网（含 7.x）/私网/错误端口拒绝；更换一个 resolver/静态映射同时影响两者，记录 DNS 目标而非只测共享函数 | Missing |
+| 全答案与不可覆盖拒绝 | 两入口分别覆盖 A/AAAA 混合禁区、cluster/宿主/loopback/link-local、TTL 变化；新池与复用池均无禁止外连 | Missing |
+| URL 与凭据边界不同但准入一致 | 合法签名 query 下载成功、模型 query 拒绝；服务端断言原路径/query 且资产 GET 无模型认证头，日志/失败信息不含签名 URL；别名/重定向/错误证书均拒绝 | Missing |
+| 资产原完整性与失败边界 | 真实 Fetch+PostgreSQL 验证 16 MiB/10–30–60 秒、摘要失败先于解析、包级失败零文档结果及下次触发重试；导入 revision 围栏不被策略切换绕过 | Missing |
+| 内部对象存储不是 HTTPS 旁路 | object key 只走固定私有客户端且不能携带 host；同一 cluster 服务若作为 HTTPS URL 则被拒，无自动降级 | Missing |
+| 共同策略切换与激活 | 后台资产任务直接经过 closed/对端确认检查，移除任一 target 后两调用方旧池均不可用；取消未完整取包的任务无部分导入，旧 grant/单端重启不能开放模型或资产出口 | Missing |
