@@ -4,6 +4,8 @@ status: implemented
 
 # 插件清单：resolver 版本化的双形态 `orax.toml` 与单一验证域模型
 
+> 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。D4 的配对表与正文枚举只列了前六种，以这两份决策为准；`pack` 与 `workflow` 都没有专属 section，也都不允许 target 形态。
+
 **release `url` 的类型已由
 [Source 级插件包获取决策](../registry/20260904-source-configured-artifact-retrieval.md) 修改**：字段名保持不变，
 但其值现在是 HTTPS URL 或对象 key 的 `ReleaseLocator`；具体相容性由所属 Marketplace Source 的
@@ -86,6 +88,8 @@ installed 形态允许省略 `resolver` 的代价是：包内清单无法表达�
 | `hook` | 禁止 | 禁止 | 是；installed `[artifact]` 必需 |
 | `skill` | 禁止 | 禁止 | 否 |
 | `mcp` | 禁止 | 禁止 | 否 |
+
+（表中 `pack` 与 `workflow` 两行见文首说明：两者都不携带专属 section，也不允许 target 形态。）
 
 未知 `kind` 拼写不被接受。这是 D2 的显式例外：未知字段可以忽略，未知 kind 不能。`kind` 决定
 运行时权限、生命周期与允许携带的 section；把未知 kind 降级成某种默认插件运行，等于在一个未定义
