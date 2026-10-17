@@ -23,7 +23,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 [Internal Control 根决策](0-cloud-owned-internal-grpc-contract.md)，承担契约 ADR D3 中“沙盒执行的授权映射”与 D5 第 1 项中
 “续作时快照输入与前序交付 ref 怎样组合”，并承担 Revision 改走 Git 后的 Internal Control 契约形状（D9）。它取代
 [交付输入去 bundle 决策](20261012-git-delivery-inputs-without-bundle-grants.md)：那份修改说明写在 Git Server 只存交付 ref 的设计上，
-按 circus#172 的 owner 结论整体作废，它的契约修改按新设计并入本文 D9，不需要再读旧文。Revision 的业务语义（交付输入的内容、
+随 Git Server 成为 Project 代码中心（[Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md)）整体作废，它的契约修改按新设计并入本文 D9，不需要再读旧文。Revision 的业务语义（交付输入的内容、
 核验登记、续作选取、Git 授权的运行阶段条件）见
 [Cloud Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md)（下称“Cloud 交付决策”）。Cloud 一侧的步骤规则见
 [clone 步骤消费快照决策](../operation/20261016-clone-step-consumes-binding-snapshot.md)，Node 一侧见

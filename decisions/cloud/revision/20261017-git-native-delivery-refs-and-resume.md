@@ -16,7 +16,7 @@ ref 与基础提交交给 Node 拉取。Revision 只记录交付 ref 与最终�
 本 ADR 处于 `proposed`，继承 [Cloud Revision 根决策](0-cloud-owned-object-store-and-verified-revisions.md)，同时修改
 [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) 的选取与沿用规则。它取代
 [Git Server 交付与已核验交付 ref 决策](20261012-git-server-delivery-and-verified-delivery-refs.md)：那份决策写在 Git Server
-只存交付 ref 的设计上，按 circus#172 的 owner 结论整体作废，本文按 Git Server 成为 Project 代码中心的新设计重新写出当前
+只存交付 ref 的设计上，随 Git Server 成为 Project 代码中心（[Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md)）整体作废，本文按新设计重新写出当前
 决策，不需要再读旧文。Git Server 一侧的 ref namespace、规则集授权与 ref 查询见
 [Git Server 代码中心决策](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约 ADR”）；
 Node 的推送与恢复见 [Node 交付推送与 Git 恢复决策](../../node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)
@@ -25,7 +25,7 @@ Node 的推送与恢复见 [Node 交付推送与 Git 恢复决策](../../node/re
 “执行授权决策”）。涉及 Cloud 的交付工作项、核验登记、续作选取、Git 授权的运行阶段条件、迁移、配置与公开投影；cluster
 的 Compose 配置与端到端验收。
 
-兼容性边界：**破坏性切换**（circus#172 Q8）。Cloud 一律派 Git 交付，不设部署开关，不做 Node 能力协商，不迁移数据；
+兼容性边界：**破坏性切换**（契约 ADR 范围边界）。Cloud 一律派 Git 交付，不设部署开关，不做 Node 能力协商，不迁移数据；
 cloud、desktop、cluster 同时发布。升级前只有 bundle 的 Revision 行保留不改，但不再参与续作；开发环境的数据在切换后
 重建，不承诺可用。本文不决定对象存储是否下线（会话 JSONL 仍在其中），不处理 Git Server 中 ref 的回收（契约 ADR 未解决项）。
 
@@ -199,7 +199,7 @@ Cloud 一律派 Git 交付，不设部署开关，不新增“Git 交付”能�
 
 为什么不保留 bundle 路径或按能力回退：两套交付、核验与续作逻辑长期并存，每处都要回答“这是哪种 Revision”；能力不足的
 工作项还会在 `ClaimWork` 中排队阻塞后面的工作。Cloud 目前没有用户，desktop 的 `ora-controller` 是唯一使用方，与 Cloud
-同时发布（circus#172 Q8）。
+同时发布（契约 ADR 范围边界）。
 
 ### D7：续作只选有交付 ref 且有新提交的 Revision
 
@@ -247,7 +247,7 @@ Cloud 一律派 Git 交付，不设部署开关，不新增“Git 交付”能�
   `git_access`、为 Cloud 配置 `git_server` 并接入 Git Server（Node 从快照 clone 决策落地顺序第 1 步）。
 - 不迁移进行中的工作项：升级时处于 `delivering` 的运行，其交付输入只有 `bundleKey`，新的编解码与 Node 都无法执行，按
   IssueRun 根决策 D5 的放弃窗口以 `deliveryState = failed` 释放；带旧式 `priorRevision.bundle` 的会话同理。系统不会因此进入
-  不一致状态。按 circus#172 Q8，Cloud 目前没有用户，开发环境数据在切换后重建，不为这些运行设迁移路径。
+  不一致状态。按契约 ADR 范围边界的破坏性切换，Cloud 目前没有用户，开发环境数据在切换后重建，不为这些运行设迁移路径。
 
 为什么不迁移进行中的工作项：要么同时保留两套编解码与 Node 路径，要么在迁移中替换已经固定的执行输入；前者与破坏性切换
 矛盾，后者破坏“输入在放出工作项时固定”的幂等规则。
@@ -275,7 +275,7 @@ Cloud 一律派 Git 交付，不设部署开关，不新增“Git 交付”能�
 | --- | --- |
 | 保留 bundle 路径，以部署开关或回退兼容旧部署 | 升级平滑；但两套交付、核验、续作逻辑长期并存，`unchanged` 与续作语义分叉（一跳 vs 自有 ref），而唯一使用方本来就同步发布（D6） |
 | Node 上报 Git 交付能力，Cloud 按能力选择形态 | 允许新旧 Node 混部；但除了双路径成本，能力不足的工作项会在 `ClaimWork` 中排队阻塞后面的工作 |
-| Git Server 上另建 `refs/ora/revisions/*`，由 Cloud 经内部写接口创建 | 每个运行一个稳定名字；但交付 ref 已经不可变，再加一层只是重复，Cloud 写接口违反契约 ADR D6，还要 outbox 与对账（circus#172 Q3） |
+| Git Server 上另建 `refs/ora/revisions/*`，由 Cloud 经内部写接口创建 | 每个运行一个稳定名字；但交付 ref 已经不可变，再加一层只是重复，Cloud 写接口违反契约 ADR D6，还要 outbox 与对账（契约 ADR 否决的同一方案） |
 | 交付 ref 与 `workspaceRef` 一次原子推送，或把 `workspaceRef` 计入核验 | 两者总是一致；但 Agent 改写本地历史时 Workspace 分支快进会被拒，原子推送会拖垮整个交付（D3、执行授权决策 D6） |
 | Controller 或 Node 配置 Git Server 地址 | Cloud 少一项配置；但地址不再受固定输入保护，Controller 还需知道 Project 才能拼路径 |
 | 只在 `delivered` 时推送，`unchanged` 不推 | 少一次推送；但续接后没有新提交的 Revision 又要间接引用前序的 ref，`unchanged` 也没有可核验的 Git 事实 |

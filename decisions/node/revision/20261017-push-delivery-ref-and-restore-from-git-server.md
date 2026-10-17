@@ -15,14 +15,14 @@ Node 交付时仍按根决策生成内部快照与本地 `refs/ora/revisions/<ru
 本 ADR 处于 `proposed`，继承 [Node 交付 Revision 根决策](0-internal-snapshot-and-incremental-bundle-upload.md) 与
 [恢复前序 Revision 后续决策](20261010-restore-prior-revision-before-session.md)。它取代
 [交付 ref 推送与前序拉取决策](20261012-push-delivery-ref-and-fetch-prior-revision.md)：那份决策写在 Node 仍从外部仓库
-clone、Git Server 只存交付 ref 的设计上，按 circus#172 的 owner 结论整体作废，本文按 Git Server 成为 Project 代码中心的
-新设计重新写出当前决策。交付契约、核验登记与续作选取由
+clone、Git Server 只存交付 ref 的设计上，随 Git Server 成为 Project 代码中心（[Git Server 根决策](../../cloud/git-server/0-project-code-hub-git-server-over-https.md)）整体作废，本文按新设计
+重新写出当前决策。交付契约、核验登记与续作选取由
 [Cloud Revision Git 交付决策](../../cloud/revision/20261017-git-native-delivery-refs-and-resume.md)（下称“Cloud 交付决策”）
 承担；Workspace 分支的 clone、本地账本与 `ora-git` 由
 [Node 从快照 clone 决策](../repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)（下称“clone 决策”）承担。涉及
 desktop 的 Node（交付、恢复、传输仓库、配置校验、能力声明）、Node 协议与 Controller 的交付映射。
 
-兼容性边界：**破坏性切换**（circus#172 Q8）。Node 不再理解带 bundle 的输入，新旧 Node 与 Controller 不能混用；不迁移 Node
+兼容性边界：**破坏性切换**（契约 ADR 范围边界）。Node 不再理解带 bundle 的输入，新旧 Node 与 Controller 不能混用；不迁移 Node
 数据库中的旧交付记录。Node 本地目录布局改为把传输仓库放在 clone 根目录下的 `.ora-transport/`；旧 Node 留下的
 `revision-restores/` 下载目录不再使用，也不清理，开发环境的 Node 数据随 Workspace 重建。
 
