@@ -19,6 +19,21 @@
 | 网页秘密通路 | 生产页面和 Gateway/model-gateway 联合验证，含前端缓存/错误/日志不留 Key | Missing |
 | 连接单一事实来源 | 两插件共用连接、一次轮换/删除与各引用状态的集成验证 | Missing |
 
+## Configuration writes must reject stale revisions without a declaration change
+
+- 风险：只检查 schema 指纹，同一声明下后写覆盖先写，或清除重建产生旧 revision 再次有效。
+- 前置：两个编辑器读到同一用户/插件、发行、声明指纹和 revision；另备无配置的首次创建状态。
+- 触发：保存/保存、保存/清除竞争，同一幂等请求重放，清除重填后提交旧页面；OpenCode 同时存在全局默认版本。
+- 必须成立：不同修改只有一个提交成功，陈旧请求冲突并保留草稿；清除推进 revision，重填不复用旧 revision；合法重放无额外推进。
+- 禁止结果：自动重试覆盖胜者、并发建两份默认、清除重置版本、以插件 revision 绕过全局默认 version。
+- 验证义务与证据：
+
+| 义务 | 所需直接证据 | 状态 |
+| --- | --- | --- |
+| CAS 与幂等 | 生产 HTTP + 真实 PG 的并发首次创建、保存/清除、重复与不同输入重放矩阵 | Missing |
+| 草稿与后续运行 | 两编辑器冲突保留草稿，随后运行冻结胜者配置；旧页面在清除重填后仍失败 | Missing |
+| OpenCode 双资源版本 | 全局默认与插件选项各按自身版本处理，不以其中一方版本覆盖另一方 | Missing |
+
 ## Explicit Claude selection must not change or inherit the global default
 
 - 风险：Claude 误用 OpenCode default，或两个默认记录漂移。
@@ -27,6 +42,25 @@
 - 必须成立：OpenCode 插件页和全局默认读写同一选择；Claude 独立解析；缺配置明确拒绝。
 - 禁止结果：复制 default、切换全局 CLI、缺配置回退其他人/槽位/宿主凭据。
 - 验证义务与证据：三入口/默认值读写的生产 HTTP + PG 和浏览器行为测试，当前 `Missing`。
+
+## Claude thread permissions must protect the initiator's model access
+
+- 风险：Claude 接入沿用普通 Thread 成员追加权，导致其他成员消耗发起者的个人额度。
+- 前置：带个人绑定的 Claude Thread，发起者、其他成员、非发起者租户管理员，以及无绑定历史 Thread 对照。
+- 触发：各角色读取、追加、结束；随后撤销成员/账号或模型绑定，进入 ending/ended，再重放旧界面请求。
+- 必须成立：以下当前资格与状态由服务器检查，界面据同一能力显示；无绑定历史 Thread 保持原规则。
+- 禁止结果：管理员结束权变成追加权、撤销后仍可追加、关闭后无法读取历史、前端禁用而 HTTP 仍受理。
+
+| 场景 | 读取 | 追加 | 结束 |
+| --- | --- | --- | --- |
+| 可受理状态、有效发起者 | 允许 | 允许 | 允许 |
+| 可受理状态、其他有效成员 | 允许 | 拒绝 | 拒绝 |
+| 可受理状态、非发起者当前租户管理员 | 允许 | 拒绝 | 允许 |
+| 成员或账号资格已失效 | 拒绝 | 拒绝 | 拒绝 |
+| 绑定撤销、仍有效的发起者/租户管理员 | 允许 | 拒绝 | 按现有状态允许收尾 |
+| ending/ended、当前有效成员 | 允许历史读取 | 拒绝 | 继承 Thread 状态/幂等规则，不重开运行 |
+
+- 验证义务与证据：生产 Thread HTTP + 真实 PG 的角色/状态/重放矩阵，浏览器 canAppend/canEnd 与直接接口结果一致；当前 `Missing`。旧 OpenCode 权限证据不能替代。
 
 ## Run creation must freeze the complete execution configuration atomically
 
@@ -60,6 +94,15 @@
 - 必须成立：旧连接/默认/Key 引用不复制；历史不回填；冲突保留值/草稿并拒绝；新值只用于新 run。
 - 禁止结果：插件迁移脚本在 Cloud 执行、未知字段静默删除、旧包被原地修改、旧绑定升级为新语义。
 - 验证义务与证据：真实新建/升级数据库、部署混合版本和浏览器修复路径测试，当前 `Missing`。
+
+## Changed declarations must permit explicit repair without overwriting concurrent edits
+
+- 风险：所有指纹不匹配的保存均拒绝，用户无法修复；或修复跳过 CAS、自动丢弃字段并改写在途配置。
+- 前置：已保存旧指纹/值/revision，发布的新声明增加必填项或移除字段，旧运行仍持旧快照。
+- 触发：旧编辑器保存；重新加载并显式修复；修复过程中另一编辑器保存或管理员再次升级。
+- 必须成立：旧保存冲突；重新加载区分新声明与旧值；合法修复按当前发行、新指纹及预期旧 revision 原子提交。
+- 禁止结果：只能删除重建、无条件覆盖、隐藏丢字段、默认值自动批准、改写 Key 或已有运行。
+- 验证义务与证据：生产 HTTP/PG 验证修复成功、缺必填/类型错误和双重竞争拒绝；浏览器保留草稿且只有显式确认才移除旧有效项；当前 `Missing`。
 
 ## Claude model aliases must resolve to the single authorized model
 
