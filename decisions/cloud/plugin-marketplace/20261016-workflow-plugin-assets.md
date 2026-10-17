@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Workflow 插件资产由 Cloud 自行取包、逐文档导入为可编辑副本
@@ -14,7 +14,8 @@ status: approved
 四种证据——安装成功、接管成功、发布可用、执行可用——是四个可以分别判断的事实，任何一条都不能
 推导出另一条。
 
-本 ADR 已 `approved`：方案、边界与不变量经 owner 复审确认，核心用例见
+本 ADR 已 `implemented`：Cloud 侧实现见 [cloud#77](https://github.com/ora-space/cloud/pull/77)，
+方案、边界与不变量经 owner 复审确认，核心用例见
 [workflow 插件资产核心用例](../../../test-cases/cloud/plugin-marketplace/workflow-plugin-assets.md)。
 资产导入与运行契约的接缝写在
 [workflow 后续决策](../workflow/20261016-asset-import-and-published-snapshots.md)；包内容格式由
@@ -85,6 +86,11 @@ skip_key      = (source_namespace, identifier, document_path)
 `installed` 却没有任何模板」。这也意味着导入不与安装 fan-out 配对，不需要 `one_project_operation`
 的独占。
 
+每次触发把来源记录的 revision 加一，并且**一次扫描出的待办只在 revision 未变时才能领取**：管理员
+在扫描之后、领取之前重装插件，旧待办按新的 revision 做 CAS 失败，本轮丢弃，下一轮按新选择重新
+解析包身份。结果写入同样以领取时的 revision 围栏，下载期间的重装丢弃整次尝试。因此「已经选中的包
+身份」与「正在写入的 revision」不会错配，旧包内容不会占用新 revision 的判定键。
+
 **取包**：载荷与 effect 一样来自目录快照，但资产导入是 Cloud 新增的一个出网点。根决策的「读取永远
 不出网」说的是目录读取，T1b 取包不受它覆盖，因此这里逐条固定边界：
 
@@ -148,10 +154,20 @@ skip_key      = (source_namespace, identifier, document_path)
 配置字段、以及节点引用了未声明的槽位；失败结果带上门禁的问题列表（节点、槽位或字段），与编辑器
 发布时的报错同源。
 
-- **逐文档失败，不整包失败**：一份坏 JSON 或非法图只让该文档失败，同包其他文档照常导入。这与
-  skill 插件的整包校验相反，理由不同：skill 贡献集合是插件身份的一部分，而这里每份文档都是彼此
-  独立、且最终属于用户的资产；让一份坏文档连带丢弃其余可用工作流，损失的是用户数据。包完整性由
-  sha256 保证，不再由「每份文档都合法」承担。
+`document_invalid_json` 同时覆盖「能解析、但 Cloud 无法原样保存」的文档：PostgreSQL 的 `jsonb`
+输入拒绝转义 NUL（`\u0000`）、未配对的代理项转义、非法 UTF-8，以及超出 `numeric` 存储范围的数字
+（最多 131072 位整数位、16383 位小数位，指数不超过 `2^30-1`）；Go 的 JSON 解码器不会拒绝后者中的
+小幅值，`1e-20000` 会解成 0 并通过门禁；指数超过 `2^30-1` 时，即使尾数为零也会被 PostgreSQL
+拒绝。文档按原样保存，所以判定必须在落库前基于原始字节，而不是解析后的图（解码器已把未配对代理项
+替换成 U+FFFD、把越界的小数字变成 0）；否则一份这样的文档会让整包结果事务回滚，源行停在
+`importing`。失败的 `reason` 用 `unsupported_unicode_escape`、`invalid_utf8` 与
+`numeric_out_of_range` 区分三种原因；合法的代理项对（一个高代理项紧跟一个低代理项）与可表示的边界
+数字照常导入。
+
+- **逐文档失败，不整包失败**：一份坏 JSON、无法原样保存的文本或数字、或非法图只让该文档失败，同包其他
+  文档照常导入。这与 skill 插件的整包校验相反，理由不同：skill 贡献集合是插件身份的一部分，而这里
+  每份文档都是彼此独立、且最终属于用户的资产；让一份坏文档连带丢弃其余可用工作流，损失的是用户
+  数据。包完整性由 sha256 保证，不再由「每份文档都合法」承担。
 - **名称冲突不改名、不覆盖**：按现有 tenant 级唯一规则让该文档失败（`name_conflict`）。自动改名
   会让同一份来源在不同租户导入出不同名字，来源记录无法复核。
 - **判定键跨版本，且只认成功**：是否跳过一份文档，只看 `skip_key`
@@ -225,9 +241,10 @@ skip_key      = (source_namespace, identifier, document_path)
 
 ## 落地
 
-- 阶段 1（#73）：来源记录与逐文档结果落库、资产导入步骤（下载/校验/解压/逐文档导入）、幂等与
-  升级只增不改。完成条件是真实 registry `.orax` 加 HTTP 与 PostgreSQL 的证据，不以 Desktop 本地
-  SQLite import 或 `Installed(version)` 单独验收。
+- 阶段 1（#73）：已实现——来源记录与逐文档结果落库、资产导入步骤（下载/校验/解压/逐文档导入）、
+  幂等与升级只增不改。触发记录只由生效后的安装或重装写入；既有安装不做回填。证据是真实 registry
+  `.orax` 加 HTTP 与 PostgreSQL 的集成测试，不以 Desktop 本地 SQLite import 或 `Installed(version)`
+  单独验收。
 - 阶段 2（#76）：预置入口与官方示例包，以及用户显式的「从来源重新导入」入口。
 - 两个阶段都不改动插件安装与移除的既有路径；插件实例的状态仍只由 Node 执行结果的接管写入。
 - 核心用例见
