@@ -96,7 +96,7 @@ canonical Plugin ID。
 
 ## Personal Model Access
 
-本节统一个人模型设置与 Agent 运行中的领域语言，接口与行为规则见对应 ADR。
+本节统一个人模型设置与 Agent 运行中的领域语言；接口和实现决策见对应 ADR。
 
 ### Model Connection（模型连接）
 
