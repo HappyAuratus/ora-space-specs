@@ -94,6 +94,35 @@ acme-plugins.3f9a1c2d/image-tools
 source URL 的等价写法可以归一化到同一个 source 身份，但 URL 写法的变化不能改写已经落盘的
 canonical Plugin ID。
 
+## Personal Model Access
+
+本节统一个人模型设置与 Agent 运行中的领域语言；接口和实现决策见对应 ADR。
+
+### Model Connection（模型连接）
+
+用户拥有的一组模型服务设置，包含一个访问入口、协议和可选择的多个模型。
+_Avoid_: 把连接称为 API Key，或把每个模型都称为一条连接
+
+### Default Model（默认模型）
+
+用户选定的模型连接与该连接内的一个模型，供之后发起的运行使用。
+_Avoid_: 空间共享默认值、平台统一模型
+
+### Model Binding（模型绑定）
+
+创建一次运行时固定的发起者、连接版本、凭据引用和模型。
+_Avoid_: 运行中随设置变化的默认值
+
+### Model Grant（模型授权）
+
+允许特定运行在限定时间内使用其模型绑定的临时资格。
+_Avoid_: 用户长效 API Key、登录会话
+
+### Run Initiator（运行发起者）
+
+触发该次 Agent 运行的用户，其个人模型连接承担本次模型调用。
+_Avoid_: 项目拥有者、后来追加评论的人
+
 ## Agent Issue Run
 
 ### Agent Run（Agent 运行）

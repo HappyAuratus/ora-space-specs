@@ -1,3 +1,15 @@
+# 仓库布局
+
+顶层只有 `decisions/`（ADR）、`test-cases/`（核心测试用例）、`domain/`（领域词汇表）和 `drafts/`（本地草稿，
+不进入版本库）。不要新建其他顶层目录或文件。
+
+- 领域术语写进 `domain/glossary.md` 对应领域的小节，没有合适的小节就新增一节。不要创建 `CONTEXT.md`、
+  `CONTEXT-MAP.md` 或其他单独的词汇表文件；工具或 skill 要求写 `CONTEXT.md` 时，同样改写进
+  `domain/glossary.md`。
+- 不要创建 `implementation/`，也不要建其他存放实现记录、验收记录或进度的目录和文件。实现过程写在跟踪这项
+  工作的 issue 里；最终实现偏离 ADR 时，按 ADR 生命周期写进 ADR 正文。
+- `.gitignore` 忽略 `CONTEXT.md`、`CONTEXT-MAP.md` 和 `implementation/`，不要用 `git add -f` 绕过。
+
 # 决策记录（ADR）
 
 `decisions` 用于承载 ADR。ADR 必须放在对应领域的叶子节点文件夹下，例如：
