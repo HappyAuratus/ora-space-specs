@@ -15,7 +15,8 @@ Issue 的持续对话聚合评论、用户轮次、Agent 对外回复与执行�
 
 | 前序决策 | 本文处理 |
 | --- | --- |
-| [Thread 根决策](0-durable-agent-thread-with-user-turns.md) D1、D3、D4 | 继承单 Run 单 Thread、有序持久记录、结束后不可追加；增加任务级消息与跨 Run 续聊。 |
+| [Thread 根决策](0-durable-agent-thread-with-user-turns.md) D1、D3、D4 | 继承单 Run 单 Thread、有序持久记录、既有空闲窗口和结束后不可追加；增加任务级消息与跨 Run 续聊。 |
+| [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D2、D5 与 [Revision 续接](../issue-run/20261010-resume-run-from-latest-issue-revision.md) | 继承运行专属一次性 Workspace、成果保存后释放、新运行恢复 Revision；不永久保留或跨 Run 复用旧沙盒。 |
 | [个人模型输入权限](20261010-personal-model-initiator-controls-input.md) | 继承读取/输入分离，不能借用其他成员的模型授权。 |
 | [会话分析](20261016-session-analysis-read-model.md) | 继承授权归档读取、来源、不完整性和未知值。 |
 | [Issue 协作](../issue-collaboration/0-typed-targets-and-explicit-execution-intent.md) D3–D6 | 继承类型化显式目标、ContextBuilder、输入快照与评论/运行分离；增加持续对话投影。 |
@@ -37,6 +38,11 @@ Issue 的持续对话聚合评论、用户轮次、Agent 对外回复与执行�
 同一 Agent、同一发起者、授权仍有效且尚无交接屏障时，复用当前 Thread。其他情况进入任务队列并创建
 后续运行。新运行冻结该条消息发起者的个人配置，不继承前一运行的凭据。成员可读不代表可以追加其他
 成员的模型请求；无权终止当前运行的用户不能通过切换操作绕过结束权限，交接须等待合法结束。
+
+一轮回复结束仍按 Thread 根决策进入 idle，同一存活会话在既有空闲窗口内可继续复用沙盒。窗口仍由
+`issue_runs.thread_idle_timeout` 配置，沿用既有默认值与结束机制，不因任务对话长期可见而禁用或无限延长。
+用户结束、空闲期满或合法交接结束会话后，照常交付并释放运行 Workspace；之后的续聊创建新的 Run、
+Thread 与 Workspace，分别恢复 Revision 和对话上下文。历史查看不启动沙盒，也不以沙盒存活作为历史保留条件。
 
 资格在接收和派发时均验证。目标归档、成员撤销、模型配置失效时消息保持可解释的失败/待处理状态，
 不自动改发另一 Agent。停止、失败和保存异常的后续处理由
@@ -72,13 +78,14 @@ ACP 或 Agent 原生日志。新轮的对外回复按稳定 turn 身份上报；
 3. 新运行只使用自身发起者合法授权，历史读取不扩展调用权限。
 4. 同一来源的提示、回声、逐轮回复和运行结论在统一对话中不重复展示。
 5. 上下文范围和缺失可见，代码恢复与聊天恢复不能相互替代。
+6. 任务对话的持续性不延长运行沙盒生命周期；已结束会话通过新运行续聊，既有空闲与释放机制保持有效。
 
 ## 为什么不是这些替代方案
 
 | 方案 | 取舍 |
 | --- | --- |
 | 重开旧 Thread | 表面简单，但旧执行授权、资源及终态已结束，无法安全沿用。 |
-| 永久保留沙盒 | 恢复更快，但长期占用资源，违背一次性 Workspace 生命周期。 |
+| 永久保留沙盒（不采用） | 热会话续聊更快，但长期占用资源，违背一次性 Workspace 生命周期；节点或进程故障后也不能保证原生会话恢复。 |
 | 用评论存全部工具/思考 | 可复用评论 API，但淹没讨论且编辑语义不适合执行证据。 |
 | 由 Cloud 解析所有 Agent 日志 | 少一个投影接缝，但使 Cloud 依赖 ACP 与插件记录细节。 |
 
