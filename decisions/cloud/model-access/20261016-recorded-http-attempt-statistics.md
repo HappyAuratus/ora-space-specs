@@ -62,8 +62,8 @@ OpenAI input 包含缓存，Anthropic input 不含缓存读写；推理是输出
 未来 Agent/ACP 报告仍为另一来源，不与 Gateway 相加；本决策不依赖 Desktop token_usage 扩展。
 
 本决策的读取范围仍是 IssueRun：`statistics` 与 `model-calls` 按 IssueRun 的 `run_id` 读取。
-WorkflowRun 的尝试已经登记，但它的统计读取需要单独定义聚合范围、游标与授权，在另行批准前不开放；
-WorkflowRun 登记行的 `run_id` 为空，不会进入上述 IssueRun 读取。
+WorkflowRun 的尝试已经登记，但它的统计读取需要单独定义聚合范围、游标与授权，在另行批准前不开放
+（由 circus#285 承接）；WorkflowRun 登记行的 `run_id` 为空，不会进入上述 IssueRun 读取。
 
 ## 不变量
 
@@ -92,8 +92,8 @@ WorkflowRun 登记行的 `run_id` 为空，不会进入上述 IssueRun 读取。
 `issue_runs`/`workflow_runs` 的 `(id, tenant_id)` 与 `run_model_bindings` 的
 `(id, run_id)`/`(id, workflow_run_id)`。它只扩展登记范围，不改变读取范围，也不回填历史行。
 
-验收需覆盖全新与升级及重复迁移、登记前拒绝、实际 HTTP 与数据库贯通、两协议 JSON/SSE、
-取消后收尾、并发不同完成结果、故障不重发、未知/零/部分覆盖率、越权与旧会话。
+验收需覆盖全新与升级及重复迁移、登记前拒绝、WorkflowRun 绑定登记、实际 HTTP 与数据库贯通、
+两协议 JSON/SSE、取消后收尾、并发不同完成结果、故障不重发、未知/零/部分覆盖率、越权与旧会话。
 长期未完成行的恢复、台账保留期限、增量汇总及大 Run 查询成本留给后续设计；当前全 Run 聚合
 仍受 Core 事务串行边界约束。真实供应商账单一致性不由合成协议测试证明。
 核心验证义务与直接证据见[已登记 HTTP 尝试统计](../../../test-cases/cloud/model-access/recorded-http-attempt-statistics.md)。
