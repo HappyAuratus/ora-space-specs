@@ -164,7 +164,9 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 `field` 是相对节点 `data` 的路径，不带数组下标：同一节点有多个分支或比较项出错时各返回一条问题，问题定位到节点和字段，不指出是第几个分支或比较项。
 
 **变量根的声明范围**以 desktop `WorkflowVariablePool::from_graph` 为准：Start 声明 `input`（kickoff 提示词）和每个
-`inputVariables` 变量；Agent 声明 `output`，带 `agentConfig.outputContract` 时再声明 `structured_output`；Output 声明
+`inputVariables` 变量；Agent 声明 `output`，`agentConfig.outputContract` 为 `OutputContract::Structured` 时再声明
+`structured_output`（Cloud 当前对任意非 null 契约都声明；带契约的图先被 `node_config_unsupported` 拒绝，所以这条差异暂不可达，
+随 cloud#70/#74 支持契约时收紧）；Output 声明
 `output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp` 和图里 `globalVariables` 的每一项；Cloud 今天既不提供这些值，也
 不声明它们，指向 `sys.*` 或用户自定义全局变量的选择器都在发布期被 `condition_selector_undeclared` 拒绝（两边的
 编辑器变量目录都把 globals 列为可选条件变量，Cloud 侧暂不提供，编辑器目录的后续处理另行承接）。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
