@@ -193,6 +193,7 @@ Cloud 与 model-gateway 只在进程启动时加载一次配置（含 topology�
 | --- | --- | --- |
 | model-gateway 模型 POST、Cloud 连接保存门禁 | D1–D6 的共享白名单、解析、地址准入与启动快照；模型 baseUrl 仍拒绝 query | 冻结绑定、模型/认证头限制、Gateway 独占解密、永久撤销与不自动重发生成 |
 | Cloud 工作流资产 `universal.url` 为 HTTPS 时的 GET | 同一配置与准入函数，逐次 GET/新拨号检查，禁止重定向与环境代理，按原 hostname 校验 TLS | 允许签名 query，仍拒绝 userinfo/fragment；保持原路径/query 字节语义，不用模型 URL 校验器拒绝签名下载；完整 URL/query 不写诊断 |
+| Repo Executor 访问外部 Git 仓库（同步、发布、`probe`） | D1–D6 全部：同一份只读挂载的配置与准入实现，不另设仓库白名单；每个访问外部仓库的 `git` 子进程启动前重新解析并检查全部地址，以 `http.curloptResolve` 把检查过的数字地址交给 `git`，`probe` 用同一拨号器；不跟随重定向、不用环境代理；更换配置时与 Cloud、model-gateway 一起停止和重启，并参与 `ora verify` 的摘要比对 | 只用 Operation 指定的 Binding 与凭据，凭据只交给作用域内的请求；出网许可不授予仓库或凭据权限（[Repo Executor 根决策](../repo-executor/0-repo-executor-sole-external-git-boundary.md) D4、D9） |
 | Cloud 工作流资产的 S3 object key | 沿用部署固定对象存储客户端、私有端点与已有认证；不属于目录指定远端 HTTPS 目标的通路 | object key 不能指定 host、URL、代理或自定义凭据，不能把被拒绝的 HTTPS URL 改走此路径 |
 
 Cloud 在后台导入任务中实际取包时校验准入，不能只在目录同步/安装时检查。取包/地址策略拒绝、
