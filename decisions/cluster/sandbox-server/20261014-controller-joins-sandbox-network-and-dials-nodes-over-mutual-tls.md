@@ -4,6 +4,10 @@ status: implemented
 
 # Controller 接入沙盒网络并以双向 TLS 直连 Node，Sandbox Server 的 WS 路由退为本机传输工具
 
+> 历史决策：D1 的直连要求、D3 固定的 Controller 对端及 D4 的路由用途已由
+> [Controller 经 Sandbox Server WebSocket 路由连接 Node](20261016-controller-connects-through-sandbox-websocket-router.md)
+> 修改。Node 证书签发、TLS 监听与业务目标绑定继续继承；本文保留原直连方案的历史依据。
+
 Cloud 模式下，Controller 不再经 Sandbox Server 的 WS 路由连接沙盒 Node，而是自己接入沙盒网络，以
 `wss://ora-sandbox-<sandboxId>:<port>/ora-node/v1` 直连 Node。连接两端双向认证：Node 出示 Sandbox Server 按运行
 代次签发的服务端证书，Controller 按容器名校验它；Node 只接受部署固定的那一张 Controller 证书。WS 路由
@@ -112,6 +116,6 @@ Sandbox Server 继续在 `-addr` 上提供根决策的 WS 路由与中继，供�
 
 cluster#6 与 desktop#632 一起落地：Compose 生成管理证书与私有卷，Controller 接入沙盒网络，Sandbox Server 在
 ensure 时签发 Node 身份，Node 入口脚本落盘证书并以 `mutual_tls_websocket` 监听，Controller 在 Cloud 模式下改为
-直连。真实链路由 cluster 的 `scripts/runtime-control-acceptance.py` 验收（见 cluster `docs/runtime-control.md`）。
+直连。真实链路由 cluster 的 `scripts/runtime-control-acceptance.py` 验收（见 cluster `docs/testing/runtime-control.md`）。
 保持不变：WS 路由与静态表的行为、生命周期 effect 语义。开始改变：Cloud 模式的 Controller–Node 连接不再经过
 Sandbox Server。
