@@ -132,12 +132,13 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
 | 定位符只允许两种形态，`https` 之外一律拒绝 | 目录同步拒绝 `http`、`s3://`、带 fragment 或带凭据的 URL；S3 object key 被识别 | Covered |
 | 非企业公网地址原语判定全部 DNS 应答，拒绝私有/环回/链路本地/保留网段 | 真实 HTTP：指向这些地址的包下载失败，且没有发出连接；不覆盖企业私网例外 | Partial |
 | 不跟随重定向 | 真实 HTTP：3xx 被记为包级失败，目标地址没有被请求 | Covered |
-| 超时与流式字节上界 | 真实 HTTP：慢响应在 10/30/60 秒边界被取消；超 16 MiB 的响应在读完前中断 | Covered |
+| TCP 拨号 10 秒截止 | 真实 HTTP：拨号阶段停滞的目标（如不可达地址）在 10 秒被取消 | Partial |
+| TLS 握手 10 秒、响应头 30 秒与整包 60 秒截止；边读边计数超过 16 MiB 立即中断 | 真实 HTTP：接受 TCP 后不完成 TLS 握手 10 秒取消；不发响应头 30 秒取消；慢正文 60 秒取消；超 16 MiB 的无 Content-Length 流在读完前中断 | Covered |
 | 失败是包级且下一次触发重试 | 真实 PostgreSQL：下载失败不产生文档结果，重试后成功 | Covered |
 
 - 决策依据：D3（触发点与取包、出站请求的约束）、继承表「根决策 D3：目录快照由 Cloud git 同步，
   读取永远不出网 → 修改」、不变量 3、4、8。
-- 直接证据：**Covered（1、3、4、5 行）、Partial（第 2 行）** — cloud#77 的
+- 直接证据：**Covered（1、3、5、6 行）、Partial（第 2、4 行）** — cloud#77 的
   [`internal/workflowasset/fetch.go`](https://github.com/ora-space/cloud/pull/77/files) 把
   定位符解析、sha256 先验、重定向拒绝与流式字节上界收在一个入口。`TestFetchRejectsHTTPSFailures`
   断言 `http`、带 fragment、带凭据的 URL 与超界声明都成为有界包级失败；
@@ -149,16 +150,20 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   `TestWorkflowAssetImportCancelsSlowOrOversizePackages`
   （[`integration/workflow_asset_fetch_boundaries_test.go`](https://github.com/ora-space/cloud/pull/83/files)）
   从 `Fetch` 出发、经生产 `NewUpstreamClient` 传输链实际触发：服务端接受 TCP 后不完成 TLS
-  握手，10 秒连接边界取消（TCP 拨号与 TLS 握手同一 10 秒取值）；不发响应头，30 秒取消；
+  握手，触发 10 秒 TLS 握手截止（拨号在此之前已完成，该子测试不触及拨号截止）；不发响应头，30 秒取消；
   响应头即刻、正文每 500ms 一字节，60 秒整包截止取消；无 Content-Length 的 chunked 流超过
   16 MiB，读计数在读完前中断，服务端写失败证明流被截断而非读完。四个用例都断言失败是包级
   （无文档行、无 workflow、无快照）且同一 URL 修复后重装同版本重试成功。
-- Partial 的原因：DNS 应答判定由注入的 `modelgateway` 受检传输完成，导入侧只证明「接上了它、未接线
-  时失败关闭」，没有一条从 `Fetch` 出发、目标解析到私有地址的端到端用例；该验收跟随
+- Partial 的原因：第 2 行的 DNS 应答判定由注入的 `modelgateway` 受检传输完成，导入侧只证明
+  「接上了它、未接线时失败关闭」，没有一条从 `Fetch` 出发、目标解析到私有地址的端到端用例；该验收跟随
   [circus#192](https://github.com/ora-space/circus/issues/192) 的部署方
   出网策略（见 ADR D7 与共享出网用例），不在资产导入侧单独写死。原语本身的证据仍在
   [`internal/modelgateway/transport.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/modelgateway/transport.go)
   与 [`internal/pluginmarket/manifest.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/pluginmarket/manifest.go)。
+  第 4 行的 TCP 拨号截止没有直接证据：`TestWorkflowAssetImportCancelsSlowOrOversizePackages`
+  里唯一涉及连接建立的子测试，其服务端 accept 连接后即静默——拨号已完成、停在 TLS 握手，触发的是
+  transport 的 `TLSHandshakeTimeout`，即使拨号截止被移除该子测试也照样通过；拨号阶段的直接证据
+  需要一条拨号本身就停滞（如不可达地址）的目标，暂未构造。
 
 ## Import Results Are Persisted Independently Of The Install Outcome
 
