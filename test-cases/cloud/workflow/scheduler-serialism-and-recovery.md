@@ -102,9 +102,10 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 
 - 决策依据：D1 条件②（在途未提交结果的节点按中断结算为失败、绝不记为成功），D4（崩溃恢复），D7（首期节点产出落在节点状态里），不变量 5。
 - desktop 参考实现（`8909f07`）一侧：**Covered** — 恢复把在途节点结算为 `interrupted_by_restart` 并让运行失败，已成功的节点保持成功（[`crates/backend/src/workflow/run/operations/tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/operations/tests.rs) 的 `recovery_fails_interrupted_turns_and_resumes_stalled_runs`、[`crates/backend/src/workflow/run/recovery.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/recovery.rs) 的 `an_interrupted_outer_row_still_fails_the_run` 与 `a_crashed_round_inside_a_fail_iteration_fails_the_node_and_the_run`、[`crates/backend/src/workflow/run/resume_gap_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/resume_gap_tests.rs) 的 `boot_sweep_interrupted_node_resumes_as_attempt_two`）。
-- 本次直接证据：**Partial** — 第 1 行已部分就位：[cloud#67](https://github.com/ora-space/cloud/pull/67) 的
-  `TestWorkflowAdvanceFailsRunOnUnwiredAgentNode` 断言没接执行器的 agent 节点既不进成功状态也不让下游提交状态；
-  [cloud#72](https://github.com/ora-space/cloud/pull/72) 的 `TestWorkflowSessionRunsTwoAgentNodesInOrder` 断言在途无结果的
+- 本次直接证据：**Partial** — 第 1 行已部分就位：[cloud#72](https://github.com/ora-space/cloud/pull/72) 的
+  `TestWorkflowAdvanceFailsRunOnProjectlessAgentNode`（#67 时代的 `TestWorkflowAdvanceFailsRunOnUnwiredAgentNode` 随真实会话接线改名）
+  断言缺 Project 的 agent 节点以 `workflow_run_project_required` 结算为失败、既不进成功状态也不让下游提交状态；
+  同 PR 的 `TestWorkflowSessionRunsTwoAgentNodesInOrder` 断言在途无结果的
   节点保持 `running` 而不被记成功、`TestWorkflowSessionStartDeadlineFailsNode` 与 `TestWorkflowSessionFailureFailsRun`
   断言超时与失败的节点连同运行一起进入失败终态。第 2 行已部分就位：同 PR 的 `TestWorkflowRunningCarriesNoFinishedAt`
   断言运行仍在执行时不带 `finishedAt`。唯一会写 `node_states` 成功的 `MockWorkflowRunSimulator` 在没有真实结果的
