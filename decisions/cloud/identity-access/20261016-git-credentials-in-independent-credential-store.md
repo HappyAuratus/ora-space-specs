@@ -18,8 +18,9 @@ D5 给出约束，审批流程由 [发布 ADR](../project/20261017-explicit-fast
 兼容性边界：
 
 - 不给 `cloud/AGENTS.md` 的硬规则开例外：Cloud 仍然不接收、不保存、不记录、不返回任何 token。
-- **破坏性切换**（契约范围边界）：不设过渡开关，不做数据迁移。`credential_refs` 直接改为本文的形状，已有的开发环境数据在切换后
-  重建；部署侧预置凭据的路径不再保留。
+- **破坏性切换**（契约范围边界）：不设过渡开关，不做数据迁移或恢复。迁移直接增加本文的列，并把切换前的引用全部置为 `revoked`、
+  清空能力后保留审计行：这些引用指向部署侧预置的秘密，Credential Store 中没有对应版本，无法兑换。部署侧预置凭据的路径不再保留；
+  开发环境的数据在切换后重建。
 - 凭据连续性 ADR 的归属与冻结规则不变；本文只把“真实凭据由部署侧保管”改为“由 Credential Store 保管”。
 
 ## 继承与修改
@@ -44,7 +45,7 @@ Cloud 的 `credential_refs` 是凭据的唯一元数据权威，保留现有列�
 | 字段 | 含义 |
 | --- | --- |
 | `secretState` | `awaiting_secret`（已创建，等待浏览器提交）、`stored`（Credential Store 中有当前版本）、`revoked` |
-| `storeVersion` | Credential Store 中的当前版本号；每次提交新 token 加一 |
+| `storeVersion` | Credential Store 中的当前版本号；每次确认新 token 后加一 |
 | `capabilities` | 已对 `storeVersion` 验证的能力集合，取值 `read`、`publish`；列名沿用，取值从旧的 `clone`/`push` 改为新词表 |
 | `requestedCapabilities` | 创建时用户声明需要的能力，只决定是否自动发起 `publish` 验证，不授予任何权限 |
 | `capabilityEvidence` | 每项能力的证据：验证时间、`storeVersion`、来源（同步 Operation ID 或验证记录 ID） |
@@ -53,20 +54,27 @@ Cloud 的 `credential_refs` 是凭据的唯一元数据权威，保留现有列�
 
 - **作用范围**：`repositoryScope` 必填，且是一个具体仓库的 `https://` 地址（规范化：host 小写，去掉 `:443`、末尾 `/` 和 `.git`）。
   第一阶段一个凭据只作用于一个仓库。推送能力只能对具体仓库验证（D4）；按 host 作用的凭据无法说明它在哪些仓库上能推送。
-- **归属**：个人凭据由用户为自己创建，`owner_user_id` 是本人；团队凭据只能由租户 `admin`/`owner` 创建，`attribution = team`，
-  `attribution_basis` 记录创建的管理员和时间。归属在创建时确定，之后不能改；需要换归属就新建一个凭据。
-- **版本变化**：提交新 token 后 `storeVersion` 加一，`capabilities` 清空，重新验证。旧版本的能力不能延续到新版本：两个 token
-  的权限可能不同。
+- **归属**：个人凭据由用户为自己创建，`owner_user_id` 是本人；团队凭据只能由租户 `admin` 创建（租户成员角色只有 `admin` 和
+  `member`），`attribution = team`，`attribution_basis` 记录创建的管理员，时间见 `created_at`。新建只接受 `personal` 和 `team`；
+  `unknown` 只存在于切换前的历史引用，迁移已把它们置为 `revoked`。归属在创建时确定，之后不能改；需要换归属就新建一个凭据。
+- **版本变化**：轮换先在 Cloud 上登记待确认的下一个版本；浏览器提交并在 Credential Store 落盘、Cloud 确认后，`storeVersion`
+  加一，`capabilities` 清空并重新验证。待确认期间引用保持 `stored`，旧版本及其能力仍是当前值；新版本被采纳时，按旧版本批准的
+  等待中发布以 `cancelled(credential_changed)` 结束。这样旧 token 在确认前仍可用，进行中的同步和发布不会因待确认的版本中断。
+  旧版本的能力不能延续到新版本：两个 token 的权限可能不同。
 - **可用状态**：沿用凭据连续性的 `available`、`frozen`、`invalid`。外部仓库以认证失败拒绝时，该版本标为 `invalid`；提交新 token
   后回到 `available`（冻结的引用除外，冻结仍需管理员处理）。
-- `secretState` 不是 `stored` 的引用不能签发兑换授权，使用它的同步和发布以 `credential_not_in_store` 拒绝。
+- `secretState` 不是 `stored` 的引用不能签发兑换授权。已撤销或对当前租户不可见的引用以 `repository_credential_unavailable`
+  拒绝，其余未就绪的引用以 `credential_not_in_store` 拒绝；冻结、失效和作用域不符分别以 `repository_credential_frozen`、
+  `repository_credential_invalid`、`repository_credential_scope_mismatch` 拒绝。撤销的引用不再有可兑换的秘密，和“尚未提交”
+  是不同的失败原因，调用方需要分别处理。
 
 ### D2：Credential Store
 
 Credential Store 是独立程序，参考未合并的旧实现中 `internal/credentialstore` 的设计新写（不依赖其代码），不与 Cloud 共享数据库或卷：
 
-- **加密**：信封加密。每个秘密一个随机 32 字节 DEK，以 AES-256-GCM 加密 token，附加数据是凭据 ID；DEK 再以 KEK 用 AES-256-GCM
-  包裹，附加数据是 KEK 的 ID。KEK 是部署挂载的只读 keyring 文件，有一个主密钥，可以保留旧密钥用于解包；KEK 缺失时拒绝启动。
+- **加密**：信封加密。每个秘密、每个版本一个随机 32 字节 DEK，以 AES-256-GCM 加密 token，附加数据是凭据 ID 与版本号
+  （`credentialId + "\x00" + version`）；DEK 再以 KEK 用 AES-256-GCM 包裹，附加数据是 KEK 的 ID。KEK 是部署挂载的只读 keyring
+  文件，有一个主密钥，可以保留旧密钥用于解包；KEK 缺失时拒绝启动。
 - **存储**：凭据卷上每个凭据一个文件，原子写入（临时文件、fsync、rename、目录 fsync）；卷的权限不允许组和其他用户读取。
 - **版本**：每次提交写入新版本，旧版本保留 1 小时，只用于兑换在此之前签发的授权，之后销毁。
 - **撤销**：写入撤销标记，同时销毁所有版本的密文。撤销幂等。
@@ -78,36 +86,39 @@ Credential Store 是独立程序，参考未合并的旧实现中 `internal/cred
   | --- | --- | --- |
   | 兑换接口（mTLS） | 只认 `spiffe://ora.local/repo-executor` | 凭 `sync`、`publish`、`probe` 授权兑换明文；授权中的 `executorIdentity` 必须等于证书身份 |
   | 管理接口（mTLS） | 只认 `spiffe://ora.local/cloud/credential-manager` | 查询元数据（版本、提交记录 ID、是否撤销）、撤销；**不能写入明文，也不能读取明文** |
-  | 密钥接口（mTLS） | 只认 KEK 运维身份 | KEK 轮换 |
+  | 密钥接口（mTLS） | 只认 `spiffe://ora.local/credential-store/kek-operator` | KEK 轮换 |
   | 浏览器入口（HTTPS，无客户端证书） | 持有一次性提交授权的浏览器 | 提交一个新版本（D3） |
 
-  每个身份只有一项能力，同时持有两项能力的证书在启动时被拒绝（旧实现的规则）。
+  每个监听只信任一个客户端身份；同一身份同时配置给两个监听时启动失败。客户端证书必须恰好带一个 URI SAN，否则在每个请求上
+  被拒绝。
 
 相对旧实现设计的不同：去掉 Cloud 写入明文的 `ingress-writer` 能力，改为浏览器入口；兑换身份从 `broker-resolver` 改为执行器的
 服务身份；兑换的用途从 `clone`、`mirror_prepare`、`push` 改为 `sync`、`publish`、`probe`。
 
 **撤销的时效**：Credential Store 不读 Cloud 的数据库，无法在兑换时知道 Operation 是否仍然有效。撤销的顺序是：Cloud 先在事务内
 把引用置为 `revoked`（此后不再签发授权），再调用管理接口撤销（此后不能兑换）。两步之间已经签发的授权，最多在其有效期
-（不超过 2 分钟）内仍可兑换；撤销的界面说明这一点。管理接口调用失败时 Cloud 重试，直到成功。
+（不超过 2 分钟）内仍可兑换；接口说明记录了这一点。管理接口调用失败时 Cloud 重试，直到成功。
 
 ### D3：浏览器直接提交 token
 
 ```text
-浏览器 ──(1) POST /git-credentials {元数据，不含 token}──▶ Gateway ──▶ Cloud
-       ◀─(1') {credentialId, submissionGrant, ingressUrl}────────────────
+浏览器 ──(1) POST /api/v1/tenants/{tenantId}/git-credentials {元数据，不含 token}──▶ Gateway ──▶ Cloud
+       ◀─(1') {resource, submission: {submissionId, grant, ingressUrl, storeVersion, expiresAt}}
 浏览器 ──(2) PUT ingressUrl {token}，Authorization: Ora-Submission <grant>──▶ Credential Store 浏览器入口
        ◀─(2') {storeVersion}────────────────────────────────────────────
-浏览器 ──(3) POST /git-credentials/{id}/confirm──▶ Gateway ──▶ Cloud ──(3') 管理接口查询元数据──▶ Credential Store
+浏览器 ──(3) POST /api/v1/tenants/{tenantId}/git-credentials/{id}/confirm──▶ Gateway ──▶ Cloud ──(3') 管理接口查询元数据──▶ Credential Store
 ```
 
-1. **创建或轮换**：Cloud 校验调用者的权限（D1 的归属规则；轮换个人凭据只限所有者，轮换团队凭据只限管理员），创建或更新
-   引用为 `awaiting_secret`，签发提交授权。请求体按严格解码，带 `token` 字段的请求直接拒绝。
+1. **创建或轮换**：Cloud 校验调用者的权限（D1 的归属规则；轮换个人凭据只限所有者，轮换团队凭据只限管理员）。创建把引用置为
+   `awaiting_secret`；轮换保持引用 `stored`，只登记待确认的下一个版本（旧 token 在确认前仍是当前版本，不中断进行中的工作）。
+   两种情况都签发提交授权。请求体按严格解码，带 `token` 字段的请求直接拒绝。
 2. **提交授权**：Ed25519 签名，使用与执行授权**不同的密钥和用途**（`submit`），字段为 `submissionId`、`tenantId`、`credentialId`、
    `ownerUserId`、`attribution`、`repositoryScope`、`expectedStoreVersion`、`issuedAt`、`expiresAt`（不超过 5 分钟）。Credential
    Store 验证签名、用途和有效期，以 `submissionId` 独占认领，写入 `expectedStoreVersion` 版本；版本不符（并发轮换）时拒绝。
 3. **确认**：浏览器把结果告诉 Cloud，但 Cloud 不信任浏览器的报告，经管理接口查询该凭据的当前版本和对应的 `submissionId`，
    一致才把引用置为 `stored` 并更新 `storeVersion`，然后发起能力验证（D4）。浏览器没有回来确认时，Cloud 的定时任务在授权过期后
-   查询一次，按同样规则补上确认或把引用标为已放弃。
+   查询一次，按同样规则采纳版本；Store 中没有对应版本时只清除待确认记录，引用保持原状态。引用状态只有 `awaiting_secret`、
+   `stored`、`revoked` 三种，不引入“已放弃”状态；创建后从未提交的引用一直是 `awaiting_secret`，可以继续轮换。
 
 **浏览器入口**：
 
@@ -127,7 +138,7 @@ Credential Store 是独立程序，参考未合并的旧实现中 `internal/cred
 
 | 能力 | 含义 | 怎样验证 | 何时失效 |
 | --- | --- | --- | --- |
-| `read` | 能用这个版本 fetch `repositoryScope` | 第一次用该版本成功完成的同步（[同步 ADR](../project/20261016-repository-binding-and-snapshot-sync.md) D5），在登记同步结果的事务中记录 | 提交新版本；同步以认证失败结束 |
+| `read` | 能用这个版本 fetch `repositoryScope` | 用该版本成功完成的同步（[同步 ADR](../project/20261016-repository-binding-and-snapshot-sync.md) D5），每次成功都在登记同步结果的事务中刷新证据 | 提交新版本；同步以认证失败结束 |
 | `publish` | 能用这个版本向 `repositoryScope` 推送 | 执行器以 `probe` 授权请求 `git-receive-pack` 的 ref 广告（执行器根决策 D7），平台返回广告即验证通过；不发送任何更新命令 | 提交新版本；发布被平台以权限不足拒绝 |
 
 - `publish` 验证在以下时机发起：引用确认时 `requestedCapabilities` 包含 `publish`；用户在界面点击“验证推送权限”。验证记录
@@ -145,11 +156,13 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 
 | 动作 | 团队凭据 | 个人凭据 |
 | --- | --- | --- |
-| 创建、轮换 | 租户 `admin`/`owner` | 只有所有者本人 |
-| 绑定到 Project（用于同步读取） | 租户 `admin`/`owner` | 只有所有者本人 |
-| 批准用它发布 | 拥有 Project 发布权限的人（发布 ADR D2） | 只有所有者本人 |
-| 撤销 | 租户 `admin`/`owner` | 所有者本人，或租户 `admin`/`owner` |
-| 查看元数据 | Project 的成员 | Project 的成员 |
+| 创建、轮换 | 租户 `admin` | 只有所有者本人 |
+| 绑定到 Project（用于同步读取） | 租户 `admin` | 只有所有者本人 |
+| 批准用它发布 | 拥有 Project 发布权限的人，第一阶段即租户 `admin`（发布 ADR D2） | 只有所有者本人 |
+| 撤销 | 租户 `admin` | 所有者本人，或租户 `admin` |
+| 查看元数据 | 租户成员 | 租户成员 |
+
+凭据是按租户组织的资源，元数据路由挂在租户下，所以可见范围是租户成员，而不是 Project 成员；元数据不含 token。
 
 - 租户管理员**不能**使用他人的个人凭据：不能用它绑定、不能批准用它发布。管理员能做的是撤销或等待冻结，然后绑定团队凭据
   （凭据连续性 D3）。撤销是收紧方向的操作，允许管理员执行。
@@ -159,7 +172,8 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 
 ### D6：设置页
 
-- 凭据列表：名称、仓库、归属、状态（等待提交、可用、冻结、失效、已撤销）、`read` 与 `publish` 是否已验证及时间。
+- 凭据列表：名称、仓库、原始状态（`secretState` / `availability`）、已验证的能力、`storeVersion` 与最近一次验证结果。归属和能力
+  证据时间留在 API 元数据里，列表不显示。
 - 新建与轮换：token 输入框的内容只发往 Credential Store 的浏览器入口，提交后立即从页面状态中清除；Cloud 的请求不含 token。
 - “验证推送权限”按钮，显示最近一次验证的结果分类。
 - 团队凭据的新建入口只对管理员显示。
@@ -195,6 +209,8 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 - **GitHub App、SSH key 等凭据类型**：需要 Credential Store 保存私钥并由执行器换取短期 token；词表与验证方式可以沿用。
 - **多仓库作用范围**：一个 token 在多个仓库上的能力需要逐仓库验证，留给多 Binding 的后续决策。
 - **KEK 的外部 KMS**：第一阶段是挂载的 keyring 文件。
+- **KEK 运维身份的证书签发**：密钥接口只认 `spiffe://ora.local/credential-store/kek-operator`；cluster 的部署脚本目前只签发
+  执行器和 Cloud credential-manager 的证书，KEK 轮换尚未接入部署。
 - **Credential Store 多副本与备份**：与 Git Server 一样第一阶段单实例。
 - **兑换时核对仓库作用域**（纵深安全加固，契约“本决策未解决的问题”）：第一阶段 Credential Store 兑换时只核对授权中的凭据与版本，
   不核对授权中的仓库是否等于凭据的 `repositoryScope`；作用域由 Cloud 签发授权前检查，并由 `git-credential-ora` 按 host 与 path

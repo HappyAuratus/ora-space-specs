@@ -72,7 +72,7 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 | 凭据归属 | 谁能批准 |
 | --- | --- |
 | 个人 | 只有凭据的所有者本人，且其仍是租户的有效成员 |
-| 团队 | 拥有 Project 发布权限的人；第一阶段即租户 `admin`/`owner` |
+| 团队 | 拥有 Project 发布权限的人；第一阶段即租户 `admin`（租户成员角色只有 `admin` 和 `member`） |
 | 未知 | 不能用于发布：未知归属无法确定审批人 |
 
 - 发起人本身就是审批人时，创建即批准，直接进入 `pending`；否则进入 `awaiting_approval`，等待审批人批准或拒绝。
@@ -246,7 +246,7 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 ## 本决策未解决的问题
 
 - **非快进发布与受控改写**：与 Workspace 分支的非快进改写一起设计（契约未决项）。
-- **按 Project 细分的发布权限**：第一阶段 Project 发布权限即租户 `admin`/`owner`；更细的角色需要成员授权表，留给后续决策。
+- **按 Project 细分的发布权限**：第一阶段 Project 发布权限即租户 `admin`；更细的角色需要成员授权表，留给后续决策。
 - **发布到 Binding 之外的仓库**：第一阶段只能发布到 Binding 的仓库。
 - **创建外部 PR**：需要平台 API，不是 Git 协议的一部分。
 - **纵深安全加固**（契约“本决策未解决的问题”，第一阶段以跑通与正确为目标）：
