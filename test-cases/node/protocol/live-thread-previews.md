@@ -59,7 +59,7 @@ Agent，也不改变 Run/Thread/Revision 的权威状态；原持久写失败仍
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | Node 真实发送与有界缓冲 | Desktop Node 单元与 `apps/ora-node/tests/standalone/agent_sessions/previews.rs::negotiated_preview_streams_before_the_agent_turn_finishes` 使用真实 IPC 和 Echo Agent，证明轮次完成前出现正文预览；不是实际模型证据 | Partial |
-| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；Cloud 的并发 hub、订阅容量和取消测试验证有界通知。仍需实际 CloudStore 与跨服务故障测试 | Partial |
+| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；`::completed_executions_do_not_exhaust_preview_capacity` 验证同一中继连续 128 次完成后仍可发布；`::terminal_takeover_cancels_only_its_in_flight_publisher` 验证终态取消阻塞发布、重复回收及其他活跃执行隔离。Cloud 的并发 hub、订阅容量和取消测试验证有界通知。仍需实际 CloudStore 与跨服务终态/迟到预览故障测试 | Partial |
 
 ### 决策依据
 
