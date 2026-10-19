@@ -158,9 +158,24 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 | `condition_rules_not_a_list` | `cases.conditions` | 比较项列表不是列表 |
 | `condition_rule_not_an_object` | `cases.conditions` | 比较项不是对象：Cloud 会静默判为不匹配 |
 | `condition_selector_unsupported` | `cases.conditions.variableSelector` | 选择器不是「至少两个非空字符串」的列表；一段选择器在 Cloud 读作整个节点输出 |
+| `condition_selector_undeclared` | `cases.conditions.variableSelector` | 选择器指向图中没有的节点，或该节点 kind 不声明的变量根。desktop 的变量池在运行前从图里声明每个根，这种选择器在那里是 `Undeclared` 并让节点失败；Cloud 运行时没有声明集，只会回答「缺失」，于是 `exists` / `not_exists` 能走出一条作者写不出的分支 |
 | `condition_operator_unsupported` | `cases.conditions.operator` | 算子不在求值器算子表里（即 desktop `ComparisonOperator::parse` 的全集）：Cloud 会静默判为不匹配 |
 
 `field` 是相对节点 `data` 的路径，不带数组下标：同一节点有多个分支或比较项出错时各返回一条问题，问题定位到节点和字段，不指出是第几个分支或比较项。
+
+**变量根的声明范围**以 desktop `WorkflowVariablePool::from_graph` 为准：Start 声明 `input`（kickoff 提示词）和每个
+`inputVariables` 变量；Agent 声明 `output`，带 `agentConfig.outputContract` 时再声明 `structured_output`；Output 声明
+`output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp`；Cloud 今天既不提供这两个值，也
+不声明它们，指向 `sys.*` 的选择器按未声明拒绝。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
+cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」求值——`exists` / `not_exists` / `empty` / `not_empty` 回答
+它，其余算子让节点失败。
+
+门禁只作用于**新的发布**。新增这道校验之前冻结的已发布快照仍按运行时的「缺失」语义求值，不会因为门禁上线而改变
+已经发布的图；作者重新发布时才会被拒绝并得到可定位的问题。
+
+求值语义的收紧同样作用于已发布快照：比较算子遇到未赋值的变量此前静默落到 else，现在让节点和运行失败，错误里带上
+选择器。历史快照不会重新经过发布门禁，所以升级后这类「以前悄悄走 else」的运行会开始失败——这是 #210 的预期结果，
+不是回归。
 
 **未完成的分支不拒绝**：没有 `cases`、或某个分支还没有比较项，都按"落到 else"处理，两侧语义一致，属于草稿的
 正常中间状态。
@@ -168,8 +183,9 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 **求值语义已与 desktop 对齐**：数组/对象上的 `contains`、非字符串上的 `starts_with` / `ends_with`、
 选择器的取值遍历，以及期望值模板的解析语义，这些差异只在值被解析出来之后才成立，文档本身看不出来，
 本来就不进发布门禁。它们已按 **ora-space/circus#210** 与 desktop `condition.rs` 对齐（cloud#92）；
-期望值里的模板现在按 desktop 的规则求值，因此 `condition_value_template_unsupported` 从上面的清单移除。
-清单只保留文档级拒绝项，不是 condition 的最终语义。
+期望值里的模板现在按 desktop 的规则求值，因此 `condition_value_template_unsupported` 从上面的清单移除；
+同时补入同样只依据文档判定的 `condition_selector_undeclared`，清单仍为 9 项。清单只保留文档级拒绝项，
+不是 condition 的最终语义。
 
 **工作流资产导入走同一道门禁**：导入的每份文档都经过这次发布校验，因此插件包里带的不支持写法按**单份文档**
 失败，不影响同包其他文档（导入路径见[资产导入与已发布快照决策](20261016-asset-import-and-published-snapshots.md)）。
