@@ -40,7 +40,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 | --- | --- |
 | 根 D1：proto 是唯一契约源 | 继承，不变 |
 | 20260928 不变量 1：`v1` 已发布的消息与方法不变，`buf breaking` 必须通过 | 修改：本组决策是破坏性切换，`CloneSpec`、交付与会话输入直接替换，`buf breaking` 以一次性 `ignore_only` 豁免（D1、D9） |
-| 20260928 D1：`DeliverRevision{session_execution_id, checkout_execution_id, base_commit, revision_ref, bundle_key, history_key}`；`RevisionDelivered` 带 bundle 与 history；`RevisionFailed.reason` 的封闭集合 | 修改：删除 `bundle_key` 与 `RevisionDelivered.bundle`，增加 `git_repository_url`、`delivery_ref`（D9）与 `workspace_ref`（D6）；失败原因增加 `PUSH_REJECTED`、`PUSH_FAILED`（D9） |
+| 20260928 D1：`DeliverRevision{session_execution_id, checkout_execution_id, base_commit, revision_ref, bundle_key, history_key}`；`RevisionDelivered` 带 bundle 与 history；`RevisionFailed.reason` 的封闭集合 | 修改：删除 `bundle_key` 与 `RevisionDelivered.bundle`，增加 `git_repository_url`、`delivery_ref`（D9）与 `workspace_ref`（D6）；失败原因增加 `PUSH_REJECTED`、`PUSH_FAILED`，删除 `BUNDLE_FAILED`（D9） |
 | 20260928 D4：`GrantRevisionUpload` 为交付输入中的两个对象键签发 PUT | 修改：只为 `history_key` 签发（D9） |
 | 20261010 D1：`PriorRevision{revision_id, final_commit, bundle}`，`bundle` 只在会话输入中 | 修改：删除 `bundle`，会话输入中改带 `git_repository_url`、`delivery_ref`、`base_commit`（D9） |
 | 20261010 D2：`GrantRevisionDownload` 签发前序 bundle 的预签名 GET | 删除（D9） |
@@ -300,8 +300,9 @@ message RevisionDelivered {
 }
 ```
 
-- `RevisionFailureReason` 增加 `PUSH_REJECTED = 8`、`PUSH_FAILED = 9`；`BUNDLE_FAILED = 4` 保留枚举值，但新结果中 Cloud 以
-  `invalid_result` 拒绝。`VERIFICATION_FAILED` 仍只由 Cloud 记录。
+- `RevisionFailureReason` 增加 `PUSH_REJECTED = 8`、`PUSH_FAILED = 9`；`BUNDLE_FAILED = 4` 与 D1 的 `BRANCH_NOT_FOUND` 一样删除，
+  写 `reserved 4` 与 `reserved "REVISION_FAILURE_REASON_BUNDLE_FAILED"`：破坏性切换下没有会报它的 Node，旧值也不迁移。
+  `VERIFICATION_FAILED` 仍只由 Cloud 记录。
 - `AgentRunService` 删除 `GrantRevisionDownload` 及其请求、响应与 `DownloadGrant`。`GrantRevisionUpload` 形状不变，只签发
   `history_key` 的授权；`checksums` 含其他键时以 `INVALID_ARGUMENT`（`invalid_upload_checksum`）拒绝。
 - `internal/controlgrpc` 解码交付输入时要求 `git_repository_url`、`delivery_ref`、`workspace_ref` 与 `history_key` 非空，不再要求
@@ -314,7 +315,7 @@ message RevisionDelivered {
 - **`buf breaking`**：`FILE` 规则下，即使写了 `reserved`，删除字段、消息、方法与枚举值仍被拒绝。本次变更的 PR 在
   `proto/buf.yaml` 中按文件一次性豁免：`FIELD_NO_DELETE`（`executions.proto`、`operations.proto`、`agent_executions.proto`）、
   `MESSAGE_NO_DELETE`（`agent_executions.proto`、`agent_runs.proto`）、`RPC_NO_DELETE`（`agent_runs.proto`）与
-  `ENUM_VALUE_NO_DELETE`（`executions.proto`，D1 的 `BRANCH_NOT_FOUND`）。下一次修改该文件的 PR 移除豁免，此后比较基准已包含
+  `ENUM_VALUE_NO_DELETE`（`executions.proto` 的 `BRANCH_NOT_FOUND`、`agent_executions.proto` 的 `BUNDLE_FAILED`）。下一次修改该文件的 PR 移除豁免，此后比较基准已包含
   本次删除。`reserved` 照样写上，防止字段号与名字以后被赋予别的含义。
 
 为什么不开 `v2`：`buf.yaml` 约定破坏性修改以并列的 `v2` 表达，是为了让旧使用方继续工作。这里的前提不成立：desktop 的
