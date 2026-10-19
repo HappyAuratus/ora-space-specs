@@ -10,7 +10,7 @@
 - 风险：Workspace 推送触达外部仓库；未经批准或审批人不对的发布被派发；管理员以他人的个人凭据写入外部仓库。
 - 前置状态：团队、个人、未知三类凭据；发起人是否有 Project 发布权限、是否为个人凭据的所有者。
 - 触发：创建发布；管理员批准使用他人的个人凭据；批准后凭据轮换；批准过期；没有发布权限也不是凭据所有者的成员发起。
-- 必须成立：发起人是有 Project 发布权限的人或所用个人凭据的所有者；发起人即审批人时创建即批准，否则 `awaiting_approval`；批准绑定全部字段与凭据版本；凭据换版本以 `cancelled(credential_changed)`、超过 24 小时以 `cancelled(approval_expired)` 结束；未知归属的凭据不能发布。
+- 必须成立：发起人是有 Project 发布权限的人或所用个人凭据的所有者；发起人即审批人时创建即批准，否则 `awaiting_approval`；批准绑定全部字段与凭据版本；凭据换版本以 `cancelled(credential_changed)`、创建后超过 24 小时以 `cancelled(approval_expired)` 结束；未知归属的凭据不能发布。
 - 禁止结果：管理员批准使用他人的个人凭据；批准后改动字段仍派发；无权成员发起成功。
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
   `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency`、`TestRepositoryPublishApprovalExpiresAndRotationCancelsOldVersion`。
@@ -21,14 +21,14 @@
 
 ## Publish Sources Are Any Workspace Branch Or Delivery Ref Of The Project
 
-- 风险：发布源按 Workspace 创建者校验，与契约放宽后的共享读取不一致；`revisionId` 发布用了未核验的提交。
+- 风险：发布源按 Workspace 创建者校验，与契约放宽后的共享读取不一致；`revisionId` 发布指向逻辑 ref 而不是交付 ref。
 - 前置状态：同一 Project 内多个 Workspace 的分支和交付 ref；已登记的 Revision。
 - 触发：以他人 Workspace 的分支作为源；以交付 ref 作为源；只给 `revisionId`；源 ref 不存在；`expectedOldOid` 等于 `sourceCommit`。
-- 必须成立：本 Project 任意 Workspace 分支或交付 ref 都可作源，Cloud 经 ref 查询确认存在；`revisionId` 取 Revision 登记的交付 ref 与最终提交；`expectedOldOid` 等于源提交时 `400 nothing_to_publish`。
-- 禁止结果：按创建者拒绝合法的源；跨 Project 的 ref 被接受；`revisionId` 与 `sourceRef` 同时给出时被接受。
+- 必须成立：本 Project 任意 Workspace 分支或交付 ref 都可作源，Cloud 经 ref 查询确认存在；带 `revisionId` 的发布以 `409 revision_not_publishable` 结束，不访问外部写入（Revision 记录保存的是逻辑 ref，见发布 ADR D1 的偏离）；`expectedOldOid` 等于源提交时 `400 nothing_to_publish`。
+- 禁止结果：按创建者拒绝合法的源；跨 Project 的 ref 被接受；`revisionId` 与 `sourceRef` 同时给出时被接受；`revisionId` 发布被当作可发布源。
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
   `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency` 覆盖交付 ref 作为源、创建前经 Cloud ref 查询确认。仍缺：
-  他人的 Workspace 分支作源、跨 Project ref 拒绝、`revisionId` 解析与 `400 nothing_to_publish`。
+  他人的 Workspace 分支作源、跨 Project ref 拒绝、`revisionId` 返回 `409 revision_not_publishable`、`400 nothing_to_publish`。
 - 决策依据：D1，不变量 5。
 
 ## Publish States Follow The Executor Classification And Running Happens Once
@@ -65,12 +65,12 @@
 - 风险：发布成功后当前快照永远不包含发布的提交；复用了在发布生效前就 fetch 完的同步；建不了同步时让发布的终态事务回滚。
 - 前置状态：发布的目标分支等于 Binding 的分支；Binding 没有同步、有 `pending`/`leased` 的同步、有 `running` 的同步；凭据可以被冻结。
 - 触发：发布以 `succeeded` 结束（包括核验确认）。
-- 必须成立：没有未结束的同步时新建 `after_publish`；`pending`/`leased` 时复用；`running` 时置补同步标记，由它的终态事务按同步 ADR D3 至多新建一个后继；建不了时把原因记入发布的 `result.successorSkipped`，发布照常 `succeeded`。
+- 必须成立：没有未结束的同步时新建 `after_publish`；`pending`/`leased` 时复用；`running` 时置补同步标记，由它的终态事务按同步 ADR D3 至多新建一个后继；建不了时把原因记入发布的 `result.resyncSkipped`（凭据不可用时为错误码原文；Project 不是 `active` 时不记录），发布照常 `succeeded`。
 - 禁止结果：复用 `running` 的同步；发布直接改写当前快照；自动同步失败改变发布的结果。
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
   `TestRepositoryPublishSuccessSchedulesExactlyOneSyncAfterRunningSync`、`TestRepositoryPublishLeaseMutualExclusionAndRecovery`。
   已覆盖：`running` 的同步被置上补同步标记，并在它结束后恰好新建一个 `after_publish`；尚未开始的同步被复用。仍缺：没有独立的
-  “没有未结束同步时新建 `after_publish`”测试，也没有发布 `result.successorSkipped` 的测试。
+  “没有未结束同步时新建 `after_publish`”测试，也没有发布 `result.resyncSkipped`（含 Project 非 `active` 时不记录）的测试。
 - 决策依据：D6，不变量 9；同步 ADR D3。
 
 ## Publish Audit Keeps Facts Without Secrets

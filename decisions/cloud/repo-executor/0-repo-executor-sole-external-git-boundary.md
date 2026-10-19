@@ -356,6 +356,21 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 | 执行器内的出口代理把地址固定给 `git` | 与 `http.curloptResolve` 同样能关闭 DNS rebinding，也不依赖 `git` 版本；但多一个常驻组件和 CONNECT 处理，第一阶段不需要（D4） |
 | 把执行器并入 Git Server | 少一个进程，但 Git Server 会同时持有外网出口和外部凭据，与“Git Server 不接触外部凭据”（契约需求 3）冲突 |
 
+## 与批准版本的偏离
+
+对照 cloud `ceb39bc` 与 cluster `033a4ea`，最终实现与本文批准时相比有以下偏离，正文已按最终实现表述：
+
+| 批准时的决策 | 最终实现 | 原因 |
+| --- | --- | --- |
+| 执行器是 Ora 中唯一访问外部 Git 仓库的程序 | Project 的外部仓库只有一个执行边界；Cloud 的插件市场同步和内部线接入前的 Workspace clone 是两个范围外的例外 | 两条旧路径已经存在：插件市场按固定目录同步，不涉及 Project 的 Binding；Workspace clone 由内部线改为消费快照后消失 |
+| 破坏性切换不保留外部 clone 与 bundle 的旧路径 | 不保留 bundle 的旧路径；Workspace 直接从外部仓库 clone 的路径仍在 | 内部线尚未接入快照 clone |
+| 执行器的上限默认与 Git Server 的 `receive.maxInputSize` 相同，Git Server 的配额是第二道检查 | `MAX_TASK_BYTES` 默认 2 GiB；Git Server 没有配置 `receive.maxInputSize` 或配额，第二道检查未实现 | 第一阶段只部署了执行器的目录上限 |
+| 执行器、Cloud、model-gateway 挂载同一份 `deployment-egress.json` 并比对摘要，`ora verify` 执行比较 | 只有执行器挂载；Cloud 与 model-gateway 按空路径使用公网模式；仓库没有 `ora verify`，由 `cluster/scripts/external-git-acceptance.sh` 比较执行器与 Cloud 的健康摘要 | 部署只给执行器挂了文件；摘要比对工具尚未实现 |
+| 部署入口采集 `git-services` 与 `repo-egress` 网段的拓扑 | 尚未实现 | 没有记录原因 |
+| 执行器镜像固定 `git` 版本 | 基于 Alpine 3.22 的 `git` 包，只保证 ≥ 2.37 | 镜像没有固定补丁版本 |
+| `probe` 任务字段不含 `tenantId` | 包含 `tenantId` | 执行器按任务携带租户上下文，与同步、发布一致 |
+| 发布步骤以 `FETCH_HEAD` 判定源提交是取回顶端或其祖先 | 取回写入 `refs/ora-source/head`（`--no-write-fetch-head`，不写 `FETCH_HEAD`），以该 ref 判定 | 显式 ref 在后续步骤中稳定可读，不依赖 fetch 的隐含文件 |
+
 ## 本决策未解决的问题
 
 - **SSH 地址与 GitHub App 身份**：第一阶段只支持 `https://` 加 token。App 身份需要执行器向平台换取安装 token，留给后续决策。

@@ -37,12 +37,12 @@
 - 风险：Cloud 相信浏览器报告的版本，把引用置为 `stored`；浏览器没有回来确认时引用永远停在 `awaiting_secret`。
 - 前置状态：`awaiting_secret` 的引用。
 - 触发：浏览器谎报版本后确认；浏览器提交后不确认。
-- 必须成立：Cloud 经管理接口查询当前版本与 `submissionId`，一致才置 `stored`；授权过期后定时任务补上确认或标为已放弃；非 `stored` 的引用不能签发兑换授权。
+- 必须成立：Cloud 经管理接口查询当前版本与 `submissionId`，一致才置 `stored`；授权过期后定时任务补上确认，Store 中没有对应版本时只清除待确认记录、引用保持原状态；非 `stored` 的引用不能签发兑换授权。
 - 禁止结果：版本不一致仍置 `stored`；`awaiting_secret` 或 `revoked` 的引用被兑换。
 - 验证义务与证据：**Partial** — `integration/external_git_test.go` 的
   `TestGitCredentialSubmissionRotationConfirmationAndRevocation`、`TestGitCredentialAbandonedRotationKeepsStoredVersion`；
   `integration/repository_publish_external_test.go` 的 `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency`。已覆盖：版本或
-  `submissionId` 不符返回 `submission_not_stored`；版本一致才置 `stored`；放弃的轮换保留原版本；未确认的凭据不能创建发布。
+  `submissionId` 不符返回 `submission_not_stored`；版本一致才置 `stored`；未落盘的轮换保留原版本；未确认的凭据不能创建发布。
   仍缺：没有直接测试证明非 `stored` 的引用在 Store/执行器边界被拒绝签发兑换授权。
 - 决策依据：D1、D3，不变量 5、10。
 
@@ -51,7 +51,7 @@
 - 风险：旧版本的能力延续到新 token；推送能力由用户自述，错误到发布时才暴露；验证推送能力时写入了外部仓库。
 - 前置状态：可写 token、只读 token；`push-git-fixture`。
 - 触发：首次同步成功；`publish` 验证；轮换 token；同步以认证失败结束。
-- 必须成立：`read` 只由一次成功的同步证明；`publish` 只由一次成功的 receive-pack 广告请求证明，只读 token 得到 `push_denied`；轮换后能力集合为空；能力证据记录 `storeVersion` 与来源。
+- 必须成立：`read` 由成功的同步证明，每次成功同步刷新证据；`publish` 只由一次成功的 receive-pack 广告请求证明，只读 token 得到 `push_denied`；轮换后能力集合为空；能力证据记录 `storeVersion` 与来源。
 - 禁止结果：新版本继承旧能力；`publish` 验证向 fixture 发出更新命令；只读 token 能创建发布。
 - 验证义务与证据：**Partial** — `internal/repoworker/checks_test.go` 的 `TestCheckReadsTheTargetOnceWithAProbe`、
   `TestCredentialVerificationOutcomes`；`integration/external_git_test.go` 的
