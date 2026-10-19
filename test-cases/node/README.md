@@ -14,3 +14,13 @@
 | --- | --- | --- |
 | repository | [快照 clone 与 `ora-git`](repository/snapshot-clone-and-ora-git.md) | 访问外部仓库、checkout 留下 remote、带证书的 Git 读到 checkout 配置、拉取次数无界、冒充会话、推到别人的分支 |
 | revision | [Git 交付与恢复](revision/git-delivery-push-and-restore.md) | 交付 ref 未写入就成功、`403` 被重试、快进失败拖垮交付、恢复访问外部、`401` 让前序永久不可续、缺证书仍启动 |
+
+## 已批准的插件模型 adapter
+
+[插件模型 adapter 决策](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)于 2026-10-17 经 owner
+批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；[既有模型代理用例](agent-runtime/model-proxy.md)的
+证据保持原范围，不推导 adapter 路线已实现。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [插件模型 adapter](agent-runtime/plugin-model-adapters.md) | 首轮前准备失败残留授权、上下文泄入账本/日志、CLI 高优先级配置改路由、共享 provider 状态、别名与发现越权、收尾与撤销不收敛 |

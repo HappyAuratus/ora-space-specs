@@ -105,7 +105,8 @@ _Avoid_: 把连接称为 API Key，或把每个模型都称为一条连接
 
 ### Default Model（默认模型）
 
-用户选定的模型连接与该连接内的一个模型，供之后发起的运行使用。
+用户选定的全局模型连接与该连接内的一个模型，供 OpenCode 普通运行和工作流 `default` 槽位使用。
+显式 Claude 的个人配置不继承或改变该选择。
 _Avoid_: 空间共享默认值、平台统一模型
 
 ### Model Binding（模型绑定）
@@ -122,6 +123,41 @@ _Avoid_: 用户长效 API Key、登录会话
 
 触发该次 Agent 运行的用户，其个人模型连接承担本次模型调用。
 _Avoid_: 项目拥有者、后来追加评论的人
+
+个人 Agent 配置、冻结执行配置、模型访问上下文与 adapter 的区别见
+[Agent 模型配置术语](#agent-model-configuration)。这些术语复用本节的连接和授权概念，
+不另建插件级 Key 或第二份全局默认值。
+
+## Agent Model Configuration
+
+本节术语复用[个人模型术语](#personal-model-access)中的 Model Connection（模型连接）、Default Model、
+Model Binding 和 Model Grant；“个人模型连接”是同一连接概念，不新增一种插件或空间所有的连接。
+
+### Agent Configuration Declaration
+
+Agent 配置声明是插件发行版本对可配置选项和模型访问能力的静态约定，不包含任何用户的配置值。
+声明有效、个人配置完整、插件已安装和模型调用成功是相互独立的事实。
+
+### Personal Agent Configuration
+
+个人 Agent 配置是某个用户对一个完整插件身份的默认模型选择与专属选项。
+它引用个人模型连接，不拥有另一份上游凭据；空间的插件安装选择不代表成员已完成个人配置。
+
+### Frozen Agent Execution Configuration
+
+冻结 Agent 执行配置是一次运行创建时确定的执行器、配置契约、选项和模型选择。
+它包含执行器/选项与 Model Binding 的关联，描述这次运行实际选择了什么；普通配置编辑不会改变它，
+它也不替代 Model Grant 的当前授权判断。
+
+### Model Access Context
+
+模型访问上下文是一次会话消费冻结模型选择所需的受控运行输入。它只授予该会话当前有效的模型访问，
+不代表用户全部连接的访问权，也不是可再次使用的个人配置。
+
+### Agent Model Adapter
+
+Agent 模型 adapter 负责把平台模型访问上下文解释为某个 Agent 所需的配置与交互行为。
+它不拥有个人凭据、授权范围或平台执行策略，不能由配置转换自行扩大用户授予的能力。
 
 ## Agent Issue Run
 

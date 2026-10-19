@@ -87,6 +87,20 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | controller-integration | [快照 clone 输入与执行授权](controller-integration/snapshot-clone-input-and-execution-grants.md) | Controller 拼输入、基线提交写错、残留外部 clone 入口、执行越权写 ref、WorkflowRun 会话误获授权、bundle 契约残留 |
 | revision | [Git 交付与续作](revision/git-native-delivery-refs-and-resume.md) | 未核验就登记、短暂不可用被判失败、`unchanged` 没有自己的 ref、续作拨回旧提交、一次取消永久不可续 |
 
+## 已批准的多 Agent 个人配置与静态声明分发
+
+[Agent 配置声明](../../decisions/desktop/plugin/manifest/20261017-agent-configuration-declarations.md)、
+[Cloud 静态元数据分发](../../decisions/cloud/plugin-marketplace/20261017-agent-configuration-metadata.md)、
+[个人 Agent 配置](../../decisions/cloud/model-access/20261017-personal-agent-configurations.md)与
+[插件模型 adapter](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)四份 ADR 于 2026-10-17 经 owner
+批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；OpenCode 与个人连接的既有 Covered/Partial 证据保持
+原范围。Node 一侧的 adapter 用例见 [Node 核心测试用例](../node/README.md)，Desktop 一侧的声明用例见其领域目录。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| plugin-marketplace | [配置元数据分发](plugin-marketplace/agent-configuration-metadata.md) | 配置读取触发执行/下载、catalog 更新改写已选声明、安装结果与计划脱钩、安装权越权读个人配置 |
+| model-access | [个人 Agent 配置、冻结与授权](model-access/personal-agent-configurations.md) | Key 进普通配置、CAS 失效、默认值漂移、Thread 越权、冻结不全、撤销复活、修复覆盖并发、多空间失配、别名越权、真实验收缺口 |
+
 ## 已实现的 Issue 协作交互
 
 [Issue 协作根决策](../../decisions/cloud/issue-collaboration/0-typed-targets-and-explicit-execution-intent.md)为 `implemented`，补登 Cloud 已上线的协作契约。
