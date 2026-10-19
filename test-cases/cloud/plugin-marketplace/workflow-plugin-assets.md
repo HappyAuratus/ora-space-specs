@@ -184,6 +184,7 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
 | --- | --- | --- |
 | 无 live workspace 的 space 也会导入 | 真实 HTTP + PostgreSQL：零实例的 space 安装后出现 workflow 与快照 | Covered |
 | 导入结果独立持久化并可单独读取 | 真实 PostgreSQL：导入结果按 `skip_key` 读取，不依赖插件执行结果行 | Covered |
+| 多个 live Workspace 也不按 Workspace fan-out | 真实 HTTP + PostgreSQL：≥2 个 live runtime 的空间安装后，Node 侧安装仍 fan-out 到每个 runtime，导入只有一行来源记录，每份文档一个 workflow 与一个已发布快照 | Covered |
 | 安装结局与导入结局互不推导 | 真实 HTTP：Node 安装失败时导入结果仍为 `imported`，反之亦然 | Partial |
 | 卸载不回收副本 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，发布可用性不变 | Covered |
 
