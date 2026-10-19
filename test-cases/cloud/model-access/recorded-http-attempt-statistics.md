@@ -4,7 +4,7 @@
 直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的
 [`feae6e39f6cd9647784e6ff923778e65fa8f7f92`](https://github.com/ora-space/cloud/tree/feae6e39f6cd9647784e6ff923778e65fa8f7f92)。
 WorkflowRun 登记与 `0044` 的代码证据来自 [Cloud PR #93](https://github.com/ora-space/cloud/pull/93)，
-合并后按合并提交固定。
+固定在合并提交 [`090bded8505cbf39fc3ec866eaae826cd6436c95`](https://github.com/ora-space/cloud/tree/090bded8505cbf39fc3ec866eaae826cd6436c95)。
 `Covered` 只证明该提交所列测试边界内的义务，不表示已合并或真实部署已验收。
 Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯通测试使用真实 PostgreSQL 和受控 TLS
 上游，不能代替真实供应商、Node 或浏览器验收。
@@ -106,8 +106,8 @@ Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯�
 [gateway-http]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/integration/model_attempt_gateway_test.go
 [usage]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/modelgateway/usage_test.go
 [statistics-http]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/integration/session_statistics_test.go
-[statistics-http-93]: https://github.com/ora-space/cloud/blob/e6f1c7ac86c934a4f116a223f0b8e13720a360f9/integration/session_statistics_test.go
-[migration-upgrade]: https://github.com/ora-space/cloud/blob/e6f1c7ac86c934a4f116a223f0b8e13720a360f9/integration/migration_upgrade_path_test.go
-[workflow-attempt]: https://github.com/ora-space/cloud/blob/e6f1c7ac86c934a4f116a223f0b8e13720a360f9/internal/core/model_attempt_workflow_db_test.go
+[statistics-http-93]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/integration/session_statistics_test.go
+[migration-upgrade]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/integration/migration_upgrade_path_test.go
+[workflow-attempt]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/internal/core/model_attempt_workflow_db_test.go
 [metrics-ui]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/session-metrics/session-metrics.test.tsx
 [metrics-page]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/sessions/session-metrics-page.test.tsx
