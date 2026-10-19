@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 外部写入只经显式 Publish：经批准的 PublishOperation 以 expected old 快进推送，结果不明时只读核验、不重推
@@ -10,7 +10,7 @@ Workspace 的推送只到达 Git Server，永远不会触达外部仓库。要�
 从 Git Server 读取源提交，确认是快进，以 `ls-remote` 比对旧值，再以 `--force-with-lease` 推送并再次核验。结果不明时进入
 `uncertain`，由 reconciler 以只读的 `ls-remote` 判定，从不重推。发布成功后自动同步一次，让当前快照反映外部仓库。
 
-本 ADR 处于 `proposed`，是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[显式发布用例](../../../test-cases/cloud/project/explicit-fast-forward-publish.md)），是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
 它按评审中推荐的方案确定只快进发布和审批人，遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)
 （下称“契约”）D5 第 3 项：发布 Operation 在 Git Server 上没有写权限，执行器只取 Operation 记录的源 ref 与源提交。涉及 Cloud（API、审批、状态机、reconciler、
 审计、前端）与 Repo Executor。凭据能力由 [identity-access 后续决策](../identity-access/20261016-git-credentials-in-independent-credential-store.md)
@@ -153,7 +153,7 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 
 3. 读取失败（网络、平台故障）或凭据不可用时保持 `uncertain`，按指数退避重试，最长间隔 1 小时；界面显示“正在核验”和最近一次
    失败的原因，并提供“立即核验”按钮。
-4. **核验次数有上限**（契约落地顺序第 1 步）：自动核验最多 20 次（按退避约跨 24 小时），用尽后以 `failed(outcome_unknown)` 终态
+4. **核验次数有上限**（契约落地顺序第 1 步）：自动核验最多 20 次（按上述退避约跨 16 小时），用尽后以 `failed(outcome_unknown)` 终态
    结束，审计记录每次核验的失败原因，界面提示“无法确认外部仓库是否已更新，请同步后查看”。上限保证 `uncertain` 不会永远是
    未结束的 Operation，删除 Project 等待它们时总会结束（同步 ADR D2）。状态枚举由底座定全，所以用 `failed` 加错误码表达，
    不新增状态。
@@ -174,8 +174,11 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 - 该 Binding 没有未结束的同步：新建一个。
 - 已有同步处于 `pending` 或 `leased`：复用它。它还没有 fetch 外部仓库，fetch 时发布已经生效。
 - 已有同步处于 `running`：它可能在发布生效之前就 fetch 完了，不能复用。发布在 Binding 上置 `resync_requested = true`；那个同步
-  登记终态的同一事务里检查并清除该标记，再新建一个 `after_publish` 同步。这样“发布成功”之后，当前快照最终一定会包含发布的提交
-  （除非外部仓库随后又被改写）。
+  登记终态的同一事务里检查并清除该标记，按同步 ADR D3 的“后继同步”规则至多新建一个后继：同时需要自动重放时只建重放，它在发布
+  生效之后才 fetch，同样包含发布的提交。这样“发布成功”之后，当前快照最终会包含发布的提交（除非外部仓库随后又被改写，或后继
+  同步失败）。
+- 新建同步的条件不满足时（凭据已冻结或不可用，Project 正在删除），不新建，把原因记入本发布 Operation 的
+  `result.successorSkipped`，发布照常以 `succeeded` 落库，不回滚（同步 ADR D3）。
 
 - 同步结果通常是 `sourceCommit`，但外部仓库可能在发布后又前进了，当前快照总是以同步得到的为准（契约 D5 第 2 项：外部内容只经
   同步进入当前快照，发布不直接改写它）。
