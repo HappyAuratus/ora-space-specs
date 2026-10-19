@@ -146,8 +146,8 @@ desktop 节点——这样门禁才能给出确切原因，而不是"未知类�
 检查（MCP D4），由启动门禁处理（ora-space/circus#69）。发布也不检查映射（槽位决策：发布者不一定是运行者）。
 
 **condition 节点的「当前不支持配置」清单**（ora-space/circus#202 决策 A 条件 2）。condition 的求值语义以
-desktop 的 `condition.rs` 为准（D1），而 Cloud 首期实现与它仍有已知差异。差异分两类，**只有能从文档本身
-判定的那一类进发布门禁**；门禁拒绝时给出**节点、字段、原因**三要素，不等到运行时才判错：
+desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档本身判定**的配置错误，拒绝时给出
+**节点、字段、原因**三要素，不等到运行时才判错：
 
 | 拒绝原因（`code`） | 返回的 `field` | 为什么文档本身就能判定 |
 |---|---|---|
@@ -159,17 +159,17 @@ desktop 的 `condition.rs` 为准（D1），而 Cloud 首期实现与它仍有�
 | `condition_rule_not_an_object` | `cases.conditions` | 比较项不是对象：Cloud 会静默判为不匹配 |
 | `condition_selector_unsupported` | `cases.conditions.variableSelector` | 选择器不是「至少两个非空字符串」的列表；一段选择器在 Cloud 读作整个节点输出 |
 | `condition_operator_unsupported` | `cases.conditions.operator` | 算子不在求值器算子表里（即 desktop `ComparisonOperator::parse` 的全集）：Cloud 会静默判为不匹配 |
-| `condition_value_template_unsupported` | `cases.conditions.value` | 期望值里带 `{{#…#}}`：desktop 解析它并保留绑定类型，Cloud 按字面文本比较 |
 
 `field` 是相对节点 `data` 的路径，不带数组下标：同一节点有多个分支或比较项出错时各返回一条问题，问题定位到节点和字段，不指出是第几个分支或比较项。
 
 **未完成的分支不拒绝**：没有 `cases`、或某个分支还没有比较项，都按"落到 else"处理，两侧语义一致，属于草稿的
 正常中间状态。
 
-**另一类差异不进发布门禁**，因为它们只在值被解析出来之后才成立，文档本身看不出来：数组/对象上的 `contains`、
-非字符串上的 `starts_with` / `ends_with`、期望值模板的解析语义、选择器的取值遍历。这些连同对应的 desktop
-对拍用例一并拆到 **ora-space/circus#210**；#210 完成后逐项删掉上表里相应的拒绝项，所以上表是**会缩短的
-清单**，不是 condition 的最终语义。
+**求值语义已与 desktop 对齐**：数组/对象上的 `contains`、非字符串上的 `starts_with` / `ends_with`、
+选择器的取值遍历，以及期望值模板的解析语义，这些差异只在值被解析出来之后才成立，文档本身看不出来，
+本来就不进发布门禁。它们已按 **ora-space/circus#210** 与 desktop `condition.rs` 对齐（cloud#92）；
+期望值里的模板现在按 desktop 的规则求值，因此 `condition_value_template_unsupported` 从上面的清单移除。
+清单只保留文档级拒绝项，不是 condition 的最终语义。
 
 **工作流资产导入走同一道门禁**：导入的每份文档都经过这次发布校验，因此插件包里带的不支持写法按**单份文档**
 失败，不影响同包其他文档（导入路径见[资产导入与已发布快照决策](20261016-asset-import-and-published-snapshots.md)）。
