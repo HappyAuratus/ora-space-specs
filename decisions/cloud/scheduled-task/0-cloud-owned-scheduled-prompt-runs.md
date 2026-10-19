@@ -1,0 +1,232 @@
+---
+status: proposed
+---
+
+# Cloud Scheduled Task 由服务端持久调度产生幂等触发，每次触发经既有 IssueRun 链执行绑定 issue 下的无头 Prompt 单会话
+
+用户可以在 Web 端创建周期性的定时任务（Scheduled Task）：把一条随任务版本冻结的 Prompt、一个执行
+Agent 与一份无人值守同意，绑定到租户内的一个 Issue 上；由 Cloud 的持久调度器在到期时产生稳定的
+occurrence，并在同一事务里幂等接纳为该 issue 下的一次 agent IssueRun。运行完全复用既有的
+IssueRun 编排（运行 Workspace、Thread、Revision、交付与释放）、有界启动收尾与残留回收，调度器
+不新增第二套 Agent 运行入口，也不解释 Prompt 之外的执行语义。每次运行固定 60 分钟，超时取消依赖
+Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型费用，运行以任务所有者的 Git 身份提交。
+
+本 ADR 处于 `proposed`。它承接 [desktop Scheduled Task 根决策](../../desktop/core/scheduled-task/0-local-and-cloud-execution-ownership.md)
+显式留给 Cloud 决策的契约：任务的账号与存储归属、可见范围、无头单会话 API、通知、发起者归属与
+费用，以及 Desktop `cloud` 选项的解除禁用条件。首期只做无头 Prompt 单会话：不接 Workflow 目标、
+不解析 `executorSlot`、不依赖 ora-space/circus#60 / #67 的 Server Workflow 执行链。核心测试用例
+在本文评审通过、状态改为 `approved` 后，按最终同意的决策补充到 `test-cases/cloud/scheduled-task/`。
+
+涉及 Cloud 的 `internal/core`（定时任务定义、occurrence、调度 worker）、PostgreSQL 迁移与公开 API。
+兼容性边界：manual run、`@` Confirm、Workflow 路径与 desktop 决策全部不变；`issue_runs` 只增加
+可选的触发来源标识，不改变既有列义与状态机。
+
+## 继承与修改
+
+| 前序约定 | 本文处理 |
+|---|---|
+| [desktop Scheduled Task 根决策](../../desktop/core/scheduled-task/0-local-and-cloud-execution-ownership.md) D2：`ScheduledOccurrence{taskId, scheduledAt}` 唯一标识一次计划触发，同一 occurrence 至多接纳一个 Scheduled Run，幂等是各端内部规则 | 继承，不变：Cloud 侧以 `(task_id, scheduled_at)` 唯一约束在同一事务内幂等接纳（D2、D3） |
+| 同上 D3：Cloud 首期复用既有 Agent `IssueRun` / `Thread` 应用用例，每个任务绑定一个 issue，每次触发在该 issue 下新建 agent IssueRun，不接 Workflow / `executorSlot`，不另建运行入口 | 继承，不变：这是本文 D3 的硬边界 |
+| 同上 D4/D7：迟到超 10 分钟记 `missed` 不补跑；失败、超时与 `missed` 不自动重试；禁用只阻止未来接纳；删除任务保留审计事实 | 继承，不变；Cloud 侧 `missed` 原因只有 `late_trigger`（D2） |
+| 同上 D5：`cloud` 的未来 occurrence 只由 Cloud 持久调度器产生；创建后不可迁移为 `local`；60 分钟超时取消依赖 Cloud 侧取消写入者，写入者就绪前 `cloud` 不得可选 | 继承：D4 落实截止与取消写入者的接缝；D8 冻结解除禁用条件 |
+| 同上 D7：运行记录关联 task、revision、occurrence 与目标运行 ID；状态集 `accepted/running/succeeded/failed/cancelled/skipped_busy/skipped_capacity`；每任务保留最近 100 条 | 继承并落地：Cloud 侧任务历史记录投影既有 IssueRun 终态，不复制状态机；100 条保留只作用于任务历史视图（D6） |
+| 同上 D8：保存与每次接纳均校验目标、模型配置与无人值守授权；失败明确结束，不回退 | 继承并落地为 Cloud 侧的资格校验表与失败原因映射（D5） |
+| 同上 D1：schedule 首版只有三种受限周期，不存储或解释 cron 字符串；时区作为持久化字段留给 Cloud | 继承并落定：任务持久化创建时固定的 IANA 时区，DST 规则沿用根决策 D6（D2） |
+| [cloud/issue-run 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)：每次 Agent IssueRun 一个一次性运行 Workspace，`phase` 状态机、`status` 与 Revision 分别记录、取消是请求、`one_project_operation` 不被绕过 | 继承，全部不变：调度触发的运行与手动运行走同一条编排，本文不新增阶段或状态值（D3） |
+| [有界启动与未派发撤回](../issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)：启动预算、结束确认窗口与残留账本按数据库时间有界收尾 | 继承，不变：定时运行不重置、不续期任何窗口，也不把业务终态当清理证据 |
+| [残留 Agent Run 回收](20261018-residual-agent-run-reclamation.md)：业务终态与时间流逝都不触发物理终止 | 继承，不变：60 分钟截止只产生取消请求，物理终止只经既有证据链 |
+| [cloud/model-access 根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) D3：创建运行的同一事务冻结连接版本、密钥引用、模型与发起者 Git 身份；撤销的绑定不可复活 | 继承，不变：每次接纳以创建者当时的个人配置接纳并冻结（D5）；被否定的配置不回退、不替换 |
+| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 继承，不变：无头单会话的发起者是任务创建者；本文不开放任何追加入口（D3） |
+| [取消写入者（G-026）](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)：取消是请求加有界终态，首期必须有取消的写入者 | 继承并复用：定时运行的 60 分钟截止是该写入者的一个调用方（D4） |
+| [tenancy 一 Space 一租户](../tenancy/20260923-one-space-per-tenant.md)：有效租户成员资格是授权边界；被禁用成员的新访问立即拒绝 | 继承，不变：任务读取与触发资格都按当前成员资格判定（D1、D5） |
+| [project Space 归属](../project/0-project-space-scoping.md)：跨 Space 引用硬禁止，归属校验必须复用同一不变量 | 继承，不变：任务只存 `issue_id`，Project 一律由 issue 的 `project_ref` 派生（D1） |
+| [Space API 根决策](../api-boundary/0-space-api-and-event-stream.md)：REST 是权威状态源，SSE 只承载提交后的失效提示；`404` 统一不存在与无权限 | 继承，不变：任务与历史的读写、事件按同一契约（D6、D7） |
+| [Workflow 根决策](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md) D5：首期执行只支持匿名公开 Git | 继承，不变：定时任务的目标 Project 同样只支持匿名公开 Git（D5） |
+
+## 决策
+
+### D1：任务定义归属创建者、绑定一个 issue，读取跟随 issue 可见性，管理仅限创建者
+
+定时任务是租户内的持久定义，至少持久化：稳定 ID、`tenant_id`、绑定 `issue_id`、名称、随版本冻结的
+Prompt、执行 Agent（`space_agents` 引用，保存时冻结插件 desired 版本）、创建者的模型选择、schedule
+与创建时固定的 IANA 时区、执行归属（`cloud`，创建时写入，此后不可变更）、无人值守同意（策略名与
+同意时间）、定义 revision、启用状态、软删除墓碑、创建/更新时间与下一次触发投影。修改 schedule、
+时区、Prompt、Agent 或模型选择增加 revision；纯展示修改（如名称）不增加。
+
+- **归属与费用**：任务属于创建者。每次触发产生的 IssueRun 以创建者为运行发起者：个人模型连接承担
+  模型费用，Git 提交身份是创建者（沿用既有运行时身份规则）。任务不支持转移或共享管理；创建者离开
+  租户后任务保留，触发按 D5 明确失败。
+- **可见性**：任务定义与运行历史对「能读取该绑定 issue 的有效租户成员」可见，与 Thread 读取权限
+  先例一致；公开 API 对不存在与无权限统一返回 `404 not_found`。创建、编辑、启停、删除与撤销同意
+  仅限任务创建者：无人值守同意是个人授权，多人可改会造成授权来源不清晰。
+- **绑定与派生**：任务只持久化 `issue_id`；Project 由 issue 的 `project_ref` 派生，跨 Space 引用
+  按 [Project 归属决策](../project/0-project-space-scoping.md) 硬禁止。绑定 issue 删除后任务保留但
+  触发按 D5 明确失败，不自动解绑或改绑。
+
+### D2：schedule 按任务时区求值，occurrence 以 UTC 落盘，迟到阈值固定
+
+schedule 首版只有三种受限周期：每 N 小时（最短间隔 1 小时）、每天某时刻、每周某几天某时刻；不存储
+或解释 cron 字符串。任务持久化创建时固定的 IANA 时区；occurrence 落盘后只以 UTC `scheduled_at`
+标识。夏令时跳过的本地时间不补跑；回拨造成同一当地时间重复时，只接纳第一个对应的 UTC 时间点。
+系统后续调整不影响已落盘的 occurrence。
+
+- **迟到阈值**：调度器观察到某到期点时，若观察时刻晚于 `scheduled_at` 超过 10 分钟（固定阈值，不
+  提供配置），该 occurrence 记为 `missed(late_trigger)`，不执行也不补跑。Cloud 侧 `missed` 原因只有
+  `late_trigger`：调度器停机（部署、故障）表现为观察到迟到，不另设「服务未运行」原因。
+- **锚点**：每 N 小时任务以启用（或从禁用重新启用）时刻为锚，首个到期点为锚点加间隔，对齐 desktop
+  的启用锚语义；daily / weekly 按任务时区的日历求值。列表中的下一次触发投影是可重算展示值，不是
+  触发事实。
+- **身份**：`scheduled_task_occurrences` 以 `(task_id, scheduled_at)` 唯一。调度器多副本、重启、
+  部署或重复扫描都按同一身份幂等：先到的事务接纳，后到的读取既有结果原样返回，不产生第二个运行。
+
+### D3：接纳在同一事务内完成资格校验、occurrence 写入与 agent IssueRun 创建
+
+Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必需内部状态，复用既有周期扫描先例），
+周期评估到期任务。某到期点到期且未超迟到阈值时，在一个事务内完成：
+
+1. 读取任务当前定义并执行 D5 的资格校验；
+2. 以 `(task_id, scheduled_at)` 幂等写入 occurrence；
+3. 校验通过且未超限时，在同一事务创建该 issue 下的 agent IssueRun，occurrence 记录该运行 ID 与
+   冻结的 task revision，之后由既有编排驱动 `provisioning → starting → running → delivering →
+   releasing → done`。
+
+- **运行入口唯一**：调度器只调用既有 IssueRun 应用用例，不直接调用模型、不拼接未版本化输入、不
+  建立第二个 Agent 运行入口。运行记录其触发来源（任务与 occurrence）；调度器不写评论、不伪造用户
+  交互。首条 prompt 沿用既有的首条 prompt 模板路径，其中任务文本是随 task revision 冻结的 Prompt。
+- **每次触发新建会话**：不复用既有会话，不续接上一次运行的 Thread。
+- **跳过与失败**：同一任务上一次接纳的运行尚未到达终态时，该到期点记 `skipped_busy`，不排队不补跑。
+  首期不设跨任务全局并发上限：并发已受既有编排约束（每运行独立 Workspace、`one_project_operation`
+  串行建删、沙盒容量），全局配额数值属于后续配额决策（见「未解决的问题」）。
+- **失败的 occurrence**：资格校验失败的到期点记为失败的调度事实并写明原因（映射见 D5），不自动
+  重试该 occurrence，也不回退到任何其他执行位置。
+
+### D4：每次运行固定 60 分钟，超时取消由 Cloud 取消写入者执行
+
+接纳事务为运行持久化截止时刻 = 接纳时刻 + 60 分钟，固定不可配置。到期时由 Cloud 侧的取消写入者
+（[Workflow 根决策 D6](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md) 承诺首期交付的
+同一写入者，G-026）对运行写入取消请求；会话收尾、交付与释放沿既有有界路径进行，实际终态在收尾后
+写入，物理终止只遵循[残留回收](20261018-residual-agent-run-reclamation.md)的证据链。截止取消不是
+清理证据，不绕过任何既有保护。
+
+- 截止触发的取消在任务历史中展示为 `failed · timeout`（与根决策 D7 的失败原因集对齐）；IssueRun
+  本身按既有取消语义结算，两层事实分别记录、互不改写。
+- **前置门禁**：取消写入者合入并验证之前，`cloud` 不得成为可选执行位置，Web 端不得保存 `cloud`
+  任务（继承根决策 D5 的禁用承诺）。
+
+### D5：保存与每次接纳都校验资格，失败明确到原因，不回退不重试
+
+| 校验 | 保存时 | 每次接纳 |
+|---|---|---|
+| 绑定 issue 存在、未删除且有 `project_ref`；Space 未归档 | ✓ | ✓（按当时状态） |
+| Project 的仓库满足首期「仅匿名公开 Git」 | ✓ | ✓ |
+| Agent（`space_agents`）active 且冻结的插件版本可解析 | ✓ | ✓ |
+| 创建者是有效租户成员 | ✓ | ✓（被禁用或移除即失败） |
+| 创建者个人模型配置可用（连接启用、密钥已配置、模型在目录、能力满足） | ✓ | ✓（以当时配置接纳并在运行创建事务中冻结） |
+| 无人值守同意有效且策略受支持 | ✓ | ✓（撤销即失败） |
+
+- 接纳失败映射到根决策 D7 的失败原因集：issue / Project / Agent 不可用或创建者成员资格失效记
+  `target_unavailable`；模型配置不可用记 `model_unavailable`；同意缺失或策略不支持记
+  `approval_policy_invalid`。失败 occurrence 不自动重试，不换用其他模型或执行位置。
+- **无人值守同意**：首版唯一策略为 `full_auto_in_cloud_workspace`——在一次性隔离运行 Workspace 中
+  全自动批准工具调用。创建任务时必须以清晰风险说明取得创建者显式同意，并把策略名与同意时间随任务
+  持久化；说明至少覆盖：运行 Workspace 不是用户可见的数据边界承诺、Agent 全自动执行任意工具调用、
+  消耗创建者个人模型额度、以创建者 Git 身份提交。仅当目标 issue / Project 或策略变更时要求重新
+  同意；只改 Prompt 或计划不要求。创建者撤销同意后任务自动停用，既有运行事实不改写。
+- 与 [model-access 根决策 D3](../model-access/0-personal-model-connections-and-run-scoped-proxy.md)
+  一致：接纳时的配置校验与运行创建在同一事务，失败整体回滚；冻结后的绑定不随后续配置变化漂移，
+  被撤销的绑定不可复活。
+
+### D6：任务历史投影运行事实，每任务保留最近 100 条
+
+任务历史记录 = occurrence（outcome、原因、接纳时间、冻结的 task revision、IssueRun 引用）加上对
+该 IssueRun 终态的投影：`completed → succeeded`、`cancelled → cancelled`、`failed → failed`，截止
+取消展示为 `failed · timeout`。调度层不复制 IssueRun 状态机：历史读取按需联查，运行中的运行展示为
+`running`，终态以 IssueRun 的持久事实为准。
+
+- **100 条保留**作用于任务历史视图的记录（occurrence 行）：写入第 101 条时在同一事务删除最旧的
+  记录。清理只移除任务侧的展示与关联行，不删除、不改写 IssueRun 及其 Thread / Revision 审计事实；
+  被清理的运行在 issue 上仍完整可查。首期没有跨任务全局上限，历史不产生 `skipped_capacity`；该
+  状态名保留用于两端展示对齐。
+- 禁用任务只阻止未来接纳；删除任务写软删除墓碑并保留既有记录语义。
+- 两端只对齐展示用的字段名与状态名，不共享 ID、存储或同步协议；本地任务与 Cloud 任务互不同步、
+  不迁移，需要换执行位置时复制为新任务并停用旧任务。
+
+### D7：通知走既有事实通道，不新建通知系统
+
+首期不新增独立的通知或外发渠道。运行与触发的可见性由既有机制承担：IssueRun 的 Timeline 活动
+（`run.completed / failed / cancelled`）继续落在绑定 issue 上；Space 事件流新增定时任务的失效事件
+（任务列表与历史的刷新提示），按 Space API 根决策的事务后发布与只带失效信息的语义执行。接纳失败
+与 `missed` 在任务历史中可见。邮件、推送等外发通知属于后续决策；通知是交互辅助，不是运行事实源。
+
+### D8：首期管理面只在 Web，Desktop 保持禁用直到三项条件同时满足
+
+首期任务的创建、编辑、启停、删除、撤销同意与历史查看只通过 Web 公开 API 与前端提供。Desktop 不
+合并展示 Cloud 任务；Desktop 的 `cloud` 执行位置选项在以下三项全部满足前保持禁用，不得保存、不得
+以本地计时器代跑、不得展示模拟成功：
+
+1. 本 ADR 评审通过并置为 `approved`；
+2. Cloud 取消写入者（G-026）合入产品 main 并有直接验证证据；
+3. 无头 Prompt 单会话链路按 D3 的真实编排完成端到端验收。
+
+解除禁用后 Desktop 端的创建入口、任务展示与历史界面由后续决策承接，复用同一公开 API 与同一授权
+边界；本 ADR 不预置其形状。
+
+## 不变量
+
+1. 任务的执行归属在创建时确定且只可为 `cloud`，之后不可切换；每个任务的未来触发始终只由 Cloud
+   持久调度器产生。
+2. 同一 `(task_id, scheduled_at)` 至多接纳一个 Scheduled Run；重复评估幂等返回既有结果。
+3. 调度器只调用既有 IssueRun / Thread 应用用例；不新增第二套 Agent 运行入口，不接 Workflow、
+   不解析 `executorSlot`，不解释 Prompt 之外的执行语义。
+4. 每次触发新建会话，不复用既有会话或 Thread。
+5. 观察晚于 `scheduled_at` 超过 10 分钟的到期点记 `missed`，不执行不补跑；失败、超时与 `missed`
+   都不自动重试。
+6. 已接纳运行冻结接纳时的 task revision、Prompt、Agent 插件版本与模型绑定；任务的后续编辑只影响
+   未来触发。
+7. 每次运行固定 60 分钟，截止不可配置；超时取消必须经 Cloud 取消写入者，写入者就绪前 `cloud` 不
+   可成为可选执行位置。
+8. 没有有效无人值守同意或可用模型配置时不接纳运行；撤销同意自动停用任务；接纳失败不回退、不替换
+   模型或执行位置。
+9. 创建者失去有效租户成员资格后，该任务的新触发明确失败；任务不自动转移、不自动改绑。
+10. 禁用与删除不改写既有运行事实；100 条保留只作用于任务历史视图，IssueRun 及其审计事实不受影响。
+11. 首期目标 Project 只支持匿名公开 Git；任务与运行历史只存于其租户内，不跨设备同步到本地。
+
+## 为什么不是这些替代方案
+
+| 方案 | 取舍 |
+|---|---|
+| 存储/解释 cron 表达式 | 表达能力强；但调度语义与校验面随之膨胀，违反根决策「不得存储或解释 cron 字符串」的冻结 |
+| Web 前端计时器触发 | 实现快；但刷新、休眠与多副本会漏触发或重复触发，且违背「服务端拥有未来触发」的已冻结语义 |
+| Desktop 本地计时器代跑 Cloud 任务 | Desktop 关机即漏跑，还会重复产生有费用的运行；被根决策 D5 明确禁止 |
+| 每任务一个常驻会话，到期续发消息 | 省去建 Workspace；但会话状态跨触发漂移、失败面扩大，违反「每次触发新建会话」与一次性 Workspace 的隔离契约 |
+| 触发时写一条 @ Agent 评论走既有评论路径 | 完全复用评论链路；但伪造用户评论污染时间线与权限语义，且 Prompt 冻结与评论编辑语义冲突 |
+| 首期设跨任务全局并发上限 | 防止配额耗尽；但数值是配额决策，现有编排已约束并发面，先交由既有机制、配额另立决策 |
+| 截止后直接终止会话并伪造终态 | 收尾快；但绕过取消请求与有界收尾，伪造运行事实，违反残留回收的不变量 |
+| 邮件/推送通知随首期交付 | 及时性好；但通知渠道、地址与退订是独立产品面，先以既有 Timeline 与事件流承担可见性 |
+| 允许把任务转移给其他成员或共享管理 | 协作友好；但费用归属、同意与 Git 身份都绑定创建者，转移等于重签授权，留待后续决策 |
+| 首期在 Desktop 同步展示与管理 Cloud 任务 | 两端一致；但 Desktop 侧存储、同步与展示边界是独立决策面，先冻结 Web 单端以缩小首期范围 |
+
+## 本决策未解决的问题
+
+- 跨任务全局并发与配额的数值及策略（首期依赖既有编排的隐式约束）。
+- 外发通知（邮件、推送）的渠道、地址与退订契约。
+- 任务转移、协作管理与创建者离开后的承接。
+- Desktop 解除禁用后的创建入口与展示边界（解除条件已在本 D8 冻结）。
+- 私有仓库凭据链路就绪后，定时任务目标的扩展。
+- `missed` 的可选补跑、合并与过期策略（继承根决策「未来若增加 catch-up 必须另行决定」）。
+- 时区修改是否要求重新同意（首版按「仅目标或策略变更要求重新同意」处理，未单独计时区）。
+- 定时任务相关的用量统计与账单展示口径。
+
+## 落地顺序
+
+1. **ADR 评审与批准**：按评审结论纠正本文后置为 `approved`，并在 `test-cases/cloud/scheduled-task/`
+   按最终同意的决策补充核心测试用例。
+2. **取消写入者（G-026）**：确认或交付 agent 运行侧的取消写入者及其直接验证（与 Workflow 落地共用
+   同一收尾路径）；未就绪前不开放保存 `cloud` 任务。
+3. **存储与调度 worker**：任务与 occurrence 的迁移、幂等接纳事务、周期扫描与 D5 资格校验；完成
+   条件：多副本与重复扫描只产生一次接纳，迟到阈值、`skipped_busy` 与失败原因映射有直接验证。
+4. **公开 API 与 Web 端**：任务的 CRUD、启停、撤销同意、历史读取与失效事件；完成条件：管理仅限
+   创建者、读取跟随 issue 可见性、`404` 语义与幂等键规则与 Space API 根决策一致。
+5. **端到端验收**：真实栈跑通「到期 → 接纳 → 运行 Workspace → Thread → Revision → 释放」，覆盖
+   60 分钟截止取消、同意撤销停用、创建者成员失效失败与 100 条保留；验收通过并满足 D8 三条件后，
+   才解除 `cloud` 选项的禁用。
