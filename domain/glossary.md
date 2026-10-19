@@ -236,9 +236,10 @@ Cloud 为一次交付执行签发的、针对固定对象键和限定时长的�
 
 ### Scheduled Task（定时任务）
 
-用户创建的周期任务持久定义：把随版本冻结的 Prompt、执行 Agent 与无人值守同意绑定到租户内的一个
-Issue 上，执行归属（local 或 cloud）在创建时固定且不可切换。Cloud 端的 future occurrence 只由
-服务端持久调度器产生；desktop 端的 future occurrence 只由 Desktop 进程内 scheduler 产生。
+用户创建的周期任务持久定义：把随版本冻结的 Prompt、执行目标与无人值守同意绑定到一个稳定的执行
+目标上，执行归属（local 或 cloud）在创建时固定且不可切换。desktop 端的 future occurrence 只由
+Desktop 进程内 scheduler 产生；cloud 端的 future occurrence 只由服务端持久调度器产生。任务定义、
+运行历史的存储位置与可见范围由执行归属一端决定。
 
 ### Scheduled Occurrence（计划触发）
 
@@ -247,13 +248,13 @@ occurrence 至多接纳一个 Scheduled Run；重启、重复评估与迟到重�
 
 ### Scheduled Run（定时运行）
 
-被接纳的一次计划触发的调度层记录：冻结接纳时的任务 revision 与执行输入，引用它创建的 agent
-IssueRun；运行终态从 IssueRun 的持久事实投影，调度层不复制状态机。
+被接纳的一次计划触发的记录：冻结接纳时的任务 revision 与执行输入，引用由此产生的目标运行；
+运行终态从目标运行的持久事实投影，调度层不复制运行状态机。
 
 ### Unattended Consent（无人值守同意）
 
-用户为定时任务授予的显式授权：在隔离执行环境中全自动批准工具调用，并知晓额度消耗与执行身份代价。
-策略名与同意时间随任务持久化；撤销同意自动停用任务，既有运行事实不改写。
+用户为定时任务授予的显式授权：在隔离执行环境中全自动批准工具调用，并知晓额度消耗与执行身份
+代价。策略名与同意时间随任务持久化；撤销同意自动停用任务，既有运行事实不改写。
 
 ## Node Worktree
 

@@ -34,7 +34,7 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 | 同上 D1：schedule 首版只有三种受限周期，不存储或解释 cron 字符串；时区作为持久化字段留给 Cloud | 继承并落定：任务持久化创建时固定的 IANA 时区，DST 规则沿用根决策 D6（D2） |
 | [cloud/issue-run 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md)：每次 Agent IssueRun 一个一次性运行 Workspace，`phase` 状态机、`status` 与 Revision 分别记录、取消是请求、`one_project_operation` 不被绕过 | 继承，全部不变：调度触发的运行与手动运行走同一条编排，本文不新增阶段或状态值（D3） |
 | [有界启动与未派发撤回](../issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)：启动预算、结束确认窗口与残留账本按数据库时间有界收尾 | 继承，不变：定时运行不重置、不续期任何窗口，也不把业务终态当清理证据 |
-| [残留 Agent Run 回收](20261018-residual-agent-run-reclamation.md)：业务终态与时间流逝都不触发物理终止 | 继承，不变：60 分钟截止只产生取消请求，物理终止只经既有证据链 |
+| [残留 Agent Run 回收](../issue-run/20261018-residual-agent-run-reclamation.md)：业务终态与时间流逝都不触发物理终止 | 继承，不变：60 分钟截止只产生取消请求，物理终止只经既有证据链 |
 | [cloud/model-access 根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) D3：创建运行的同一事务冻结连接版本、密钥引用、模型与发起者 Git 身份；撤销的绑定不可复活 | 继承，不变：每次接纳以创建者当时的个人配置接纳并冻结（D5）；被否定的配置不回退、不替换 |
 | [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 继承，不变：无头单会话的发起者是任务创建者；本文不开放任何追加入口（D3） |
 | [取消写入者（G-026）](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)：取消是请求加有界终态，首期必须有取消的写入者 | 继承并复用：定时运行的 60 分钟截止是该写入者的一个调用方（D4） |
@@ -54,14 +54,16 @@ Prompt、执行 Agent（`space_agents` 引用，保存时冻结插件 desired �
 时区、Prompt、Agent 或模型选择增加 revision；纯展示修改（如名称）不增加。
 
 - **归属与费用**：任务属于创建者。每次触发产生的 IssueRun 以创建者为运行发起者：个人模型连接承担
-  模型费用，Git 提交身份是创建者（沿用既有运行时身份规则）。任务不支持转移或共享管理；创建者离开
-  租户后任务保留，触发按 D5 明确失败。
+  模型费用，Git 提交身份是创建者（沿用既有运行时身份规则）。任务不支持转移或共享管理。无人值守
+  授权的持有人不在场时任务自动停用：创建者失去有效租户成员资格、或绑定 issue 被删除时，调度器在
+  下一次评估时把任务置为停用（与撤销同意的停用语义一致），既有运行事实不改写；重新满足条件不会
+  自动恢复触发，需创建者显式重新启用。
 - **可见性**：任务定义与运行历史对「能读取该绑定 issue 的有效租户成员」可见，与 Thread 读取权限
   先例一致；公开 API 对不存在与无权限统一返回 `404 not_found`。创建、编辑、启停、删除与撤销同意
   仅限任务创建者：无人值守同意是个人授权，多人可改会造成授权来源不清晰。
 - **绑定与派生**：任务只持久化 `issue_id`；Project 由 issue 的 `project_ref` 派生，跨 Space 引用
   按 [Project 归属决策](../project/0-project-space-scoping.md) 硬禁止。绑定 issue 删除后任务保留但
-  触发按 D5 明确失败，不自动解绑或改绑。
+  自动停用，不自动解绑或改绑。
 
 ### D2：schedule 按任务时区求值，occurrence 以 UTC 落盘，迟到阈值固定
 
@@ -73,6 +75,10 @@ schedule 首版只有三种受限周期：每 N 小时（最短间隔 1 小时�
 - **迟到阈值**：调度器观察到某到期点时，若观察时刻晚于 `scheduled_at` 超过 10 分钟（固定阈值，不
   提供配置），该 occurrence 记为 `missed(late_trigger)`，不执行也不补跑。Cloud 侧 `missed` 原因只有
   `late_trigger`：调度器停机（部署、故障）表现为观察到迟到，不另设「服务未运行」原因。
+- **长时间停机至多记一条 `missed`**：`missed` 是任务级观察，不是逐点事实。一次停机（无论跨过多少
+  个到期点）恢复后，只为最近一个已过迟到窗口的到期点记录一条 `missed`，更早的到期点不补记；停机
+  期间仍在迟到窗口内的最近到期点照常接纳。这条 `missed` 在 100 条保留里按一条普通历史记录计数，
+  与运行、跳过事实同样参与最旧删除。
 - **锚点**：每 N 小时任务以启用（或从禁用重新启用）时刻为锚，首个到期点为锚点加间隔，对齐 desktop
   的启用锚语义；daily / weekly 按任务时区的日历求值。列表中的下一次触发投影是可重算展示值，不是
   触发事实。
@@ -100,16 +106,21 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
 - **失败的 occurrence**：资格校验失败的到期点记为失败的调度事实并写明原因（映射见 D5），不自动
   重试该 occurrence，也不回退到任何其他执行位置。
 
-### D4：每次运行固定 60 分钟，超时取消由 Cloud 取消写入者执行
+### D4：每次运行固定 60 分钟，截止取消由 Cloud 取消写入者执行并持久化截止事实
 
 接纳事务为运行持久化截止时刻 = 接纳时刻 + 60 分钟，固定不可配置。到期时由 Cloud 侧的取消写入者
 （[Workflow 根决策 D6](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md) 承诺首期交付的
 同一写入者，G-026）对运行写入取消请求；会话收尾、交付与释放沿既有有界路径进行，实际终态在收尾后
-写入，物理终止只遵循[残留回收](20261018-residual-agent-run-reclamation.md)的证据链。截止取消不是
+写入，物理终止只遵循[残留回收](../issue-run/20261018-residual-agent-run-reclamation.md)的证据链。截止取消不是
 清理证据，不绕过任何既有保护。
 
-- 截止触发的取消在任务历史中展示为 `failed · timeout`（与根决策 D7 的失败原因集对齐）；IssueRun
-  本身按既有取消语义结算，两层事实分别记录、互不改写。
+- **截止取消事实由调度层持久化**：`issue_runs.cancel_requested_at` 分不清用户取消与截止取消，历史
+  投影不得从它反推。取消写入者对定时运行写取消请求的同一事务里，调度层为该 occurrence 记录一条
+  截止取消事实（含写入时间）。事实只写一次：以 occurrence 身份幂等，重复的截止扫描、重启重放都
+  不覆盖、不重复记录；用户先于截止取消的运行不产生该事实。
+- **投影规则**：任务历史中该运行展示为 `failed · timeout` 当且仅当截止取消事实存在；运行先于截止
+  自然结束（completed / failed / 用户取消）时按 IssueRun 自身终态展示，即便截止扫描随后发生也不
+  追改。两层事实分别记录、互不改写。
 - **前置门禁**：取消写入者合入并验证之前，`cloud` 不得成为可选执行位置，Web 端不得保存 `cloud`
   任务（继承根决策 D5 的禁用承诺）。
 
@@ -120,13 +131,14 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
 | 绑定 issue 存在、未删除且有 `project_ref`；Space 未归档 | ✓ | ✓（按当时状态） |
 | Project 的仓库满足首期「仅匿名公开 Git」 | ✓ | ✓ |
 | Agent（`space_agents`）active 且冻结的插件版本可解析 | ✓ | ✓ |
-| 创建者是有效租户成员 | ✓ | ✓（被禁用或移除即失败） |
+| 创建者是有效租户成员 | ✓ | ✓（失效即自动停用任务） |
 | 创建者个人模型配置可用（连接启用、密钥已配置、模型在目录、能力满足） | ✓ | ✓（以当时配置接纳并在运行创建事务中冻结） |
 | 无人值守同意有效且策略受支持 | ✓ | ✓（撤销即失败） |
 
 - 接纳失败映射到根决策 D7 的失败原因集：issue / Project / Agent 不可用或创建者成员资格失效记
   `target_unavailable`；模型配置不可用记 `model_unavailable`；同意缺失或策略不支持记
-  `approval_policy_invalid`。失败 occurrence 不自动重试，不换用其他模型或执行位置。
+  `approval_policy_invalid`。失败 occurrence 不自动重试，不换用其他模型或执行位置。创建者成员资格
+  失效或绑定 issue 删除的自动停用见 D1；自动停用前观察到的最后一次触发仍按上述映射记录失败事实。
 - **无人值守同意**：首版唯一策略为 `full_auto_in_cloud_workspace`——在一次性隔离运行 Workspace 中
   全自动批准工具调用。创建任务时必须以清晰风险说明取得创建者显式同意，并把策略名与同意时间随任务
   持久化；说明至少覆盖：运行 Workspace 不是用户可见的数据边界承诺、Agent 全自动执行任意工具调用、
@@ -138,10 +150,11 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
 
 ### D6：任务历史投影运行事实，每任务保留最近 100 条
 
-任务历史记录 = occurrence（outcome、原因、接纳时间、冻结的 task revision、IssueRun 引用）加上对
-该 IssueRun 终态的投影：`completed → succeeded`、`cancelled → cancelled`、`failed → failed`，截止
-取消展示为 `failed · timeout`。调度层不复制 IssueRun 状态机：历史读取按需联查，运行中的运行展示为
-`running`，终态以 IssueRun 的持久事实为准。
+任务历史记录 = occurrence（outcome、原因、接纳时间、冻结的 task revision、IssueRun 引用、D4 的截止
+取消事实）加上对该 IssueRun 终态的投影：`completed → succeeded`、`cancelled → cancelled`、
+`failed → failed`；截止取消按 D4 的持久事实展示为 `failed · timeout`，不从 `cancel_requested_at`
+反推。调度层不复制 IssueRun 状态机：历史读取按需联查，运行中的运行展示为 `running`，终态以
+IssueRun 的持久事实为准。
 
 - **100 条保留**作用于任务历史视图的记录（occurrence 行）：写入第 101 条时在同一事务删除最旧的
   记录。清理只移除任务侧的展示与关联行，不删除、不改写 IssueRun 及其 Thread / Revision 审计事实；
@@ -187,7 +200,8 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
    可成为可选执行位置。
 8. 没有有效无人值守同意或可用模型配置时不接纳运行；撤销同意自动停用任务；接纳失败不回退、不替换
    模型或执行位置。
-9. 创建者失去有效租户成员资格后，该任务的新触发明确失败；任务不自动转移、不自动改绑。
+9. 创建者失去有效租户成员资格、或绑定 issue 被删除时，任务自动停用；任务不自动转移、不自动改绑，
+   重新满足条件不自动恢复触发。
 10. 禁用与删除不改写既有运行事实；100 条保留只作用于任务历史视图，IssueRun 及其审计事实不受影响。
 11. 首期目标 Project 只支持匿名公开 Git；任务与运行历史只存于其租户内，不跨设备同步到本地。
 
