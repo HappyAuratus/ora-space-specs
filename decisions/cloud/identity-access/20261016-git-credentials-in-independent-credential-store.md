@@ -135,7 +135,7 @@ Credential Store 是独立程序，参考未合并的旧实现中 `internal/cred
 - 平台以 401/403 拒绝 receive-pack 广告时，记录 `push_denied`，`publish` 不进入能力集合；网络等其他错误记录 `verification_failed`，
   可以重试。
 - `publish` 验证通过不保证每次发布都会成功：保护分支、必需的状态检查、hook 只在真正推送时才判定，那时以 `rejected` 结束
-  （发布 ADR）。各平台对“有读无写”的 token 请求 receive-pack 广告时的响应，在落地时逐一验证并留下测试。
+  （发布 ADR）。
 - 发布 Operation 只能使用 `capabilities` 包含 `publish` 的引用；`read` 不是同步的前提，而是同步成功的结果。
 
 为什么不接受用户自述：自述的推送权限要到第一次发布时才被证伪，那时用户已经完成审批、等待结果，失败的位置离原因很远。
@@ -199,38 +199,3 @@ receive-pack 广告是 Git 协议在写入前就会做的认证与授权检查�
 - **兑换时核对仓库作用域**（纵深安全加固，契约“本决策未解决的问题”）：第一阶段 Credential Store 兑换时只核对授权中的凭据与版本，
   不核对授权中的仓库是否等于凭据的 `repositoryScope`；作用域由 Cloud 签发授权前检查，并由 `git-credential-ora` 按 host 与 path
   限制凭据只发给作用域内的请求。让 Credential Store 自己也核对，留给后续决策。
-
-## 落地顺序
-
-1. **Credential Store**：参考旧实现的设计新写，包含浏览器入口、提交授权、管理接口、执行器的兑换身份与兑换用途。完成条件：
-   提交、确认、兑换、撤销的测试；同一提交授权、同一执行授权都只能使用一次。
-2. **Cloud 的引用与授权**：`credential_refs` 的新形状、提交授权签发、确认、撤销顺序、能力字段。完成条件：Cloud 的 API 拒绝带
-   `token` 的请求。
-3. **能力验证**：`read` 接入同步登记，`publish` 接入执行器的 `probe`。
-4. **设置页**：改为直接提交。
-
-保持不变：凭据连续性的归属与冻结规则、Gateway 的身份认证。从第 2 步开始改变：凭据的真实值只在 Credential Store。
-
-## 外部线的独立验收
-
-不依赖内部线和 Node。起栈同[执行器根决策](../repo-executor/0-repo-executor-sole-external-git-boundary.md)的独立验收，加边缘
-反向代理和一个前端（或用脚本模拟浏览器的三步）。
-
-| 场景 | 必须成立 |
-| --- | --- |
-| 个人凭据的提交与确认 | token 只出现在发往浏览器入口的请求中；引用成为 `stored`；Cloud 与 Gateway 的访问日志中没有 token |
-| Cloud 收到带 `token` 字段的请求 | `400`，不创建引用 |
-| 提交授权重放、过期、被改动 | Credential Store 拒绝 |
-| 用执行授权调用浏览器入口，或用提交授权兑换 | 都被拒绝 |
-| 浏览器谎报版本后确认 | Cloud 经管理接口发现不一致，不置为 `stored` |
-| 轮换 | 新版本的能力为空；旧版本在 1 小时后不可兑换 |
-| `publish` 验证：`push-git-fixture` 的可写 token | 验证通过，`publish` 进入能力集合；fixture 的请求日志中只有 receive-pack 的广告请求，没有更新命令 |
-| `publish` 验证：只读 token | `push_denied`；用它创建发布 Operation 被拒绝 |
-| `read` 验证 | 第一次同步成功后 `read` 进入能力集合；匿名或错误 token 的同步不会产生 `read` |
-| 撤销 | 撤销后的同步与发布被拒绝；Credential Store 中该凭据的密文已销毁 |
-| 管理员与个人凭据 | 管理员绑定他人的个人凭据、批准用它发布，都被拒绝；管理员撤销它成功 |
-| 成员离开 | 个人凭据冻结；重新加入后仍冻结 |
-| 秘密扫描 | canary token 经浏览器提交、兑换、同步、发布、撤销全程后，在所有日志、Cloud 数据库导出、Git Server 仓库、执行器任务目录、Credential Store 卷的明文部分中都找不到 |
-
-**最终验收**：用 owner 提供的 GitHub 私有测试仓库与真实 token，经浏览器提交、确认，完成 `publish` 验证；再用一个只读的
-fine-grained token 证明 `push_denied`。

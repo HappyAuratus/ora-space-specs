@@ -37,7 +37,7 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 | [仓库凭据连续性](../project/20260927-repository-credential-continuity.md) D4：执行端按引用选择凭据，不回退全局凭据；凭据临时提供，结束后回收，不进工作目录和日志 | 继承。执行端从 Controller/Node 改为本执行器，兑换与销毁的方式见 D3 |
 | [默认分支决策](../operation/20260926-require-concrete-default-branch.md)：Cloud 不向用户给出的地址发起请求 | 继承，不变。访问外部地址的只有执行器，并受出口策略约束（D4） |
 | 契约 D2“执行器出网”与不变量 15：执行器遵守[部署方共享出网决策](../model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)（下称“共享出网决策”），本文不能放宽 | 继承，不变。执行器读取同一份 `deployment-egress.json`，复用共享出网决策的准入与解析实现，不另设仓库白名单（D4）；部署与配置更换见 D9 |
-| 共享出网决策 D7：调用方表只列模型转发与 Cloud 资产下载，其他调用方须另行明确 | 修改：在其调用方表追加 Repo Executor 一行，覆盖范围是 D1–D6 的全部规则，业务约束是本文的授权与凭据规则（落地顺序第 2 步） |
+| 共享出网决策 D7：调用方表只列模型转发与 Cloud 资产下载，其他调用方须另行明确 | 修改：在其调用方表追加 Repo Executor 一行，覆盖范围是 D1–D6 的全部规则，业务约束是本文的授权与凭据规则 |
 | 未合并的旧执行器实现：clone 执行器与 mirror 发布 | 不依赖，只作参考。不沿用其 clone、checkout 交付和直接写 Git Server 卷的 mirror 发布；基础件按“复用边界”新写或参考摘出 |
 
 ## 决策
@@ -244,8 +244,8 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 - `service = receive-pack`：请求外部仓库 `git-receive-pack` 的 ref 广告（smart HTTP 的 `info/refs?service=git-receive-pack`），
   收到广告即断开，用于验证推送能力（identity-access 后续决策 D4）。请求由执行器的 HTTP 客户端发出，使用 D4 的出网拨号器。
 
-报告 `{refs | advertised, httpStatus 分类}`。各平台对“无写权限时请求 receive-pack 广告”的响应在落地时逐一验证（GitHub、GitLab
-至少各一），验证结果记录在实现的测试里。
+报告 `{refs | advertised, httpStatus 分类}`。平台以 `401`/`403` 拒绝 receive-pack 广告时报告 `push_denied`，其他失败报告
+`verification_failed`（identity-access 后续决策 D4）。
 
 ### D8：结果分类
 
@@ -354,57 +354,3 @@ filter.lfs.smudge=  filter.lfs.process=  filter.lfs.required=false
 - **LFS 与 submodule**：执行器禁用二者，真正支持见同步 ADR 的未决项。
 - **纵深安全加固**（契约“本决策未解决的问题”，第一阶段以跑通与正确为目标）：
   - 大仓库的任务目录：第一阶段是 tmpfs，大仓库会占用大量内存，改用有配额的磁盘卷留给后续决策。
-
-## 落地顺序
-
-1. **基础件**：`cloneauth`、`credentialmaterial`、`git-credential-ora`、`processgroup`、`capture` 参考旧实现摘出或新写，连同测试
-   作为新代码单独提交，不接入任何流程；不以旧实现合并为前提。完成条件：测试通过。这一步不依赖底座，可以最先做。
-2. **执行器骨架**：`cmd/repo-executor`、mTLS 任务接口、授权校验、凭据兑换、进程与资源边界、接入共享出网（复用 `internal/egress`，
-   把检查过的地址交给 `git`）；同时在共享出网决策 D7 的调用方表追加 Repo Executor 一行（契约落地顺序第 2 步）。依赖共享出网的
-   实现先合入。完成条件：对本地 fixture 的 `probe` 可以运行；秘密扫描通过。
-3. **sync**：依赖底座和服务仓库监听（契约落地顺序第 1、2 步）。完成条件：同步 ADR 的独立验收。
-4. **publish 与核验**：完成条件：发布 ADR 的独立验收。
-5. **部署**：cluster 的 Compose 加入执行器和 Credential Store，接入 `git-services`，新增 `repo-egress`；执行器只读挂载
-   `deployment-egress.json`，加入配置更换时的停止与重启和 `ora verify` 的摘要比对（D9）。
-
-保持不变：沙盒、Node 与 Git Server 之间的一切。从第 3 步开始改变：外部仓库的内容由执行器带入 Git Server。
-
-## 外部线的独立验收
-
-不依赖内部线和 Node，不启动沙盒。
-
-**起栈**：Cloud、Git Server（服务仓库监听与 ref 查询监听）、Credential Store、执行器，以及参照旧部署实现的两个本地 Git 托管
-fixture：
-
-- `private-git-fixture`：带 TLS、要 token 才能读；
-- `push-git-fixture`：smart HTTP 可写，可切换 `normal`、`refuse`、`moved`、`slow-post`、`drop` 等模式。
-
-**fixture 的放行**：fixture 是 Compose 容器，地址在 cluster 网段里。共享出网决策 D3 规定这类地址始终拒绝，企业模式的
-`allowPrivate` 也放不开，所以验收不使用企业配置，也不设仓库允许列表，只使用
-[model-access 根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) D5 的“隔离测试栈精确测试 host
-例外”：执行器以显式的开发模式启动，列出 fixture 的精确主机名，只在公网模式下生效；与企业配置同时出现时启动失败
-（共享出网决策 D1）。生产部署不开启开发模式。**替身**：底座的预置工具在 Git Server 的 `refs/heads/workspaces/...` 下写一个提交，作为
-发布的源；同步的产出用底座的共享契约断言检查（契约落地顺序第 1 步）。
-
-| 场景 | 必须成立 |
-| --- | --- |
-| 授权与任务不一致（任一绑定字段被改） | 执行器拒绝，不兑换凭据 |
-| 同一授权使用两次 | 第二次兑换被 Credential Store 拒绝 |
-| `probe` 授权提交发布任务 | 执行器拒绝 |
-| 授权过期 | 执行器拒绝 |
-| 同步：公开、私有、重放、外部 force-push | 见同步 ADR 的独立验收；执行器的报告与 Git Server 一致 |
-| 发布：成功、`conflict`、`rejected`、`not_fast_forward` | 见发布 ADR 的独立验收 |
-| `docker pause` 外部 fixture 后发布 | 执行器在超时后报告 `uncertain`；不重推；进程组被回收 |
-| `drop` 模式发布 | 推送生效但响应丢失，后置核验确认，报告 `applied` |
-| 身份边界 | 执行器用服务证书写 `refs/heads/workspaces/**` 和 `refs/ora/deliveries/**` 被拒；用发布 Operation 的 ID 推送任何 ref 都被拒 |
-| lease 与 `+` | 预置工具先把跟踪 ref 写成另一个提交，再让同步以旧的 `expectedTrackingOid` 推送：以 `stale info` 失败、报告 `superseded`，跟踪 ref 不变；Operation 结束后用同一 ID 推送：以 `hook declined` 失败、报告 `failed(git_server_rejected)` |
-| 长任务 | 同步一个需要数分钟的大仓库：兑换后授权过期不影响任务，任务期间租约持续续约，同步成功 |
-| 出口 | 不在例外中的回环、私有地址、cluster 网段地址或内部服务名（`ora-git-service`、Credential Store）作为仓库地址时被拒绝，没有发出 Git 请求；外部地址 302 到内部地址时不跟随 |
-| 地址固定 | 测试 resolver 对 fixture 主机名第一次返回允许的地址、之后返回 cluster 地址：`git` 仍只连第一次检查过的地址；下一次子进程启动时重新解析，得到 cluster 地址即拒绝 |
-| 出网配置 | 同时给出企业配置与开发例外时执行器不启动；配置文件不合法时不启动；执行器、Cloud、model-gateway 的配置摘要不一致时 `ora verify` 报错 |
-| 超限 | 任务目录超过上限时进程组被杀，报告 `too_large`，没有新的 ref |
-| 进程回收 | 任务超时后任务目录与材料目录都不存在，没有遗留的 Git 进程 |
-| 秘密扫描 | 参照旧部署实现中的 `log-secret-scan-acceptance.py`：每轮生成 canary token，按字面、base64、base64url（含不补齐）、百分号编码和共享前缀等形式，扫描所有容器日志、Git Server 仓库（包括对象和 reflog）、Cloud 数据库导出、执行器任务目录；先用阳性对照证明扫描器能找到 |
-
-**最终验收**：用 owner 提供的 GitHub 私有测试仓库，以真实 token 完成同步、`probe receive-pack`、发布和一次断网造成的 `uncertain`
-核验。
