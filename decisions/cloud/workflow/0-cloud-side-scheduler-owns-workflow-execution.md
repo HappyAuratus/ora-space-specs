@@ -149,17 +149,19 @@ desktop 节点——这样门禁才能给出确切原因，而不是"未知类�
 desktop 的 `condition.rs` 为准（D1），而 Cloud 首期实现与它仍有已知差异。差异分两类，**只有能从文档本身
 判定的那一类进发布门禁**；门禁拒绝时给出**节点、字段、原因**三要素，不等到运行时才判错：
 
-| 拒绝原因（`code`） | 字段 | 为什么文档本身就能判定 |
+| 拒绝原因（`code`） | 返回的 `field` | 为什么文档本身就能判定 |
 |---|---|---|
-| `condition_cases_not_a_list` | `data.cases` | 分支列表不是列表 |
-| `condition_case_not_an_object` | `data.cases[]` | 分支不是对象 |
-| `condition_case_id_missing` | `data.cases[].id` | 分支没有 id，命中后返回空串，边永远引用不到它 |
-| `condition_logic_unsupported` | `data.cases[].logic` | `logic` 不是 `and` / `or`（缺省即 `and`）：Cloud 会静默按 `and` 求值 |
-| `condition_rules_not_a_list` | `data.cases[].conditions` | 比较项列表不是列表 |
-| `condition_rule_not_an_object` | `data.cases[].conditions[]` | 比较项不是对象：Cloud 会静默判为不匹配 |
-| `condition_selector_unsupported` | `data.cases[].conditions[].variableSelector` | 选择器不是「至少两个非空字符串」的列表；一段选择器在 Cloud 读作整个节点输出 |
-| `condition_operator_unsupported` | `data.cases[].conditions[].operator` | 算子不在求值器算子表里（即 desktop `ComparisonOperator::parse` 的全集）：Cloud 会静默判为不匹配 |
-| `condition_value_template_unsupported` | `data.cases[].conditions[].value` | 期望值里带 `{{#…#}}`：desktop 解析它并保留绑定类型，Cloud 按字面文本比较 |
+| `condition_cases_not_a_list` | `cases` | 分支列表不是列表 |
+| `condition_case_not_an_object` | `cases` | 分支不是对象 |
+| `condition_case_id_missing` | `cases.id` | 分支没有 id，命中后返回空串，边永远引用不到它 |
+| `condition_logic_unsupported` | `cases.logic` | `logic` 不是 `and` / `or`（缺省即 `and`）：Cloud 会静默按 `and` 求值 |
+| `condition_rules_not_a_list` | `cases.conditions` | 比较项列表不是列表 |
+| `condition_rule_not_an_object` | `cases.conditions` | 比较项不是对象：Cloud 会静默判为不匹配 |
+| `condition_selector_unsupported` | `cases.conditions.variableSelector` | 选择器不是「至少两个非空字符串」的列表；一段选择器在 Cloud 读作整个节点输出 |
+| `condition_operator_unsupported` | `cases.conditions.operator` | 算子不在求值器算子表里（即 desktop `ComparisonOperator::parse` 的全集）：Cloud 会静默判为不匹配 |
+| `condition_value_template_unsupported` | `cases.conditions.value` | 期望值里带 `{{#…#}}`：desktop 解析它并保留绑定类型，Cloud 按字面文本比较 |
+
+`field` 是相对节点 `data` 的路径，不带数组下标：同一节点有多个分支或比较项出错时各返回一条问题，问题定位到节点和字段，不指出是第几个分支或比较项。
 
 **未完成的分支不拒绝**：没有 `cases`、或某个分支还没有比较项，都按"落到 else"处理，两侧语义一致，属于草稿的
 正常中间状态。
