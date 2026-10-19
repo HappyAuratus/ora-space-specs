@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # clone 输入替换为 Git Server 快照输入并由 Controller 原样转交；Git Server 按执行类型给出写入规则：clone 只读，Agent 会话写自己的 Workspace 分支，交付另写 `workspaceRef`；会话输入带上 Workspace 目录；交付与会话输入去掉 bundle，删除下载授权
@@ -16,7 +16,7 @@ Cloud 固定的 Workspace 目录，供 `ora-git list` 把分支与 Issue、run �
 `PriorRevision` 删除 `bundle`，增加仓库地址、交付 ref 与基础提交；`RevisionDelivered` 删除 `bundle`；`GrantRevisionDownload` 与
 `DownloadGrant` 删除，`GrantRevisionUpload` 只签发会话 JSONL 的授权（D9）。
 
-本 ADR 处于 `proposed`，继承
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[内部线用例](../../../test-cases/cloud/controller-integration/snapshot-clone-input-and-execution-grants.md)；实现合入、端到端验收通过后改为 `implemented`），继承
 [Revision 恢复契约决策](20261010-revision-restore-contract.md)、
 [Agent 运行执行与上传授权决策](20260928-agent-run-executions-thread-and-upload-grants.md)、
 [Workspace 操作与 Controller 代报决策](20260926-workspace-operations-and-controller-reported-nodes.md) 与
@@ -411,3 +411,8 @@ Git Server 的规则。
 | Workspace 目录 | 有两个已完成运行的 Project 上再触发一次运行 | `psql`：会话执行输入的 `workspaceDirectory` 含前两个 run Workspace 及其 Issue 标题与 run ID；Agent 中 `ora-git list` 的输出带上这些信息 |
 | 续作的组合 | 同一 Issue 再运行一次，续作上一次的 Revision | `psql`：新 run Workspace 的 `base_commit_id` 等于它 clone 时冻结的快照提交；会话输入的 `priorRevision.gitRepositoryUrl` 与 `request.clone.repositoryUrl` 相同；checkout 的本地分支在 Agent 启动前指向前序 `finalCommit` |
 | 租户级 clone 不存在 | 栈运行全程 | `clone_executions` 中没有不属于 Workspace operation 的执行 |
+
+## 核心测试用例
+
+本 ADR 的核心测试用例见[内部线用例](../../../test-cases/cloud/controller-integration/snapshot-clone-input-and-execution-grants.md)。实现尚未合入 main，义务都如实标为 Missing；现有以已实现决策为依据的用例
+在实现合入、本 ADR 改为 `implemented` 时再按本文改写或改挂，见该用例文件开头的说明。

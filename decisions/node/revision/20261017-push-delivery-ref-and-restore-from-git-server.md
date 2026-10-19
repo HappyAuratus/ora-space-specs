@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 交付把最终提交推送到交付 ref（无改动也推）并顺带快进 Workspace 分支，续作从 Git Server 拉取前序交付 ref 并把 Workspace 本地分支移到前序成果；带证书的 Git 访问只在 Node 私有的传输仓库中进行，Cloud 模式必须配置 `git_access`
@@ -12,7 +12,7 @@ Node 交付时仍按根决策生成内部快照与本地 `refs/ora/revisions/<ru
 提交；不再申请下载授权、下载 bundle 或访问任何外部仓库。所有带 git-access 证书的 Git 命令都以 Node 身份在 Node 私有的
 传输仓库中执行，只把 checkout 的对象当数据借用，从不读取 checkout 的仓库配置。Node 在 Cloud 模式下必须配置 `git_access`。
 
-本 ADR 处于 `proposed`，继承 [Node 交付 Revision 根决策](0-internal-snapshot-and-incremental-bundle-upload.md) 与
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[内部线用例](../../../test-cases/node/revision/git-delivery-push-and-restore.md)；实现合入、端到端验收通过后改为 `implemented`），继承 [Node 交付 Revision 根决策](0-internal-snapshot-and-incremental-bundle-upload.md) 与
 [恢复前序 Revision 后续决策](20261010-restore-prior-revision-before-session.md)。它取代
 [交付 ref 推送与前序拉取决策](20261012-push-delivery-ref-and-fetch-prior-revision.md)：那份决策写在 Node 仍从外部仓库
 clone、Git Server 只存交付 ref 的设计上，随 Git Server 成为 Project 代码中心（[Git Server 根决策](../../cloud/git-server/0-project-code-hub-git-server-over-https.md)）整体作废，本文按新设计
@@ -297,9 +297,5 @@ bundle；续作只从 Git Server 拉取；run 的成果同时出现在 Workspace
 
 ## 核心测试用例
 
-按仓库规则，核心测试用例在本 ADR 状态变为 `approved` 后补充。现有的
-[Node 的快照与 bundle 交付](../../../test-cases/node/revision/snapshot-bundle-delivery.md) 与
-[Node 恢复前序 Revision](../../../test-cases/node/revision/prior-revision-restore.md) 仍以已实现的根决策与恢复决策为依据，
-证据表已按实现删除与改名的测试同步；届时按本文改写：推送 `delivered` 与两种 `unchanged`、重放不失败；`403` 与 ref 被拒不
-重试、不可达重试后耗尽；Workspace 分支快进失败不影响交付；checkout 中恶意配置不生效；恢复成功、交付 ref 不存在与 `403` 为
-`base_unavailable`、其他为 `unavailable`、改写提示；Cloud 模式缺 `git_access` 拒绝启动。
+本 ADR 的核心测试用例见[内部线用例](../../../test-cases/node/revision/git-delivery-push-and-restore.md)。实现尚未合入 main，义务都如实标为 Missing；现有以已实现决策为依据的用例
+在实现合入、本 ADR 改为 `implemented` 时再按本文改写或改挂，见该用例文件开头的说明。

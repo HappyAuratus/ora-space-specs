@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Workspace 的 clone 步骤改为消费 Binding 当前快照：没有快照时在领取时复核、随同步等待（`snapshot_not_ready`）或失败，Workspace 分支短名取 `Binding.branch`；删除租户级 clone
@@ -13,7 +13,7 @@ Binding 当前快照生成 [Git Server 代码中心决策](../git-server/2026101
 Workspace 时不隐式同步，直接使用当前快照。删除 Project 时，quiesce 要等该 Project 的同步与发布 Operation 结束。租户级
 clone 请求（`clone_requests`）连同其公开接口删除。
 
-本 ADR 处于 `proposed`，继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)、
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[内部线用例](../../../test-cases/cloud/operation/clone-step-consumes-binding-snapshot.md)；实现合入、端到端验收通过后改为 `implemented`），继承 [运行时 Workspace 生命周期根决策](0-workspace-runtime-follows-desktop-node.md)、
 [具体默认分支决策](20260926-require-concrete-default-branch.md) 与
 [plugin 步骤决策](20260928-plugin-step-and-run-workspace-release.md)，承担契约 ADR 中“Workspace 怎样拿到快照输入”的
 Cloud 一侧。涉及 Cloud 的 `internal/core`（clone 步骤、领取、Workspace 创建、删除 Project、租户级 clone）、公开 API 的
@@ -281,3 +281,8 @@ delete_project 的 quiesce 步骤在原有条件（各 Workspace 没有活动、
 | `baseRef` 不是同步的分支 | 经公开 API 创建 isolated Workspace，`baseRef: feature` | `400 base_ref_not_synced`，`workspaces` 与 `operations` 没有新行 |
 | 删除 Project 等待同步结束 | 预置工具为一个就绪的 Project 写一个 `running` 的同步 Operation，然后经公开 API 删除该 Project；随后用预置工具把同步推进到终态 | `psql`：同步 `running` 期间 delete_project 停在 `quiesce`，`state = retry_wait`，`error_code = repository_operation_running`，沙盒未被终止；同步结束后 delete_project 走到 `done` |
 | 租户级 clone 不存在 | `POST /api/v1/tenants/{tid}/clones` | `404`；数据库中没有 `clone_requests` 表 |
+
+## 核心测试用例
+
+本 ADR 的核心测试用例见[内部线用例](../../../test-cases/cloud/operation/clone-step-consumes-binding-snapshot.md)。实现尚未合入 main，义务都如实标为 Missing；现有以已实现决策为依据的用例
+在实现合入、本 ADR 改为 `implemented` 时再按本文改写或改挂，见该用例文件开头的说明。

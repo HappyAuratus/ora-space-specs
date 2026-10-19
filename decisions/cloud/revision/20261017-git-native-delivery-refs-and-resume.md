@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Revision 的代码改动只经 Git Server 交付：交付输入固定仓库地址、交付 ref 与 Workspace 分支，Cloud 经 ref 查询核验后登记交付 ref；续作只从前序自己的交付 ref 恢复；删除 bundle 与下载授权
@@ -13,7 +13,7 @@ ref 与基础提交交给 Node 拉取。Revision 只记录交付 ref 与最终�
 `revisionRef`（`refs/ora/revisions/<runId>`）只是 Node 在 checkout 里写的本地 ref。代码 bundle 的对象键、bundle 的上传
 授权与下载授权全部删除。
 
-本 ADR 处于 `proposed`，继承 [Cloud Revision 根决策](0-cloud-owned-object-store-and-verified-revisions.md)，同时修改
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[内部线用例](../../../test-cases/cloud/revision/git-native-delivery-refs-and-resume.md)；实现合入、端到端验收通过后改为 `implemented`），继承 [Cloud Revision 根决策](0-cloud-owned-object-store-and-verified-revisions.md)，同时修改
 [IssueRun 续接决策](../issue-run/20261010-resume-run-from-latest-issue-revision.md) 的选取与沿用规则。它取代
 [Git Server 交付与已核验交付 ref 决策](20261012-git-server-delivery-and-verified-delivery-refs.md)：那份决策写在 Git Server
 只存交付 ref 的设计上，随 Git Server 成为 Project 代码中心（[Git Server 根决策](../git-server/0-project-code-hub-git-server-over-https.md)）整体作废，本文按新设计重新写出当前
@@ -325,9 +325,5 @@ Cloud 一律派 Git 交付，不设部署开关，不新增“Git 交付”能�
 
 ## 核心测试用例
 
-按仓库规则，核心测试用例在本 ADR 状态变为 `approved` 后依据最终方案补充。现有的
-[Cloud 校验后登记的 bundle Revision](../../../test-cases/cloud/revision/verified-bundle-revisions.md) 与
-[同一 Issue 的运行续接最近一次 Revision](../../../test-cases/cloud/issue-run/resume-from-latest-revision.md) 仍以已实现的根决策
-与续接决策为依据；它们的证据表已按实现删除与改名的测试同步，届时按本文改写“必须成立”并改为引用本文：Revision 只在 ref
-查询确认后登记；ref 不存在或不符记 `verification_failed`；Git Server 不可用不接管、可重放；`unchanged` 也登记交付 ref；续作
-候选只含有交付 ref 且有新提交的 Revision；取消的运行不标记不可续接；`repository_changed`。
+本 ADR 的核心测试用例见[内部线用例](../../../test-cases/cloud/revision/git-native-delivery-refs-and-resume.md)。实现尚未合入 main，义务都如实标为 Missing；现有以已实现决策为依据的用例
+在实现合入、本 ADR 改为 `implemented` 时再按本文改写或改挂，见该用例文件开头的说明。

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 只从 Git Server 快照 clone 并校验 `baseCommit`，checkout 不配置 origin；Agent 经沙盒内固定动词的 `ora-git` 请求 Node 代为 fetch 与推送 Workspace 分支
@@ -15,7 +15,7 @@ Node 的 clone 不再接受外部仓库地址，也不再使用部署凭据。cl
 推送把 checkout 的提交当数据搬进传输仓库，带声明的旧值推到 `refs/heads/workspaces/<workspaceId>/<branch>`；fetch 把 upstream
 与其他 Workspace 的分支取到 checkout 的 `refs/remotes/ora/...`。
 
-本 ADR 处于 `proposed`，继承 [clone 根决策](0-clone-selected-repository-branch.md)、
+本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[内部线用例](../../../test-cases/node/repository/snapshot-clone-and-ora-git.md)；实现合入、端到端验收通过后改为 `implemented`），继承 [clone 根决策](0-clone-selected-repository-branch.md)、
 [最小 clone 执行契约](20260918-minimal-clone-execution-contract.md)（下称“clone 契约”）、
 [Git 副作用移出受理 worker](20260925-clone-git-effects-run-outside-the-admission-worker.md) 与
 [中断失败判定](20260925-terminated-clone-attempt-fails-as-interrupted.md)，承担契约 ADR 中“Node 怎样 clone、fetch、推送 Workspace
@@ -448,3 +448,8 @@ echo fixture 同步增加相同标记。
 沿用 cluster 现有验收的惯例：`psql` 查 Cloud 数据库；`docker exec` 进沙盒以指定 UID 运行 `git` 与 `ora-git`；`docker exec` 进
 `git-server` 容器，对仓库卷中的 `/{tenantId}/{projectId}.git` 运行 `git for-each-ref` 查 ref。证据写入
 `.acceptance/workspace-git.json`，只含资源 ID、ref 名、提交与错误码，不含证书内容或路径以外的材料。
+
+## 核心测试用例
+
+本 ADR 的核心测试用例见[内部线用例](../../../test-cases/node/repository/snapshot-clone-and-ora-git.md)。实现尚未合入 main，义务都如实标为 Missing；现有以已实现决策为依据的用例
+在实现合入、本 ADR 改为 `implemented` 时再按本文改写或改挂，见该用例文件开头的说明。
