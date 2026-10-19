@@ -1,8 +1,8 @@
 # 部署方共享出网：模型转发、资产下载、解析与策略切换
 
 决策依据：[部署方出口与显式解析 ADR](../../../decisions/cloud/model-access/20261017-deployment-owned-egress-and-explicit-resolution.md)
-（`approved`）。以下都是新增/改变的验证义务，当前没有对应实现的直接证据，统一为 `Missing`。
-表中的场景是验收要求，不是已经执行的测试。原公网、凭据、冻结和撤销的已有证据继续见
+（`approved`）。以下是新增/改变的验证义务；证据状态按独立义务标记，场景描述本身不代表已经验收。
+原公网、凭据、冻结和撤销的已有证据继续见
 [个人模型访问](personal-model-access.md)；这些证据不能替代企业策略的组合验证。
 
 ## Public deployments must retain the existing HTTPS and trusted DNS policy
@@ -10,7 +10,7 @@
 - 风险：企业扩展悄悄改变默认公网规则或启用系统解析。
 - 前置状态：未配置策略路径，或显式 `mode: public`，已有公网连接、有效 grant 及 HTTPS 工作流资产源。
 - 触发：保存连接、两协议请求、资产取包和解析故障。
-- 必须成立：原公网 HTTPS/DoH 与数字 bootstrap 保持；全部答案校验、数字拨号、原 hostname TLS、无代理和无重定向。
+- 必须成立：原公网 HTTPS/DoH 与数字 bootstrap 保持；全部答案校验、数字拨号、原 hostname TLS、无代理和无重定向；不引入企业连接硬上限，保持 60 秒空闲回收。
 - 禁止结果：默认允许私网、系统/fake-IP 回退，或未启用 enterprise 却要求用户白名单。
 - 决策依据：D1、D4、D5。
 - 验证义务与证据：`Missing`；需要无配置与 public 配置两条真实保存/受控 TLS 转发及资产下载回归，两调用方使用同一部署 DoH 配置，双栈混合保留地址与 DoH 故障均拒绝。
@@ -79,16 +79,18 @@
 | 显式解析及无回退 | 真实受控 TCP DNS 服务与系统诱饵计数，超时/失败/单族错误拒绝，NODATA 语义 | Missing |
 | 有界协议校验 | CNAME 深度/循环、响应关联、超长/畸形/附加记录；地址验证发生在任何 dial 前 | Missing |
 | 静态映射与 TLS 身份 | 无 resolver 的全静态配置、混合配置、静态全地址检查；HTTP Host/SNI/证书仍为原域名 | Missing |
+| resolver 不作为业务地址 | Cloud `internal/egress/policy_test.go::TestResolverAddressCannotBeBusinessDestination` 覆盖 IPv4/IPv6/mapped/公网 resolver 的直接拒绝与静态配置拒绝；`dns_test.go::TestTCPResolverCannotResolveBusinessTargetToItself` 通过真实 TCP DNS 返回 resolver 自身地址并断言业务准入拒绝 | Covered |
 
 ## Verified dialing and connection reuse must preserve the current target boundary
 
 - 风险：新拨号未验证全部地址，或连接无限复用、HTTP/2 合并、代理与重定向绕过目标边界。
 - 前置状态：真实受控双栈 DNS/TLS 上游，有效授权，已建立 HTTP/1 或 HTTP/2 连接。
 - 触发：新请求、新拨号、达到连接最大存活时间或空闲超时、后续解析地址变化、证书错误、3xx 和环境代理配置。
-- 必须成立：每请求按启动快照检查目标；新拨号完整验证后只拨数字地址；连接按实现固定的有界存活时间/空闲超时回收，回收后新拨号重新检查；原 hostname TLS 不变。
-- 禁止结果：验证后系统再次解析、无限复用旧连接、跨 host HTTP/2 合并、TLS 降级、跟随跳转、向环境代理发送认证头或回收后自动重发生成。
+- 必须成立：每请求按启动快照检查目标；新拨号完整验证后只拨数字地址；仅企业模式连接以 30 分钟硬上限回收，公网不设硬上限；两种模式均以 60 秒空闲超时回收，新拨号重新检查；原 hostname TLS 不变。
+- 禁止结果：验证后系统再次解析、企业连接无限复用、给公网连接增加企业硬上限、企业跨 host HTTP/2 合并、TLS 降级、跟随跳转、向环境代理发送认证头或回收后自动重发生成。
 - 决策依据：D3、D5。
-- 验证义务与证据：`Missing`；需计数真实 DNS/dial/HTTP 边界，覆盖新 dial、keep-alive/HTTP/2 的最大存活与空闲回收、回收后混合坏地址拒绝、错误证书、3xx、HTTP/SOCKS 代理与有限脱敏错误；纯匹配函数单测不够。
+- 验证义务与证据：完整 DNS/dial/HTTP 组合义务仍为 `Missing`；需计数新 dial、企业 keep-alive 最大存活与两种模式空闲回收、回收后混合坏地址拒绝、错误证书、3xx、HTTP/SOCKS 代理与有限脱敏错误；纯匹配函数单测不够。
+- 连接寿命的直接证据：`Partial`。Cloud `internal/modelgateway/egress_test.go::TestPublicConnectionsHaveNoHardLifetime` 验证真实公网拨号路径不添加硬上限；`TestEnterpriseDialHasBoundedLifetime` 验证真实企业拨号装配上限，`TestConnectionLifetimeClosesActiveAndIdleSockets` 固定 30 分钟并触发真实计时器回调关闭活跃/空闲 socket。尚未单独覆盖 60 秒空闲回收及回收后地址变化的完整 HTTP 组合，不能据此标为全部 Covered。
 
 ## Policy configuration must take effect through restarting both services
 
