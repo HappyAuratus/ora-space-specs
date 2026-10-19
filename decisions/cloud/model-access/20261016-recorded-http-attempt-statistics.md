@@ -63,7 +63,8 @@ OpenAI input 包含缓存，Anthropic input 不含缓存读写；推理是输出
 
 本决策的读取范围仍是 IssueRun：`statistics` 与 `model-calls` 按 IssueRun 的 `run_id` 读取。
 WorkflowRun 的尝试已经登记，但它的统计读取需要单独定义聚合范围、游标与授权，在另行批准前不开放
-（由 circus#285 承接）；WorkflowRun 登记行的 `run_id` 为空，不会进入上述 IssueRun 读取。
+（决策见 circus#285，由 circus#286 落地）；WorkflowRun 登记行的 `run_id` 为空，不会进入上述
+IssueRun 读取。
 
 ## 不变量
 
