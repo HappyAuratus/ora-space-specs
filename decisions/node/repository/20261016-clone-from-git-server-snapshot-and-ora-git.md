@@ -140,7 +140,7 @@ clone 的持久阶段沿用 Git 副作用移出 worker 的步骤机：`Reserved 
 
 | 阶段 | 内容 | 恢复 |
 | --- | --- | --- |
-| `DirectoryCreated` 之后、`Dispatched` 之前 | 拉取快照到传输仓库并核对（D2 第 1 段）；每次拉取尝试先持久记录次数 | 重启后丢弃传输仓库，重新拉取；累计 3 次后以 `SourceUnavailable` 结束 |
+| `DirectoryCreated` 之后、`Dispatched` 之前 | 拉取快照到传输仓库并核对（D2 第 1 段）；每次拉取尝试开始前先持久记录累计次数，同一段内的重试也计入 | 重启后丢弃传输仓库，重新拉取；累计次数到 3 次后以 `SourceUnavailable` 结束 |
 | `Dispatched` | 工作负载段的固定命令序列（D2 第 2 段），每条命令先持久关联再派发 | 按中断失败判定：已退出、已终止、未核实分别处理；不在目标目录中重跑 |
 
 工作负载段持久记录当前步骤：`init`、本地取入、检出各有一个独立 Run；前一步成功且清理完成后才能记录下一步。
@@ -148,8 +148,12 @@ clone 的持久阶段沿用 Git 副作用移出 worker 的步骤机：`Reserved 
 
 - 为什么拉取可以在重启后重做：它只写 Node 私有的传输仓库，不碰目标目录，也不改变 Git Server（只读）。clone 契约 D6
   禁止重跑，是为了不在已有残留中再次写入目标目录；这一段没有这样的残留。次数上限防止反复重启时无限拉取。
-- 拉取在同一段内对 `5xx` 与网络错误重试，共 3 次，间隔 5 秒、30 秒，与交付推送决策 D4 的分类相同；`401`、`403` 与 ref
-  不存在不重试。整个拉取受 `network_timeout_ms` 约束。
+- 拉取对 `5xx` 与网络错误重试，间隔 5 秒、30 秒，与交付推送决策 D4 的分类相同；`401`、`403` 与 ref 不存在不重试。每次拉取
+  受 `network_timeout_ms` 约束。
+- **段内重试与重启后的重新拉取共用同一个累计次数，上限 3 次**：一次拉取无论是因为重试还是因为重启而发起，都先把累计次数
+  加一并持久化，再开始拉取；到 3 次仍失败就以 `SourceUnavailable` 结束，最坏一共拉取 3 次，而不是每次重启各重试 3 次。
+  重启后的下一次拉取不再等待剩余的退避间隔。为什么合并成一个计数：两个计数相乘会让最坏情况变成 9 次拉取，Node 反复重启
+  时 clone 迟迟不失败；一个持久计数也让“已经试了几次”只有一个事实来源。
 - 拉取失败时目标目录为空，残留按现有规则保留并报告。
 
 ### D5：`ora-git`：Agent 发起 Git 远端操作的唯一入口
@@ -175,8 +179,10 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
 
 **socket 与身份判定**：
 
-1. Agent 会话执行进入运行时，Node 为它创建一个监听 socket（`/run/ora-git/<随机名>.sock`，目录属主 Node），并把路径放进
-   Agent 插件进程的环境变量 `ORA_GIT_SOCKET`，Agent 启动的子进程随之继承。`ora-git` 只连接这个路径。
+1. Agent 会话执行进入运行时，Node 为它创建一个监听 socket（`/run/ora-git/<随机名>.sock`，随机名含 128 位随机数），并把路径
+   放进 Agent 插件进程的环境变量 `ORA_GIT_SOCKET`，Agent 启动的子进程随之继承。`ora-git` 只连接这个路径。
+   - 目录 `/run/ora-git` 属主 Node、权限 `0711`：任何本地 UID 都能按完整路径进入，但不能列出目录，拿不到别的会话的 socket 名。
+   - socket 文件属主 Node、权限 `0666`：文件系统层不挡连接，是否接受只由第 3 条的对端 UID 检查决定。
 2. **会话由 socket 决定，不由请求声明。** 请求中没有执行 ID、Workspace ID 或仓库地址；Node 把从某个 socket 收到的请求
    归属于创建该 socket 的会话执行。
 3. Node 读取连接对端的凭据（`SO_PEERCRED`），对端 UID 必须是工作负载 UID，否则以 `forbidden` 拒绝。
@@ -212,6 +218,10 @@ Node 镜像提供 `ora-git` 命令。它不执行 Git 网络操作，只把请�
 为什么身份绑在 socket 上：同一沙盒中工作负载的进程都以同一个 UID 运行，请求内容可以任意伪造；socket 由 Node 为某个会话
 创建，连接从哪个 socket 进来是 Node 自己知道的事实。对端 UID 检查挡住 Node 身份以外、工作负载以外的进程（例如以其他 UID
 运行的插件）。
+
+为什么 socket 是 `0666`、只靠对端 UID 判定，而不是用 `0660` 加工作负载组在文件系统层挡住：目录 `0700` 时工作负载连不上；
+用组控制则要在镜像里多维护一个组，并让拒绝分散在两层，非工作负载 UID 在文件系统层得到 `EACCES`，`forbidden` 永远不可达，
+验收也就无法证明 Node 的检查生效。对端 UID 检查是唯一的判定点，`0711` 的目录与随机名只是让别的进程找不到 socket，不承担授权。
 
 ### D6：push-workspace：带声明旧值推送自己的 Workspace 分支
 
@@ -328,6 +338,8 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 | 沙盒内运行一个 Git HTTP 代理，由它附加证书，Agent 用普通 `git push` | Agent 不需要学新命令；但代理要解析 Git 协议才能按会话与 ref 收口，等于在沙盒里复制一份 Git Server 的授权，且代理本身需要私钥 |
 | `ora-git` 透传任意 Git 参数 | 更灵活；但 Node 以 Node 身份运行 Git，任意参数可以改写目标、配置或读取文件 |
 | 请求中声明会话执行 ID | socket 可以共用一个；但同 UID 的进程能任意伪造请求内容，身份失去意义（D5） |
+| socket `0660` 加工作负载组，在文件系统层拒绝其他 UID | 多一层防护；但要多维护一个组，拒绝分散在两层，Node 的对端 UID 检查无法被观察和验收（D5） |
+| clone 拉取的段内重试与重启后的重新拉取各自计数 | 单次重启内的重试不受之前重启影响；但最坏 9 次拉取，反复重启时 clone 迟迟不失败（D4） |
 | 推送只依赖服务端的快进规则，不声明旧值 | 少一份账本；但 Agent 在不知道远端已前进时叠加提交，冲突发现得更晚（D6） |
 | 旧值取 checkout 里的 `refs/remotes/ora/...` | 不需要账本；但 Agent 可以改写这些 ref，旧值失去意义（D6） |
 | fetch 直接写本地分支或自动合并 | Agent 少一步；但会改写 Agent 的工作分支，合并冲突也要由 Node 决定怎样处理 |
@@ -427,7 +439,7 @@ echo fixture 同步增加相同标记。
 | 5d | **声明的旧值不符**：以 Node 身份直接把 `workspaces/<B>/main` 快进到一个新提交（模拟同一 Workspace 的另一次推送），再在 B 的会话中 `ora-git push` | 退出码 7，`conflict`，提示中给出远端当前值；`ora-git fetch workspace <B>` 并合并后再推送成功 |
 | 5e | **旧代次**：脚本以 root 从 main Workspace 的沙盒复制 git-access 证书，然后以租户管理员身份经公开 API 停止并重新启动 main Workspace（新 generation；非管理员还需要运行时会话），用旧证书从沙盒网络上的辅助容器 `ls-remote` | 访问被拒绝（`403`）；新沙盒的证书 SAN 中 generation 已递增。run Workspace 不能经公开 API 重启，main Workspace 又没有进行中的会话执行，所以端到端无法构造“只有代次不符、其余条件都成立”的请求；这一条由 [快照 clone 输入与执行授权决策](../../cloud/controller-integration/20261016-snapshot-clone-input-and-execution-ref-grants.md) 落地顺序第 2 步的集成测试覆盖 |
 | 5f | **执行结束后再推**：会话结束后，以工作负载身份运行 `ora-git push` | `no_session`（退出码 3），socket 文件已不存在；以 Node 身份用会话执行 ID 推送得到 `403` |
-| 5g | **工作负载用户读不到证书**：会话中以工作负载 UID 读取管理 tmpfs 中的 git-access 私钥与证书 | 读取失败（权限不足）；Agent 进程的环境中只有 `ORA_GIT_SOCKET`，没有证书路径；以非工作负载 UID（例如 Node 以外的另一个 UID）连接 socket 得到 `forbidden` |
+| 5g | **工作负载用户读不到证书**：会话中以工作负载 UID 读取管理 tmpfs 中的 git-access 私钥与证书；再以既不是工作负载也不是 Node 的另一个 UID（例如 `nobody`）对 `ORA_GIT_SOCKET` 运行 `ora-git info` | 读取失败（权限不足）；Agent 进程的环境中只有 `ORA_GIT_SOCKET`，没有证书路径；`ls /run/ora-git` 失败；另一个 UID 能连上 socket（文件系统层不拒绝），由 Node 的对端 UID 检查以 `forbidden`（退出码 4）拒绝。断言的是 Node 应用层的判定，不是文件系统权限 |
 
 5b、5c、5d、5g 需要会话仍在运行，脚本在结束对应会话之前执行它们；5f 在会话结束之后执行。
 
