@@ -169,7 +169,8 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 随 cloud#70/#74 支持契约时收紧）；Output 声明
 `output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp` 和图里 `globalVariables` 的每一项；Cloud 今天既不提供这些值，也
 不声明它们，指向 `sys.*` 或用户自定义全局变量的选择器都在发布期被 `condition_selector_undeclared` 拒绝（两边的
-编辑器变量目录都把 globals 列为可选条件变量，Cloud 侧暂不提供，编辑器目录的后续处理另行承接）。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
+编辑器变量目录都把 globals 列为可选条件变量，Cloud 侧暂不提供，编辑器目录的后续处理见
+[circus#288](https://github.com/ora-space/circus/issues/288)）。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
 cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」求值——`exists` / `not_exists` / `empty` / `not_empty` 回答
 它，其余算子让节点失败。
 
