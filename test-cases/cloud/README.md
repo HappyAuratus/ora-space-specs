@@ -62,6 +62,31 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | --- | --- | --- |
 | git-server | [代码中心契约](git-server/project-repository-code-hub-contract.md) | 监听与上下文头错配、ref 规则绕过、已结束 Operation 仍可写、删除回滚丢同步、快照领先 Git Server、跨 Project 可达、执行器出网越过部署白名单 |
 
+外部线的四篇决策（[Repo Executor 根决策](../../decisions/cloud/repo-executor/0-repo-executor-sole-external-git-boundary.md)、
+[同步](../../decisions/cloud/project/20261016-repository-binding-and-snapshot-sync.md)、
+[发布](../../decisions/cloud/project/20261017-explicit-fast-forward-publish.md)、
+[Git 凭据存储](../../decisions/cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md)）经 owner 批准为
+`approved`，在契约之上各自登记执行器、同步、发布与凭据的义务。实现尚未合入 main，这些义务目前都是 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| repo-executor | [执行器边界](repo-executor/repo-executor-boundary.md) | 授权与任务不符、明文凭据泄露、出网越过共享策略或 DNS rebinding、lease 失效、`uncertain` 后重推、进程残留 |
+| project | [仓库同步](project/repository-binding-and-snapshot-sync.md) | 同一 Operation 执行两次、expected old 过时、未核验推进快照、终态事务建两个后继、凭据来源重复、等待快照不结束 |
+| project | [显式发布](project/explicit-fast-forward-publish.md) | 越权审批、发布源校验与契约不一致、失去租约后重推、`uncertain` 无上限、发布后快照不含发布提交 |
+| identity-access | [Git 凭据存储](identity-access/git-credential-store.md) | token 经过 Cloud、授权重放或跨用途、未确认就 `stored`、能力跨版本延续、管理员使用他人个人凭据、撤销不彻底 |
+
+内部线的三篇 Cloud 决策（[clone 步骤消费快照](../../decisions/cloud/operation/20261016-clone-step-consumes-binding-snapshot.md)、
+[快照 clone 输入与执行授权](../../decisions/cloud/controller-integration/20261016-snapshot-clone-input-and-execution-ref-grants.md)、
+[Revision Git 交付](../../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md)）经 owner 批准为 `approved`，在契约之上
+登记 clone 消费快照、执行授权与 Git 交付的义务；Node 一侧见 [Node 核心测试用例](../node/README.md)。实现尚未合入 main，这些义务
+目前都是 Missing；以 bundle 交付与外部 clone 为依据的既有用例在实现合入时改写或改挂。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| operation | [clone 步骤消费快照](operation/clone-step-consumes-binding-snapshot.md) | 重试换了快照、等待者不结束或挡住领取、分支不是同步的分支、隐式同步、删除与进行中的同步竞争 |
+| controller-integration | [快照 clone 输入与执行授权](controller-integration/snapshot-clone-input-and-execution-grants.md) | Controller 拼输入、基线提交写错、残留外部 clone 入口、执行越权写 ref、WorkflowRun 会话误获授权、bundle 契约残留 |
+| revision | [Git 交付与续作](revision/git-native-delivery-refs-and-resume.md) | 未核验就登记、短暂不可用被判失败、`unchanged` 没有自己的 ref、续作拨回旧提交、一次取消永久不可续 |
+
 ## 已实现的 Issue 协作交互
 
 [Issue 协作根决策](../../decisions/cloud/issue-collaboration/0-typed-targets-and-explicit-execution-intent.md)为 `implemented`，补登 Cloud 已上线的协作契约。
