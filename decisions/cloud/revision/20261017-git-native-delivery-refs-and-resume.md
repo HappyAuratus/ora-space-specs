@@ -185,6 +185,9 @@ Agent 会话执行在 IssueRun 业务上的有效性条件。共同条件：证�
 
 - 所有 Agent 会话都能访问，不再要求输入带 `priorRevision`：会话要随时经 `ora-git` fetch upstream 与其他 Workspace 的分支
   （[Node 从快照 clone 决策](../../node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md) D5–D7），恢复前序只是其中一次读取。
+- **WorkflowRun 的 Agent 会话第一阶段不授权。** 本节条件只按 IssueRun 的 `phase` 与 `thread_state` 写；WorkflowRun 没有 Thread、
+  没有 `phase`，也不交付 Revision，它的会话执行在 Git Server 上一律 `403`，`ora-git` 访问 Git Server 的动词对它返回 `denied`。WorkflowRun 的 Agent
+  在 Git 上能写什么、何时有效，属于 workflow 模块的决策，留给后续 ADR（执行授权决策“本决策未解决的问题”）。
 - 会话的访问在运行请求取消或 Thread 进入结束时立即失效：此时用户要求停止，或交付即将开始，会话不应再改变 Git Server。
 - **长 fetch 不在传输中途复查**，记为已知取舍：已通过判定的 `git-upload-pack` 请求在运行被取消后仍可能传完。它只读本
   Project 的仓库，且是该会话在请求开始时有权读的内容；恢复整体受 Node 的时限约束（Node 交付决策 D5）。写入一侧有

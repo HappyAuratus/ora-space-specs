@@ -154,12 +154,17 @@ Git Server 解析沙盒请求时，先按 [Git Server 根决策](../git-server/0
 | 执行 | 有效性（任一不满足即 `403`） | `writable` |
 | --- | --- | --- |
 | clone（Workspace operation 的 clone 执行） | `clone_executions` 中属于该 Workspace 的执行，尚无结果，未被强停；所属 operation 处于 `running` 且 `step = clone`；执行的目标 Node 是该 Workspace 当前 Node；operation 的发起人仍能使用该运行时；Project 未删除且 `lifecycle ∈ {provisioning, active}`（main Workspace 的 clone 发生在 create_project 期间，此时 Project 还是 `provisioning`；现有判定只接受 `active`）；输入的 `repositoryUrl` 指向请求的仓库 | 空（只读） |
-| Agent 会话 | [Cloud 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) D5 的共同条件与会话条件：已登记、尚无结果、未被强停；运行 `phase ∈ {starting, running}`，没有取消请求，`thread_state` 不是 `ending` 或 `ended`；维护绑定已确认。不要求输入带 `priorRevision` | `refs/heads/workspaces/<证书中的 workspaceId>/`（前缀），fast-forward |
+| IssueRun 的 Agent 会话 | [Cloud 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) D5 的共同条件与会话条件：已登记、尚无结果、未被强停；运行 `phase ∈ {starting, running}`，没有取消请求，`thread_state` 不是 `ending` 或 `ended`；维护绑定已确认。不要求输入带 `priorRevision` | `refs/heads/workspaces/<证书中的 workspaceId>/`（前缀），fast-forward |
 | 交付 | Cloud 交付决策 D5：运行 `phase = delivering`，`deliveryRef` 等于 `refs/ora/deliveries/<该工作项 ID>` | 输入中的 `deliveryRef`，create-only；输入中的 `workspaceRef`，fast-forward，且必须在证书所属 Workspace 的分支前缀下（D6） |
-| 其他（插件执行） | — | 拒绝访问 |
+| 其他（WorkflowRun 的 Agent 会话、插件执行） | — | 拒绝访问 |
 
 - Agent 会话写前缀里的 `workspaceId` 取自证书，而不是请求或输入；证书目标已经与执行所属的 Workspace 核对过。一个 Agent
   会话可以在自己的前缀下新建多个分支，每个分支只能新建或快进（契约 ADR D4）。
+- WorkflowRun 的 Agent 会话（cloud 已有 WorkflowRun 的 Workspace 与 `agent_session` 派发）第一阶段不授权：它没有 IssueRun 的
+  `phase` 与 `thread_state`，本文也不为它另立有效性条件，Git Server 一律 `403`。它的 Agent 仍在本地 checkout 中工作，只是不能经
+  `ora-git` 推送或拉取。为什么不在本文补上：WorkflowRun 不交付 Revision，它的 Agent 改了代码要不要推、推到哪个分支、同一
+  Workspace 上先后多个节点谁能写，都是 workflow 模块的语义；在内部线里补上等于替它做决定。`ora-git` 是本组决策新增的能力，
+  不授权不会让 WorkflowRun 现有的行为倒退。
 - 读取不区分执行类型与 Workspace：同一 Project 内的 Workspace 分支与交付 ref 对获授权的沙盒执行共享，已删除 Workspace 的
   分支也可读。契约 ADR 已在 Git 层面修改了运行时使用权限决策；界面上谁能看代码与分支详情不变。
 - clone 执行的有效性不要求 Workspace 已就绪或准入已开放：clone 正是在准入开放之前发生（根决策 D1）。它改为要求
@@ -201,7 +206,7 @@ message DeliverRevisionSpec {
 ```proto
 message WorkspaceListing {
   string workspace_id = 1;
-  string kind = 2;          // main | isolated | run
+  string kind = 2;          // main | isolated | run (IssueRun Workspaces only)
   string issue_id = 3;      // run Workspaces only
   string issue_title = 4;
   string issue_run_id = 5;
@@ -222,6 +227,7 @@ message AgentSessionSpec {
 - 目录是放出工作项那一刻的快照：会话期间新建的 Workspace 没有元数据，run 的状态也可能已经变化。它只用于帮助 Agent 找到
   分支，不参与任何授权；能读哪些分支只由 Git Server 决定（D5）。
 - 目录只含同一 Project、同一租户的信息，触发运行的成员本来就能看到这些 Issue。
+- WorkflowRun 的 Workspace 不写入目录：它的会话不授权（D5），目录里也没有它的字段。它的分支若存在，`list` 中只显示 ID。
 
 为什么固定在会话输入里，而不是让 Node 运行时向 Cloud 查询：Node 不与 Cloud 通信（运行时 Workspace 根决策 D4）；实时查询要
 增加一对 Controller–Node 消息和一个 Cloud 方法，Node 的 `ora-git list` 还要等待 Controller 往返。固定的目录与其他会话输入一样受
@@ -356,8 +362,9 @@ message RevisionDelivered {
 
 - **Publish 的源 ref**：Agent 会话能写多个分支后，发布选哪个分支由外部线的发布 ADR 决定；本文只保证它们都在
   `refs/heads/workspaces/<workspaceId>/` 下且只能快进。
-- **非 IssueRun 的 Workspace 中的 Agent 会话**：目前 Agent 会话只属于 IssueRun；其他 Workspace 若开放 Agent 会话，沿用
-  本文的会话映射，但有效性条件中的运行阶段要由那时的决策给出。
+- **WorkflowRun 的 Agent 会话的 Git 授权**：cloud 已经为 WorkflowRun 建 Workspace 并派发 `agent_session`，但第一阶段不授权
+  （D5），它的会话用 `ora-git` 访问 Git Server 的动词得到 `denied`，Workspace 目录也不含它。要开放时由 workflow 模块的后续 ADR 给出它的有效性
+  条件（WorkflowRun 与节点的状态）、可写的 ref 与目录字段；写入规则沿用本文的会话映射即可。
 - **Workspace 目录的规模**：第一阶段固定取最近 100 个；Project 的 Workspace 很多时怎样检索，留给后续决策。
 
 ## 落地顺序
