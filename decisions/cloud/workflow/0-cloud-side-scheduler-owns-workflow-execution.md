@@ -158,7 +158,7 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 | `condition_rules_not_a_list` | `cases.conditions` | 比较项列表不是列表 |
 | `condition_rule_not_an_object` | `cases.conditions` | 比较项不是对象：Cloud 会静默判为不匹配 |
 | `condition_selector_unsupported` | `cases.conditions.variableSelector` | 选择器不是「至少两个非空字符串」的列表；一段选择器在 Cloud 读作整个节点输出 |
-| `condition_selector_undeclared` | `cases.conditions.variableSelector` | 选择器指向图中没有的节点，或该节点 kind 不声明的变量根。desktop 的变量池在运行前从图里声明每个根，这种选择器在那里是 `Undeclared` 并让节点失败；Cloud 运行时没有声明集，只会回答「缺失」，于是 `exists` / `not_exists` 能走出一条作者写不出的分支 |
+| `condition_selector_undeclared` | `cases.conditions.variableSelector`；期望值模板里的占位符记 `cases.conditions.value` | 选择器指向图中没有的节点，或该节点 kind 不声明的变量根。desktop 的变量池在运行前从图里声明每个根，这种选择器在那里是 `Undeclared` 并让节点失败；Cloud 运行时没有声明集，只会回答「缺失」，于是 `exists` / `not_exists` 能走出一条作者写不出的分支。期望值模板 `{{#node.root#}}` 里的占位符引用同一份声明集，占位符指向 `selectedBranch` 这类 Cloud 运行时写入、desktop 从不声明的根时同样在发布期拒绝 |
 | `condition_operator_unsupported` | `cases.conditions.operator` | 算子不在求值器算子表里（即 desktop `ComparisonOperator::parse` 的全集）：Cloud 会静默判为不匹配 |
 
 `field` 是相对节点 `data` 的路径，不带数组下标：同一节点有多个分支或比较项出错时各返回一条问题，问题定位到节点和字段，不指出是第几个分支或比较项。
