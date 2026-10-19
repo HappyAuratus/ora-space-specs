@@ -56,17 +56,20 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 
 ## 已批准的 Git 原生代码链路契约
 
-[Git Server 根决策](../../decisions/cloud/git-server/0-project-code-hub-git-server-over-https.md)与[代码中心契约决策](../../decisions/cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)经 owner 批准为 `approved`，契约是内部线与外部线共同遵守的边界，两篇共用一组核心用例。底座（落地顺序第 1 步）的直接证据在 [cloud#75](https://github.com/ora-space/cloud/pull/75) 与 [cluster#26](https://github.com/ora-space/cluster/pull/26)；真实同步、租约和 clone 消费由两条线接入，相应义务如实保留 Partial/Missing。
+[Git Server 根决策](../../decisions/cloud/git-server/0-project-code-hub-git-server-over-https.md)与[代码中心契约决策](../../decisions/cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)经 owner 批准为 `approved`，契约是内部线与外部线共同遵守的边界，两篇共用一组核心用例。底座（落地顺序第 1 步）的直接证据在 [cloud#75](https://github.com/ora-space/cloud/pull/75) 与 [cluster#26](https://github.com/ora-space/cluster/pull/26)；外部线的真实同步已随 cloud#76（`ceb39bc`）接入，真实 clone 由内部线接入，相应义务如实保留 Partial/Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | git-server | [代码中心契约](git-server/project-repository-code-hub-contract.md) | 监听与上下文头错配、ref 规则绕过、已结束 Operation 仍可写、删除回滚丢同步、快照领先 Git Server、跨 Project 可达、执行器出网越过部署白名单 |
 
+## 已实现的外部线
+
 外部线的四篇决策（[Repo Executor 根决策](../../decisions/cloud/repo-executor/0-repo-executor-sole-external-git-boundary.md)、
 [同步](../../decisions/cloud/project/20261016-repository-binding-and-snapshot-sync.md)、
 [发布](../../decisions/cloud/project/20261017-explicit-fast-forward-publish.md)、
-[Git 凭据存储](../../decisions/cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md)）经 owner 批准为
-`approved`，在契约之上各自登记执行器、同步、发布与凭据的义务。实现尚未合入 main，这些义务目前都是 Missing。
+[Git 凭据存储](../../decisions/cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md)）已随
+cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `implemented`；它们在契约之上各自登记
+执行器、同步、发布与凭据的义务。证据按 cloud 该提交的直接测试登记，没有直接测试的义务保持 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

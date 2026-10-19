@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 外部写入只经显式 Publish：经批准的 PublishOperation 以 expected old 快进推送，结果不明时只读核验、不重推
@@ -10,7 +10,7 @@ Workspace 的推送只到达 Git Server，永远不会触达外部仓库。要�
 从 Git Server 读取源提交，确认是快进，以 `ls-remote` 比对旧值，再以 `--force-with-lease` 推送并再次核验。结果不明时进入
 `uncertain`，由 reconciler 以只读的 `ls-remote` 判定，从不重推。发布成功后自动同步一次，让当前快照反映外部仓库。
 
-本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[显式发布用例](../../../test-cases/cloud/project/explicit-fast-forward-publish.md)），是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
+本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main；核心测试用例见[显式发布用例](../../../test-cases/cloud/project/explicit-fast-forward-publish.md)，是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
 它按评审中推荐的方案确定只快进发布和审批人，遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)
 （下称“契约”）D5 第 3 项：发布 Operation 在 Git Server 上没有写权限，执行器只取 Operation 记录的源 ref 与源提交。涉及 Cloud（API、审批、状态机、reconciler、
 审计、前端）与 Repo Executor。凭据能力由 [identity-access 后续决策](../identity-access/20261016-git-credentials-in-independent-credential-store.md)

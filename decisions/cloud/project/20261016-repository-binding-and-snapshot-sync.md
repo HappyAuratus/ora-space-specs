@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Project 经 Repository Binding 同步外部仓库：Repo Executor 写快照，Cloud 核验后推进当前快照
@@ -11,7 +11,7 @@ Cloud 经 ref 查询核验两个 ref 都指向报告的提交之后，才在事�
 没有当前快照时，Workspace 的 clone 步骤只能等待，不回退为访问外部仓库，公开仓库也要先同步一次。本文保证首次同步不会悄无声息地
 停下：要么核验成功、写入当前快照，要么以 `failed` 终态落库，内部线据此结束等待（D9）。
 
-本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[仓库同步用例](../../../test-cases/cloud/project/repository-binding-and-snapshot-sync.md)），是 `cloud/project` 领域在[仓库凭据连续性](20260927-repository-credential-continuity.md)之后的后续决策，
+本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main；核心测试用例见[仓库同步用例](../../../test-cases/cloud/project/repository-binding-and-snapshot-sync.md)，是 `cloud/project` 领域在[仓库凭据连续性](20260927-repository-credential-continuity.md)之后的后续决策，
 遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约”）的 D4、D5、D6。
 涉及 Cloud（Binding、同步 Operation、ref 查询的调用方、公开 API 与前端）、Repo Executor 和 Credential Store。
 发布（Publish）由[后续 ADR](20261017-explicit-fast-forward-publish.md) 承担；凭据的保管与能力验证由

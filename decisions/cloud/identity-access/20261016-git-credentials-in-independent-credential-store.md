@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Git 凭据由独立的 Credential Store 保管：浏览器直接提交 token，Cloud 只管引用与能力，执行器一次性兑换
@@ -10,7 +10,7 @@ status: approved
 Cloud 签发的一次性授权兑换一次。`read` 由第一次成功的同步证明；`publish` 必须经过一次真实的推送能力验证：请求外部仓库
 `git-receive-pack` 的 ref 广告，不写入任何内容。
 
-本 ADR 已经 owner 批准，处于 `approved`（核心测试用例见[Git 凭据存储用例](../../../test-cases/cloud/identity-access/git-credential-store.md)），是 `cloud/identity-access` 领域在[用户 Git 提交身份](20260928-user-git-commit-identity.md)之后的后续决策。
+本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main；核心测试用例见[Git 凭据存储用例](../../../test-cases/cloud/identity-access/git-credential-store.md)，是 `cloud/identity-access` 领域在[用户 Git 提交身份](20260928-user-git-commit-identity.md)之后的后续决策。
 它按评审中推荐的方案回答两项安全规则：个人 token 的入口（D3）与推送能力的验证（D4）；第三项“发布的审批人”的使用规则在
 D5 给出约束，审批流程由 [发布 ADR](../project/20261017-explicit-fast-forward-publish.md) 承担。涉及 Cloud（凭据引用、提交授权、
 能力验证、设置页）、Credential Store、Repo Executor 与边缘反向代理。

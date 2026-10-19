@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Repo Executor 是唯一访问外部仓库的程序：按 Operation 一次性授权执行同步与发布，结果只经 Git Server 交接
@@ -10,8 +10,8 @@ model-gateway 并列的独立程序，无状态，不连 Cloud 数据库，不�
 在临时裸仓库里完成一次 Git 操作后销毁一切。同步的产出只经 Git Server 的服务仓库监听写入快照 ref 和跟踪 ref；发布只从 Git Server
 读取源提交，再以 expected old 推送到外部仓库，并以 `ls-remote` 前后核验。执行器只报告事实，Operation 的状态由 Cloud 决定。
 
-本 ADR 已经 owner 批准，处于 `approved`，是新建领域 `cloud/repo-executor` 的根决策；核心测试用例见
-[执行器边界用例](../../../test-cases/cloud/repo-executor/repo-executor-boundary.md)。实现落地并验收后才改为 `implemented`。
+本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main；是新建领域 `cloud/repo-executor` 的根决策；核心测试用例见
+[执行器边界用例](../../../test-cases/cloud/repo-executor/repo-executor-boundary.md)。
 它实现 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约”）中
 “执行器”一方的全部义务。涉及 Cloud 仓库新增的 `cmd/repo-executor`、Cloud 的 Operation worker、Credential Store，以及 cluster
 仓库的部署。业务流程分别由 [同步 ADR](../project/20261016-repository-binding-and-snapshot-sync.md) 与
