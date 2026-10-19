@@ -1,12 +1,14 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 残留 Agent Run 资源以真实证据分层回收：证据齐沿 owned delete，未确认执行经部署运维受控回收，账本按目标闭环清除
 
 D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周期收集真实证据——迟到的执行终态与交付结果、执行已终结、沙盒已物理终止——证据齐的条目取得本文新增的系统清理授权后，复用 `delete_workspace` owned delete 的执行步骤清理，成果能救则先救；清理完成前账本保护不解除。证据收不齐的条目只能由部署运维按租户与资源范围发起受控回收：显式确认放弃未交付成果，复用管理强停的终止与围栏语义（终止与数据删除分离、逐目标确认 `terminated` 与 `lateEnsureFenced`、不因超时判成功），经当前 Controller lease 与既有 Substrate effects 执行，不新增物理路径、不伪造 `impactConfirmed`、不由业务 `done` 隐式强停。账本条目在全部目标资源取得闭环证据或显式处置记录后清除；Substrate 永久不可用时保留未完成意图，由运维外部确认兜底。存量 D8 删除残留按原身份接入同一路径，不改写历史。
 
-本文为 `proposed`，承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署管理端点；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
+本文为 `approved`：决策方向已经 owner 批准，核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，用例义务如实标为 `Missing`；实现合入并完成联合验证后，再由落地运行按最终实现同步正文并改为 `implemented`。
+
+本文承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署管理端点；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
 
 ## 继承与修改
 
@@ -151,9 +153,13 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ## 落地顺序
 
-1. **账本状态机与自动对账层**（cloud）：`reclaim_state`/证据与清理责任迁移、周期扫描、新增系统清理授权、清理完成前后的事实接管与 owned delete 持久推进。完成条件：完整证据齐才授权；未清账即可执行获授权的删除且普通入口仍拒绝；授权/事实/完成竞争、清理重启、清除后重复事实和冲突事实均有直接验证，证据不足不排强停或数据删除。
+1. **账本状态机与自动对账层**（cloud）：`reclaim_state`/证据与清理责任迁移、周期扫描、新增系统清理授权、清理完成前后的事实接管与 owned delete 持久推进。完成条件：完整证据齐才授权；未清账即可执行获授权的删除且普通入口仍拒绝；授权/事实/完成竞争、清理重启、清除后重复事实和冲突事实均有直接验证，证据不足不排强停或数据删除。D2 的系统授权与清理前后事实接管是本文实现复杂度最高的部分，**竞争场景（授权与事实、自动与受控、完成与迟到事实）是这一阶段的验证重点**，不能只用顺序路径的用例代替。
 2. **受控回收意图与管理端点**（cloud）：意图三态、两阶段命令、审计与按范围查询。完成条件：幂等/冲突、确认缺失拒绝、自动清理与运维命令竞争时只有单一责任、只终止不删数据的合法终态均有测试。
 3. **Controller/Substrate 语义验证**（desktop、cluster）：既有 terminate 对从未 ensure 的计划 ID 双确认、迟到 ensure 被墓碑拒绝，作为回收完成条件成立。完成条件包括：已计划且持有效许可的 ensure 在途时，查询 `404` 不能清账或删卷；terminate 双确认后再送达该 ensure 必须被拒绝。Cloud 的“从未计划”证明与并发计划/派发只能有一方取得责任。
 4. **联合故障演练**：Controller 失联恢复后意图继续、Substrate 不可达保持 `terminating`、外部确认留审计。存量 D8 需直接验证 Node 恢复不自动重新声明删除；受控入口按原身份取得责任后才能回收，无账本行也有保护；重复命令不产生第二份责任，原 failed operation 与 Run 终态始终不变。
 
-保持不变：D4/D5 结算语义、根 D8 残留状态、公开 API 对运行 Workspace 的 404、`agent_run_residuals` 既有列义。从第 1 步起改变：账本条目有了清理状态、单一推进责任、系统授权和贯穿清理前后的事实接管；从第 2 步起改变：残留有了受控回收的显式入口。核心测试用例在本 ADR 转为 `approved` 后按规范补充。
+保持不变：D4/D5 结算语义、根 D8 残留状态、公开 API 对运行 Workspace 的 404、`agent_run_residuals` 既有列义。从第 1 步起改变：账本条目有了清理状态、单一推进责任、系统授权和贯穿清理前后的事实接管；从第 2 步起改变：残留有了受控回收的显式入口。
+
+## 核心测试用例
+
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，义务都如实标为 `Missing`；每项落地步骤完成时按直接证据更新对应义务的证据状态。
