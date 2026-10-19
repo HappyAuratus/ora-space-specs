@@ -74,7 +74,11 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 - 终止前 Controller 先向可达 Node 投递既有结束请求与控制关闭（尽力而为，不把其确认作为终止前置）；Node 收到则按会话收尾规则结束，收不到则容器级停止。
 - 目标集合 = 账本 `responsibility` 中记录的全部沙盒计划 ID 与预分配身份，包括**从未执行过的 ensure 计划**：对每个 ID 逐一 `sandbox_terminate`。[Sandbox Server](../../cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md) D6 已保证目标从未 ensure 也写墓碑并报告 `{terminated: true, lateEnsureFenced: true}`；生产 Substrate 适配器必须保持同等语义（先墓碑后破坏、幂等、对不存在的目标也确认），这是本 ADR 对 Substrate 的接口要求。
 - 迟到许可与在途 ensure 的 fencing 完全依赖既有机制：墓碑之后同 ID 的 ensure 以 `sandbox_terminated` 拒绝；回收意图不删除原 effect 行、不假报 sandbox 缺失、不创建新 generation 挂载同一可写卷（继承启动决策 D5）。
-- **完成条件**：意图下每个目标都取得 `terminated` 与 `lateEnsureFenced` 双确认（或确证从未计划——`404` 的“确知没有该 intent”），数据删除阶段另需每个卷的删除确认。全部确认后意图 `succeeded`、账本按处置方式 `cleared`；任何目标未确认则保持 `terminating` 并继续对账。
+- **完成条件**：意图下每个已计划的稳定 sandbox ID 都实际取得 `terminated` 与 `lateEnsureFenced` 双确认，数据删除阶段另需每个卷的删除确认。全部确认后意图 `succeeded`、账本按处置方式 `cleared`；任何目标未确认则保持 `terminating` 并继续对账，或由运维显式进入 D5 的外部处置分支。
+- **未计划与未到达分开判断**：只有 Cloud 在与创建计划、派发登记互斥的事务内，证明目标从未产生 sandbox/ensure 计划、许可或在途责任，并持久封闭继续产生这些责任的入口，才可记录“无目标待终止”。已有计划不能因尚未受理或请求可能丢失而移出目标集合。Substrate 的 effect 查询 `404` 只说明查询时本地 journal 没有该 intent，既不写墓碑，也不排除持有效许可的 ensure 随后到达；它不是上述 Cloud 证明，更不是终止双确认的替代品。
+
+反例：Cloud 已持久计划 ensure A，Controller 的请求仍在网络中；此时查询 A 得到 `404`。回收仍须按 A 的稳定 sandbox ID 执行 terminate，取得双确认；不能先清账或删卷再等待 A。墓碑持久化后 A 即使迟到，也必须被拒绝。
+
 - 回收完成与迟到事实并存时：迟到真实终止/清理证据缩小残留范围，迟到终态与交付按原身份接管，但 Run 终态与业务结算不再变化（继承启动决策 D4）。
 
 ### D5：重试、运维升级与 Substrate 永久不可用的兜底
@@ -108,6 +112,7 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 5. 终止与数据删除分离；数据删除永远是显式命令。
 6. 未完成的回收意图不因超时转为成功；外部确认必须先有意图且留审计。
 7. 存量 D8 残留按原稳定身份接入，不改写历史结算与状态。
+8. 已计划的 sandbox 逐目标取得终止与围栏双确认；Substrate 查询 `404`、Node 不可达和许可过期都不能代替该证据。
 
 ## 为什么不是这些替代方案
 
@@ -119,6 +124,7 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 | Cloud 直连 Substrate 执行终止 | 少一跳；绕过 Controller lease 与既有 effect 的幂等、围栏与许可，生产 Substrate 适配器要另开一条路径（D4） |
 | 对账层拿不到证据超时后自动升级强停 | 无需人工；把“放弃成果”变成默认行为，违背显式确认（不变量 1、3） |
 | 删除失败即自动外部确认销账 | 清账快；把未知写成已处置，伪造证据（不变量 3） |
+| 用 Substrate 查询 `404` 排除已计划的 ensure | 少一次 terminate；但查询不写墓碑，尚未到达的 ensure 仍可创建实例，不能解除删卷保护（D4） |
 | 存量 D8 残留回填进账本表统一状态机 | 单表查询方便；`reason` 约束与来源语义不允许，强行改写历史结算违背 D8 继承（D6） |
 
 ## 本决策未解决的问题
@@ -133,7 +139,7 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 1. **账本状态机与自动对账层**（cloud）：`reclaim_state`/证据列迁移、周期扫描、证据接管与 owned delete 重新声明。完成条件：三类证据各有直接测试（迟到交付补登记、执行终结后声明删除、沙盒终止后推进删除），证据不足时不排任何强停。
 2. **受控回收意图与管理端点**（cloud）：意图三态、两阶段命令、审计与按范围查询。完成条件：幂等/冲突、确认缺失拒绝、只终止不删数据的合法终态均有测试。
-3. **Controller/Substrate 语义验证**（desktop、cluster）：既有 terminate 对从未 ensure 的计划 ID 双确认、迟到 ensure 被墓碑拒绝，作为回收完成条件成立。
+3. **Controller/Substrate 语义验证**（desktop、cluster）：既有 terminate 对从未 ensure 的计划 ID 双确认、迟到 ensure 被墓碑拒绝，作为回收完成条件成立。完成条件包括：已计划且持有效许可的 ensure 在途时，查询 `404` 不能清账或删卷；terminate 双确认后再送达该 ensure 必须被拒绝。Cloud 的“从未计划”证明与并发计划/派发只能有一方取得责任。
 4. **联合故障演练**：Controller 失联恢复后意图继续、Substrate 不可达保持 `terminating`、外部确认留审计、存量 D8 残留按原身份回收。
 
 保持不变：D4/D5 结算语义、根 D8 残留状态、公开 API 对运行 Workspace 的 404、`agent_run_residuals` 既有列义。从第 1 步起改变：账本条目有了清理状态与对账证据；从第 2 步起改变：残留有了受控回收的显式入口。核心测试用例在本 ADR 转为 `approved` 后按规范补充。
