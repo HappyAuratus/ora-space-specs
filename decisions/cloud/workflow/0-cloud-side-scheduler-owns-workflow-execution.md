@@ -165,8 +165,9 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 
 **变量根的声明范围**以 desktop `WorkflowVariablePool::from_graph` 为准：Start 声明 `input`（kickoff 提示词）和每个
 `inputVariables` 变量；Agent 声明 `output`，带 `agentConfig.outputContract` 时再声明 `structured_output`；Output 声明
-`output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp`；Cloud 今天既不提供这两个值，也
-不声明它们，指向 `sys.*` 的选择器按未声明拒绝。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
+`output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp` 和图里 `globalVariables` 的每一项；Cloud 今天既不提供这些值，也
+不声明它们，指向 `sys.*` 或用户自定义全局变量的选择器都在发布期被 `condition_selector_undeclared` 拒绝（两边的
+编辑器变量目录都把 globals 列为可选条件变量，Cloud 侧暂不提供，编辑器目录的后续处理另行承接）。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
 cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」求值——`exists` / `not_exists` / `empty` / `not_empty` 回答
 它，其余算子让节点失败。
 
@@ -175,7 +176,9 @@ cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」�
 
 求值语义的收紧同样作用于已发布快照：比较算子遇到未赋值的变量此前静默落到 else，现在让节点和运行失败，错误里带上
 选择器。历史快照不会重新经过发布门禁，所以升级后这类「以前悄悄走 else」的运行会开始失败——这是 #210 的预期结果，
-不是回归。
+不是回归。Start 变量根的形状同批变更：`input` 现在是 kickoff 提示词（字符串）而不再是整个 run input，每个
+`inputVariables` 变量各自成根；历史快照里按旧形状写的 `[start, input, ...]` 升级后会从「走进整个 run input」变成路径
+错误，`[start, input]` 从整个表单变成提示词，这类「以前能跑、现在取值不同」的变化同样是预期行为。
 
 **未完成的分支不拒绝**：没有 `cases`、或某个分支还没有比较项，都按"落到 else"处理，两侧语义一致，属于草稿的
 正常中间状态。
