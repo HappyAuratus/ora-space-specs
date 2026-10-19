@@ -78,9 +78,9 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 - 发起人本身就是审批人时，创建即批准，直接进入 `pending`；否则进入 `awaiting_approval`，等待审批人批准或拒绝。
 - 租户管理员**不能**批准使用他人的个人凭据（identity-access 后续决策 D5）。所有者离开后，个人凭据冻结，等待中的发布在派发前
   检查失败；要继续发布，管理员改绑团队凭据后重新发起。
-- 批准记录审批人、时间，以及批准时的字段与凭据版本。请求在创建后 24 小时内必须完成批准和派发：`approval_expires_at` 在创建时
-  写入，过期的 `awaiting_approval` 和 `pending` 都以 `cancelled(approval_expired)` 结束（与批准版本的偏离：计时从创建开始，
-  不是从批准时刻开始）。
+- 批准记录审批人、时间，以及批准时的字段与凭据版本。`approval_expires_at` 决定批准的有效期：待批准请求在创建时写入创建后
+  24 小时；人工批准时重设为批准后 24 小时；自批准（创建即批准）从创建时刻起计时 24 小时（与批准版本的偏离：人工批准会
+  重置有效期，见文末）。过期的 `awaiting_approval` 和 `pending` 都以 `cancelled(approval_expired)` 结束。
   凭据在批准后提交了新版本，等待中的发布以 `cancelled(credential_changed)` 结束：审批人批准的是用旧 token 写入。
 - 发起人可以在 `awaiting_approval` 和 `pending` 时取消；审批人可以拒绝，以 `cancelled(rejected_by_approver)` 结束。
 
@@ -247,7 +247,7 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 | 批准时的决策 | 最终实现 | 原因 |
 | --- | --- | --- |
 | `revisionId` 从 Revision 的登记记录取出交付 ref 和最终提交 | Revision 记录的 `revision_ref` 是 `refs/ora/revisions/<runId>`；发布要求 `GitDelivery`，所以所有带 `revisionId` 的发布以 `409 revision_not_publishable` 结束 | 实现缺陷：Revision 记录没有保存交付 ref，发布侧又只接受交付 ref；需要让 Revision 暴露实际交付 ref 才能恢复这个入口。界面和公开契约仍然列出 `revisionId`，且没有测试覆盖 |
-| 批准在 24 小时内有效，计时从批准时刻开始 | `approval_expires_at` 在创建时写为创建后 24 小时；过期的 `awaiting_approval` 和 `pending` 都以 `cancelled(approval_expired)` 结束 | 实现用统一的请求有效期；自批准（创建即 `pending`）也从创建时刻开始计时 |
+| 批准在 24 小时内有效，计时从批准时刻开始 | 待批准请求在创建时写为创建后 24 小时；人工批准时重设为批准后 24 小时；自批准从创建（即批准）时刻计时。过期的 `awaiting_approval` 和 `pending` 都以 `cancelled(approval_expired)` 结束 | 实现给待批准请求一个创建后 24 小时的窗口，并在人工批准时重新计时；自批准没有单独的批准动作，从创建时刻计时 |
 | OID 为 40 位小写十六进制 | 接受 40 或 64 位小写十六进制 | 支持 SHA-256 仓库；校验沿用 `GitObjectID` |
 | 发布触发的后继同步跳过原因写入 `result.successorSkipped`，取值 `credential_frozen`、`credential_unavailable`、`project_deleting` | 写入 `result.resyncSkipped`，值为凭据检查的错误码原文；Project 不是 `active` 时不记录 | 与同步 ADR D3 同一条偏离：两条触发路径未统一键名和错误码 |
 | `uncertain` 时界面显示最近一次失败的原因 | 只显示状态和“立即核验”按钮，不显示 `lastCheckFailure` | 界面未实现该项，没有记录原因 |

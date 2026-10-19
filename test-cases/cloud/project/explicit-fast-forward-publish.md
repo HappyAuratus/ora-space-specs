@@ -10,7 +10,7 @@
 - 风险：Workspace 推送触达外部仓库；未经批准或审批人不对的发布被派发；管理员以他人的个人凭据写入外部仓库。
 - 前置状态：团队、个人、未知三类凭据；发起人是否有 Project 发布权限、是否为个人凭据的所有者。
 - 触发：创建发布；管理员批准使用他人的个人凭据；批准后凭据轮换；批准过期；没有发布权限也不是凭据所有者的成员发起。
-- 必须成立：发起人是有 Project 发布权限的人或所用个人凭据的所有者；发起人即审批人时创建即批准，否则 `awaiting_approval`；批准绑定全部字段与凭据版本；凭据换版本以 `cancelled(credential_changed)`、创建后超过 24 小时以 `cancelled(approval_expired)` 结束；未知归属的凭据不能发布。
+- 必须成立：发起人是有 Project 发布权限的人或所用个人凭据的所有者；发起人即审批人时创建即批准，否则 `awaiting_approval`；批准绑定全部字段与凭据版本；凭据换版本以 `cancelled(credential_changed)` 结束；待批准请求创建后超过 24 小时、或批准（自批准从创建时计）后超过 24 小时仍未派发，以 `cancelled(approval_expired)` 结束；未知归属的凭据不能发布。
 - 禁止结果：管理员批准使用他人的个人凭据；批准后改动字段仍派发；无权成员发起成功。
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
   `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency`、`TestRepositoryPublishApprovalExpiresAndRotationCancelsOldVersion`。
