@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Agent 实时预览独立传输，定型 Thread 记录仍是持久权威
@@ -7,7 +7,7 @@ status: proposed
 在 Node → Controller → Cloud → 浏览器增加有界实时预览旁路，承载正文、公开思考和工具更新。
 现有定型记录、确认和重放通道不变；实时预览可丢弃并从快照恢复，不能成为执行成功或持久接管证据。
 
-本提案等待 owner 决策，涉及 Node 协议、Controller 会话中继与 Cloud 的新增订阅端点。
+本决策已获批准，尚未完成跨服务联合验收，涉及 Node 协议、Controller 会话中继与 Cloud 的新增订阅端点。
 新能力须协商，旧节点继续提供定型记录且界面明确展示能力差异，不能声称逐段实时输出已启用。
 
 ## 继承与修改
@@ -68,3 +68,4 @@ Node 以小批量、有界缓冲发送预览，Controller/Cloud 各层同样有�
 先定义并验证能力协商与稳定身份，再连接 Node/Controller/Cloud，最后启用浏览器预览。
 必须验证慢消费者、乱序、终态先到、重连快照、权限撤销与旧节点降级。协议更新、生成代码及联合测试
 随实现提交；仅在真实 Agent 完成前已观察到增量时，才可验收流式能力。子代理拓扑另行设计。
+核心验证义务见[实时 Thread 预览](../../../test-cases/node/protocol/live-thread-previews.md)。
