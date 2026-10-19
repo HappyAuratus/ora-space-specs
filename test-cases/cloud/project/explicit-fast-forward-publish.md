@@ -16,7 +16,8 @@
   `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency`、`TestRepositoryPublishApprovalExpiresAndRotationCancelsOldVersion`。
   已覆盖：管理员不能批准他人的个人凭据；所有者批准与发起人即审批人；改动字段被拒；未验证能力的凭据不能创建发布；
   `approval_expired` 与 `credential_changed`。仍缺：未断言 `awaiting_approval` 的 Operation 从不被派发、也不写入外部；
-  没有既无发布权限也非凭据所有者的成员发起的测试。
+  没有既无发布权限也非凭据所有者的成员发起的测试；没有断言人工批准把有效期重置为批准后 24 小时、自批准从创建时刻计时
+  （现有测试直接改写时间戳，只证明到期取消）。
 - 决策依据：D1、D2，不变量 1、2、3。
 
 ## Publish Sources Are Any Workspace Branch Or Delivery Ref Of The Project
