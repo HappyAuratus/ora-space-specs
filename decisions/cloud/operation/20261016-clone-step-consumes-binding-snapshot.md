@@ -103,7 +103,7 @@ clone 步骤需要冻结输入、而 Binding 没有当前快照时，Cloud 读�
 | --- | --- |
 | 有当前快照 | 按 D1 冻结输入，交给 Controller |
 | 没有当前快照，最近的同步未结束（`pending`、`leased`、`running`） | 等待：`retry_wait`，`error_code = snapshot_not_ready`，`retry_at` 为 10 秒后 |
-| 没有当前快照，最近的同步已经以非成功终态结束（`failed`、`superseded`、`cancelled`） | operation 以 `failed`、`repository_sync_failed` 结束，记录该同步 Operation 的 ID 与它的错误码 |
+| 没有当前快照，最近的同步已经以非成功终态结束（`failed`、`superseded`、`cancelled`） | operation 以 `failed`、`repository_sync_failed` 结束，记录该同步 Operation 的 ID；本文不另存错误码，运行的 clone 步骤由此失败时，运行公开的 `preparation.syncErrorCode` 取该同步的 `error_code`（契约 ADR 落地顺序第 1 步） |
 
 - 判断发生在 D1 的两个事务里：进入 clone 步骤时，以及到期后每次领取时。所以同步失败后，等待者最迟在下一次领取（约 10 秒）
   时结束，不需要外部线在同步收尾时通知内部线。
@@ -117,9 +117,9 @@ clone 步骤需要冻结输入、而 Binding 没有当前快照时，Cloud 读�
   `preparation`（根 D2 的 2026-10-11 修订）把 `snapshot_not_ready` 作为安全错误码展示，不暴露 Binding 或快照身份。
 - 以 `repository_sync_failed` 结束的 operation 按 clone 步骤已有的失败路径处理（与第三次已知失败相同）：准入保持关闭，运行时
   维护控制归还；run Workspace 走原失败释放路径，项目主 Workspace 留存。
-- create_project 以 `repository_sync_failed` 结束时，同一事务把 Project 从 `provisioning` 置为 `active`，与管理员强停取消初始化
-  的做法相同（`internal/core/runtime_force_stop.go`）。否则 Project 永远停在 `provisioning`：删除、建 Workspace、手动同步都要求
-  `active`，私有仓库只要 token 填错或分支不存在，这个 Project 就既救不回来也删不掉。置为 `active` 后，用户可以换凭据、手动同步，
+- create_project 以 `repository_sync_failed` 结束时，Project 按契约 ADR D5 第 3 项从 `provisioning` 置为 `active`：契约规定
+  create_project 无论因什么原因失败都这样处理，由底座实现（契约 ADR 落地顺序第 1 步），本文不另立规则，只依赖它。对本文的
+  意义是：私有仓库只要 token 填错或分支不存在，首次同步就会失败；Project 置为 `active` 后，用户可以换凭据、手动同步，
   再新建 Workspace；也可以删除 Project（仓库地址或分支填错只能删除重建，见外部线的同步决策）。没有快照的 main Workspace 保持准入关闭，不能接受任务。
 
 **领取不因等待者落空。** 现有的领取（`internal/core/control.go` 的 `claim`）每次只按创建时间取最早的一个可领取 operation
@@ -275,7 +275,7 @@ delete_project 的 quiesce 步骤在原有条件（各 Workspace 没有活动、
 | --- | --- | --- |
 | 同步未结束时等待 | 创建 Project，Binding 指向一个外部地址；预置工具什么都不写 | `psql`：create_project 停在 `clone` 步骤，`state = retry_wait`，`error_code = snapshot_not_ready`；该 operation 没有 `clone_executions` 行；main Workspace `admission_open = false`。沙盒网络是 `--internal`，外部地址根本不可达（见共用栈） |
 | 快照登记后推进 | 接上一场景，预置工具写快照 ref 与当前快照记录、把同步推进为 `succeeded`，共享契约断言通过 | `psql`：operation 的 `request.clone` 等于当前快照生成的四个字段；恰有一个 `clone_executions` 行，其 `input` 与 `request.clone` 逐字相同；operation 走到 `done`；`workspaces.base_commit_id` 等于 `baseCommit`，`requested_ref` 等于 `Binding.branch` |
-| 同步失败时结束等待 | 另建 Project，等 create_project 进入等待后，预置工具把同步推进为 `failed`（错误码如 `credential_rejected`） | `psql`：约 10 秒内 operation 以 `failed`、`repository_sync_failed` 结束，记录了该同步 Operation 的 ID 与错误码；没有 `clone_executions` 行 |
+| 同步失败时结束等待 | 另建 Project，等 create_project 进入等待后，预置工具把同步推进为 `failed`（错误码如 `credential_rejected`） | `psql`：约 10 秒内 operation 以 `failed`、`repository_sync_failed` 结束，记录了该同步 Operation 的 ID；Project 为 `active`；没有 `clone_executions` 行 |
 | 冻结后快照更新 | Project 就绪后，用预置工具把当前快照改为另一个提交，再触发一次 IssueRun | `psql`：run Workspace 的 `request.clone.baseCommit` 是新快照；main Workspace 的 `base_commit_id` 不变 |
 | run Workspace 不隐式同步 | 触发 IssueRun 前后各读一次当前快照记录与同步 Operation | 记录（包括登记时间）不变，没有新的同步 Operation；run Workspace 的 `request.clone` 等于触发时的当前快照 |
 | `baseRef` 不是同步的分支 | 经公开 API 创建 isolated Workspace，`baseRef: feature` | `400 base_ref_not_synced`，`workspaces` 与 `operations` 没有新行 |
