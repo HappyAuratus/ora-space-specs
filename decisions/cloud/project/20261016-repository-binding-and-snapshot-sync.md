@@ -33,6 +33,7 @@ Cloud 经 ref 查询核验两个 ref 都指向报告的提交之后，才在事�
 | [Project 根决策](0-project-space-scoping.md)：Project 按租户成员可见和授权，`owner_user_id` 只作创建者审计 | 继承，不变。同步的触发与查看按同一成员规则（D3、D8） |
 | [仓库凭据连续性](20260927-repository-credential-continuity.md) D1、D2：引用分为团队、个人、未知；关联成员离开后个人和未知引用冻结，拒绝新的远程操作；已开始的任务可以收尾 | 继承，不变。同步是“新的远程操作”，创建 Operation 和签发授权前都检查引用可用（D7） |
 | 凭据连续性 D3：Controller/Node 在受控目标下验证候选引用，“只验证读取不能被记录为已经拥有推送权限” | 修改：验证的执行者改为 Repo Executor；读取能力由第一次成功同步证明（D5），推送能力的验证见 identity-access 后续决策 |
+| 凭据连续性 D3：项目绑定保留原引用，候选验证成功后原子切换“有效引用”（实现为 `credential_ref_id` 与 `repository_credential_ref_id` 两列） | 修改：Binding 只保留 `credential_ref_id` 一列，候选验证成功后直接改写它（D1、D5）；切换的原子性、版本检查和失败不覆盖原引用不变。历史执行与引用的关联由每个同步 Operation 记录的 `credentialRefId`、`credentialVersion` 保留（D2） |
 | 凭据连续性 D4：执行端按引用选择，不回退全局静态凭据；凭据临时提供、结束后回收 | 继承，不变。执行端从 Controller/Node 改为 Repo Executor |
 | [默认分支决策](../operation/20260926-require-concrete-default-branch.md)：Project 必须给出具体默认分支；Cloud 不访问远端仓库 | 继承规则。修改存放位置：默认分支就是 `Binding.branch`，`projects.default_branch` 删除，公开 API 的 `defaultBranch` 从 Binding 读出（D1）；Cloud 仍不访问外部仓库，只经执行器访问 |
 | 契约 D4：快照 ref create-only、名称等于目标；跟踪 ref tracking-cas，允许非快进 | 继承，不变。执行器的一次推送同时写两者（D2） |
