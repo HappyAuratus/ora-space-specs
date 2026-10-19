@@ -186,7 +186,8 @@ bundle”的一跳引用，Cloud 对两种结果做同一种核验。代价是�
 | 情况 | `detail` |
 | --- | --- |
 | Git Server 上没有该交付 ref（`couldn't find remote ref`） | `prior_revision_base_unavailable` |
-| HTTP `401`、`403` 或其他非 `429` 的 `4xx`（仓库不存在与无权访问返回相同响应） | `prior_revision_base_unavailable` |
+| HTTP `403` 或 `401`、`429` 以外的其他 `4xx`（仓库不存在与无权访问返回相同响应） | `prior_revision_base_unavailable` |
+| HTTP `401`（Node 自己的 git-access 身份没有通过认证） | `prior_revision_unavailable` |
 | 取到的提交不等于 `finalCommit`，或不是提交 | `prior_revision_unavailable` |
 | `5xx`、`429`、网络、TLS、重试耗尽或时限到期 | `prior_revision_unavailable` |
 | 输入校验、传输仓库、取入或检出在本地失败 | `prior_revision_unavailable` |
@@ -194,6 +195,9 @@ bundle”的一跳引用，Cloud 对两种结果做同一种核验。代价是�
 - 两种失败都以 `AGENT_FAILED` 加 `detail` 结束会话，插件从未启动（恢复 D1、D3，不变）。
 - 名称保留以免改动契约与 Cloud 的结算规则，含义变为“前序 Revision 的 Git 内容在 Git Server 上永久取不到”：原含义“基础
   提交已从用户远端消失”在 Git Server 持有完整历史后不再出现。
+- `401` 只说明 Node 自己的 git-access 材料配错或过期，与前序 Revision 的 Git 内容是否存在无关；归入
+  `base_unavailable` 会让一次部署配置错误把前序永久标为不可续接，所以归入可再续的 `unavailable`，在时限内也不重试（同一
+  材料重试不会通过）。推送一侧的 `401` 仍按 D4 不重试、以 `push_rejected` 失败：交付失败只影响本次尝试，不改变前序是否可续。
 - `403` 也可能来自运行在恢复期间被取消；Cloud 在结算时对已请求取消的运行不标记不可续接（Cloud 交付决策 D7），所以 Node
   不需要区分。
 - 不等于 `finalCommit` 只可能是缺陷（交付 ref 只能新建），按可重试的 `unavailable` 处理，不因一次缺陷永久放弃该 Revision。
@@ -275,8 +279,8 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 3. **交付**（D2–D4）：完成条件：`delivered` 与两种 `unchanged` 都推送交付 ref，重放成功；被拒为 `push_rejected`、不可达为
    `push_failed`；Workspace 分支快进被拒时交付仍成功；冻结后重启复用同一计划；授权不落盘。
 4. **恢复**（D5、D6）：完成条件：恢复后本地分支名正确、HEAD 等于前序最终提交、`refs/remotes/ora/**` 与配置不变；改写提示只在
-   前序基础提交不是快照提交的祖先时出现；交付 ref 缺失与 `403` 为 `prior_revision_base_unavailable`，其余为
-   `prior_revision_unavailable`；会话结束、取消或时限到期时恢复不再写 checkout，插件未启动。
+   前序基础提交不是快照提交的祖先时出现；交付 ref 缺失、`403` 与 `401` 以外的其他 `4xx` 为 `prior_revision_base_unavailable`，`401` 与其余
+   为 `prior_revision_unavailable`；会话结束、取消或时限到期时恢复不再写 checkout，插件未启动。
 5. **配置与 Controller**（D7、D8）：Cloud 模式缺 `git_access` 拒绝启动；Controller 删除下载中继、上传授权只请求 JSONL 键、
    交付终态按 D8 核对。
 6. **端到端验收与合并**：见下一节，与 Cloud、Controller 的实现一起验收，三个仓库一起合并。
