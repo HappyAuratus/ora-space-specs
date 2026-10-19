@@ -130,9 +130,7 @@ _Avoid_: 项目拥有者、后来追加评论的人
 
 ## Agent Model Configuration
 
-### Model Connection
-
-复用[个人模型术语](#personal-model-access)中的 Model Connection（模型连接）、Default Model、
+本节术语复用[个人模型术语](#personal-model-access)中的 Model Connection（模型连接）、Default Model、
 Model Binding 和 Model Grant；“个人模型连接”是同一连接概念，不新增一种插件或空间所有的连接。
 
 ### Agent Configuration Declaration
