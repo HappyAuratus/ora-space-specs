@@ -85,6 +85,8 @@ startup recovery scan 或普通 claim 前的 recovery scan 发现未终结 Opera
 
 - 每个被隔离 Operation 必须由 Resource adapter 证明：exact planned → journal Finalized 且
   ledger 保留该行；exact expected → journal `FinalizedWithoutEffect` 且不授予任何 ownership。
+- 证明前无创建副作用地重新校验持久化 plan 的 Workspace / Resource 路径边界与精确根目录身份；
+  文件、链接、不可访问路径与重定向不能冒充 Missing，安全缺失的 Resource 可以证明 Missing。
 - 证明两者都不是时拒绝恢复、保留隔离与 Conditions，不重放 mutation、不猜测、不伪造历史。
 - 关闭最后一个 journal 的事务同时：终结 attempt、按证据推进 ledger、清除 Target 的
   manual Conditions、Target/Resource status 离开隔离（水位不动）、request 回 pending。
@@ -94,12 +96,16 @@ startup recovery scan 或普通 claim 前的 recovery scan 发现未终结 Opera
 - 恢复后普通 reconcile 按当前 Desired State 重新收敛并证明 readiness，水位只能由新证据推进。
 - staging/backup Artifact 在 journal 关闭后转入 cleanup 流程，失败持久化为 `CleanupFailed`。
 - 对没有隔离 journal 的 Target 调用恢复是幂等 no-op。
+- 终结事务把各 Operation 的原 `detected_at`、identity 和关闭结果保存到恢复 audit，再清空
+  Operation 上仅属于 RecoveryRequired 阶段的字段；audit 失败时整个关闭回滚。
+- 前端通过 effects 数据 owner 发起恢复，成功后刷新实际观察到该 Target 的查询并重新推导 readiness；
+  不刷新其他 Workspace / Agent，失败继续阻止发送。
 
 ### 禁止结果
 
 - 凭路径、名称或相似内容猜成成功；对被隔离 Operation 直接重放 mutation。
 - 以 FinalizedWithoutEffect 关闭却推进 ownership ledger。
-- 删除或改写不可变投影历史、journal 意图或检测证据。
+- 删除或改写不可变投影历史、journal 意图；清空阶段检测字段却未在同一事务的 audit 中保留原检测证据。
 - 恢复路径绕过 worker 的 fence/claim 语义与 Artifact cleanup 权限。
 
 ### 验证义务与证据
@@ -111,9 +117,17 @@ startup recovery scan 或普通 claim 前的 recovery scan 发现未终结 Opera
 | 漂移状态拒绝恢复并保留隔离 | `ora_db::effect_repository_tests::recovery::recovery_refuses_drifted_state_and_keeps_the_quarantine` | `Covered` |
 | retiring Target 的 epoch 推进与退役完成 | `ora_db::effect_repository_tests::recovery::recovery_of_a_retiring_target_advances_the_epoch_and_finishes_retirement` | `Covered` |
 | 健康 Target 的幂等 no-op | `ora_db::effect_repository_tests::recovery::recovery_of_a_healthy_target_is_an_idempotent_no_op` | `Covered` |
+| Workspace / Resource 根或中间目录变成文件时，两种 Missing 证明与恢复都被拒绝且隔离保留 | `ora_db::effect_repository_tests::recovery::paths::recovery_refuses_file_roots_without_closing_the_journal` | `Covered` |
+| 安全缺失的 Resource 可证明 Missing，验证与恢复不创建目录 | `ora_db::effect_repository_tests::recovery::paths::recovery_proves_missing_resource_without_creating_directories` | `Covered` |
+| 根目录或条目链接不能参与精确证明，悬空链接不能冒充 Missing | `ora_db::effect_repository_tests::recovery::paths::recovery_refuses_link_roots_and_dangling_item_links`（Unix）；Windows 链接路径尚无直接测试 | `Partial` |
+| 两种关闭结果均保留原检测时间及不可变意图，Operation 的阶段检测字段清空 | 本表 planned / expected 恢复测试通过 `recovery::evidence::assert_preserved` 比较 SQLite journal 与 audit | `Covered` |
+| 检测证据无法写入 audit 时，journal、调度和隔离一并回滚 | `ora_db::effect_repository_tests::recovery::evidence::recovery_rolls_back_when_detection_evidence_cannot_be_saved` | `Covered` |
+| 恢复成功刷新真实 readiness 并解除门控，其他 Workspace 与 Agent 不被刷新 | `AgentEffectRecoveryBanner > refreshes real readiness after recovery and isolates other workspaces and agents` | `Covered` |
+| 恢复失败时真实 readiness 继续阻止发送 | `AgentEffectRecoveryBanner > keeps the real send gate failed when recovery is refused` | `Covered` |
 
 ### 决策依据
 
 - ADR「调度、claim 与公平性」：恢复只能通过能够验证 exact adapter state 的显式受控命令完成。
 - ADR 不变量 14：不明确的 mutation 必须进入 RecoveryRequired，不能猜测完成状态。
 - ADR 不变量 11：Prepared Attempt、Operation 和 Artifact authority 不因新 generation 改写。
+- [行审计时间与业务时间](../../../../decisions/desktop/core/effect/20260905-separate-audit-and-business-time.md)：阶段检测字段与历史恢复 audit 分别承载当前状态和检测证据。

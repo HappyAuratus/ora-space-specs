@@ -48,3 +48,12 @@
 - 必须成立：检测时间始终为 101；所有 Effect 表的业务内容保持，外键完整；恢复状态和检测字段关系受数据库校验保护。
 - 禁止结果：将审计时间 200 当作检测时间，重建/删除业务身份，丢失 ownership 或 claimed request。
 - 验证义务与证据：**Covered** — `ora-db::effect_repository_tests::time_migration::migration_round_trips_preserve_recovery_evidence` 比较全部 Effect 表业务列，并通过重新打开的 repository 还原 Operation。
+
+## Recovery closure preserves detection evidence in audit
+
+- 风险：关闭 RecoveryRequired 时清空阶段检测时间，导致原检测证据丢失，或误用行审计时间替代。
+- 前置状态：已隔离的 Operation 记录独立 detected_at，外部状态可证明 exact planned 或 exact expected。
+- 触发：显式受控恢复分别终结两种结果，并注入一次恢复 audit 写入失败。
+- 必须成立：Operation 终结后 detected_at 为空；原检测时刻、Operation identity 和关闭结果完整保存在同事务 audit 中；journal 意图、prepared_at、已知 applied_at 不变；audit 失败时保持隔离、检测时间及调度状态。
+- 禁止结果：用 occurred_at / updated_at 重建原检测时间、保留阶段字段却违反 CHECK、audit 与关闭分开提交。
+- 验证义务与证据：**Covered** — `ora_db::effect_repository_tests::recovery::recovery_replays_a_proven_applied_leftover_and_resumes_scheduling` 和 `recovery_closes_a_prepared_journal_without_effect_and_reconverges` 通过 `recovery::evidence::assert_preserved` 比较 SQLite journal 和 audit；`recovery::evidence::recovery_rolls_back_when_detection_evidence_cannot_be_saved` 直接注入 audit 失败并验证整体回滚。

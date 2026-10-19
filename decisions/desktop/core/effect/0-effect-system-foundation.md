@@ -236,6 +236,11 @@ ResourceStatus 原子隔离为 RecoveryRequired，保留 Artifacts，写入 bloc
 request 回到调度，manual Conditions 清除，普通 reconcile 按当前 Desired State 重新收敛，
 retiring Target 额外推进 Scope epoch 使空投影落到新的不可变 identity。
 
+证明前必须无创建副作用地重新校验 journal 固化的 Workspace / Resource 路径边界，解析后的
+Resource 根目录必须与 journal 一致。文件、链接、不可访问路径或重定向不能冒充 Missing。
+关闭事务把各 Operation 的原检测时间与关闭结果写入恢复 audit，再清空当前阶段的 `detected_at`；
+字段仅属于 RecoveryRequired 的时间规则见[行审计时间与业务时间](20260905-separate-audit-and-business-time.md)。
+
 Planner 产生 blocking Conditions 时，repository 会在同一事务中保存 Target/Resource statuses 与
 Conditions，把 request 转为 Blocked，并释放本轮 Resource claims。这个提交只保留未来必须重新
 评估的 obligation，不允许阻塞 Target 长期占有共享 Resource authority。
