@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 保留子代理投影来源，以只读详情和真实观察呈现运行状态
@@ -8,10 +8,13 @@ status: proposed
 首期消费 OpenCode v2 的父流投影，在父时间线展示只读子代理树。运行诊断展示收到的活动、工具和
 待处理请求，区分观察时间与历史记录时间，不从静默、父工具完成或父 prompt 结束推断子代理健康与终态。
 
-本 ADR 为 `proposed`，实现可在隔离 preflight 中验证，合并前须完成评审。覆盖共享 agent-runtime、
-history 与聊天呈现；不新增 RFD 子会话路由、定向控制、模型 adapter 或独立调度器。
-沿用 JSONL schema 2、目录布局及现有 SessionUpdate/LoadSessionEvent 结构；兼容变化是已存在的可选
-metadata 开始被保留，以及未明确完成的子工具不再借父回合结束获得完成状态。旧记录无法补造来源。
+本决策为 `approved`，尚无已合并实现的证据；核心用例在
+[子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)
+中维护，实现合入前证据保持 `Missing`。覆盖共享 agent-runtime、history 与聊天呈现；不新增 RFD
+子会话路由、定向控制、模型 adapter 或独立调度器。沿用 JSONL schema 2、目录布局及现有
+SessionUpdate/LoadSessionEvent 结构；兼容变化是已存在的可选 metadata 开始被保留，未明确完成的
+子工具不再借父回合结束获得完成状态，父回合结束后仍无终态的子组转为「后续未知（投影已停止）」。
+旧记录无法补造来源。
 
 ## 继承与修改
 
@@ -99,8 +102,9 @@ in_progress 继续按已有规则暂停计时；Wait、手动停止、真实错�
 通过真实帧驱动生产 runtime/history/load 与聊天 store，并用带类型的契约处理器验证呈现；再做实际
 Desktop/浏览器、Node/Cloud/工作流消费端验收。父回合结束后仍未收到终态的子组必须在实时与重载中
 给出同一个「后续未知（投影已停止）」结论，不能一侧显示进行中、另一侧显示完成。静态解析或计数相同
-不足以代替内容/来源及生命周期断言。本提案不将未合并原型作为已实现证据；approved 后维护核心用例，
-最终实现通过后再转 implemented。
+不足以代替内容/来源及生命周期断言。未合并的原型不作为已实现证据；核心用例见
+[子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)，
+最终实现合入并通过验收后再转 `implemented`。
 
 ## 为什么不是这些替代方案
 
