@@ -47,6 +47,14 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [Start 输入 kickoff 取值](workflow/start-input-kickoff.md) | 运行读到编辑器默认提示词而非本次 kickoff、unset 与空串混淆、非字符串 `input` 被放行、历史行被误读 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
+## 已批准的定时任务决策
+
+[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| scheduled-task | [接纳、会话边界与历史保留](scheduled-task/admission-and-session-bounds.md) | 重复接纳、停机补记与超时误判、无人值守会话空等、资格失效仍接纳、历史无界增长 |
+
 ## 已批准的会话分析与模型请求统计
 
 会话读取 ADR 为 `approved`，HTTP 尝试统计 ADR 为 `implemented`；直接测试证据固定到 Cloud PR #69 与
