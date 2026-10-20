@@ -1,14 +1,14 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 残留 Agent Run 资源以真实证据分层回收：证据齐沿 owned delete，未确认执行经部署运维受控回收，账本按目标闭环清除
 
 D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周期收集真实证据——迟到的执行终态与交付结果、执行已终结、沙盒已物理终止——证据齐的条目取得本文新增的系统清理授权后，复用 `delete_workspace` owned delete 的执行步骤清理，成果能救则先救；清理完成前账本保护不解除。证据收不齐的条目只能由部署运维按租户与资源范围发起受控回收：显式确认放弃未交付成果，复用管理强停的终止与围栏语义（终止与数据删除分离、逐目标确认 `terminated` 与 `lateEnsureFenced`、不因超时判成功），经当前 Controller lease 与既有 Substrate effects 执行，不新增物理路径、不伪造 `impactConfirmed`、不由业务 `done` 隐式强停。账本条目在全部目标资源取得闭环证据或显式处置记录后清除；Substrate 永久不可用时保留未完成意图，由运维外部确认兜底。存量 D8 删除残留按原身份接入同一路径，不改写历史。
 
-本文为 `approved`：决策方向已经 owner 批准，核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，用例义务如实标为 `Missing`；实现合入并完成联合验证后，再由落地运行按最终实现同步正文并改为 `implemented`。
+本文处于 `implemented`：决策经 owner 批准后由 ora-space/cloud#112、ora-space/cloud#116、ora-space/desktop#710 与 ora-space/cluster#35 实现，并在真实部署上完成故障演练（ora-space/cluster#36，记录见 ora-space/circus#388），详见[落地结果](#落地结果)。正文中实现方式的描述已按最终实现同步，决策与不变量不变。核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)，各义务按直接证据标为 `Covered` 或 `Partial`。
 
-本文承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署管理端点；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
+本文承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署运维命令 `cloudctl residual`；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
 
 ## 继承与修改
 
@@ -38,7 +38,7 @@ D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周�
 
 - `cleared` 的处置方式 `disposition` 取值：`released`（沙盒终止且数据已按 owned delete 或受控回收删除）、`terminated_data_retained`（终止与围栏已确认，数据按运维决定保留）、`externally_confirmed`（Substrate 之外的外部确认，D5）。
 - 对账证据逐条记录在账本行上（证据类型、来源、时间），不改写 `reason` 与既有 `responsibility`；重复对账只追加证据，不重建 Run、Workspace、ensure 或执行身份。
-- 存量行（D4/D5 已登记的）迁移时统一置 `reconciling`，不回溯判定证据。
+- 存量行（D4/D5 已登记的）迁移时统一置 `reconciling`，不回溯判定证据。实现为迁移 `agent_run_residual_reclamation.sql`，只给 `agent_run_residuals` 增列（清理状态、处置方式、单一责任、目标并集与追加证据）；`cleared_at` 此前只是预留，若旧行已有非空值，迁移明确失败并回滚，不猜测处置方式。
 - 清理责任固定原租户、Project、Run、Workspace、sandbox/generation 与计划/执行身份，并关联唯一推进意图或 operation、模式及授权证据。推进者重启或 Controller lease 更替只能接管同一责任，不能取得第二份删除或终止权。
 
 为什么给账本加状态而不是新建清理任务表：账本行已经是残留责任的唯一权威（启动决策 D4），清理是这份责任的收尾，分表会让“谁还欠什么”需要两表对齐；`cleared_at` 列在 D4/D5 落地时已预留。
@@ -71,10 +71,10 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ### D3：受控回收是部署运维的显式命令，确认语义同强停，终止与数据删除分离
 
-- 发起者：部署运维，经 Cloud 的部署管理端点（不暴露给租户用户；租户管理员对隐藏运行 Workspace 也没有入口——公开 API 恒 404）。按租户与资源范围查询账本是同一端点的只读能力。
+- 发起者：部署运维，经部署主机上的本地命令 `cloudctl residual list/get/terminate/delete-data/confirm-external`，使用部署数据库凭据执行，操作主体记为 PostgreSQL `session_user`（`--operator-label` 只是人工自述）。没有 HTTP 路由，不暴露给租户用户；租户管理员对隐藏运行 Workspace 也没有入口——公开 API 恒 404。按租户与资源范围查询账本由 `list` / `get` 只读提供。
 - 命令输入：目标（账本条目 / Run / Workspace 范围）、非空 `reason`、显式放弃确认（语义同强停的 `impactConfirmed=true`：确认终止未知执行并放弃未交付成果）。幂等键、同键冲突规则沿用强停意图的模式。
-- 意图持久化：独立的残留回收意图（`registered → terminating → succeeded` 三态，响应丢失或不可达时保持未完成并继续对账，不因一过期限就成功——继承强停 D4 的偏离说明）；意图引用账本条目与目标资源身份，发起者、时间、reason 留审计。
-- 两阶段分离：**终止**（默认，对每个目标沙盒取得 `terminated` 与 `lateEnsureFenced`）与**数据删除**（单独的显式命令，才排 `workspace_data_delete`）。只终止不删数据是合法终态：账本以 `terminated_data_retained` 闭环，Workspace 行与卷按运维决定保留；删除数据后以 `released` 闭环。
+- 意图持久化：独立的残留回收意图（`registered → terminating → succeeded` 三态，响应丢失或不可达时保持未完成并继续对账，不因一过期限就成功——继承强停 D4 的偏离说明）；意图引用账本条目与目标资源身份，发起者、时间、reason 留审计。实现为迁移 `agent_run_controlled_reclamation.sql` 新增的意图、逐沙盒目标和按租户与幂等键唯一的命令回执三张表：每个资源一个 terminate 根意图、至多一个 delete-data 子意图，二者都用上述三态；同键不同输入先提交冲突审计再报错。
+- 两阶段分离：**终止**（默认，对每个目标沙盒取得 `terminated` 与 `lateEnsureFenced`）与**数据删除**（单独的显式命令 `delete-data`，经既有 operation 协议 `DELETE_WORKSPACE` / `cleanup` 才排 `WORKSPACE_DATA_DELETE`）。只终止不删数据是合法终态：账本以 `terminated_data_retained` 闭环，Workspace 行与卷按运维决定保留；删除数据后以 `released` 闭环。
 - 回收意图在 D2 的同一竞争边界取得单一责任后，账本为 `reclaiming`；已有自动清理责任时不并行取得终止/删除权。意图失败或不可达不回退状态，继续对账直到闭环。
 - 受控回收不改变 Run 终态、不重开 admission、不重写 `deliveryState`；它只终止资源与闭环账本。目标涉及其他运行、主 Workspace 或历史 Revision 时按既有 Project stop/delete 的保护拒绝（继承启动决策 D5“涉及残留的 Project delete/stop 仍拒绝无证据操作”）。
 
@@ -82,10 +82,11 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ### D4：物理终止经当前 Controller lease 与既有 effects，完成条件是逐目标双确认
 
-- Cloud 为回收意图计划**既有**的 `sandbox_terminate` / `workspace_data_delete` effect；Controller 以当前 lease epoch 与许可执行，Cloud 不可用或许可失效时不发起新动作（继承围栏交付 D3）。不新增 Cloud 直连 Substrate 的路径。
+- Cloud 为回收意图计划**既有**的 `sandbox_terminate` / `workspace_data_delete` effect；Controller 以当前 lease epoch 与许可执行，Cloud 不可用或许可失效时不发起新动作（继承围栏交付 D3）。不新增 Cloud 直连 Substrate 的路径。终止目标按根意图 ID 映射到既有强停 RPC 的形状（`ListForceStops` 列出计划、`GetEffectPermit` 逐目标取许可、`ConfirmForceStop` 回报双确认），不新增 RPC 或 proto，也不写伪造的 `runtime_force_stops` 行；数据删除走既有 operation 协议，不包装成强停。
+- Controller 在发出破坏性 PUT 前重新核对当前 lease epoch 与许可到期时间，期间 lease 丢失、epoch 不符或许可过期则不发 PUT。单个目标的许可拒绝或 Substrate 失败不阻塞其他目标；lease 丢失或 Cloud 不可用时停止整轮派发。
 - 终止前 Controller 先向可达 Node 投递既有结束请求与控制关闭（尽力而为，不把其确认作为终止前置）；Node 收到则按会话收尾规则结束，收不到则容器级停止。
 - 目标集合 = 账本 `responsibility` 中记录的全部沙盒计划 ID 与预分配身份，包括**从未执行过的 ensure 计划**：对每个 ID 逐一 `sandbox_terminate`。[Sandbox Server](../../cluster/sandbox-server/20260926-docker-sandbox-lifecycle-via-substrate-effects.md) D6 已保证目标从未 ensure 也写墓碑并报告 `{terminated: true, lateEnsureFenced: true}`；生产 Substrate 适配器必须保持同等语义（先墓碑后破坏、幂等、对不存在的目标也确认），这是本 ADR 对 Substrate 的接口要求。
-- 迟到许可与在途 ensure 的 fencing 完全依赖既有机制：墓碑之后同 ID 的 ensure 以 `sandbox_terminated` 拒绝；回收意图不删除原 effect 行、不假报 sandbox 缺失、不创建新 generation 挂载同一可写卷（继承启动决策 D5）。
+- 迟到许可与在途 ensure 的 fencing 完全依赖既有机制：墓碑之后同 ID 的 ensure 以 `sandbox_terminated` 拒绝——Sandbox Server 先校验许可有效期、作用域与本地权威，许可有效且作用域正确的受管 ensure 命中同 ID 墓碑时返回 `503 {"error":"sandbox_terminated"}`；Controller 识别后进入 Blocked，不重试、不换代；回收意图不删除原 effect 行、不假报 sandbox 缺失、不创建新 generation 挂载同一可写卷（继承启动决策 D5）。
 - **完成条件**：意图下每个已计划的稳定 sandbox ID 都实际取得 `terminated` 与 `lateEnsureFenced` 双确认，数据删除阶段另需每个卷的删除确认。全部确认后意图 `succeeded`、账本按处置方式 `cleared`；任何目标未确认则保持 `terminating` 并继续对账，或由运维显式进入 D5 的外部处置分支。
 - **未计划与未到达分开判断**：只有 Cloud 在与创建计划、派发登记互斥的事务内，证明目标从未产生 sandbox/ensure 计划、许可或在途责任，并持久封闭继续产生这些责任的入口，才可记录“无目标待终止”。已有计划不能因尚未受理或请求可能丢失而移出目标集合。Substrate 的 effect 查询 `404` 只说明查询时本地 journal 没有该 intent，既不写墓碑，也不排除持有效许可的 ensure 随后到达；它不是上述 Cloud 证明，更不是终止双确认的替代品。
 
@@ -145,10 +146,10 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ## 本决策未解决的问题
 
-- 部署管理端点的 API 形状、认证与部署运维的角色模型：实现承接 issue 决定，本文只固定授权边界与确认语义。
+- 部署运维的认证与角色模型：当前入口是 `cloudctl residual` 加部署数据库凭据，本文只固定授权边界与确认语义；若 owner 需要独立的 HTTP 运维身份，另立决策（已在 ora-space/circus#382 提出）。
 - 告警与通知（何时提醒运维存在长期 `reconciling` 条目）：不在本文；可见信号是账本查询。
 - 自动对账周期、外部确认的最小证据要求等运维细则的默认值调优。
-- 生产 Substrate 适配器对“terminate 从未 ensure 的目标也双确认”的验收方式：随实现承接 issue 的联合故障演练。
+- 生产 Substrate 适配器对“terminate 从未 ensure 的目标也双确认”的验收方式：联合故障演练只覆盖 Docker Sandbox Server，其他生产 Substrate 适配器仍需各自验收。
 - 对象存储侧：迟到交付补登记后的 Revision 对象生命周期（含过期清理）沿用 Revision 既有规则，不由回收路径处理。
 
 ## 落地顺序
@@ -160,6 +161,20 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 保持不变：D4/D5 结算语义、根 D8 残留状态、公开 API 对运行 Workspace 的 404、`agent_run_residuals` 既有列义。从第 1 步起改变：账本条目有了清理状态、单一推进责任、系统授权和贯穿清理前后的事实接管；从第 2 步起改变：残留有了受控回收的显式入口。
 
+## 落地结果
+
+- ora-space/cloud#112（第 1 步）：账本增列迁移 `agent_run_residual_reclamation.sql`、追加证据与冲突审计、单一 owned delete 责任、独立周期扫描，以及清理前后经既有事实入口的接管。不新增 RPC；Controller 无法经既有入口回报的历史事实仍缺失，相应条目保持 `reconciling`。
+- ora-space/cloud#116（第 2 步）：意图、目标与回执迁移 `agent_run_controlled_reclamation.sql`，`cloudctl residual` 五条命令，两阶段处置、外部确认与存量 D8 按身份接管；终止目标复用既有强停 RPC 形状。
+- ora-space/desktop#710 与 ora-space/cluster#35（第 3 步）：Controller 在 PUT 前复核许可、终止前尝试 Shutdown 控制关闭、墓碑拒绝不重试、逐目标隔离失败；Sandbox Server 对命中墓碑的有效受管 ensure 返回 `503 sandbox_terminated`，并补齐 terminate 语义的直接测试。
+- ora-space/cluster#36（第 4 步演练工具），演练记录在 ora-space/circus#388：Controller 失联恢复、Substrate 约 300 秒不可达、外部确认审计与存量 D8 按身份接管通过；“双确认后送达的有效迟到 ensure 被墓碑拒绝”没能经生产路径触发，结论为 inconclusive，目前只有 cluster#35 的单仓测试。
+- 演练暴露的两项上游缺陷不属本文范围：根 D8 的默认 30 分钟窗口在 Node 显式断开时没有被等待（ora-space/circus#391）；带未被 Cloud 接收终态的 Node 重连被拒、Controller 反复重建会话（ora-space/circus#392）。
+- 迁移编号按合入 main 的顺序确定。
+- 与 approved 决策的偏离（由 owner 决定以正文还是实现为准）：
+  - D2 取证：没有新增查询 RPC，事实只经既有事实入口到达；Controller 无法回报的历史事实使条目保持 `reconciling`。
+  - D2“明确放弃依据”：只有按原身份核验的 Revision 才算交付资格，失败、跳过、超时都不算放弃，因此“明确放弃”路径目前不存在。
+  - D4：terminate 前只发送既有 Shutdown 控制关闭，没有单独的结束请求（EndSession 只来自 Cloud 的命令队列）；两者都是尽力而为，不是终止前置。
+  - D1 迁移：已有非空 `cleared_at` 的旧行使迁移失败并回滚，而不是按核心用例“必须成立”所写保持原值。
+
 ## 核心测试用例
 
-本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，义务都如实标为 `Missing`；每项落地步骤完成时按直接证据更新对应义务的证据状态。
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中八项为 `Covered`；逐目标终止与围栏一项因生产路径缺少迟到 ensure 被拒的实测，保持 `Partial`。
