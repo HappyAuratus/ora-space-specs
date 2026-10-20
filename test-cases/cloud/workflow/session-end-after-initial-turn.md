@@ -5,9 +5,9 @@
 调度器整体行为见[调度串行、节点提交与恢复](scheduler-serialism-and-recovery.md)。
 
 证据状态按 ADR 生命周期在 `implemented` 阶段登记。实现 PR [cloud#96](https://github.com/ora-space/cloud/pull/96)
-已带直接测试（`TestWorkflowSessionEndsAfterSuccessfulTurn`、`TestWorkflowSessionCancelledTurnDoesNotRequestEnd`、
-`TestWorkflowSessionEndRequestsAreScopedPerNode`、`TestWorkflowSessionEndDeadlineFailsNode`），合并前下表按当前
-主分支状态记为 `Missing`；落地运行时按合并后的测试重新登记。
+已合并（`644a65e2`），下表按合并后的直接测试登记：`TestWorkflowSessionEndsAfterSuccessfulTurn`、
+`TestWorkflowSessionCancelledTurnDoesNotRequestEnd`、`TestWorkflowSessionEndRequestsAreScopedPerNode`、
+`TestWorkflowSessionEndDeadlineFailsNode`。
 
 ## A Successful Turn Releases Exactly One Scoped Session End Request
 
@@ -16,8 +16,8 @@
 - 前置状态：运行已派发一个 agent 节点，`node_executions.result` 为空；会话回执里最近一条是 `turnEnded`。
   运行可以先后执行多个 agent 节点。
 - 触发：调度器按 10 秒周期重算，同一节点被连续重算；同一运行的两个 agent 节点先后进入执行；回执的
-  `stopReason` 为 `end_turn`、`max_tokens`、`refusal` 或 `cancelled`。
-- 必须成立：最近一条回执是成功 `turnEnded`（`stopReason != cancelled`）后，Cloud 放出**恰好一条**
+  `stop_reason` 为 `end_turn`、`max_tokens`、`refusal` 或 `cancelled`。
+- 必须成立：最近一条回执是成功 `turnEnded`（`stop_reason != cancelled`）后，Cloud 放出**恰好一条**
   `end_session{idle_timeout}`；命令归属该工作流运行，并限定在发起请求的图节点上；重复重算返回同一条命令，
   不新增、不重置计时；`cancelled` 的回执不放出命令。
 - 禁止结果：成功回合后没有命令；同一节点出现第二条 `end_session`；命令被投递给同一运行的另一个节点的
@@ -26,9 +26,9 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 成功回合后恰好一条 `end_session{idle_timeout}`，重复重算幂等 | 真实 PostgreSQL：驱动调度重算，检查命令数、kind/body 与重复 tick 后的行不变 | Missing |
-| 命令按图节点限定，跨节点投递被拒绝 | 真实 PostgreSQL：两个 agent 节点的运行，检查命令的节点归属与跨节点投递的 `dispatch_conflict` | Missing |
-| `cancelled` 的 `turnEnded` 不放出命令 | 真实 PostgreSQL：`stopReason = cancelled` 的回执后检查命令为 0 条 | Missing |
+| 成功回合后恰好一条 `end_session{idle_timeout}`，重复重算幂等 | 真实 PostgreSQL：驱动调度重算，检查命令数、kind/body 与重复 tick 后的行不变 | Covered |
+| 命令按图节点限定，跨节点投递被拒绝 | 真实 PostgreSQL：两个 agent 节点的运行，检查命令的节点归属与跨节点投递的 `dispatch_conflict` | Covered |
+| `cancelled` 的 `turnEnded` 不放出命令 | 真实 PostgreSQL：`stop_reason = cancelled` 的回执后检查命令为 0 条 | Covered |
 
 - 决策依据：D1（触发判据与触发器位置）、D2（复用 `idle_timeout`）、D3（归属与节点限定、每节点唯一索引），
   不变量 1、2、6。
@@ -48,8 +48,8 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 窗口之后以命名原因失败并释放资源，窗口内不失败 | 真实 PostgreSQL：命令超过窗口后重算，检查节点错误、运行终态与 Workspace 删除声明 | Missing |
-| 窗口从命令 `created_at` 起算，重放不重置 | 真实 PostgreSQL：重复重算与已有命令的 `created_at` 保持不变 | Missing |
+| 窗口之后以命名原因失败并释放资源，窗口内不失败 | 真实 PostgreSQL：命令超过窗口后重算，检查节点错误、运行终态与 Workspace 删除声明 | Partial |
+| 窗口从命令 `created_at` 起算，重放不重置 | 真实 PostgreSQL：重复重算与已有命令的 `created_at` 保持不变 | Partial |
 
 - 决策依据：D4（有界等待、数据库时钟、复用配置）、D5（超时是唯一由 Cloud 直接判定的失败路径），
   不变量 4，根决策 D7 与不变量 5。
@@ -69,10 +69,10 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 节点只在会话结果提交后推进，重复/迟到回执是空操作 | 真实 PostgreSQL：重放同一终态回执，比较运行、节点与版本 | Partial |
-| 结束请求之后的成功路径由会话结果结算节点与运行 | 真实 PostgreSQL：投递命令后上报终态，检查节点 succeeded 与会话原因映射 | Missing |
+| 结束请求之后的成功路径由会话结果结算节点与运行 | 真实 PostgreSQL：投递命令后上报终态，检查节点 succeeded 与会话原因映射 | Covered |
 
 - 现有证据：Cloud 已合并的 `TestWorkflowSessionLateReceiptIsANoOp` 与
   `TestWorkflowSessionDispatchIsNotRepeatable` 覆盖重复回执不推进图（见
   [调度串行、节点提交与恢复](scheduler-serialism-and-recovery.md#a-node-result-commit-is-a-compare-and-swap-and-late-callbacks-are-no-ops)）；
-  结束请求之后的结算路径由实现 PR cloud#96 的直接测试补足，落地阶段登记。
+  结束请求之后的结算路径由已合并的 `TestWorkflowSessionEndsAfterSuccessfulTurn` 覆盖。
 - 决策依据：D5（节点终态仍只来自会话结果）、根决策 D4 与不变量 5，不变量 3。

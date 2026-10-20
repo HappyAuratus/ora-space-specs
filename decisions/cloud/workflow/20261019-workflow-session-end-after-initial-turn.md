@@ -1,20 +1,21 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 工作流会话在初始回合结束后由 Cloud 调度器结束：复用 EndSession 中继，有界等待后以命名原因失败
 
 本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策，只固定
 「单回合工作流会话何时结束、由谁结束」这一接缝。结论：WorkflowRun 的 agent 会话结束由 Cloud 调度器决定——
-调度器在重算时读取该会话执行最近一条事件回执，成功的 `turnEnded`（`stopReason != cancelled`）即说明初始
-回合已结束；调度器按既有控制面的「判别列 + 恰好一个归属」模式把 `thread_commands` 扩展到 WorkflowRun，
+调度器在重算时读取该会话执行最近一条事件回执，成功的 `turnEnded`（记录字段 `stop_reason` 不是
+`cancelled`）即说明初始回合已结束；调度器按既有控制面的「判别列 + 恰好一个归属」模式把
+`thread_commands` 扩展到 WorkflowRun，
 放出既有 Controller `EndSession` 中继（`reason = idle_timeout`），Node 结束会话并上报终态，节点仍只按
 `node_executions.result` 推进。结束命令放出后超过确认窗口仍无会话终态时，节点以
 `session_end_deadline_exceeded` 失败，运行进入终态并释放 Workspace：已请求结束的会话不再可能让运行永久
 `running`（从未走到结束请求的路径见「本决策未解决的问题」）。
 
-**状态与影响面**：本文经 owner 评审批准（2026-10-20），状态为 `approved`；实现见运行
-ora-space/circus#293（cloud#96），核心用例见
+**状态与影响面**：本文经 owner 评审批准（2026-10-20），实现已在 cloud#96 合并（`644a65e2`）并通过真实栈验收
+（运行 ora-space/circus#293），状态为 `implemented`；核心用例见
 [工作流会话结束核心用例](../../../test-cases/cloud/workflow/session-end-after-initial-turn.md)。涉及 cloud 的
 调度器与 `thread_commands` 持久化形状，以及 specs 的本文。**兼容边界**：`thread_commands` 从只接受
 IssueRun 扩展为两个归属列恰有其一；存量行全部带 `run_id`，不回填，IssueRun 的 Thread 路径不变。Controller
@@ -27,7 +28,7 @@ IssueRun 扩展为两个归属列恰有其一；存量行全部带 `run_id`，�
 | 前序约定 | 本文处理 |
 |---|---|
 | 根决策 D1：执行归属归 Cloud 侧调度器，agent 节点沿用既有 AgentSession 执行路径 | 继承，不变：结束命令仍由 Cloud 决定，Node 只执行命令 |
-| 根决策 D2/D4：首期只执行 `start` / `agent` / `condition` / `output`，发布门禁拒绝 `interactive`；同一 run 的 agent 节点串行 | 继承，并成为前提：工作流里的 agent 会话是**单回合**的，运行不会再产生用户轮次 |
+| 根决策 D2/D4：首期只执行 `start` / `agent` / `condition` / `output`，发布门禁拒绝 `interactive: true`；同一 run 的 agent 节点串行 | 继承，并成为前提：工作流里的 agent 会话是**单回合**的，运行不会再产生用户轮次 |
 | 根决策 D4：节点终态以会话执行结果为证据；崩溃恢复只按已提交结果重算 | 继承，不变：本文只补上「请求结束」的写入者，节点终态的证据来源不变 |
 | 根决策 D7：首期只保证资源释放，成果交付延后 | 继承，并扩展：结束请求本身也有界等待，超时按命名原因失败，仍然走到资源释放 |
 | 根决策 D8：不新增 Controller 契约 | 继承，不变：复用既有 `EndSession` 命令中继，claim 与回执字段不变 |
@@ -39,14 +40,16 @@ IssueRun 扩展为两个归属列恰有其一；存量行全部带 `run_id`，�
 
 ### D1：触发是调度器重算读取成功 `turnEnded` 回执
 
-工作流 agent 节点是单回合的：发布门禁拒绝 `interactive`，Node 完成初始回合后会等待下一条命令，而运行
+工作流 agent 节点是单回合的：发布门禁拒绝 `interactive: true`，Node 完成初始回合后会等待下一条命令，而运行
 不可能再产生用户轮次。因此初始回合的 `turnEnded` 回执就是「会话可以结束了」的证据，不需要再等一个
 空闲窗口。
 
-判据是**该会话执行在 `node_event_receipts` 中最近一条回执**：记录类型为 `turnEnded`，且 `stopReason`
+判据是**该会话执行在 `node_event_receipts` 中最近一条回执**：记录类型为 `turnEnded`，且 `stop_reason`
 不是 `cancelled`。只读最近一条而不是扫描任意历史回合——回合之后又出现其他记录时，对话并没有停在回合
 边界；`cancelled` 的回合也不构成空闲证据，取消由会话终态结算。这与 Thread D4 的空闲判据同源，Cloud
-仍然不解释记录的业务字段，只使用接管校验已经依赖的类型判别与 `stopReason`。
+仍然不解释记录的业务字段，只使用接管校验已经依赖的类型判别与 `stop_reason`。字段名按 `ora-history`
+实际序列化的形状书写：serde 的容器级 `rename_all = "camelCase"` 只改枚举变体名（`turnEnded`），
+变体字段保持 snake_case（`stop_reason`）。
 
 **非 `cancelled` 的其他停止原因也按回合结束处理，这是有意的**：`max_tokens`、`refusal` 等同样意味着
 本轮不会再产出更多内容，单回合会话不可能再有下一轮。调度器在这里只判断「本轮是否已经结束、还会不会
@@ -161,9 +164,9 @@ D6 的后续实现有两条不改变本文归属与触发判据的路径：会�
 
 ## 落地顺序
 
-- 阶段 1（Cloud 实现，运行 ora-space/circus#293）：新增迁移 `0045`、调度器触发与有界等待，带成功回合、
-  `cancelled` 回合、按节点隔离、超时失败四组数据库测试。完成条件是四组测试与既有 workflow/thread 测试
-  全绿；本阶段不改变 IssueRun 的 Thread 路径与任何 Controller 契约。
+- 阶段 1（Cloud 实现，运行 ora-space/circus#293）：新增 `thread_commands` 的 WorkflowRun 归属迁移、
+  调度器触发与有界等待，带成功回合、`cancelled` 回合、按节点隔离、超时失败四组数据库测试。完成条件是
+  四组测试与既有 workflow/thread 测试全绿；本阶段不改变 IssueRun 的 Thread 路径与任何 Controller 契约。
 - 阶段 2（状态同步）：实现合并后由落地运行把本文改为 `implemented`，按最终实现精简正文、核对偏离，
   并在[核心用例](../../../test-cases/cloud/workflow/session-end-after-initial-turn.md)登记证据状态。
 - 保持不变：图 schema、发布门禁、运行身份的冻结项、节点终态的证据来源、失败与取消的既有结算，以及
