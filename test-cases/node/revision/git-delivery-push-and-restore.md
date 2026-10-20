@@ -9,6 +9,8 @@
 [clone 与 `ora-git` 用例](../repository/snapshot-clone-and-ora-git.md)（`Credentialed Git Never Reads The Checkout Configuration`）。
 内部线的实现尚未合入 desktop 的 main，下列义务都是 **Missing**。
 
+内部线的恢复时限与取消规则由[Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)进一步约束：完整截止取代其局部 5 分钟时限，停止确认与等待上限补充取消语义；这些新义务由[恢复截止与停止确认用例](restore-deadline-and-stop-confirmation.md)登记，本文件的恢复用例仍只覆盖内部线自身的交付与拉取语义。
+
 ## Every Delivery Pushes Its Final Commit To The Delivery Ref
 
 - 风险：`unchanged` 不推送，续作要一跳引用；交付 ref 未写入就报告成功；推送了 `refs/ora/revisions/*` 或其他 ref。

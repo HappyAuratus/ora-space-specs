@@ -99,5 +99,6 @@
 ## 跨仓库验证边界
 
 - 第 1、2 步的账本、授权、意图与事实接管义务在 cloud 内可直接验证；它们的 `Covered` 判定不依赖 desktop/cluster。
+- Node 侧停止证据未确认的命名原因、等待上限与到期转交由 [Node 恢复截止与停止确认用例](../../node/revision/restore-deadline-and-stop-confirmation.md)登记；本文承接其在残留账本上的命名证据（`stop_unconfirmed`）与后续回收义务，不重复登记。
 - 第 3 步的终止完成条件跨 cloud、desktop、cluster：Cloud 的计划与“从未计划”证明、Controller 的许可与查询、Sandbox Server 的墓碑与迟到 ensure 拒绝必须同时取证，任何一侧缺失即 `Partial`。
 - 第 4 步的联合故障演练（Controller 失联恢复、Substrate 不可达、外部确认审计、存量 D8 接管）只能在真实部署环境取证，单机指定场景也不等于完整故障矩阵，如实保留缺口。

@@ -15,6 +15,16 @@
 | repository | [快照 clone 与 `ora-git`](repository/snapshot-clone-and-ora-git.md) | 访问外部仓库、checkout 留下 remote、带证书的 Git 读到 checkout 配置、拉取次数无界、冒充会话、推到别人的分支 |
 | revision | [Git 交付与恢复](revision/git-delivery-push-and-restore.md) | 交付 ref 未写入就成功、`403` 被重试、快进失败拖垮交付、恢复访问外部、`401` 让前序永久不可续、缺证书仍启动 |
 
+## 已批准的恢复截止、取消与停止确认
+
+[Node 恢复截止与停止确认决策](../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)经 owner 批准为
+`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；已实现的 bundle 恢复证据仍在
+[前序恢复用例](revision/prior-revision-restore.md)，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| revision | [恢复截止、取消与停止确认](revision/restore-deadline-and-stop-confirmation.md) | 截止被重置或命令越过截止、执行预算/停止请求/停止确认混同、未知停止证据下交付或复用、上限被重启重置、取消中途打断 Git、启动清理越过原执行交接、BestEffort 当作 Strong |
+
 ## 已批准的插件模型 adapter
 
 [插件模型 adapter 决策](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)于 2026-10-17 经 owner
