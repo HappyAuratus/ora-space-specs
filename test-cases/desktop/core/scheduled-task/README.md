@@ -16,4 +16,5 @@
 | [admission-and-approval.md](admission-and-approval.md) | Git 项目资格、Cloud 不可激活、无人值守同意、重授权和撤销 |
 | [execution-isolation.md](execution-isolation.md) | revision 冻结、新会话、独立 worktree、并发、超时和无自动重试 |
 | [history-notifications-and-residency.md](history-notifications-and-residency.md) | 状态事实、通知、软删除、100 条保留与本地数据驻留 |
+| [worktree-ownership-and-recovery.md](worktree-ownership-and-recovery.md) | worktree 原子归属提交、故障注入恢复、retention 分类边界与既有路径回归 |
 
