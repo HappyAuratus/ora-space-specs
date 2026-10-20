@@ -1,5 +1,25 @@
 # Glossary
 
+## Desktop Cloud Connection
+
+`Deployment Identity`（部署身份）是 Gateway 部署的稳定 deployment ID 与签名公钥身份，
+随部署数据迁移；不是 URL、TLS 证书或仅一个自声明 ID。相同 ID 换密钥不证明旧身份。
+
+`Desktop Session`（Desktop 会话）是 Gateway 为原生宿主建立的独立会话，由部署策略与
+PG 权威状态决定有效性；不是网页 Cookie、provider token、内部 JWT 或 Agent Session。
+
+`Desktop Login Transaction`（Desktop 登录事务）是宿主拥有的一次有限期交接，绑定部署
+身份、目标地址、state、PKCE 与回调目标；回调不能更改原换票目标。
+
+`Handoff Code`（交接码）是 Gateway 经浏览器批准后返回的短时一次性换票资格，绑定登录
+事务与账号；不是可长期调用 Cloud 的凭据，也不是 provider OAuth code。
+
+`Reported Activity`（上报活动）是正常客户端汇总的前台使用事实，用于推进空闲期限；
+Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的安全边界。
+
+职责与协议分别由 [Desktop 宿主连接根 ADR](../decisions/desktop/cloud-connection/0-host-owned-cloud-connection-and-session.md)
+和 [Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义。
+
 ## Session MCP
 
 `Session MCP Selection` 是一次 Agent Session 的 MCP 选择策略。普通聊天使用 `Automatic` 自动发现；
