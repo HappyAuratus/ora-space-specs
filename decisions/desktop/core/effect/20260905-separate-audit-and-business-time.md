@@ -43,6 +43,13 @@ Condition 的 first_observed_at 保持稳定，last_observed_at 不倒退。
 时间，再删除新增字段，并恢复 Workspace trigger。既有身份、generation、request、journal、ownership
 不重建；不试图恢复历史记录中已经丢失的实际写入时刻。
 
+显式受控恢复以 exact planned 或 exact expected 证明关闭 Operation 时，`detected_at` 随阶段离开
+RecoveryRequired 而清空，不能把它留在 Finalized / FinalizedWithoutEffect 行里。同一个关闭事务必须
+把每个 Operation 的 identity、原始 `detected_at` 与关闭结果保存到 `recovery_finalized` audit 事件；
+audit 的 `occurred_at` 表示关闭事务时间，不替代原检测时刻。审计写入失败则关闭整体回滚。不可变
+journal 意图、prepared_at 和已知 applied_at 继续保留；历史检测证据由 audit 承载，阶段字段不承担
+跨阶段的历史存档职责。
+
 ## 为什么不是这些替代方案
 
 | 方案 | 否决理由 |
