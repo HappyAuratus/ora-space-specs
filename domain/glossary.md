@@ -33,7 +33,7 @@ Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的
 绑定记录时间不等于插件服务端的创建时间。
 
 身份与诊断读取边界见 [Session 根 ADR](../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)
-（`proposed`，尚未成为已批准的系统承诺）。
+（`approved`，尚无已合并实现证据）。
 
 ## Session MCP
 
