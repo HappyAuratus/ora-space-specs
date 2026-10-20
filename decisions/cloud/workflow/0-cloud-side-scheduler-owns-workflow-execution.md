@@ -175,8 +175,11 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 Cloud 现在与 desktop 一致（[circus#288](https://github.com/ora-space/circus/issues/288) 选 2：支持取值，语义与 desktop 一致）：
 发布门禁与运行时变量池都从冻结快照的 `globalVariables` 声明全局根，`sys.workflow_id`（string）与 `sys.timestamp`
 （number）总是声明，指向它们或用户自定义全局变量的选择器不再报 `condition_selector_undeclared`。用户 globals 的值
-来自快照该项的 `value`，随快照冻结，运行时不可覆盖；发布期校验与 desktop 的 `into_global_variables` 相同——`sys.*`
-之外的 global 必须有初始值，类型不受支持、值与声明类型不符都拒绝（错误码沿用门禁的节点字段定位风格）。`sys.*`
+来自快照该项的 `value`，随快照冻结，运行时不可覆盖。其中 `file` / `array[file]` 声明在冻结前按 desktop 的
+`into_global_variables` 就地规范化：遗留路径字符串替换为 `{kind: "workspace_file", path}`，已经规范的引用保持不变，
+所以 condition 读取快照时拿到与 desktop 相同的形状；其余类型照旧保留作者原文。发布期校验与 desktop 的
+`into_global_variables` 相同——`sys.*` 之外的 global 必须有初始值，类型不受支持、值与声明类型不符都拒绝（错误码沿用
+门禁的节点字段定位风格）。`sys.*`
 在 WorkflowRun 创建时写入运行记录：`sys.workflow_id` 是 workflow id，`sys.timestamp` 是创建时刻（number，与 desktop
 同单位的 epoch 毫秒）；重试、恢复、重新派发读同一份冻结值，图里同名的用户声明由运行时覆盖。编辑器变量目录保持
 列出 globals 与 `sys.*`，不过滤。当前只有 Start 真正写入**节点**声明的根（`sys.*` 与 globals 由运行时变量池直接
