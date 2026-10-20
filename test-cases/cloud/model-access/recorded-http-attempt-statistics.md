@@ -1,10 +1,12 @@
 # 模型请求统计：发送意图、不可变收尾与未知用量
 
-决策依据：[已登记 HTTP 尝试统计](../../../decisions/cloud/model-access/20261016-recorded-http-attempt-statistics.md)（`approved`）。
+决策依据：[已登记 HTTP 尝试统计](../../../decisions/cloud/model-access/20261016-recorded-http-attempt-statistics.md)（`implemented`）。
 直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的
 [`feae6e39f6cd9647784e6ff923778e65fa8f7f92`](https://github.com/ora-space/cloud/tree/feae6e39f6cd9647784e6ff923778e65fa8f7f92)。
 WorkflowRun 登记与 `0044` 的代码证据来自 [Cloud PR #93](https://github.com/ora-space/cloud/pull/93)，
 固定在合并提交 [`090bded8505cbf39fc3ec866eaae826cd6436c95`](https://github.com/ora-space/cloud/tree/090bded8505cbf39fc3ec866eaae826cd6436c95)。
+WorkflowRun 读取、授权与整运行聚合的代码证据来自 [Cloud PR #98](https://github.com/ora-space/cloud/pull/98)，
+固定在合并提交 [`b12ebe5c936faaa3572ae6a307890cd3fadf6fc8`](https://github.com/ora-space/cloud/tree/b12ebe5c936faaa3572ae6a307890cd3fadf6fc8)。
 `Covered` 只证明该提交所列测试边界内的义务，不表示已合并或真实部署已验收。
 Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯通测试使用真实 PostgreSQL 和受控 TLS
 上游，不能代替真实供应商、Node 或浏览器验收。
@@ -66,11 +68,11 @@ Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯�
 
 ## Statistics reads must be independently authorized and preserve uncollected history
 
-- 风险：没有 Revision 就无法读统计、跨 Run 游标泄漏、旧会话被标为零消耗、撤权后继续展示缓存。
-- 前置状态：当前成员与非成员；Run 有完整、部分、started 或完全没有台账；历史归档可用性独立。
-- 触发：读取 statistics/model-calls，分页或刷新权限。
-- 必须成立：按当前租户/Issue/Agent Run 授权，只读且无需 Revision；来源为 model_gateway/recorded_http_attempts；明细升序分页；每项含覆盖率；无记录为未采集；成功响应禁止共享缓存。
-- 禁止结果：身份写入、跨范围游标、未知变零、将摘要与分页视为同一原子快照。
+- 风险：没有 Revision 就无法读统计、跨 Run 游标泄漏、旧会话被标为零消耗、IssueRun 与 WorkflowRun 的台账混读、撤权后继续展示缓存。
+- 前置状态：当前成员与非成员；IssueRun 或 WorkflowRun 有完整、部分、started 或完全没有台账；workflow 可能已归档，历史归档可用性独立。
+- 触发：读取 IssueRun 或 WorkflowRun 的 statistics/model-calls，分页或刷新权限。
+- 必须成立：按当前租户与运行归属授权（IssueRun 校验 Issue/Run，WorkflowRun 校验 Workflow/Run），只读且无需 Revision；任意能读该运行的租户成员都可读，不限发起者；归档 workflow 连同运行历史不可读；来源为 model_gateway/recorded_http_attempts；明细升序分页，游标绑定同一运行；WorkflowRun 按整次运行聚合，不按节点或 slot 拆分；每项含覆盖率；无记录为未采集；成功响应禁止共享缓存。
+- 禁止结果：身份写入、跨范围游标、跨所有者列混读、未知变零、将摘要与分页视为同一原子快照。
 - 决策依据：D4、不变量 1、4。
 - 验证义务与证据：
 
@@ -78,6 +80,9 @@ Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯�
 | --- | --- | --- |
 | 已知/总数覆盖率、started 未知、零保留、升序分页和只读事务 | [Core 台账测试][core]：`TestSessionModelStatisticsCoveragePaginationAndReadOnly` | Covered |
 | HTTP 范围和查询校验、旧会话未采集、不建身份、删除后拒绝 | [统计 HTTP 测试][statistics-http]：`TestSessionStatisticsHTTPUnknownHistoryAuthorizationAndQueries` | Covered |
+| WorkflowRun 读取按当前成员与 workflow/run 归属授权，任意成员可读，跨租户/workflow/run、软删除与归档 workflow 均为 404 | [WorkflowRun 统计 HTTP 测试][workflow-statistics-http]：`TestWorkflowModelStatisticsHTTP`，真实 HTTP 与 PostgreSQL | Covered |
+| WorkflowRun 只聚合 `workflow_run_id` 行，运行间隔离，游标绑定该运行，空台账为未采集而非零消耗，明细不暴露归属私有字段 | [WorkflowRun 统计 HTTP 测试][workflow-statistics-http]：`TestWorkflowModelStatisticsHTTP` | Covered |
+| WorkflowRun 的 statistics 不接受参数，model-calls 仅接受 limit/after，越界与非法游标为 400 | [WorkflowRun 统计 HTTP 测试][workflow-statistics-http]：`TestWorkflowModelStatisticsHTTP` | Covered |
 | 无归档仍可读统计，撤权/刷新失败清理缓存 | [统计页面测试][metrics-page]：`reads gateway statistics despite unavailable history and pages attempts with a tenant-scoped cursor`、`hides cached metrics and other views when a statistics refresh loses authorization`、`hides old attempt rows after a failed request-page refresh instead of retaining stale success` | Covered |
 | 成功 HTTP 响应直接断言 `private, no-store` | 实现已有设置，但所列 HTTP 测试没有对应头部断言 | Missing |
 | 真实浏览器多身份刷新与撤权全链路 | 组件和真实 HTTP 授权分别有证据，尚未在一个真实部署中贯通 | Partial |
@@ -109,5 +114,6 @@ Gateway 故障注入使用替身持久化；Core 使用真实 PostgreSQL；贯�
 [statistics-http-93]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/integration/session_statistics_test.go
 [migration-upgrade]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/integration/migration_upgrade_path_test.go
 [workflow-attempt]: https://github.com/ora-space/cloud/blob/090bded8505cbf39fc3ec866eaae826cd6436c95/internal/core/model_attempt_workflow_db_test.go
+[workflow-statistics-http]: https://github.com/ora-space/cloud/blob/b12ebe5c936faaa3572ae6a307890cd3fadf6fc8/integration/workflow_statistics_test.go
 [metrics-ui]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/session-metrics/session-metrics.test.tsx
 [metrics-page]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/sessions/session-metrics-page.test.tsx

@@ -1,13 +1,13 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 模型用量按网关 HTTP 尝试独立登记，保留部分观测与未知值
 
 Model Gateway 为每次已授权的上游 HTTP 发送意图建立独立、无正文的持久台账，供会话分析读取。
-不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本决策已获批准，状态为
-`approved`；配套实现仍需审查合并与验收。接受台账与模型请求共用 Cloud 已依赖的 PostgreSQL
-可用性边界：登记不可用时返回 503，不发送上游请求。
+不能从 Thread 消息数推断调用数，也不能把缺失用量解释为零或账单。本决策已经实现，状态为
+`implemented`；读取范围同时覆盖 IssueRun 与 WorkflowRun。接受台账与模型请求共用 Cloud 已依赖的
+PostgreSQL 可用性边界：登记不可用时返回 503，不发送上游请求。
 
 ## 继承与修改
 
@@ -52,19 +52,21 @@ OpenAI input 包含缓存，Anthropic input 不含缓存读写；推理是输出
 
 ## D4：统计与明细按当前授权独立读取
 
-`statistics` 聚合一个 Agent Run 的全部已登记尝试，`model-calls` 按 `(started_at,id)` 升序分页，
-默认 50、上限 100；来源和范围分别为 `model_gateway`、`recorded_http_attempts`。
-所有请求验证当前租户成员和 Issue/Run 归属，不依赖 Revision，不 JIT 建号，成功响应 `private, no-store`。
+`statistics` 聚合一个运行（IssueRun 或 WorkflowRun）的全部已登记尝试，`model-calls` 按
+`(started_at,id)` 升序分页，默认 50、上限 100；来源和范围分别为 `model_gateway`、
+`recorded_http_attempts`。两组路径分别位于 `/issues/:iid/runs/:rid` 与
+`/workflows/:wfid/runs/:rid` 下；所有请求验证当前租户成员和运行归属（IssueRun 的 Issue/Run，或
+WorkflowRun 的 Workflow/Run），不依赖 Revision，不 JIT 建号，成功响应 `private, no-store`。
 每项数值附已知数、总数和可用性；无记录的旧会话是“未采集”，不是零消耗。
 
 摘要与明细是不同读取快照，活动请求期间可以短暂不一致。前端趋势只描述当前页观察：
 真实零保留，缺失标记与数值轴分开，虚线只能连接已知端点并说明中间缺失，不插值或累计。
 未来 Agent/ACP 报告仍为另一来源，不与 Gateway 相加；本决策不依赖 Desktop token_usage 扩展。
 
-本决策的读取范围仍是 IssueRun：`statistics` 与 `model-calls` 按 IssueRun 的 `run_id` 读取。
-WorkflowRun 的尝试已经登记，但它的统计读取需要单独定义聚合范围、游标与授权，在另行批准前不开放
-（决策见 circus#285，由 circus#286 落地）；WorkflowRun 登记行的 `run_id` 为空，不会进入上述
-IssueRun 读取。
+WorkflowRun 读取按整次运行聚合，不按节点或 slot 拆分，响应形状、覆盖率与分页语义与 IssueRun 一致。
+标识中的 run 必须属于该 workflow 和租户且未被删除；归档的 workflow 连同运行历史不可读。租户成员
+只要能读该运行就能读统计，不限发起者；非成员不会因资源存在性得到不同响应。台账行的所有者判别列
+（`run_id` 或 `workflow_run_id`）使两组读取互不可见，游标也只能在同一运行的范围内使用。
 
 ## 不变量
 
@@ -81,6 +83,8 @@ IssueRun 读取。
 | 从归档文本估 token/调用次数 | 无法识别内部重试和供应商计量口径，也会把日志事件当请求 |
 | 完成时首次插入台账 | 崩溃会让进行中的调用完全消失，无法保留未完成观察 |
 | 汇总 ACP 与 Gateway | 两者计量范围可能不同，直接相加会重复计量 |
+| 在 IssueRun 读取里复用同一个 `:rid` 承载两类运行 | 运行类型在路由与游标里变成未知，两套生命周期和授权混在一个入口，容易跨类型读取；两类运行因此各自保留读取路径 |
+| 首期只提供 WorkflowRun 汇总 | 改动较小，但缺少逐次尝试的调试能力，响应形状与 IssueRun 不对称，后续补明细分页仍要做方案 A 的大部分工作 |
 
 ## 兼容性、验收与落地
 
@@ -91,10 +95,11 @@ IssueRun 读取。
 后续追加 `0044_model_attempt_workflow_run.sql`：`model_request_attempts` 增加可空的
 `workflow_run_id`，`run_id` 改为可空，两者恰有其一；运行与绑定各按所有者引用
 `issue_runs`/`workflow_runs` 的 `(id, tenant_id)` 与 `run_model_bindings` 的
-`(id, run_id)`/`(id, workflow_run_id)`。它只扩展登记范围，不改变读取范围，也不回填历史行。
+`(id, run_id)`/`(id, workflow_run_id)`。它扩展登记范围并提供 WorkflowRun 的读取归属，不回填历史行。
 
 验收需覆盖全新与升级及重复迁移、登记前拒绝、WorkflowRun 绑定登记、实际 HTTP 与数据库贯通、
-两协议 JSON/SSE、取消后收尾、并发不同完成结果、故障不重发、未知/零/部分覆盖率、越权与旧会话。
+两协议 JSON/SSE、取消后收尾、并发不同完成结果、故障不重发、未知/零/部分覆盖率、IssueRun 与
+WorkflowRun 两组读取的授权、范围隔离与游标绑定、越权与旧会话。
 长期未完成行的恢复、台账保留期限、增量汇总及大 Run 查询成本留给后续设计；当前全 Run 聚合
 仍受 Core 事务串行边界约束。真实供应商账单一致性不由合成协议测试证明。
 核心验证义务与直接证据见[已登记 HTTP 尝试统计](../../../test-cases/cloud/model-access/recorded-http-attempt-statistics.md)。
