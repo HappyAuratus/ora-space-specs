@@ -20,6 +20,21 @@ Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的
 职责与协议分别由 [Desktop 宿主连接根 ADR](../decisions/desktop/cloud-connection/0-host-owned-cloud-connection-and-session.md)
 和 [Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义。
 
+## Agent Conversation
+
+`Ora Session`（Ora 会话）是 Workspace 中一条对话的稳定身份，切换 Agent 不改变该身份与历史归属。
+它不同于登录用的 Desktop Session，也不同于 Cloud IssueRun 或一次 Workflow 节点执行。
+
+`Agent Session`（插件会话）是 Agent 插件通过 ACP 返回的 provider 会话，其 id 是不透明字符串；
+定位时必须保留插件身份和所属 Ora 会话，不能将它当作全局 Ora 身份或控制资格。
+
+`Agent Binding`（Agent 绑定）是一条 Ora 会话当前关联的完整插件引用与 Agent Session ID。
+`Binding Segment`（绑定段）是这条对话中一次连续绑定的历史片段；同一插件再次绑定不合并旧段。
+绑定记录时间不等于插件服务端的创建时间。
+
+身份与诊断读取边界见 [Session 根 ADR](../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)
+（`proposed`，尚未成为已批准的系统承诺）。
+
 ## Session MCP
 
 `Session MCP Selection` 是一次 Agent Session 的 MCP 选择策略。普通聊天使用 `Automatic` 自动发现；
