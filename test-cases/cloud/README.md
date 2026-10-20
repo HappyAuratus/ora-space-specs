@@ -24,10 +24,11 @@
 
 ## 已批准的工作流执行决策
 
-[工作流执行根决策](../../decisions/cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md)与它的两份后续决策
+[工作流执行根决策](../../decisions/cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md)与它的三份后续决策
 [执行器槽位决策](../../decisions/cloud/workflow/20261015-executor-slots-replace-agent-model-ids.md)、
-[个人槽位映射与按槽位绑定决策](../../decisions/cloud/model-access/20261015-executor-slot-mappings-and-per-slot-run-bindings.md)
-于 2026-10-16 经 owner 批准，为 `approved`，本领域首期核心用例同批建立。Cloud 至今没有工作流执行者：生产里的
+[个人槽位映射与按槽位绑定决策](../../decisions/cloud/model-access/20261015-executor-slot-mappings-and-per-slot-run-bindings.md)、
+[工作流会话结束决策](../../decisions/cloud/workflow/20261019-workflow-session-end-after-initial-turn.md)
+于 2026-10-16 与 2026-10-20 经 owner 批准，为 `approved`，本领域核心用例同批建立。Cloud 至今没有工作流执行者：生产里的
 运行停在 `pending`，唯一写节点状态的是开发夹具，而根决策已把模拟 trace 排除在验收之外，所以执行类义务在
 cloud 侧全部为 `Missing`；main 也还没有个人槽位映射。门禁类义务（图校验、启动门禁、槽位解析）的实现在
 [cloud#65](https://github.com/ora-space/cloud/pull/65) 上，已随合并提交
@@ -42,6 +43,7 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [调度串行与恢复](workflow/scheduler-serialism-and-recovery.md) | 多副本重复派发、迟到回调、崩溃丢进度、谎报成功、没有取消入口 |
 | workflow | [发布与启动门禁](workflow/publish-and-start-admission.md) | 冻结执行不了的图、UUID 绕过校验、槽位被顶替、快照字段错名 |
 | workflow | [执行器槽位](workflow/executor-slots.md) | 槽位名变体、`hint` 被当兜底或被自动写入、旧图拒收或保留执行器 |
+| workflow | [工作流会话结束与有界等待](workflow/session-end-after-initial-turn.md) | 成功回合无人结束会话、重复或跨节点结束请求、确认窗口无界、把未知当成功 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的会话分析与模型请求统计
