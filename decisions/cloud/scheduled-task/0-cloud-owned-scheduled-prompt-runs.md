@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Cloud Scheduled Task 由服务端持久调度产生幂等触发，每次触发经既有 IssueRun 链执行绑定 issue 下的无头 Prompt 单会话
@@ -11,13 +11,13 @@ IssueRun 编排（运行 Workspace、Thread、Revision、交付与释放）、�
 不新增第二套 Agent 运行入口，也不解释 Prompt 之外的执行语义。每次运行固定 60 分钟，超时取消依赖
 Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型费用，运行以任务所有者的 Git 身份提交。
 
-本 ADR 处于 `proposed`。它承接 [desktop Scheduled Task 根决策](../../desktop/core/scheduled-task/0-local-and-cloud-execution-ownership.md)
+本 ADR 处于 `approved`。它承接 [desktop Scheduled Task 根决策](../../desktop/core/scheduled-task/0-local-and-cloud-execution-ownership.md)
 显式留给 Cloud 决策的契约：任务的账号与存储归属、可见范围、无头单会话 API、通知、发起者归属与
 费用，以及 Desktop `cloud` 选项的解除禁用条件。首期只做无头 Prompt 单会话：不接 Workflow 目标、
 不解析 `executorSlot`、不接入 [Workflow 根决策](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)
 的 Server Workflow 执行链。核心测试用例见
 [`test-cases/cloud/scheduled-task/admission-and-session-bounds.md`](../../../test-cases/cloud/scheduled-task/admission-and-session-bounds.md)，
-随本 PR 登记义务；状态在本文置为 `approved` 时按最终同意的决策核对。
+按最终同意的决策登记义务；实现尚未合入 main，义务状态随落地逐项更新。
 
 涉及 Cloud 的 `internal/core`（定时任务定义、occurrence、调度 worker）、PostgreSQL 迁移与公开 API。
 兼容性边界：manual run、`@` Confirm、Workflow 路径与 desktop 决策全部不变；`issue_runs` 只增加
