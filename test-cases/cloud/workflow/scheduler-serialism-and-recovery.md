@@ -7,10 +7,11 @@
 
 Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)（认领、从已提交状态重算就绪集合、节点结果比较交换）、
 [cloud#72](https://github.com/ora-space/cloud/pull/72)（按会话派发与结算）、[cloud#91](https://github.com/ora-space/cloud/pull/91)
-（已派发会话的 Node 不可达时结算失败）与 [cloud#100](https://github.com/ora-space/cloud/pull/100)（agent 运行的取消写入者）
-的堆叠里落地，下表因此不再全是 `Missing`。仍为 `Missing` 的是两类需要真实部署的证据——**多副本**与**崩溃接手**——
-以及工作流的取消写入者（S3，正在 ora-space/circus#347 推进）；agent 运行侧的取消写入者已由 cloud#100 落地。
-要求"真实执行侧"的行只记 `Partial`：现有证据走控制面接缝，真实 Node / Agent 回调
+（已派发会话的 Node 不可达时结算失败）、[cloud#100](https://github.com/ora-space/cloud/pull/100)（agent 运行的取消写入者）、
+[cloud#108](https://github.com/ora-space/cloud/pull/108)（已派发会话的回合窗口，merge `a4a13e8`）与
+[cloud#109](https://github.com/ora-space/cloud/pull/109)（工作流的取消写入者与有界终态，merge `27e7f48`）的堆叠里落地，
+下表因此不再全是 `Missing`。仍为 `Missing` 的是两类需要真实部署的证据——**多副本**与**崩溃接手**。
+要求"真实执行侧"的行只记 `Partial`：现有证据走控制面接缝或真实 PostgreSQL，真实 Node / Agent 回调
 仍属 D1 落地顺序第 3 步（ora-space/circus#70）。
 
 ## At Most One Serial Executor Advances A Workflow Run
@@ -115,11 +116,20 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   与其中未完成的执行一起终止）断言已派发而无结果的节点以 `node_unavailable` 失败、运行随之进入失败终态并声明 Workspace 删除；
   `TestWorkflowSessionNodeSilenceWithinWindowHolds` 与 `TestWorkflowSessionUnconfiguredWindowHoldsTheNode` 断言窗口内或窗口
   未配置时会话保持 `running`，不把沉默记成成功；`TestWorkflowSessionResultAfterTheNodeSettledIsKept` 断言结算后到达的真实结果
-  留在执行行，不改写节点与运行的终态。第 2 行已部分就位：同 PR 的 `TestWorkflowRunningCarriesNoFinishedAt`
+  留在执行行，不改写节点与运行的终态。[cloud#108](https://github.com/ora-space/cloud/pull/108)（merge `a4a13e8`，ora-space/circus#299
+  选项 A）补上已派发而既无结果也无成功 `turnEnded` 的会话：`TestWorkflowSessionTurnDeadlineFailsNode` 断言执行行注册时刻超过
+  `workflow.session_turn_timeout`（默认 2 小时）时，节点与运行以 Cloud 自己的 `session_turn_deadline_exceeded` 进入失败终态并
+  声明 Workspace 删除，重复推进不再扫描终态运行；`TestWorkflowSessionTurnDeadlineHoldsWithinWindow` 与
+  `TestWorkflowSessionTurnDeadlineUsesTheConfiguredWindow` 断言窗口内、以及部署配置的窗口值下会话保持 `running`，不把沉默记成
+  成功；`TestWorkflowSessionTurnDeadlineDoesNotOverrideSuccessfulTurn` 与 `TestWorkflowSessionTurnDeadlineDoesNotOverrideAResult`
+  断言成功 `turnEnded` 与已提交结果分别优先于超窗结算（判定顺序为结果 → Node 不可达 → 回合窗口）；
+  `TestWorkflowSessionTurnDeadlineResultAfterTheNodeSettledIsKept` 断言超窗结算后到达的真实结果留在执行行、不改写节点与运行的
+  终态；`TestWorkflowSessionTurnDeadlineIsPerExecution` 断言窗口按执行行计时，重试的新执行行重新计时。
+  第 2 行已部分就位：同 PR 的 `TestWorkflowRunningCarriesNoFinishedAt`
   断言运行仍在执行时不带 `finishedAt`。唯一会写 `node_states` 成功的 `MockWorkflowRunSimulator` 在没有真实结果的
   情况下直接产出成功状态，根决策已把这类模拟 trace 排除在验收之外。
 - 仍缺：显式断言"终态写入发生在最后一个节点的结果提交之后"（现有用例只覆盖运行中不带 `finishedAt`）；回调丢失或
-  中断后重试仍不成功的用例；Node 不可达只在控制面接缝上验证，真实执行侧的中断结算与终态时点验证仍属 D1 落地顺序第 3 步。
+  中断后重试仍不成功的用例；Node 不可达与回合窗口仍只在控制面接缝上验证，真实执行侧的中断结算与终态时点验证仍属 D1 落地顺序第 3 步。
 
 ## Cancellation Is A Recorded Request With A Bounded Terminal State
 
@@ -132,7 +142,7 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 取消是请求加有界终态，终态在清理后写入 | 真实 PostgreSQL + 执行侧：取消与清理、回调的并发顺序与最终行状态 | Missing |
+| 取消是请求加有界终态，终态在清理后写入 | 真实 PostgreSQL + 执行侧：取消与清理、回调的并发顺序与最终行状态 | Partial |
 | 工作流与 agent 两侧都有取消写入者 | 真实 HTTP 入口：两侧的取消请求都落到持久状态并走同一条收尾路径 | Partial |
 
 - 决策依据：D4（取消是请求加有界终态），D6（取消写入者纳入首期，agent 侧一并补上），不变量 3；继承 [issue-run 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md) D6。
@@ -144,10 +154,22 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   `TestCancelRunOnlyAcceptsTheAgentExecutionWindow`、`TestCancelRunIsNotFoundOutsideItsScope` 与 `TestCancelRunAuthorizesLikeEndingTheThread`
   断言越过 agent 执行窗口、越界与越权的调用者被拒；`TestCancelledRequestEndsTheDeclaredSession` 与
   `TestCancelledRequestReleasesTheUndeclaredSession` 断言端点写入的请求正是 `ReactToCancelledAgentRunsOnce` 消费的事实，
-  分别落到 EndSession{cancelled} 与 `deliveryState=skipped` 的释放。工作流侧仍无取消写入者，第 1 行仍为 **Missing**：
-  收尾路径能处理 `cancel_requested_at`（[`internal/core/agent_run_settle.go`](https://github.com/ora-space/cloud/blob/7704089d453f88d66e06d462aafe554e03a11855/internal/core/agent_run_settle.go)
-  及 `agent_run_settle_db_test.go` 的取消用例），[cloud#72](https://github.com/ora-space/cloud/pull/72) 的
-  `TestWorkflowSessionCancelledReleasesTheRunWorkspace` 覆盖了会话**自己上报** `cancelled` 时的收尾与 Workspace 释放，
-  但没有"取消请求与清理、回调并发 → 终态在有界收尾后写入"的直接用例。
-- 仍缺：工作流的取消写入者与收尾路径（S3，正在 ora-space/circus#347 推进）；两侧取消与清理、迟到回调的并发顺序证据（G-026），
-  属 D1 落地顺序第 5 步，归 ora-space/circus#75。
+  分别落到 EndSession{cancelled} 与 `deliveryState=skipped` 的释放。工作流侧已由 [cloud#109](https://github.com/ora-space/cloud/pull/109)
+  （merge `27e7f48`）落地 `POST /api/v1/tenants/:tid/workflows/:wfid/runs/:rid/cancel`，第 1 行由 **Missing** 推进到 **Partial**，
+  第 2 行仍为 **Partial**：`TestWorkflowRunCancelRequestRecordsTheInstant` 断言请求只写 `workflow_runs.cancel_requested_at`、
+  返回 202 与数据库记录的时刻，运行保持 `pending` 且 `started_at` 为空，换幂等键重复请求返回同一时刻；
+  `TestWorkflowRunCancelRequiresTheInitiatorOrAnAdmin` 断言有冻结执行者绑定时非发起者的普通成员被拒
+  （`workflow_run_cancel_forbidden`）且不落库，发起者可以取消；`TestWorkflowRunCancelAfterTheRunSettledIsRefused` 断言终态运行
+  返回 `run_not_cancellable` 而不是被记录；`TestWorkflowRunCancelRacesToOneRequest` 断言两个并发请求只记录一个时刻、只发生一次
+  请求引起的版本变化。`TestWorkflowRunCancelBeforeStartNeverStarts` 断言未开始的运行在推进时直接结算 `cancelled`：不认领、
+  不写 `started_at`、不建 Workspace、不派生删除操作，请求在结算后保留且后续推进不再改动终态运行；
+  `TestWorkflowRunCancelStopsTheRunningSession` 断言在途会话经既有 EndSession 中继停止（`end_session`、`reason=cancelled`，
+  指向该运行的执行），重复推进是重放而不是第二条请求，会话终态后节点与运行结算 `cancelled` 并释放 Workspace；
+  `TestWorkflowRunCancelEndWindowSettlesCancelled` 断言结束请求超过 `AgentEndConfirmTimeout` 仍未获确认时，节点与运行结算
+  `cancelled`、Workspace 释放，之后到达的结果只保留在执行行、不改写终态；`TestWorkflowRunCancelKeepsACommittedSessionResult`
+  与 `TestWorkflowRunCancelReusesTheExistingEndRequest` 断言已提交结果与会话自己上报的终态优先于取消，运行仍结算 `cancelled`
+  并释放 Workspace；`TestWorkflowRunCancelWinsOverAnUnreachableNode` 断言 Node 不可达时由取消而不是 `node_unavailable` 决定
+  终态，且不再向已消失的 Node 释放结束请求，Workspace 照常释放。
+- 仍缺：工作流侧只有核心层 `Store.Public` 用例，尚无真实 HTTP 边界的集成用例（agent 侧的入口用例在
+  `integration/agent_run_cancel_test.go`，工作流侧是 `internal/core/workflow_run_cancel_db_test.go`）；两侧取消与清理、迟到回调的
+  **并发**顺序证据（G-026），以及真实执行侧下的取消时点验证，属 D1 落地顺序第 5 步，归 ora-space/circus#75。
