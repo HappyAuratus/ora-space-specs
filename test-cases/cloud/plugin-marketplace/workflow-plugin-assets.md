@@ -11,8 +11,8 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
 逐文档导入、独立读取接口与前端展示；[cloud#83](https://github.com/ora-space/cloud/pull/83) 补上多 Workspace
 不 fan-out、用户编辑后升级与慢响应/体积上界的直接测试。下表的直接证据以
 [`integration/workflow_assets_test.go`](https://github.com/ora-space/cloud/pull/77/files)、
-[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/pull/83/files)、
-[`integration/workflow_asset_fetch_boundaries_test.go`](https://github.com/ora-space/cloud/pull/83/files) 与
+[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_asset_import_scope_test.go)、
+[`integration/workflow_asset_fetch_boundaries_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_asset_fetch_boundaries_test.go) 与
 [`internal/workflowasset`](https://github.com/ora-space/cloud/pull/77/files) 为准；`Partial` 行
 列出仍未覆盖的那一段。既有安装不回填：只有生效后的安装或重装写入触发记录（ADR「落地」）。
 
@@ -97,8 +97,8 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   workflow 或快照。同一用例把 `graph.json` 的图再走一次编辑器发布，逐项比较导入的
   `failureDetail.problems` 与发布拒绝的 `params.problems`，证明两条路径同源；门禁本身的节点、
   字段、槽位矩阵仍由
-  [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
-  与 [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
+  [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_admission_test.go)
+  与 [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/workflow_graph_test.go)
   覆盖。`TestWorkflowAssetImportRejectsTextPostgresCannotStore` 把转义 NUL、未配对代理项与非法
   UTF-8 放进同一个包：三份文档各得 `document_invalid_json` 及各自的 `reason`，正常文档与合法
   代理项对照常导入，包结果为 `completed`，源行没有停在 `importing`。
@@ -148,7 +148,7 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   `TestWorkflowAssetImportPackageFailureRetriesOnNextTrigger` 覆盖：摘要不匹配时导入行 `failed`、
   文档表为空，管理员重装同一版本后重试成功。慢响应与体积上界由 cloud#83 的
   `TestWorkflowAssetImportCancelsSlowOrOversizePackages`
-  （[`integration/workflow_asset_fetch_boundaries_test.go`](https://github.com/ora-space/cloud/pull/83/files)）
+  （[`integration/workflow_asset_fetch_boundaries_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_asset_fetch_boundaries_test.go)）
   从 `Fetch` 出发、经生产 `NewUpstreamClient` 传输链实际触发：服务端接受 TCP 后不完成 TLS
   握手，触发 10 秒 TLS 握手截止（拨号在此之前已完成，该子测试不触及拨号截止）；不发响应头，30 秒取消；
   响应头即刻、正文每 500ms 一字节，60 秒整包截止取消；无 Content-Length 的 chunked 流超过
@@ -158,8 +158,8 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   「接上了它、未接线时失败关闭」，没有一条从 `Fetch` 出发、目标解析到私有地址的端到端用例；该验收跟随
   [circus#192](https://github.com/ora-space/circus/issues/192) 的部署方
   出网策略（见 ADR D7 与共享出网用例），不在资产导入侧单独写死。原语本身的证据仍在
-  [`internal/modelgateway/transport.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/modelgateway/transport.go)
-  与 [`internal/pluginmarket/manifest.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/pluginmarket/manifest.go)。
+  [`internal/modelgateway/transport.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/modelgateway/transport.go)
+  与 [`internal/pluginmarket/manifest.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/pluginmarket/manifest.go)。
   第 4 行的 TCP 拨号截止没有直接证据：`TestWorkflowAssetImportCancelsSlowOrOversizePackages`
   里唯一涉及连接建立的子测试，其服务端 accept 连接后即静默——拨号已完成、停在 TLS 握手，触发的是
   transport 的 `TLSHandshakeTimeout`，即使拨号截止被移除该子测试也照样通过；拨号阶段的直接证据
@@ -193,7 +193,7 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   在一个没有任何 workspace 的空间里安装插件后导入成功：`workspace_plugin_instances` 与
   `operations` 都是 0，workflow 与快照已经存在。多个 live Workspace 的对应用例是 cloud#83 的
   `TestWorkflowAssetImportDoesNotFanOutToWorkspaces`
-  （[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/pull/83/files)）：
+  （[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_asset_import_scope_test.go)）：
   项目 main Workspace 加两个 isolated 共 ≥2 个 live runtime，Node 侧安装 fan-out 到每一个
   （每 runtime 一行 `workspace_plugin_instances`），导入仍只有一行来源记录，每份文档一个
   workflow 和一个已发布快照，重启等价的第二轮也不新增。结果从独立的 `GET .../plugins/assets` 读取，

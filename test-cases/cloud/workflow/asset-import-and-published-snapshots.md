@@ -35,9 +35,9 @@
   `TestWorkflowAssetImportFromInstalledPlugin` 导入后同时断言文档行里的 `workflowId`/`snapshotVersion`
   与 `GET .../workflows/{id}/snapshots` 里那一条已发布快照；`release.json` 自述 `"version":7`，快照
   仍由 Cloud 分配为 `v1`，升级到 `v1.1.0` 也不给已导入路径追加版本。快照的 append-only 与版本分配
-  仍由 [`integration/workflow_snapshot_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_snapshot_test.go)
+  仍由 [`integration/workflow_snapshot_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_snapshot_test.go)
   的 `TestWorkflowSnapshotPublishServices` 与迁移
-  [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
+  [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/migrations/0028_workflow_snapshots.sql)
   的 `(tenant_id, workflow_id, version)` 唯一索引证明；运行侧由
   `TestWorkflowRunValidatesAgainstTheVersionItRuns` 与 `TestWorkflowRunSnapshotIsScopedToItsWorkflow` 证明。
 - Partial 的原因：第一行还没有「用导入产生的 `snapshot_id` 创建一次运行」的用例；第四行的运行侧规则
@@ -73,10 +73,10 @@
   `validateWorkflowGraph`，`TestWorkflowAssetImportDocumentFailuresAreIndependent` 导入含
   `nodes`/`edges` 但没有 `start` 的文档后得到 `document_not_executable_graph` 与问题列表，并断言
   `workflows`/`workflow_snapshots` 里没有它的行；同包的 `ok.json` 照常导入并发布。门禁本身的节点、
-  字段、槽位矩阵仍由 [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/df507f0/integration/workflow_admission_test.go)
+  字段、槽位矩阵仍由 [`integration/workflow_admission_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_admission_test.go)
   的 `TestWorkflowPublishValidatesTheGraphAndSavingDoesNot` 与
   `TestWorkflowPublishRefusesUnusedAgentConfiguration`，以及
-  [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
+  [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/workflow_graph_test.go)
   的 `TestValidateWorkflowGraph` 覆盖。cloud#99 的 `TestWorkflowAcceptsDesktopDefaultAgentConfig` 补上"未启用默认值放行"一侧：真实 desktop 导出的 agent 节点（空 `skills`/`mcps`、`interactive: false`）经 workflow 资产导入得到 `imported`、`snapshotVersion: 1`，且快照里三个默认值原样保留（不规范化）。
 
 ## Provider Uninstall Or Upgrade Never Rewrites Imported Snapshots
@@ -107,11 +107,11 @@
   比较，两者都没有变化，新版本只新增 `hotfix.json`；卸载插件后 live workflow 仍在，
   `workflow_snapshots` 计数与卸载前相同。cloud#83 的
   `TestWorkflowAssetImportKeepsUserEditsAcrossUpgrade`
-  （[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/pull/83/files)）
+  （[`integration/workflow_asset_import_scope_test.go`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/integration/workflow_asset_import_scope_test.go)）
   把同一断言延伸到用户已接手的副本：编辑活稿并发布 v2 快照后升级包，活稿、导入产生的 v1 与用户
   发布的 v2 三者的 `graph::text` 逐字节不变，升级内容不出现，仅新增路径导入。更广的快照不可变证据
   是 `TestWorkflowSnapshotPublishServices`
-  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
+  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/migrations/0028_workflow_snapshots.sql)
   （表上没有 `updated_at`，发布只 INSERT）；运行侧由 `TestWorkflowRunValidatesAgainstTheVersionItRuns`
   证明执行的是所选快照。
 - Partial 的原因：卸载后的测试只断言 workflow 行仍在、快照数不变，没有真的再发布或启动一次运行，
@@ -142,8 +142,8 @@
 - 直接证据：**Covered（第一、二行）、Partial（第三行）** — cloud#77 的
   `TestWorkflowAssetImportFromInstalledPlugin` 在导入后查询 `information_schema.columns`，断言
   `workflows`、`workflow_snapshots` 没有任何 author/creator/publisher 列，并确认来源记录行带有触发
-  space、租户与 `attempted_at`。[`0027_workflows.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0027_workflows.sql)
-  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/migrations/0028_workflow_snapshots.sql)
+  space、租户与 `attempted_at`。[`0027_workflows.sql`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/migrations/0027_workflows.sql)
+  与 [`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/63c1796b6682a2f247320eb7a6412239f1688f1d/internal/core/migrations/0028_workflow_snapshots.sql)
   的列定义支持同一结论。
 - Partial 的原因：表里没有作者列，导入也就无从把作者写进权限、可见性或运行输入；但没有一条用例
   让不同管理员先后触发后，再对 `@` 目录投影与运行结果做横向断言。
