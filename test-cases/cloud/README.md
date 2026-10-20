@@ -44,6 +44,7 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [发布与启动门禁](workflow/publish-and-start-admission.md) | 冻结执行不了的图、UUID 绕过校验、槽位被顶替、快照字段错名 |
 | workflow | [执行器槽位](workflow/executor-slots.md) | 槽位名变体、`hint` 被当兜底或被自动写入、旧图拒收或保留执行器 |
 | workflow | [工作流会话结束与有界等待](workflow/session-end-after-initial-turn.md) | 成功回合无人结束会话、重复或跨节点结束请求、确认窗口无界、把未知当成功 |
+| workflow | [Start 输入 kickoff 取值](workflow/start-input-kickoff.md) | 运行读到编辑器默认提示词而非本次 kickoff、unset 与空串混淆、非字符串 `input` 被放行、历史行被误读 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的会话分析与模型请求统计
