@@ -45,8 +45,8 @@
 
 ## Git 凭据存储用例
 
-依据 [Git 凭据存储决策](../../../decisions/cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md)，
-实现尚未合入，证据均为 `Missing`。
+依据 [Git 凭据存储决策](../../../decisions/cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md)
+（`implemented`），实现已随 cloud#76（`ceb39bc`）合入 cloud 的 main，证据按该提交的直接测试逐项登记。
 
 - [Git Tokens Reach Only The Browser And The Credential Store](git-credential-store.md#git-tokens-reach-only-the-browser-and-the-credential-store)
 - [Submission And Execution Authorizations Are Distinct And Single-Use](git-credential-store.md#submission-and-execution-authorizations-are-distinct-and-single-use)
