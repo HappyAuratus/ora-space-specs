@@ -136,8 +136,11 @@ desktop 节点——这样门禁才能给出确切原因，而不是"未知类�
 在 `workflow_node_runs.node_type` 里，改名是破坏性变更且没有收益；将来若要统一拼写，需要单独决策。
 
 **agent 节点配置字段的去向同样要写明**，避免"配置被静默忽略"：首期只使用 `executorSlot`、`roleId`、`prompt`；
-`skills`、`mcps`、`interactive`、`outputContract`、`retry`、`promptInactivity` 延后，**发布门禁遇到它们要明确
-拒绝并指出节点与字段**。理由：这些字段会改变执行行为，静默忽略会让作者以为配置生效。
+`skills`、`mcps`、`interactive`、`outputContract`、`retry`、`promptInactivity` 延后，**发布门禁拒绝真正启用它们的
+配置，并指出节点与字段**：`skills`、`mcps` 是列表，空数组是编辑器"未选"的默认值，`interactive` 是布尔，`false`
+同样是默认值——这三种"未启用"形态放行；非空列表、`interactive: true`，以及没有"未启用"形态的 `outputContract`、
+`retry`、`promptInactivity` 的任意非 null 值仍拒绝。理由：这些字段会改变执行行为，静默忽略会让作者以为配置生效；
+未启用的默认值不改变行为，放行它才不至于把编辑器导出的图卡在门禁上。
 
 **发布门禁与服务端可执行子集**：发布时校验图结构、节点类型、节点配置 schema 和 canonical `PluginId`，
 **按服务端首期可执行子集拒绝，并给出原因**（先例：desktop 的 `first_unsupported_node()`，

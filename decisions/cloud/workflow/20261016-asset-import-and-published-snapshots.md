@@ -50,7 +50,7 @@ status: implemented
 **门禁的连带后果要写进包的制作约束**（门禁本身是 `internal/core/workflow_graph.go` 的
 `validateWorkflowGraph`，与编辑器发布同源）：Cloud 首期只执行 `start`、`agent`、`condition`、
 `output` 四种节点（其余 kind 报 `node_kind_unsupported`），agent 节点的 `skills`、`mcps`、
-`interactive`、`outputContract`、`retry`、`promptInactivity` 只要是非 null 就被拒绝，节点引用的
+`interactive` 只在真正启用时被拒绝（空数组与 `interactive: false` 是编辑器"未选"的默认值，放行），`outputContract`、`retry`、`promptInactivity` 仍是任意非 null 就被拒绝，节点引用的
 槽位必须在图里声明（`default` 除外，否则 `slot_not_declared`）。因此包内文档不是「能存进编辑器」
 就够，它必须已经是一份可发布的图。**#76 的官方示例包只能在首期子集内制作**，并在制包时用同一套
 门禁自检；含首期不执行节点或未声明槽位的文档会逐份导入失败，而不是导入后等用户点运行才发现。
