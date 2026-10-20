@@ -34,4 +34,4 @@
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |
+| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |
