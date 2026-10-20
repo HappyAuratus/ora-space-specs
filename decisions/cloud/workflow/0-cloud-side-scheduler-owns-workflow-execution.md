@@ -171,12 +171,17 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 `inputVariables` 变量；Agent 声明 `output`，`agentConfig.outputContract` 为 `OutputContract::Structured` 时再声明
 `structured_output`（Cloud 当前对任意非 null 契约都声明；带契约的图先被 `node_config_unsupported` 拒绝，所以这条差异暂不可达，
 随 cloud#70/#74 支持契约时收紧）；Output 声明
-`output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp` 和图里 `globalVariables` 的每一项；Cloud 今天既不提供这些值，也
-不声明它们，指向 `sys.*` 或用户自定义全局变量的选择器都在发布期被 `condition_selector_undeclared` 拒绝（两边的
-编辑器变量目录都把 globals 列为可选条件变量，Cloud 侧暂不提供，编辑器目录的后续处理见
-[circus#288](https://github.com/ora-space/circus/issues/288)）。当前只有 Start 真正写入已声明的根，Agent / Output 的值随
-cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」求值——`exists` / `not_exists` / `empty` / `not_empty` 回答
-它，其余算子让节点失败。
+`output`；Condition 不声明任何根。desktop 还声明 `sys.workflow_id` / `sys.timestamp` 和图里 `globalVariables` 的每一项，
+Cloud 现在与 desktop 一致（[circus#288](https://github.com/ora-space/circus/issues/288) 选 2：支持取值，语义与 desktop 一致）：
+发布门禁与运行时变量池都从冻结快照的 `globalVariables` 声明全局根，`sys.workflow_id`（string）与 `sys.timestamp`
+（number）总是声明，指向它们或用户自定义全局变量的选择器不再报 `condition_selector_undeclared`。用户 globals 的值
+来自快照该项的 `value`，随快照冻结，运行时不可覆盖；发布期校验与 desktop 的 `into_global_variables` 相同——`sys.*`
+之外的 global 必须有初始值，类型不受支持、值与声明类型不符都拒绝（错误码沿用门禁的节点字段定位风格）。`sys.*`
+在 WorkflowRun 创建时写入运行记录：`sys.workflow_id` 是 workflow id，`sys.timestamp` 是创建时刻（number，与 desktop
+同单位的 epoch 毫秒）；重试、恢复、重新派发读同一份冻结值，图里同名的用户声明由运行时覆盖。编辑器变量目录保持
+列出 globals 与 `sys.*`，不过滤。当前只有 Start 真正写入**节点**声明的根（`sys.*` 与 globals 由运行时变量池直接
+提供，不写入节点状态），Agent / Output 的值随 cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」求值——
+`exists` / `not_exists` / `empty` / `not_empty` 回答它，其余算子让节点失败。
 
 门禁只作用于**新的发布**。新增这道校验之前冻结的已发布快照仍按运行时的「缺失」语义求值，不会因为门禁上线而改变
 已经发布的图；作者重新发布时才会被拒绝并得到可定位的问题。
