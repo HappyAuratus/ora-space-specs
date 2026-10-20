@@ -48,9 +48,10 @@
 - 风险：包内文档只满足「能存进编辑器」而不满足发布门禁，导入后成为一份跑不起来的资产；#76 的
   官方示例包若含首期不执行的节点或未声明槽位，会在用户点运行时才暴露。
 - 前置状态：首期只执行 `start` / `agent` / `condition` / `output`；agent 节点的 `skills`、`mcps`、
-  `interactive`、`outputContract`、`retry`、`promptInactivity` 非 null 即拒绝；槽位必须在图里声明
+  `interactive` 只在真正启用时被拒绝（空数组与 `interactive: false` 是编辑器"未选"的默认值，放行），`outputContract`、
+  `retry`、`promptInactivity` 非 null 即拒绝；槽位必须在图里声明
   （`default` 除外）。
-- 触发：导入含 `tool` 等首期不执行节点的文档；导入 agent 节点带上述任一字段的文档；导入引用未声明
+- 触发：导入含 `tool` 等首期不执行节点的文档；导入 agent 节点带上述任一真正启用的字段的文档；导入引用未声明
   槽位的文档；同包其他文档合法。
 - 必须成立：导入调用与编辑器发布同源的 `validateWorkflowGraph`；拒绝是逐文档的
   `document_not_executable_graph`，带门禁的问题列表；失败文档不产生 workflow 与快照；同包其他文档
@@ -76,7 +77,7 @@
   的 `TestWorkflowPublishValidatesTheGraphAndSavingDoesNot` 与
   `TestWorkflowPublishRefusesUnusedAgentConfiguration`，以及
   [`internal/core/workflow_graph_test.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_graph_test.go)
-  的 `TestValidateWorkflowGraph` 覆盖。
+  的 `TestValidateWorkflowGraph` 覆盖。cloud#99 的 `TestWorkflowAcceptsDesktopDefaultAgentConfig` 补上"未启用默认值放行"一侧：真实 desktop 导出的 agent 节点（空 `skills`/`mcps`、`interactive: false`）经 workflow 资产导入得到 `imported`、`snapshotVersion: 1`，且快照里三个默认值原样保留（不规范化）。
 
 ## Provider Uninstall Or Upgrade Never Rewrites Imported Snapshots
 
