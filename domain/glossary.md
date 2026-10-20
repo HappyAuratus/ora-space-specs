@@ -247,6 +247,31 @@ Node 用临时 index、`write-tree`、`commit-tree` 为剩余未提交改动创�
 Cloud 为一次交付执行签发的、针对固定对象键和限定时长的预签名上传请求。它是短期持有者凭据，不属于执行
 输入，任何一方都不持久化。
 
+## Scheduled Task
+
+### Scheduled Task（定时任务）
+
+用户创建的周期任务持久定义：把随版本冻结的 Prompt、执行目标与无人值守同意组合为一个持久定义，
+执行归属（`local` 或 `cloud`）在创建时固定且不可切换。`local` 端的 future occurrence 只由 Desktop
+进程内 scheduler 产生；`cloud` 端的 future occurrence 只由服务端持久调度器产生。任务定义与运行
+历史的存储位置和可见范围由执行归属一端决定。
+
+### Scheduled Occurrence（计划触发）
+
+一次计划触发的稳定身份，由 `(taskId, scheduledAt)` 唯一标识，`scheduledAt` 是 UTC 时间点。同一
+occurrence 至多接纳一个 Scheduled Run；重启、重复评估与迟到重放都复用同一身份。
+
+### Scheduled Run（定时运行）
+
+被接纳的一次计划触发的记录：冻结接纳时的任务 revision 与执行输入，引用由此产生的目标运行；
+运行终态从目标运行的持久事实投影，调度层不复制运行状态机。
+
+### Unattended Consent（无人值守同意）
+
+用户为定时任务授予的显式授权：在执行归属一端规定的隔离执行环境中全自动批准工具调用（`local` 为
+独立 worktree——worktree 不是沙箱；`cloud` 为一次性运行 Workspace），并知晓额度消耗与执行身份
+代价。策略名与同意时间随任务持久化；撤销同意自动停用任务，既有运行事实不改写。
+
 ## Node Worktree
 
 ### Workspace
