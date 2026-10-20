@@ -14,8 +14,10 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 本 ADR 处于 `proposed`。它承接 [desktop Scheduled Task 根决策](../../desktop/core/scheduled-task/0-local-and-cloud-execution-ownership.md)
 显式留给 Cloud 决策的契约：任务的账号与存储归属、可见范围、无头单会话 API、通知、发起者归属与
 费用，以及 Desktop `cloud` 选项的解除禁用条件。首期只做无头 Prompt 单会话：不接 Workflow 目标、
-不解析 `executorSlot`、不依赖 ora-space/circus#60 / #67 的 Server Workflow 执行链。核心测试用例
-在本文评审通过、状态改为 `approved` 后，按最终同意的决策补充到 `test-cases/cloud/scheduled-task/`。
+不解析 `executorSlot`、不接入 [Workflow 根决策](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)
+的 Server Workflow 执行链。核心测试用例见
+[`test-cases/cloud/scheduled-task/admission-and-session-bounds.md`](../../../test-cases/cloud/scheduled-task/admission-and-session-bounds.md)，
+随本 PR 登记义务；状态在本文置为 `approved` 时按最终同意的决策核对。
 
 涉及 Cloud 的 `internal/core`（定时任务定义、occurrence、调度 worker）、PostgreSQL 迁移与公开 API。
 兼容性边界：manual run、`@` Confirm、Workflow 路径与 desktop 决策全部不变；`issue_runs` 只增加
@@ -36,7 +38,8 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 | [有界启动与未派发撤回](../issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)：启动预算、结束确认窗口与残留账本按数据库时间有界收尾 | 继承，不变：定时运行不重置、不续期任何窗口，也不把业务终态当清理证据 |
 | [残留 Agent Run 回收](../issue-run/20261018-residual-agent-run-reclamation.md)：业务终态与时间流逝都不触发物理终止 | 继承，不变：60 分钟截止只产生取消请求，物理终止只经既有证据链 |
 | [cloud/model-access 根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) D3：创建运行的同一事务冻结连接版本、密钥引用、模型与发起者 Git 身份；撤销的绑定不可复活 | 继承，不变：每次接纳以创建者当时的个人配置接纳并冻结（D5）；被否定的配置不回退、不替换 |
-| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 继承，不变：无头单会话的发起者是任务创建者；本文不开放任何追加入口（D3） |
+| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 修改：无头单会话在首个成功回合即请求结束会话（D3），不存在可追加窗口；发起者的 `canAppend` 能力因此没有落点，结束权仍归发起者与当前租户管理员 |
+| [Workflow 会话结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md)：单回合会话由调度器读取成功 `turnEnded` 回执后放出 `EndSession{idle_timeout}`，有界等待终态 | 继承同判据与同机制：定时运行是绑定 issue 的 agent IssueRun（Thread/`thread_state` 完整存在），本文把该机制应用到无头单会话上，不新增 reason、不新增 Controller 契约 |
 | [取消写入者（G-026）](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)：取消是请求加有界终态，首期必须有取消的写入者 | 继承并复用：定时运行的 60 分钟截止是该写入者的一个调用方（D4） |
 | [tenancy 一 Space 一租户](../tenancy/20260923-one-space-per-tenant.md)：有效租户成员资格是授权边界；被禁用成员的新访问立即拒绝 | 继承，不变：任务读取与触发资格都按当前成员资格判定（D1、D5） |
 | [project Space 归属](../project/0-project-space-scoping.md)：跨 Space 引用硬禁止，归属校验必须复用同一不变量 | 继承，不变：任务只存 `issue_id`，Project 一律由 issue 的 `project_ref` 派生（D1） |
@@ -48,7 +51,8 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 ### D1：任务定义归属创建者、绑定一个 issue，读取跟随 issue 可见性，管理仅限创建者
 
 定时任务是租户内的持久定义，至少持久化：稳定 ID、`tenant_id`、绑定 `issue_id`、名称、随版本冻结的
-Prompt、执行 Agent（`space_agents` 引用，保存时冻结插件 desired 版本）、创建者的模型选择、schedule
+Prompt、执行 Agent（`space_agents` 引用；插件版本不在此冻结，由既有 IssueRun 用例在接纳时按 Space
+当时值快照，见 D3 与不变量 6）、创建者的模型选择、schedule
 与创建时固定的 IANA 时区、执行归属（`cloud`，创建时写入，此后不可变更）、无人值守同意（策略名与
 同意时间）、定义 revision、启用状态、软删除墓碑、创建/更新时间与下一次触发投影。修改 schedule、
 时区、Prompt、Agent 或模型选择增加 revision；纯展示修改（如名称）不增加。
@@ -61,7 +65,8 @@ Prompt、执行 Agent（`space_agents` 引用，保存时冻结插件 desired �
 - **可见性**：任务定义与运行历史对「能读取该绑定 issue 的有效租户成员」可见，与 Thread 读取权限
   先例一致；公开 API 对不存在与无权限统一返回 `404 not_found`。创建、编辑、启停、删除与撤销同意
   仅限任务创建者：无人值守同意是个人授权，多人可改会造成授权来源不清晰。
-- **绑定与派生**：任务只持久化 `issue_id`；Project 由 issue 的 `project_ref` 派生，跨 Space 引用
+- **绑定与派生**：任务只持久化 `issue_id`，绑定在创建时固定、不可修改——需要换目标时复制为新任务
+  并停用旧任务（与执行归属的不可切换一致）；Project 由 issue 的 `project_ref` 派生，跨 Space 引用
   按 [Project 归属决策](../project/0-project-space-scoping.md) 硬禁止。绑定 issue 删除后任务保留但
   自动停用，不自动解绑或改绑。
 
@@ -80,8 +85,9 @@ schedule 首版只有三种受限周期：每 N 小时（最短间隔 1 小时�
   期间仍在迟到窗口内的最近到期点照常接纳。这条 `missed` 在 100 条保留里按一条普通历史记录计数，
   与运行、跳过事实同样参与最旧删除。
 - **锚点**：每 N 小时任务以启用（或从禁用重新启用）时刻为锚，首个到期点为锚点加间隔，对齐 desktop
-  的启用锚语义；daily / weekly 按任务时区的日历求值。列表中的下一次触发投影是可重算展示值，不是
-  触发事实。
+  的启用锚语义；daily / weekly 按任务时区的日历求值。**停用（或自动停用）与重新启用之间的到期点
+  一律不评估、不补记 `missed`**：调度器只求值启用（重新启用）时刻之后的到期点，停用区间不视作
+  停机。列表中的下一次触发投影是可重算展示值，不是触发事实。
 - **身份**：`scheduled_task_occurrences` 以 `(task_id, scheduled_at)` 唯一。调度器多副本、重启、
   部署或重复扫描都按同一身份幂等：先到的事务接纳，后到的读取既有结果原样返回，不产生第二个运行。
 
@@ -100,6 +106,16 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
   建立第二个 Agent 运行入口。运行记录其触发来源（任务与 occurrence）；调度器不写评论、不伪造用户
   交互。首条 prompt 沿用既有的首条 prompt 模板路径，其中任务文本是随 task revision 冻结的 Prompt。
 - **每次触发新建会话**：不复用既有会话，不续接上一次运行的 Thread。
+- **无头会话在首个成功回合后结束**：无人值守运行没有人回复追加轮次，若沿用交互式空闲窗口，每次
+  运行都会空等空闲期满并可能与 60 分钟截止相撞。[Workflow 会话结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md)
+  已为单回合会话定了机制：调度器从会话执行的最近一条回执读取「首个成功 `turnEnded`（`stop_reason`
+  非 `cancelled`）」作为初始回合已结束的证据，跳过为多轮对话设计的空闲窗口，直接放出既有
+  `EndSession` 中继（`reason = idle_timeout`），有界等待会话终态。本文**继承同判据与同机制**，把它
+  应用到绑定 issue 的 agent IssueRun 上：无头单会话运行在首个成功回合后即被请求结束，IssueRun
+  终态照常推导为 `completed`；非成功的 `TurnEnded` 不构成结束证据，运行照常由 Thread 状态机与截止
+  收敛。据此，无头运行不存在可追加轮次的窗口：创建者作为发起者的 `canAppend` 能力在 `pending |
+  active` 期间理论存在，但会话在首个成功回合即进入 `ending`，追加请求按既有 `409 thread_closed`
+  拒绝；本文不新增任何追加入口或交互界面。
 - **跳过与失败**：同一任务上一次接纳的运行尚未到达终态时，该到期点记 `skipped_busy`，不排队不补跑。
   首期不设跨任务全局并发上限：并发已受既有编排约束（每运行独立 Workspace、`one_project_operation`
   串行建删、沙盒容量），全局配额数值属于后续配额决策（见「未解决的问题」）。
@@ -118,9 +134,13 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
   投影不得从它反推。取消写入者对定时运行写取消请求的同一事务里，调度层为该 occurrence 记录一条
   截止取消事实（含写入时间）。事实只写一次：以 occurrence 身份幂等，重复的截止扫描、重启重放都
   不覆盖、不重复记录；用户先于截止取消的运行不产生该事实。
-- **投影规则**：任务历史中该运行展示为 `failed · timeout` 当且仅当截止取消事实存在；运行先于截止
-  自然结束（completed / failed / 用户取消）时按 IssueRun 自身终态展示，即便截止扫描随后发生也不
-  追改。两层事实分别记录、互不改写。
+- **截止写入的边界**：截止扫描只在会话尚未进入 `ending | ended`、且 IssueRun 尚未到达终态时写取消
+  请求与截止事实。会话已经结束的运行（例如正停留在 `delivering` 的交付重试）不再被截止取消，其
+  交付按既有 D5 的上限收敛；截止扫描对这类运行是空操作，不补写事实。
+- **投影规则**：任务历史展示为 `failed · timeout` 当且仅当**截止取消事实存在且 IssueRun 终态为
+  `cancelled`**；其余情况一律按 IssueRun 自身终态展示（`completed → succeeded`、`failed → failed`、
+  无截止事实的 `cancelled → cancelled`）。运行是否「先于截止自然结束」以 IssueRun 终态为准——会话
+  结束只说明收尾开始，终态在收尾完成后写入；两层事实分别记录、互不改写。
 - **前置门禁**：取消写入者合入并验证之前，`cloud` 不得成为可选执行位置，Web 端不得保存 `cloud`
   任务（继承根决策 D5 的禁用承诺）。
 
@@ -130,7 +150,7 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
 |---|---|---|
 | 绑定 issue 存在、未删除且有 `project_ref`；Space 未归档 | ✓ | ✓（按当时状态） |
 | Project 的仓库满足首期「仅匿名公开 Git」 | ✓ | ✓ |
-| Agent（`space_agents`）active 且冻结的插件版本可解析 | ✓ | ✓ |
+| Agent（`space_agents`）active 且当时 desired 版本可解析 | ✓ | ✓（接纳时由既有用例快照该值） |
 | 创建者是有效租户成员 | ✓ | ✓（失效即自动停用任务） |
 | 创建者个人模型配置可用（连接启用、密钥已配置、模型在目录、能力满足） | ✓ | ✓（以当时配置接纳并在运行创建事务中冻结） |
 | 无人值守同意有效且策略受支持 | ✓ | ✓（撤销即失败） |
@@ -233,8 +253,8 @@ IssueRun 的持久事实为准。
 
 ## 落地顺序
 
-1. **ADR 评审与批准**：按评审结论纠正本文后置为 `approved`，并在 `test-cases/cloud/scheduled-task/`
-   按最终同意的决策补充核心测试用例。
+1. **ADR 评审与批准**：按评审结论纠正本文后置为 `approved`，并核对
+   `test-cases/cloud/scheduled-task/admission-and-session-bounds.md` 的义务与最终同意的决策一致。
 2. **取消写入者（G-026）**：确认或交付 agent 运行侧的取消写入者及其直接验证（与 Workflow 落地共用
    同一收尾路径）；未就绪前不开放保存 `cloud` 任务。
 3. **存储与调度 worker**：任务与 occurrence 的迁移、幂等接纳事务、周期扫描与 D5 资格校验；完成
