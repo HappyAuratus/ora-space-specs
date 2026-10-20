@@ -12,8 +12,9 @@ Controller 契约不变，不建 `controller/workflow`。
 
 本决策于 2026-10-16 经 owner 批准，状态为 `approved`，首期实现与真实边界验收尚未完成（Cloud 至今没有
 工作流执行者）。核心用例见[执行身份与调用绑定](../../../test-cases/cloud/workflow/execution-identity-and-invocation.md)、
-[调度串行与恢复](../../../test-cases/cloud/workflow/scheduler-serialism-and-recovery.md)与
-[发布与启动门禁](../../../test-cases/cloud/workflow/publish-and-start-admission.md)，新保障的直接证据按核心用例
+[调度串行与恢复](../../../test-cases/cloud/workflow/scheduler-serialism-and-recovery.md)、
+[发布与启动门禁](../../../test-cases/cloud/workflow/publish-and-start-admission.md)与
+[Start 输入 kickoff 取值](../../../test-cases/cloud/workflow/start-input-kickoff.md)，新保障的直接证据按核心用例
 逐项登记为 `Partial` / `Missing`。涉及 cloud 的规范图 schema、运行身份模型、调度与执行契约、发布与启动门禁；
 涉及 specs 的规范图 schema 与首期核心用例（见「落地顺序」）；涉及 desktop 只作为参考实现，**本决策不修改任何
 desktop 决策**。参考实现的证据基线：desktop `8909f07`（引擎模块非测试代码约 9.3 千行、测试约 8.2 千行，
@@ -182,6 +183,19 @@ cloud#70/#74 到位；指向已声明但尚未赋值的根仍按「未设置」�
 不是回归。Start 变量根的形状同批变更：`input` 现在是 kickoff 提示词（字符串）而不再是整个 run input，每个
 `inputVariables` 变量各自成根；历史快照里按旧形状写的 `[start, input, ...]` 升级后会从「走进整个 run input」变成路径
 错误，`[start, input]` 从整个表单变成提示词，这类「以前能跑、现在取值不同」的变化同样是预期行为。
+
+**Start `input` 根在运行时的取值来源**：运行输入的保留键 `input` 是本次 kickoff 文本（字符串），其余键仍是
+Start / global 的变量值（复用 `workflow_runs.input`，不加列、不加迁移、不加契约字段）。`[start, input]` 与模板
+`{{#start.input#}}` 先读运行行 `workflow_runs.input` 的 `input` 键；没有（缺键或 `null`）时回退到冻结快照里 Start
+节点 authored 的 `data.input`；两者都没有时该根不写入变量池（按未设置求值），与 desktop 的
+`kickoff_input.or_else(|| graph.start_node().instruction)` 一致。空字符串保留为值（present-empty），
+`exists` / `not_exists` / `empty` / `not_empty` 据此区分「未设置」与「存在但为空」。保留键只接受字符串，其它 JSON
+类型在启动门禁被拒（400 `invalid_field_value`，`field=input`）；作者声明同名 `input` 输入变量时其值被 kickoff
+覆盖，与 desktop 变量池先声明保留根、再被 kickoff 覆盖的行为一致。历史运行没有这个覆盖值键，继续用其快照冻结时
+的 authored 文本求值，不回填；但**已有字符串 `input` 键的历史行会按新语义读作本次 kickoff**（对持久状态的重新
+解释），非字符串的历史 `input` 键仍回退 authored。`@` Confirm 入口把平台字段 `prompt` 的值写进
+`executionInput["input"]`，随 cloud#71 到位；作者自己声明了 `prompt`（平台字段不注入）或资产禁用了该字段时回退
+authored。desktop legacy `data.instruction` 由前端在读取文档时迁移为 `input`，服务端只读 `data.input`、不回退。
 
 **未完成的分支不拒绝**：没有 `cases`、或某个分支还没有比较项，都按"落到 else"处理，两侧语义一致，属于草稿的
 正常中间状态。
