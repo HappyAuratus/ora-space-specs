@@ -6,6 +6,8 @@
 `crates/utils` 测试受限下载器。Controller 的中继与能力检查见
 [恢复契约](../../cloud/controller-integration/revision-restore-contract.md)。
 
+本文件描述已实现的 bundle 恢复决策与 desktop main 的现状。[Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)修改了该决策 D2 的时限范围（从授权等待与下载扩展到恢复全程、命令预算裁剪到剩余截止）与 D5 的交付判定（恢复未完成的会话不探查工作区）；这些新义务由[恢复截止与停止确认用例](restore-deadline-and-stop-confirmation.md)登记，本文件的证据只按已实现行为计，不推导新决策已覆盖。
+
 ## Restore Runs Before The Agent Starts And Failure Ends The Session
 
 ### 风险
