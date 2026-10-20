@@ -13,7 +13,7 @@
   到期点）恢复后每个任务至多新增一条 `missed`（最近一个已过迟到窗口的到期点），它按一条普通记录
   参与 100 条保留；停用（含自动停用）与重新启用之间的到期点不评估、不补记。
 - 禁止结果：同一 occurrence 两个运行、逐点补记 `missed`、把停用区间当作停机、失败或超时自动重试。
-- 决策依据：根决策 D2 与不变量 2、5；根决策 D4/D7 的 `missed` 语义与保留计数。
+- 决策依据：本 ADR D2 与不变量 2、5；desktop 根决策 D4/D7 的 `missed` 语义与保留计数。
 
 ### 验证义务与证据
 
@@ -34,7 +34,7 @@
   运行不被截止追改）；用户先于截止的取消不产生截止事实。
 - 禁止结果：从 `cancel_requested_at` 反推超时、对已完成/失败/交付中的运行写超时投影、同一 occurrence
   两条截止事实、绕过取消请求直接伪造终态。
-- 决策依据：根决策 D4；IssueRun 根决策 D6 与有界启动收尾的既有语义。
+- 决策依据：本 ADR D4；IssueRun 根决策 D6 与有界启动收尾的既有语义。
 
 ### 验证义务与证据
 
@@ -50,14 +50,16 @@
   终态绕过会话收尾。
 - 前置状态：无头单会话运行已接纳并开始执行任务 Prompt。
 - 触发：会话执行接管到首个成功 `turnEnded`（`stop_reason` 非 `cancelled`）回执。
-- 必须成立：调度器按[工作流会话结束决策](../../decisions/cloud/workflow/20261019-workflow-session-end-after-initial-turn.md)
-  的同判据与同机制放出 `EndSession{idle_timeout}`，有界等待会话终态；IssueRun 终态推导为
-  `completed`；非成功的 `TurnEnded` 不构成结束证据；创建者的追加请求在会话进入 `ending` 后按
-  `409 thread_closed` 拒绝；结束请求经既有 Controller 中继，不新增契约。
+- 必须成立：定时运行的空闲窗口为 0——调度器按 Thread D4 原判据（成功 `turnEnded` 且没有 `queued`
+  用户轮次）确认进入 `idle` 后，立即放出 `EndSession{idle_timeout}`，有界等待会话终态（既有结束确认
+  窗口）；IssueRun 终态推导为 `completed`；非成功的 `TurnEnded` 不构成结束证据；定时运行整个生命
+  周期 `canAppend = false`，任何 Thread 状态下追加一律 `409 thread_closed`，前端不显示输入框；结束
+  请求经既有 Controller 中继，不新增契约。
 - 禁止结果：调度器直接伪造会话终态或运行状态、复用交互式空闲窗口空等、为无头运行新增 reason 或
-  第二套结束命令。
-- 决策依据：根决策 D3；[工作流会话结束决策](../../decisions/cloud/workflow/20261019-workflow-session-end-after-initial-turn.md)
-  （同判据与同机制）；[个人模型发起者决策](../../decisions/cloud/thread/20261010-personal-model-initiator-controls-input.md)
+  第二套结束命令、在有 `queued` 用户轮次时结束会话。
+- 决策依据：本 ADR D3（对 [Thread 根决策 D4](../../decisions/cloud/thread/0-durable-agent-thread-with-user-turns.md)
+  的修改，仅限定时运行）；[Workflow 会话结束决策](../../decisions/cloud/workflow/20261019-workflow-session-end-after-initial-turn.md)
+  为同判据先例；[个人模型发起者决策](../../decisions/cloud/thread/20261010-personal-model-initiator-controls-input.md)
   的结束权边界。
 
 ### 验证义务与证据
@@ -66,7 +68,7 @@
 | --- | --- | --- |
 | 首个成功 `turnEnded` 后放出 `EndSession{idle_timeout}`，IssueRun 终态 `completed` | 尚未实现 | `Missing` |
 | 非成功 `TurnEnded` 不触发结束，运行由截止收敛 | 尚未实现 | `Missing` |
-| 无头运行的追加请求被既有 `409 thread_closed` 拒绝 | 尚未实现 | `Missing` |
+| 定时运行任何状态下追加均被 `409 thread_closed` 拒绝（`canAppend = false`） | 尚未实现 | `Missing` |
 
 ## Eligibility Must Be Rechecked At Save And Every Admission
 
@@ -79,7 +81,7 @@
   接纳时按 Space 当时值快照；创建者成员资格失效或绑定 issue 删除时任务自动停用，重新满足条件不
   自动恢复；同意撤销自动停用且既有运行事实不改写。
 - 禁止结果：跳过校验直接接纳、失败换用其他模型或执行位置、把资格失效改判为其他原因、自动转移任务。
-- 决策依据：根决策 D5、D1 与不变量 6、8、9。
+- 决策依据：本 ADR D5、D1 与不变量 6、8、9。
 
 ### 验证义务与证据
 
@@ -97,7 +99,7 @@
 - 必须成立：写入第 101 条时在同一事务从最旧开始清理；活跃（`accepted / running`）运行不清理；被清理
   的 `missed` 按一条普通记录计数；IssueRun 及其 Thread / Revision 审计事实不受清理影响。
 - 禁止结果：清理刚写入的事实、清理活跃运行、把 Cloud 侧清理扩散到 IssueRun 审计数据。
-- 决策依据：根决策 D7 与不变量 10。
+- 决策依据：本 ADR D6 与不变量 10。
 
 ### 验证义务与证据
 
@@ -114,7 +116,7 @@
 - 必须成立：任务与历史对能读取绑定 issue 的有效租户成员可见，不存在与无权限统一 `404 not_found`；
   管理操作仅限任务创建者；绑定 issue 与执行归属创建时固定、不可修改；Space 归档后不产生新接纳。
 - 禁止结果：把管理权开放给其他成员、按客户端提供的 scope 判定归属、归档 Space 后继续接纳运行。
-- 决策依据：根决策 D1 与不变量 9、11；[Space API 根决策](../../decisions/cloud/api-boundary/0-space-api-and-event-stream.md)
+- 决策依据：本 ADR D1 与不变量 9、11；[Space API 根决策](../../decisions/cloud/api-boundary/0-space-api-and-event-stream.md)
   的 `404` 语义与 [Project 归属决策](../../decisions/cloud/project/0-project-space-scoping.md) 的跨 Space 禁止。
 
 ### 验证义务与证据

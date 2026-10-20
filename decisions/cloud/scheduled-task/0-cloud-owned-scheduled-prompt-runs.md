@@ -38,8 +38,9 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 | [有界启动与未派发撤回](../issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)：启动预算、结束确认窗口与残留账本按数据库时间有界收尾 | 继承，不变：定时运行不重置、不续期任何窗口，也不把业务终态当清理证据 |
 | [残留 Agent Run 回收](../issue-run/20261018-residual-agent-run-reclamation.md)：业务终态与时间流逝都不触发物理终止 | 继承，不变：60 分钟截止只产生取消请求，物理终止只经既有证据链 |
 | [cloud/model-access 根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) D3：创建运行的同一事务冻结连接版本、密钥引用、模型与发起者 Git 身份；撤销的绑定不可复活 | 继承，不变：每次接纳以创建者当时的个人配置接纳并冻结（D5）；被否定的配置不回退、不替换 |
-| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 修改：无头单会话在首个成功回合即请求结束会话（D3），不存在可追加窗口；发起者的 `canAppend` 能力因此没有落点，结束权仍归发起者与当前租户管理员 |
-| [Workflow 会话结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md)：单回合会话由调度器读取成功 `turnEnded` 回执后放出 `EndSession{idle_timeout}`，有界等待终态 | 继承同判据与同机制：定时运行是绑定 issue 的 agent IssueRun（Thread/`thread_state` 完整存在），本文把该机制应用到无头单会话上，不新增 reason、不新增 Controller 契约 |
+| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)：只有发起者可追加输入，发起者与当前租户管理员可结束 | 修改，仅限定时运行：定时运行整个生命周期 `canAppend = false`，任何 Thread 状态下追加均 `409 thread_closed`，前端不显示输入框；结束权仍归发起者与当前租户管理员 |
+| [Thread 根决策 D4](../thread/0-durable-agent-thread-with-user-turns.md)：会话在用户结束或空闲期满（默认 15 分钟）时结束；成功 `TurnEnded` 且没有 `queued` 用户轮次是 `idle` 判据；其替代方案表否决「Agent 首轮结束即结束会话」 | 修改，仅限定时运行：判据不变，空闲窗口为 0——进入 `idle` 即 `ending` 并放出 `EndSession{idle_timeout}`；该否决针对交互式 Thread，无人值守定时运行没有人会回复，空闲等待没有收益 |
+| [Workflow 会话结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md)：单回合会话由调度器读取成功 `turnEnded` 回执后放出 `EndSession{idle_timeout}` | 先例、同判据：它处理的 WorkflowRun 没有 Thread，因此「继承判据、不继承机制」且明确 IssueRun 与 Thread 路径不变；本文对 IssueRun 的修改走上方 Thread D4 行 |
 | [取消写入者（G-026）](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)：取消是请求加有界终态，首期必须有取消的写入者 | 继承并复用：定时运行的 60 分钟截止是该写入者的一个调用方（D4） |
 | [tenancy 一 Space 一租户](../tenancy/20260923-one-space-per-tenant.md)：有效租户成员资格是授权边界；被禁用成员的新访问立即拒绝 | 继承，不变：任务读取与触发资格都按当前成员资格判定（D1、D5） |
 | [project Space 归属](../project/0-project-space-scoping.md)：跨 Space 引用硬禁止，归属校验必须复用同一不变量 | 继承，不变：任务只存 `issue_id`，Project 一律由 issue 的 `project_ref` 派生（D1） |
@@ -106,16 +107,22 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
   建立第二个 Agent 运行入口。运行记录其触发来源（任务与 occurrence）；调度器不写评论、不伪造用户
   交互。首条 prompt 沿用既有的首条 prompt 模板路径，其中任务文本是随 task revision 冻结的 Prompt。
 - **每次触发新建会话**：不复用既有会话，不续接上一次运行的 Thread。
-- **无头会话在首个成功回合后结束**：无人值守运行没有人回复追加轮次，若沿用交互式空闲窗口，每次
-  运行都会空等空闲期满并可能与 60 分钟截止相撞。[Workflow 会话结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md)
-  已为单回合会话定了机制：调度器从会话执行的最近一条回执读取「首个成功 `turnEnded`（`stop_reason`
-  非 `cancelled`）」作为初始回合已结束的证据，跳过为多轮对话设计的空闲窗口，直接放出既有
-  `EndSession` 中继（`reason = idle_timeout`），有界等待会话终态。本文**继承同判据与同机制**，把它
-  应用到绑定 issue 的 agent IssueRun 上：无头单会话运行在首个成功回合后即被请求结束，IssueRun
-  终态照常推导为 `completed`；非成功的 `TurnEnded` 不构成结束证据，运行照常由 Thread 状态机与截止
-  收敛。据此，无头运行不存在可追加轮次的窗口：创建者作为发起者的 `canAppend` 能力在 `pending |
-  active` 期间理论存在，但会话在首个成功回合即进入 `ending`，追加请求按既有 `409 thread_closed`
-  拒绝；本文不新增任何追加入口或交互界面。
+- **无头会话在首个成功回合后结束（修改 Thread D4，仅限定时运行）**：无人值守运行没有人回复追加
+  轮次，若沿用交互式空闲窗口，每次运行都会空等空闲期满并可能与 60 分钟截止相撞。本文**修改
+  [Thread 根决策 D4](../thread/0-durable-agent-thread-with-user-turns.md)，仅限定时运行**：Thread 仍按
+  D4 原有判据进入 `idle`（成功 `TurnEnded` 且没有 `queued` 用户轮次），但定时运行的空闲窗口为
+  0——进入 `idle` 即转入 `ending`，经既有 `thread_commands`（`run_id`）路径放出
+  `EndSession{idle_timeout}`，会话终态后按 IssueRun D4 推导为 `completed`。这仍是 Thread D4 的状态机
+  与 IssueRun 既有路径，只是把空闲窗口改为 0；判据不省略「没有 `queued` 用户轮次」。[Workflow 会话
+  结束决策](../workflow/20261019-workflow-session-end-after-initial-turn.md) 是同判据的先例（它处理的
+  WorkflowRun 没有 Thread，因此「继承判据、不继承机制」，且其兼容边界明确 IssueRun 与 Thread 路径
+  不变），本文不搬用其机制。会话进入 `ending` 后的收敛只走 IssueRun 既有的结束确认窗口（最早一个
+  `end_session` 的 `created_at` 加 `AgentEndConfirmTimeout`，不续期），60 分钟截止不再是这段时间的
+  兜底（见 D4）。
+- **定时运行整个生命周期不可追加**：修改 [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)，
+  仅限定时运行——定时运行的 `canAppend = false`，任何 Thread 状态下追加一律 `409 thread_closed`，
+  前端不显示输入框。首轮执行期间接受的追加轮次会被会话结束静默丢弃，因此必须整体禁用而不是只在
+  结束后拒绝；「无头 Prompt 单会话」由此名副其实。
 - **跳过与失败**：同一任务上一次接纳的运行尚未到达终态时，该到期点记 `skipped_busy`，不排队不补跑。
   首期不设跨任务全局并发上限：并发已受既有编排约束（每运行独立 Workspace、`one_project_operation`
   串行建删、沙盒容量），全局配额数值属于后续配额决策（见「未解决的问题」）。
@@ -142,7 +149,8 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
   无截止事实的 `cancelled → cancelled`）。运行是否「先于截止自然结束」以 IssueRun 终态为准——会话
   结束只说明收尾开始，终态在收尾完成后写入；两层事实分别记录、互不改写。
 - **前置门禁**：取消写入者合入并验证之前，`cloud` 不得成为可选执行位置，Web 端不得保存 `cloud`
-  任务（继承根决策 D5 的禁用承诺）。
+  任务（继承根决策 D5 的禁用承诺）。会话进入 `ending` 后截止扫描即空操作，这段时间的收敛只依赖
+  IssueRun 既有的结束确认窗口（见 D3）——60 分钟截止对收尾阶段不再兜底。
 
 ### D5：保存与每次接纳都校验资格，失败明确到原因，不回退不重试
 
@@ -177,9 +185,9 @@ Cloud 运行一个持久调度 worker（数据库时间为准、无跨事务必�
 IssueRun 的持久事实为准。
 
 - **100 条保留**作用于任务历史视图的记录（occurrence 行）：写入第 101 条时在同一事务删除最旧的
-  记录。清理只移除任务侧的展示与关联行，不删除、不改写 IssueRun 及其 Thread / Revision 审计事实；
-  被清理的运行在 issue 上仍完整可查。首期没有跨任务全局上限，历史不产生 `skipped_capacity`；该
-  状态名保留用于两端展示对齐。
+  记录；若最旧的记录是尚未到达终态的活跃运行，则顺延到下一条非活跃记录。清理只移除任务侧的展示
+  与关联行，不删除、不改写 IssueRun 及其 Thread / Revision 审计事实；被清理的运行在 issue 上仍完整
+  可查。首期没有跨任务全局上限，历史不产生 `skipped_capacity`；该状态名保留用于两端展示对齐。
 - 禁用任务只阻止未来接纳；删除任务写软删除墓碑并保留既有记录语义。
 - 两端只对齐展示用的字段名与状态名，不共享 ID、存储或同步协议；本地任务与 Cloud 任务互不同步、
   不迁移，需要换执行位置时复制为新任务并停用旧任务。
