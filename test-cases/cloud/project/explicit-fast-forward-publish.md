@@ -2,8 +2,8 @@
 
 依据 [发布 ADR](../../../decisions/cloud/project/20261017-explicit-fast-forward-publish.md)（`implemented`）。下文的 D 编号与不变量
 编号都指这篇 ADR。执行器一侧的推送与分类见 [执行器边界用例](../repo-executor/repo-executor-boundary.md)。发布的 API、
-审批、状态机与 reconciler 已随 cloud#76（`ceb39bc`）合入 cloud 的 main，下列义务按该提交的直接测试登记；
-没有直接测试的义务保持 **Missing**。
+审批、状态机与 reconciler 已随 cloud#76（`ceb39bc`）合入 cloud 的 main，`revisionId` 发布入口随 cloud#81（`a9c5f20`）
+补齐；下列义务按这些提交的直接测试登记，没有直接测试的义务保持 **Missing**。
 
 ## Only Approved Publish Operations Write The External Repository
 
@@ -22,14 +22,16 @@
 
 ## Publish Sources Are Any Workspace Branch Or Delivery Ref Of The Project
 
-- 风险：发布源按 Workspace 创建者校验，与契约放宽后的共享读取不一致；`revisionId` 发布指向逻辑 ref 而不是交付 ref。
-- 前置状态：同一 Project 内多个 Workspace 的分支和交付 ref；已登记的 Revision。
-- 触发：以他人 Workspace 的分支作为源；以交付 ref 作为源；只给 `revisionId`；源 ref 不存在；`expectedOldOid` 等于 `sourceCommit`。
-- 必须成立：本 Project 任意 Workspace 分支或交付 ref 都可作源，Cloud 经 ref 查询确认存在；带 `revisionId` 的发布以 `409 revision_not_publishable` 结束，不访问外部写入（Revision 记录保存的是逻辑 ref，见发布 ADR D1 的偏离）；`expectedOldOid` 等于源提交时 `400 nothing_to_publish`。
-- 禁止结果：按创建者拒绝合法的源；跨 Project 的 ref 被接受；`revisionId` 与 `sourceRef` 同时给出时被接受；`revisionId` 发布被当作可发布源。
+- 风险：发布源按 Workspace 创建者校验，与契约放宽后的共享读取不一致；`revisionId` 发布指向 Revision 的逻辑 ref 而不是它实际交付的 ref。
+- 前置状态：同一 Project 内多个 Workspace 的分支和交付 ref；已登记的 Revision，包括经 Git 交付的（有 `delivery_ref`）和迁移前登记的 bundle 形状（`delivery_ref` 为 NULL）。
+- 触发：以他人 Workspace 的分支作为源；以交付 ref 作为源；只给 `revisionId`（经 Git 交付与 bundle 形状的 Revision 各一种）；源 ref 不存在；`expectedOldOid` 等于 `sourceCommit`。
+- 必须成立：本 Project 任意 Workspace 分支或交付 ref 都可作源，Cloud 经 ref 查询确认存在；带 `revisionId` 的发布取该 Revision 登记时核验的交付 ref 与最终提交作为 `sourceRef`/`sourceCommit`，进入正常发布流程；没有交付 ref 的 bundle 形状 Revision 以 `409 revision_not_publishable` 结束，不访问外部写入；`expectedOldOid` 等于源提交时 `400 nothing_to_publish`。
+- 禁止结果：按创建者拒绝合法的源；跨 Project 的 ref 被接受；`revisionId` 与 `sourceRef` 同时给出时被接受；`revisionId` 发布使用逻辑 ref `refs/ora/revisions/<runId>` 作为源；bundle 形状的 Revision 被当作可发布源。
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
-  `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency` 覆盖交付 ref 作为源、创建前经 Cloud ref 查询确认。仍缺：
-  他人的 Workspace 分支作源、跨 Project ref 拒绝、`revisionId` 返回 `409 revision_not_publishable`、`400 nothing_to_publish`。
+  `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency` 覆盖交付 ref 作为源、创建前经 Cloud ref 查询确认；
+  `integration/repository_publish_revision_test.go` 的 `TestPublishingARevisionUsesItsVerifiedDeliveryRef` 覆盖带
+  `revisionId` 的发布返回 `201`，且 `sourceRef` 与 `sourceCommit` 等于该 Revision 的交付 ref 与最终提交。仍缺：
+  他人的 Workspace 分支作源、跨 Project ref 拒绝、bundle 形状 Revision 返回 `409 revision_not_publishable`、`400 nothing_to_publish`。
 - 决策依据：D1，不变量 5。
 
 ## Publish States Follow The Executor Classification And Running Happens Once
