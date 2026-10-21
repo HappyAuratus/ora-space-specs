@@ -216,7 +216,8 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只�
 
 “双确认后送达的有效迟到 ensure 被墓碑拒绝”只在第一轮 S2b 尝试，原许可有效期内生产回收资格未成立，结论 inconclusive；目前只有 Sandbox Server 单仓测试。
 
-- 产品实现已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35；停止未确认证据及其运维展示已随关联改动合入。演练工具 ora-space/cluster#36 仍在审，本 PR 待其合并后再合并。代码合并不改变下述固定版本的演练结果或 `Partial` 证据缺口。
+- 产品实现已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35；停止未确认证据及其运维展示已随关联改动合入。演练工具 ora-space/cluster#36 仍在审，本 PR 待其合并后再合并。代码合并不改变上述固定版本的演练结果或 `Partial` 证据缺口。
+
 ## 核心测试用例
 
 本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中六项的 Cloud 范围为 `Covered`；逐目标终止与围栏因生产路径缺少迟到 ensure 被拒的实测，重试与显式升级、D8 身份接管因新版候选缺少相应联合路径的部署证据，三项完整跨仓义务为 `Partial`。旧候选的通过结果按上述版本保留。
