@@ -171,6 +171,13 @@ skip_key      = (source_namespace, identifier, document_path)
 `numeric_out_of_range` 区分三种原因；合法的代理项对（一个高代理项紧跟一个低代理项）与可表示的边界
 数字照常导入。
 
+「文档按原样保存」的边界（[cloud#110](https://github.com/ora-space/cloud/pull/110)，合并提交
+[`ff72afa0`](https://github.com/ora-space/cloud/commit/ff72afa0d8dbebe77ec10231936221e17945c048)）：
+上面的「原样」指**活稿**（`workflows.graph`）逐字节写入，基于原始字节的可存性判定也只针对活稿。冻结快照时，
+含遗留 `file` / `array[file]` global 的图按[工作流执行根决策](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)
+D2「变量根的声明范围」在冻结前把遗留路径字符串规范化为 `{kind: "workspace_file", path}`，其余部分保持原样；不含
+遗留 `file` / `array[file]` 引用的文档，其快照仍与原始字节一致。
+
 - **逐文档失败，不整包失败**：一份坏 JSON、无法原样保存的文本或数字、或非法图只让该文档失败，同包其他
   文档照常导入。这与 skill 插件的整包校验相反，理由不同：skill 贡献集合是插件身份的一部分，而这里
   每份文档都是彼此独立、且最终属于用户的资产；让一份坏文档连带丢弃其余可用工作流，损失的是用户

@@ -110,6 +110,11 @@ Cloud 共享准入与受控调用的直接证据已逐项登记，部署整体�
   名称冲突用例预置了同名
   workflow，失败后该行的名称与图不变；名称释放后同一路径转为 `imported`，证明没有自动改名或覆盖。
 
+> 「原样保存」的边界（cloud#110 起）：插件资产决策 D4 的「文档按原样保存」指**活稿**逐字节写入。导入冻结快照时，
+> 含遗留 `file` / `array[file]` global 的图按根决策 D2「变量根的声明范围」规范化为 `{kind: "workspace_file", path}`，
+> 其余保持原样；这条快照规范化义务的证据登记在[发布与启动门禁用例](../workflow/publish-and-start-admission.md)的
+> 第五条义务，本用例的 `document_invalid_json` 逐字判定针对活稿，不受影响。
+
 ## The Asset Fetch Stays Inside The Declared Outbound Boundary
 
 - 风险：第三方仓库在目录快照里给出的 `url` 成为 SSRF 入口，打到云内私有地址；跟随重定向绕过刚做过
