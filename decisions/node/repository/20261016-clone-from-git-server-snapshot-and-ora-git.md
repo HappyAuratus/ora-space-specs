@@ -368,6 +368,7 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 | socket 固定在 `/run/ora-git/`，每个 Agent 会话都有 socket | 目录由 `agent.ora_git_directory` 配置（部署设为 `/run/ora-git`），且只在同时配置 `clone` 与 `git_access` 时启用；未启用时会话没有 socket，`ora-git` 为 `no_session`；socket 无法创建时会话以 `agent_failed{ora_git_unavailable}` 结束 | 目录是部署事实，需与 Node 的其他目录分开校验；没有 Git Server 访问的 Node 没有可代理的远端 |
 | Node 启动时清空 `/run/ora-git/` | 只删除按 Node 命名规则留下的 socket，目录其余内容不动；目录在启动时恢复为 `0711` | 目录可配置后，Node 只删除能确认是自己创建的文件 |
 | socket 随机名含 128 位随机数 | 随机名是一个 v4 UUID（122 位随机数） | 随机名只让别的进程找不到 socket，不承担授权（D5）；授权只由对端 UID 检查决定 |
+| 对端 UID 必须是工作负载 UID；批准文本未区分部署是否配置独立 UID | 未配置独立 `workload_uid` 时，对端检查比对的是 Node 自身的 UID，工作负载与 Node 无法区分，D5 的身份隔离不成立；Node 不会因此拒绝启用 `ora-git` | 当前由部署保证工作负载使用独立 UID（cluster 的 Node 配置模板都满足），代码没有强制；Node 在共用 UID 时拒绝启用 `ora-git` 由后续修复承接，落地后再把 D5 的“前提”改为“Node 强制” |
 | 会话“没有进入结束、没有被取消、交付尚未开始”时请求可执行；会话离开运行时即关闭并删除 socket | 已接受 `EndSession` 也视为不在运行；每次重试前复查；关闭时先拒绝新请求、等待在途请求完成，再删除 socket | 保证会话记为结束、交付开始之后，`ora-git` 不再写 checkout、Git Server 或账本（D5 第 5 条） |
 | 应答是若干行进度与一行结果 | Node 只返回一行结果；客户端仍把结果之前的行作为进度转到 stderr | 当前动词没有需要逐步报告的长过程；协议保留进度行的位置 |
 | 非快进在推送前判定：`O` 存在且 `C` 不包含 `O` | 仅当 `O` 的对象在 checkout 中可读时才在本地判定；对象缺失时照常带旧值推送，由 Git Server 决定，结果为 `denied` 或 `conflict` | 祖先判定需要 `O` 的对象；Node 不为判定另行拉取对象，Git Server 的快进规则仍保证不丢提交 |
