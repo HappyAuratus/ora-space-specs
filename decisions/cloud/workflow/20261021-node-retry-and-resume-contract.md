@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 工作流节点重试与恢复契约：继承 desktop 的重试策略，恢复首期在接口上明确不可用
@@ -17,7 +17,8 @@ retry 与 resume 两项上。结论：
   状态重排、三种回滚模式），但首期不可用：接口已注册并返回命名错误 `workflow_run_resume_unavailable`
   （501），不改变任何状态，页面不提供入口；实现前另开决策定失败运行的 Workspace 保留窗口与检查点方案。
 
-**状态与影响面**：本文以 `proposed` 提交，由 owner 评审批准；实现由
+**状态与影响面**：本文为 `approved`，2026-10-21 经 owner 评审批准（历史快照按默认策略重试、可重试集合只含
+`agent_failed` 均经 owner 确认），核心用例见[节点重试与恢复](../../../test-cases/cloud/workflow/retry-and-resume.md)；实现由
 [ora-space/circus#460](https://github.com/ora-space/circus/issues/460) 承接。涉及 cloud 的调度器、发布门禁、
 `workflow_runs.node_states` 投影、`execution_work` / `node_executions` / `thread_commands` 的持久化形状与
 按尝试唯一索引，以及 OpenAPI 的 `nodeStates` 枚举与 resume 接口。**兼容边界**：新增列一律带默认值 `1`，存量
@@ -145,7 +146,8 @@ Cloud 的会话结果只有五个结束原因：`agent_failed`、`interrupted`�
   （根决策不变量 3 的扩展）。尝试是串行的，第 1 次的结果就是触发第 2 次尝试的那份证据，不存在两个
   尝试同时在途。
 - **不新增跨仓库字段**：attempt 与 `workflow_node_id` 一样是 Cloud 内部路由，claim 仍然只把运行 id
-  投影给 Controller；执行工作项、claim、回执与代校验的线上形状不变（根决策 D8）。
+  投影给 Controller；执行工作项、claim、回执与代校验的线上形状不变（根决策 D8）。Controller 登记执行时，
+  Cloud 从被登记的执行工作项复制 `workflow_node_attempt` 到 `node_executions`，attempt 不来自线上请求。
 - **既有约束不需要改**：`one_pending_run_execution`（每个运行至多一条在途 agent_session）仍然成立，
   因为尝试串行；`one_unregistered_workflow_execution_work`（每个运行至多一条未登记工作项）也仍然成立，
   等待期间没有工作项，到期才放出一条。
