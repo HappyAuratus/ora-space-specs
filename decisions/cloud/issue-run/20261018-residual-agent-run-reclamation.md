@@ -166,8 +166,17 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 - ora-space/cloud#112（第 1 步）：账本增列迁移 `agent_run_residual_reclamation.sql`、追加证据与冲突审计、单一 owned delete 责任、独立周期扫描，以及清理前后经既有事实入口的接管。不新增 RPC；Controller 无法经既有入口回报的历史事实仍缺失，相应条目保持 `reconciling`。
 - ora-space/cloud#116（第 2 步）：意图、目标与回执迁移 `agent_run_controlled_reclamation.sql`，`cloudctl residual` 五条命令，两阶段处置、外部确认与存量 D8 按身份接管；终止目标复用既有强停 RPC 形状。
 - ora-space/desktop#710 与 ora-space/cluster#35（第 3 步）：Controller 在 PUT 前复核许可、终止前尝试 Shutdown 控制关闭、墓碑拒绝不重试、逐目标隔离失败；Sandbox Server 对命中墓碑的有效受管 ensure 返回 `503 sandbox_terminated`，并补齐 terminate 语义的直接测试。
-- ora-space/cluster#36（第 4 步演练工具），演练记录在 ora-space/circus#388：Controller 失联恢复、Substrate 约 300 秒不可达、外部确认审计与存量 D8 按身份接管通过；“双确认后送达的有效迟到 ensure 被墓碑拒绝”没能经生产路径触发，结论为 inconclusive，目前只有 cluster#35 的单仓测试。
-- 演练暴露的两项上游缺陷不属本文范围：根 D8 的默认 30 分钟窗口在 Node 显式断开时没有被等待（ora-space/circus#391）；带未被 Cloud 接收终态的 Node 重连被拒、Controller 反复重建会话（ora-space/circus#392）。
+- 演练证据按实际候选分两轮，不以可变 PR head 代替运行版本：
+
+| 轮次 | 固定演练记录 | 候选与工具版本 | 场景及边界 |
+|---|---|---|---|
+| 第一轮 | [首轮结果](https://github.com/ora-space/circus/issues/388#issuecomment-6299342004)、[D8 身份接管补跑](https://github.com/ora-space/circus/issues/388#issuecomment-6300622765) | Cloud `59a2443`；desktop `7ea516b`；Sandbox Server 为 cluster#35 `590c444` 加 Node 内存选项（集成提交 `3d9f552`）。工具：S2/S3/S2b 为 `04e2bd8`，S1/原 S4 为 `da3903d`，D8 补跑为 `8640080`。 | S1 通过；S2 约 300 秒不可达后恢复通过，已有卷保留；S3 外部确认通过；S2b inconclusive；原 S4 因 Node 恢复失败未进入接管，D8 补跑仅身份接管通过，已有卷先保留再显式删除。 |
+| 第二轮（post-#183） | [S1 重跑](https://github.com/ora-space/circus/issues/388#issuecomment-6308500014) | Cloud `118b759`；desktop `fbe37e24`；cluster main `3e07a4c`；工具 `8209d6b`。 | 只运行 S1，恢复后沿同一意图与两个目标取得双确认，已确认目标不重发，显式 `delete-data` 到 `released`。终止前 Run Workspace 没有数据卷，不能证明已有卷被保留再物理删除。 |
+
+两轮都是单机 Docker 上的真实服务与 Node。S1 的第二个历史 sandbox 身份仅作为输入布置，后续计划、派发、终止与确认来自真实系统，不代表真实多代历史。第一轮 D8 补跑先确认交付已被 Cloud 接收，再经 `ReportNodeIdle` 屏障断线，避开未接收终态重连冲突（ora-space/circus#392）；约 9.5 秒即形成 D8，未遵守默认 30 分钟窗口（ora-space/circus#391，现已由 ora-space/cloud#118 修复，但两轮均未验证修复后的窗口）。它不证明窗口条件或旧版本滚动升级。第二轮没有重跑 S2、S3、S4、S2b 或 D8 接管，第一轮结果只适用于第一轮候选，不能作为最终 PR head 的部署证据。
+
+“双确认后送达的有效迟到 ensure 被墓碑拒绝”只在第一轮 S2b 尝试，原许可有效期内生产回收资格未成立，结论 inconclusive；目前只有 Sandbox Server 单仓测试。
+
 - 迁移编号按合入 main 的顺序确定。
 - 与 approved 决策的偏离（由 owner 决定以正文还是实现为准）：
   - D2 取证：没有新增查询 RPC，事实只经既有事实入口到达；Controller 无法回报的历史事实使条目保持 `reconciling`。
@@ -177,4 +186,4 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ## 核心测试用例
 
-本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中八项为 `Covered`；逐目标终止与围栏一项因生产路径缺少迟到 ensure 被拒的实测，保持 `Partial`。
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中六项的 Cloud 范围为 `Covered`；逐目标终止与围栏因生产路径缺少迟到 ensure 被拒的实测，重试与显式升级、D8 身份接管因新版候选缺少相应联合路径的部署证据，三项完整跨仓义务为 `Partial`。旧候选的通过结果按上述版本保留。
