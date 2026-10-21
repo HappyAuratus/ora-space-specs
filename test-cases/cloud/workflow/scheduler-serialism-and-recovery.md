@@ -10,8 +10,9 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 （已派发会话的 Node 不可达时结算失败）、[cloud#100](https://github.com/ora-space/cloud/pull/100)（agent 运行的取消写入者）、
 [cloud#108](https://github.com/ora-space/cloud/pull/108)（已派发会话的回合窗口，merge `a4a13e8`）、
 [cloud#109](https://github.com/ora-space/cloud/pull/109)（工作流的取消写入者与有界终态，merge `27e7f48`）、
-[cloud#113](https://github.com/ora-space/cloud/pull/113)（调度器崩溃接手，merge `9814cacd`）与
-[cloud#119](https://github.com/ora-space/cloud/pull/119)（WorkflowRun 的 Workspace 释放终态与有界放弃，merge `df9799c5`）的堆叠里落地，
+[cloud#113](https://github.com/ora-space/cloud/pull/113)（调度器崩溃接手，merge `9814cacd`）、
+[cloud#119](https://github.com/ora-space/cloud/pull/119)（WorkflowRun 的 Workspace 释放终态与有界放弃，merge `df9799c5`）与
+[cloud#120](https://github.com/ora-space/cloud/pull/120)（工作流取消的真实 HTTP 边界与 G-026 并发顺序证据，merge `eb5ae5b`）的堆叠里落地，
 下表因此不再全是 `Missing`。仍为 `Missing` 的是**多副本**：没有用例让两个副本同时竞争同一个运行。
 **崩溃接手**中重启后的同一副本接手已由 cloud#113 的 DB 用例与运行 #377 的真实重启验收覆盖，由另一副本接手仍随
 多副本缺证据；其余要求"真实执行侧"而尚未覆盖的
@@ -158,12 +159,12 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 取消是请求加有界终态，终态在清理后写入 | 真实 PostgreSQL + 执行侧：取消与清理、回调的并发顺序与最终行状态 | Partial |
-| 工作流与 agent 两侧都有取消写入者 | 真实 HTTP 入口：两侧的取消请求都落到持久状态并走同一条收尾路径 | Partial |
+| 取消是请求加有界终态，终态在清理后写入 | 真实 PostgreSQL + 执行侧：取消与清理、回调的并发顺序与最终行状态 | Covered |
+| 工作流与 agent 两侧都有取消写入者 | 真实 HTTP 入口：两侧的取消请求都落到持久状态并走同一条收尾路径 | Covered |
 
 - 决策依据：D4（取消是请求加有界终态），D6（取消写入者纳入首期，agent 侧一并补上），不变量 3；继承 [issue-run 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md) D6。
 - desktop 参考实现（`8909f07`）一侧：**Covered** — 取消是有界终态而非即时终态：清理失败时仍提交 `Cancelled`（[`crates/backend/src/workflow/run/operations/tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/operations/tests.rs) 的 `cancellation_commits_even_when_session_cleanup_fails`）、取消与完成并发时以已提交结果为准（同文件的 `concurrent_cancel_and_complete_report_the_committed_outcome`）、取消后迟到唤醒是空操作（[`crates/backend/src/workflow/run/retry_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/retry_tests.rs) 的 `cancel_during_the_wait_cancels_immediately_and_the_late_wake_is_a_no_op`）、已取消运行不能被清理复活（[`crates/backend/src/workflow/run/loop_exit_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/loop_exit_tests.rs) 的 `loop_exit_cleanup_cannot_revive_a_cancelled_run`）。desktop 侧缺的是入口本身：取消由本地界面/命令触发，Cloud 需要的 HTTP 写入者没有参考实现。
-- 本次直接证据：**Partial** — 第 2 行的 agent 侧已就位：[cloud#100](https://github.com/ora-space/cloud/pull/100)（merge `f405823e`）落地
+- 本次直接证据：**Covered** — 第 2 行的 agent 侧已就位：[cloud#100](https://github.com/ora-space/cloud/pull/100)（merge `f405823e`）落地
   `POST /tenants/:tid/issues/:iid/runs/:rid/cancel`。真实 HTTP + PostgreSQL 的 `TestCancelRunRecordsTheRequest` 断言请求只记录
   `issue_runs.cancel_requested_at`、返回 202 与记录时刻，运行的 phase、status、Thread 状态与 Workspace 都不动；
   `TestCancelRunIsIdempotentUnderTheSameKey` 与 `TestCancelRunKeepsTheFirstInstantAcrossFreshKeys` 断言重复请求返回同一时刻且不再写入；
@@ -171,8 +172,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   断言越过 agent 执行窗口、越界与越权的调用者被拒；`TestCancelledRequestEndsTheDeclaredSession` 与
   `TestCancelledRequestReleasesTheUndeclaredSession` 断言端点写入的请求正是 `ReactToCancelledAgentRunsOnce` 消费的事实，
   分别落到 EndSession{cancelled} 与 `deliveryState=skipped` 的释放。工作流侧已由 [cloud#109](https://github.com/ora-space/cloud/pull/109)
-  （merge `27e7f48`）落地 `POST /api/v1/tenants/:tid/workflows/:wfid/runs/:rid/cancel`，第 1 行由 **Missing** 推进到 **Partial**，
-  第 2 行仍为 **Partial**：`TestWorkflowRunCancelRequestRecordsTheInstant` 断言请求只写 `workflow_runs.cancel_requested_at`、
+  （merge `27e7f48`）落地 `POST /api/v1/tenants/:tid/workflows/:wfid/runs/:rid/cancel`，第 1 行由 **Missing** 推进到 **Partial**；
+  `TestWorkflowRunCancelRequestRecordsTheInstant` 断言请求只写 `workflow_runs.cancel_requested_at`、
   返回 202 与数据库记录的时刻，运行保持 `pending` 且 `started_at` 为空，换幂等键重复请求返回同一时刻；
   `TestWorkflowRunCancelRequiresTheInitiatorOrAnAdmin` 断言有冻结执行者绑定时非发起者的普通成员被拒
   （`workflow_run_cancel_forbidden`）且不落库，发起者可以取消；`TestWorkflowRunCancelAfterTheRunSettledIsRefused` 断言终态运行
@@ -186,9 +187,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   与 `TestWorkflowRunCancelReusesTheExistingEndRequest` 断言已提交结果与会话自己上报的终态优先于取消，运行仍结算 `cancelled`
   并释放 Workspace；`TestWorkflowRunCancelWinsOverAnUnreachableNode` 断言 Node 不可达时由取消而不是 `node_unavailable` 决定
   终态，且不再向已消失的 Node 释放结束请求，Workspace 照常释放。
-- 仍缺：工作流侧只有核心层 `Store.Public` 用例，尚无真实 HTTP 边界的集成用例（agent 侧的入口用例在
-  `integration/agent_run_cancel_test.go`，工作流侧是 `internal/core/workflow_run_cancel_db_test.go`）；两侧取消与清理、迟到回调的
-  **并发**顺序证据（G-026），以及真实执行侧下的取消时点验证，属 D1 落地顺序第 5 步，归 ora-space/circus#75。
+  [cloud#120](https://github.com/ora-space/cloud/pull/120)（merge `eb5ae5b`）在真实 HTTP + PostgreSQL 上补齐工作流侧的入口与顺序证据：`integration/workflow_run_cancel_test.go` 的 `TestWorkflowRunCancelRecordsOnlyTheRequest` 断言响应只有 `cancelRequestedAt` 且等于库中时刻、版本恰好 +1、其余行逐列不变、不产生 Workspace/执行工作项/Thread 命令/派生操作，同键与换键重放都返回首次时刻且不再写，未知字段 400；`TestWorkflowRunCancelSettlesThroughTheScheduler` 断言 HTTP 写入的请求被 `AdvanceWorkflowRunsOnce` 消费，pending 运行直接结算 `cancelled`（不写 `started_at`、不建 Workspace、不派生删除），S5 释放为 `not_required` 且没有释放时刻，结算后重放仍返回原时刻、后续推进不改版本；`TestWorkflowRunCancelAuthorizesTheInitiatorOrAnAdmin` 断言发起者/管理员 202、普通成员 403 `workflow_run_cancel_forbidden`、非成员 403 `membership_required`、无绑定时沿用成员规则；`TestWorkflowRunCancelIsNotFoundOutsideItsScope` 断言跨租户、跨工作流、未知 id、非 UUID 与软删除运行都返回 404 且不落库；`TestWorkflowRunCancelAfterSettlementIsRefused` 断言 succeeded/failed/cancelled/awaiting_input 都返回 409 `run_not_cancellable` 且不落库；`TestWorkflowRunCancelRacesToOneRequest` 断言两个并发请求只记录一个时刻、只有一次版本变化。同 PR 的 `internal/core/workflow_run_cancel_order_db_test.go` 在真实 PostgreSQL 上让两个写入者并发：`TestWorkflowRunCancelRacesTheSchedulerPass` 断言取消与调度推进竞争后只释放一条 `end_session{cancelled}`、运行保持 `running` 直到会话自己上报，最终 `cancelled`、节点 `cancelled`、删除声明恰好一条、释放为 `releasing`、请求保留；`TestWorkflowRunCancelAndTheSessionCallbackRace` 断言两种允许顺序——请求先提交则运行 `cancelled` 且节点保留实际运行的 `idle_timeout` 结果，回调先结算则请求 409 `run_not_cancellable` 且不落库、运行 `succeeded`——每例都保留已提交结果并声明释放；`TestWorkflowRunCancelWindowAndALateCallbackRace` 断言结束确认窗口到期与迟到回调竞争时运行必为 `cancelled`，节点要么保留自己的 `idle_timeout` 结果、要么记为 `cancelled`，迟到结果始终留在执行行，释放为 `releasing`，终态后推进不改版本。真实执行侧的取消时点由运行 #347 的隔离栈验收覆盖（cloud `27e7f48`、desktop `e19d752`）：run `4312baa9-6ca2-431f-879d-7e6a88adac9d` 在 `running` 时两次 `POST …/cancel` 都返回 202 且 `cancelRequestedAt` 同为 `13:44:50.207Z`，`end_session` 于 `13:44:53.811Z` 创建、`13:44:53.984Z` 送达，执行 `b4143a86-…` 于 `13:44:55.256Z` 以 `agent_session_ended / cancelled` 终止，运行于 `13:45:03.829Z` 以 `cancelled` 结束，Workspace 于 `13:45:05.084Z` 变为 `deleted/deleted`、容器消失；同结论在独立栈 `ora-wf347` 复跑。
+- 仍缺：cloud#120 的并发顺序证据在真实 PostgreSQL 与控制面接缝上，运行 #347 的真实栈取消没有与迟到回调竞争；取消与真实执行侧迟到回调在部署上同时竞争、以及多副本/多 Controller 下的取消竞争仍缺部署级证据，属 D1 落地顺序第 3 步（ora-space/circus#70）。
 
 ## The Workspace Release Is A Terminal Fact With A Bounded Give-Up
 
@@ -227,6 +227,6 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   第 4 行已部分就位：运行 #377 的 `release-normal` 在真实栈上让普通成功的运行到达 `released`、写入释放时刻，Workspace 的
   `deleted_at` 已置且沙箱容器消失；`release-giveup` 暂停仍在运行的沙箱、让 Node 心跳过期，运行以 `node_unavailable` 失败后
   放弃释放为 `abandoned` + `workspace_unavailable`、没有释放时刻、Workspace 行保留，删除操作失败为 `node_unavailable`。
-- 仍缺：第 4 行没有覆盖取消驱动的释放（取消路径的释放只有 `workflow_run_cancel_db_test.go` 的控制面用例）与"其他路径已删除
-  Workspace"的端到端补记；多 Controller/多副本下同一条删除操作只有一个完成者的部署级证据也没有，属 D1 落地顺序第 3 步
-  （ora-space/circus#70）。
+- 仍缺：第 4 行没有覆盖取消驱动的真实栈释放（cloud#120 已在真实 HTTP 与顺序用例里断言 pending 运行 `not_required`、活跃
+  Workspace `releasing`，但取消后的删除完成回执仍只有控制面证据）与"其他路径已删除 Workspace"的端到端补记；多 Controller/
+  多副本下同一条删除操作只有一个完成者的部署级证据也没有，属 D1 落地顺序第 3 步（ora-space/circus#70）。
