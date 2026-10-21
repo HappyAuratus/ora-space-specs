@@ -9,7 +9,7 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 
 [仓库获取与结果边界](clone-and-result-boundaries.md)、[最小 clone 执行](minimal-clone-execution.md) 与
 [准入与 Git 执行](admission-and-git-execution.md) 以外部 clone 的前序决策为依据；其中关于外部地址、SSH、部署凭据与 `origin`
-的义务已被本文取代，目录独占、受管执行、中断判定与恢复的义务仍按那几份用例维护。
+的义务已被本文取代并从那几份用例中移除，目录独占、受管执行、中断判定与恢复的义务仍按那几份用例维护。
 
 ## Clone Accepts Only A Git Server Snapshot Input
 
