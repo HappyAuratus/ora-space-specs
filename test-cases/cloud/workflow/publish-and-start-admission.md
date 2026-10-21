@@ -26,6 +26,8 @@
 
 本次更新（2026-10-20，落地运行 [circus#381](https://github.com/ora-space/circus/issues/381)）：cloud#110 已合并（合并提交 [`ff72afa0`](https://github.com/ora-space/cloud/commit/ff72afa0d8dbebe77ec10231936221e17945c048)），规范化同时接进发布与资产导入两个冻结入口；§1 第五条义务的证据从 `Missing` 升为 `Covered`，两条真实 HTTP + PostgreSQL 直接证据分别覆盖发布路径（`TestWorkflowSnapshotPublishNormalizesFileGlobals`）与导入路径（`TestWorkflowAssetImportNormalizesFileGlobals`）。
 
+本次更新（2026-10-21，落地运行 [circus#419](https://github.com/ora-space/circus/issues/419)）：cloud#114 已合并（合并提交 [`0db42305`](https://github.com/ora-space/cloud/commit/0db42305)），§4 的「输入按运行将执行的那一份文档校验」升为 `Covered`——`@` Confirm 入口的 `TestWorkflowConfirmValidatesAgainstTheChosenVersion` 与直接运行入口的 `TestWorkflowRunValidatesAgainstTheVersionItRuns` 都已在 main 上；同一次合并让 Confirm 只按所选发布版本的 schema 校验，依据见[Confirm 只按所选发布版本自身的 schema 校验](../../../decisions/cloud/issue-collaboration/20261020-confirm-validates-against-the-chosen-version.md)。
+
 ## Publishing Refuses An Unsupported Node Or Configuration And Names It
 
 - 风险：发布把一份服务端执行不了的图冻结成"运行的权威文档"，运行在派发时才失败，作者看不到是哪个节点、哪个字段不受支持。
@@ -80,12 +82,12 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 三种入口共用同一个启动门禁 | 真实 HTTP + PostgreSQL：同一份非法图在三个入口同样被拒，拒绝后无运行行 | Partial |
-| 输入按运行将执行的那一份文档校验 | 真实 HTTP：选中字段与活稿不同的旧版本按该版本通过并记录该版本；缺该版本必填字段返回 `400 required_field_missing`、提交它未声明的字段返回 `400 invalid_field_value`，两条都定位到字段、不建运行，且同一交互随后按该版本确认成功（`TestWorkflowConfirmValidatesAgainstTheChosenVersion`；cloud#114 未合入 main，`@` Confirm 这一入口按缺口记）。直接运行入口已在 main 上有直接证据：`TestWorkflowRunValidatesAgainstTheVersionItRuns` | Partial |
+| 输入按运行将执行的那一份文档校验 | 真实 HTTP：选中字段与活稿不同的旧版本按该版本通过并记录该版本；缺该版本必填字段返回 `400 required_field_missing`、提交它未声明的字段返回 `400 invalid_field_value`，两条都定位到字段、不建运行，且同一交互随后按该版本确认成功（`TestWorkflowConfirmValidatesAgainstTheChosenVersion`）；直接运行入口由 `TestWorkflowRunValidatesAgainstTheVersionItRuns` 覆盖 | Covered |
 | 拒绝不留痕且重复确认幂等 | 真实 PostgreSQL：拒绝后 `issue_runs` 计数不变，同一 interaction 成功确认一次 | Covered |
 
 - 决策依据：D3（三种启动方式表、三种入口走同一个启动函数），不变量 1、2；字段校验依据见 [Confirm 只按所选发布版本自身的 schema 校验](../../../decisions/cloud/issue-collaboration/20261020-confirm-validates-against-the-chosen-version.md)。
 - desktop 参考实现（`8909f07`）一侧：**Missing** — desktop 只有一个本地启动入口，没有"多个入口共用一个门禁"这件事，也没有"手动运行不能靠 UUID 形状绕过校验"的对应义务；这条完全靠 Cloud 自己的测试证明。
-- 本次直接证据：**Partial** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 是唯一的启动门禁（解析要执行的快照、按它的图收集并解析槽位），三个调用点是 `workflow_run.go`、`issue_runs.go`、`issue_interactions.go`。真实 HTTP 的证据按入口分开：manual 入口 `TestManualWorkflowRunResolvesItsExecutor`（未知 id 404、没有已发布版本 400 `workflow_no_published_snapshot`、归档 404，且被拒的那次不留运行行）与 `TestManualWorkflowRunCannotNameAForeignWorkflow`（别的租户的 workflow 同样 404，`issue_runs` 计数为 0）；直接运行入口 `TestWorkflowRunSnapshotIsScopedToItsWorkflow`（别的 workflow 的 snapshot 与未知 id 都是 404，且不回退到最新版本）与 `TestWorkflowRunValidatesAgainstTheVersionItRuns`（旧版本只按自己的 schema 收，未指名版本时用最新版本，运行行记下执行的 `snapshot_id`）；`@` Confirm 入口 `TestWorkflowConfirmValidatesAgainstTheChosenVersion`（cloud#114 尚未合并，合并后由落地运行补证：选中一个字段与活稿不同的旧版本，提交符合该版本即通过并记录该版本；缺该版本必填字段返回 `required_field_missing`、提交它未声明的字段返回 `invalid_field_value`，两条都点名字段且不创建运行、不占用 interaction，随后同一次交互按该版本确认成功）；幂等由 `TestWorkflowConfirmIdempotencyAndDoubleConfirm` 证明（同 key 重放返回同一个运行、同 key 不同体 409、已确认的 interaction 换 key 409，`issue_runs` 只有一个）。
+- 本次直接证据：**Partial** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 是唯一的启动门禁（解析要执行的快照、按它的图收集并解析槽位），三个调用点是 `workflow_run.go`、`issue_runs.go`、`issue_interactions.go`。真实 HTTP 的证据按入口分开：manual 入口 `TestManualWorkflowRunResolvesItsExecutor`（未知 id 404、没有已发布版本 400 `workflow_no_published_snapshot`、归档 404，且被拒的那次不留运行行）与 `TestManualWorkflowRunCannotNameAForeignWorkflow`（别的租户的 workflow 同样 404，`issue_runs` 计数为 0）；直接运行入口 `TestWorkflowRunSnapshotIsScopedToItsWorkflow`（别的 workflow 的 snapshot 与未知 id 都是 404，且不回退到最新版本）与 `TestWorkflowRunValidatesAgainstTheVersionItRuns`（旧版本只按自己的 schema 收，未指名版本时用最新版本，运行行记下执行的 `snapshot_id`）；`@` Confirm 入口 `TestWorkflowConfirmValidatesAgainstTheChosenVersion`（选中一个字段与活稿不同的旧版本，提交符合该版本即通过并记录该版本；缺该版本必填字段返回 `required_field_missing`、提交它未声明的字段返回 `invalid_field_value`，两条都点名字段且不创建运行、不占用 interaction，随后同一次交互按该版本确认成功）；幂等由 `TestWorkflowConfirmIdempotencyAndDoubleConfirm` 证明（同 key 重放返回同一个运行、同 key 不同体 409、已确认的 interaction 换 key 409，`issue_runs` 只有一个）。
 - 仍缺：没有任何一个用例把**同一份**非法文档依次送进三个入口并断言同样的拒绝；"三种入口同一个门禁"今天由"一个 `admitWorkflowRun` + 三个调用点"与各入口各自的拒绝用例支撑，按 `Partial` 记。另外，门禁落地后仍需按 D3 在同一事务里冻结发起者与 Project（落地顺序第 4 步），本用例不把"门禁到位"等同于"身份已冻结"。
 
 ## A Slot The Initiator Cannot Supply Refuses The Run Instead Of Substituting

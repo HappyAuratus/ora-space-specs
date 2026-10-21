@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Confirm 只按所选发布版本自身的 schema 校验
@@ -11,9 +11,10 @@ status: approved
 [Issue 协作根决策](0-typed-targets-and-explicit-execution-intent.md) D9 的校验依据；Confirm 的其余承诺
 （唯一执行边界、单事务、版本冻结、幂等与比较交换）不变。
 
-本决策当前为 `approved`：实现已在 cloud#114 完成并通过 `task check` 与 `task frontend:check`，
-尚未合入 main。按「三个运行」的顺序，specs#164 评审通过后先合入，cloud#114 再合，最后由另一个运行
-把本决策改为 `implemented`。它涉及 Cloud 的
+本 ADR 已 `implemented`：Cloud 侧实现见 [cloud#114](https://github.com/ora-space/cloud/pull/114)
+（合并提交 `0db42305`），核心用例见
+[Issue 协作交互核心用例](../../../test-cases/cloud/issue-collaboration/collaboration-interactions.md)
+的「Confirm Creates Exactly One Run From Revalidated Values」。它涉及 Cloud 的
 `POST /issues/{iid}/interactions/{ixid}/confirm`、按所选版本读取表单的
 `GET /workflows/{wfid}/snapshots/{sid}/form` 以及前端表单；不改变 `issue_interactions` /
 `issue_runs` / `workflow_runs` 的表结构，不需要迁移，也不回填历史交互或运行。
@@ -57,8 +58,8 @@ schema 始终来自同一个版本：活稿里未发布的字段不出现在默�
 已发布 id 的 `snapshotId` select——不论这个字段是平台注入的还是作者自己声明的；Confirm 的版本游标只在
 活稿没有声明该键时才读它。两者在作者把 `snapshotId` 用作自己的变量名时可能不一致，这些配置不可依赖：
 **作者在图里声明 `snapshotId` 时不承诺显示与执行同源**。circus#405 已决定由发布门禁消除这个边界——发布
-时拒绝作者在图里声明该键，已经发布的存量版本在选择器里不可选并提示——门禁落地后本段改为「发布门禁
-保证作者不能声明 `snapshotId`」。
+时拒绝作者在图里声明该键，已经发布的存量版本在选择器里不可选并提示——门禁由 circus#411 落地，落地后
+本段改为「发布门禁保证作者不能声明 `snapshotId`」。
 
 用启动字段撤下 `snapshotId`（`launchFields` 里的 `enabled: false`）不属于作者声明该键，也不落在上面的
 例外里：活稿没有声明它，Confirm 的版本游标仍会读提交值。界面因此没有选择器，不提交该键时执行最新已发布
@@ -105,16 +106,15 @@ schema 始终来自同一个版本：活稿里未发布的字段不出现在默�
 `fixtures=false` 部署上的真实 Node 联合验收不在本决策范围内，由 circus#71 承接，与 circus#77 的验收
 范围协调。它不改变本决策的校验规则与客户端渲染承诺。
 
-## 落地顺序
+## 落地
 
-1. **服务端删除活稿比较与 `409`，按所选版本校验**（cloud#114）：完成条件是该错误码从契约中消失，缺必填
-   字段与未声明字段只返回带字段参数的 `400`，且一条旧版本提交在字段与活稿不同时仍被执行。
-2. **客户端默认视图与切换后的视图都按所选发布版本读取表单**（cloud#114）：完成条件是未手动切换时默认
-   视图显示最新已发布版本的字段并用这些字段确认成功，切换后按新版本重新读取；活稿自行声明 `snapshotId`
-   时的边界见 D1，不纳入本步的同源承诺。两步同在一个产品 PR，一起通过 `task check` 与 `task frontend:check`。
-3. **同步本决策对应的核心用例与证据**（本仓库同一次变更）：完成条件是相关用例的义务、证据与
-   `Missing`/`Partial` 状态和 cloud#114 的实际测试一一对应；ADR 先 `approved` 合入，测试仍在未合并的
-   产品分支上时证据只能记 `Missing`/`Partial`，不得写成 `Covered`。
-4. **合并顺序**：specs#164 先合，cloud#114 再合，最后由另一个运行把本决策改为 `implemented` 并把证据升为
-   `Covered`。完成条件依次是：本决策与用例已在 main、cloud#114 已合入 main、证据指向 main 上的测试。
-   前两步只改变校验依据与渲染来源，第 3、4 步不改变任何运行时行为；版本冻结、单事务与幂等语义全程不变。
+- 服务端删除活稿比较与 `409`、只按所选版本校验，与客户端默认视图（含未手动切换时的默认版本）都按
+  所选发布版本读取表单，已随 [cloud#114](https://github.com/ora-space/cloud/pull/114)（合并提交
+  `0db42305`）落地；字段拒绝只剩带字段参数的两种 `400`。
+- 核心用例与证据已同步为 `Covered`，指向 main 上的
+  `TestWorkflowConfirmValidatesAgainstTheChosenVersion`、
+  `TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` 与前端
+  `opens on the default published version by reading that version, so rendering and validation match`。
+- `fixtures=false` 部署上的真实 Node 联合验收由 circus#71 承接，验收记录写在该 issue；它不改变本决策的
+  校验规则与客户端渲染承诺。
+- 版本冻结、单事务与幂等语义全程不变；本决策不改变表结构，也不需要迁移或回填历史交互与运行。
