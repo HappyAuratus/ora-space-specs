@@ -163,14 +163,16 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 
 ### 触发
 
-`POST /issues/{iid}/interactions/{ixid}/confirm`，含非法值、重复 key、并发、活稿与版本分歧等情形。
+`POST /issues/{iid}/interactions/{ixid}/confirm`，含非法值、重复 key、并发、所选版本与活稿字段不同（含选旧版本）等情形。
 
 ### 必须成立
 
 - 按版本描述完整校验，非法值 400，不建运行。
 - 合法确认恰好一个运行，交互 `input` 与运行输入快照一致，来源为 `interaction` + 交互 id，版本被冻结。
 - 同 key 同请求重放原响应；同 key 不同请求 `409 idempotency_conflict`；再次确认 `409 interaction_already_confirmed`。
-- 活稿与所选版本分歧时 `409 workflow_version_fields_changed` 并列出字段。
+- 只按所选版本校验：选中字段与活稿不同的旧版本，提交符合该版本即通过；缺该版本必填字段返回 `400 required_field_missing`，提交该版本未声明的字段返回 `400 invalid_field_value`，都不建运行。
+- 有平台版本选择器时，客户端渲染的表单与校验依据同源：未手动切换版本时也按默认选中的发布版本读取，活稿里未发布的字段不出现在默认视图。
+  作者在图里声明保留键 `snapshotId` 时不承诺同源，由 circus#405 的发布门禁消除这个边界；用启动字段撤下选择器时界面没有选择器，不提交该键执行最新已发布版本，提交了仍按版本游标读取（见 D1）。
 
 ### 禁止结果
 
@@ -182,12 +184,13 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 |---|---|---|
 | 重新校验并恰好一个运行 | `TestWorkflowConfirmValidatesAndExecutes` | Covered |
 | 幂等与二次确认 | `TestWorkflowConfirmIdempotencyAndDoubleConfirm` | Covered |
-| 版本分歧拒绝 | `TestWorkflowConfirmRefusesAVersionTheLiveFormHasLeft`；单元矩阵 `TestWorkflowFieldDivergence` | Covered |
-| 并发确认只成功一个 | 缺口：没有两个并发事务同时确认的用例，现有证据是顺序二次确认 | Partial |
+| 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都断言不建运行且同一交互重新按该版本确认成功（cloud#114 未合入 main，按 `Missing` 记） | Missing |
+| 客户端默认视图也按所选发布版本渲染 | 前端组件用例（cloud#114 未合入 main）：`opens on the default published version by reading that version, so rendering and validation match` 断言默认视图读取 `/snapshots/:id/form` 并按该版本的字段确认 | Missing |
+| 并发确认只成功一个 | 缺口：当前只有顺序二次确认（`TestWorkflowConfirmIdempotencyAndDoubleConfirm`），没有两个并发事务同时确认的用例；cloud#114 的 `TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` 合并后由落地运行改为 `Covered` | Partial |
 
 ### 决策依据
 
-D4、D9；不变量 4、5。
+D4、D9；不变量 4、5；[Confirm 只按所选发布版本自身的 schema 校验](../../../decisions/cloud/issue-collaboration/20261020-confirm-validates-against-the-chosen-version.md)。
 
 ## Form Descriptors Are Validated Projections
 
