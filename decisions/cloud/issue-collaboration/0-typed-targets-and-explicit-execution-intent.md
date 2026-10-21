@@ -241,7 +241,7 @@ Workflow 的人类可读输出是 `run.message` 活动，不是评论。Agent/Te
 | 把 Workflow 当作 `ActorRef`，输出写成评论 | 评论没有承载 Workflow 来源的字段，需要迁移；也把一个能力当成了对话参与者。活动的 `details` 天然承载来源（D2） |
 | 在目标投影里内嵌完整 `FormDescriptor` | 每次打开选择器都要解析所有 Workflow 的表单，真实 Workflow 模块可能很慢；`formRef` + 单独读取把代价推迟到选中时（D7） |
 | 服务端保存表单草稿 | 每次输入都要带版本的持久化写入，而用户可能放弃；交互本身是否存在已足够，丢失的只是未确认的值（D9） |
-| 描述带版本令牌做陈旧检测 | 当前由 Confirm 按版本重新校验并显式报告字段差异（D9）替代；需要更早发现时再由提供方给出令牌 |
+| 描述带版本令牌做陈旧检测 | 当前由 Confirm 按所选发布版本重新校验（D9，后续 [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 已删除活稿比较与显式字段差异报告）替代；需要更早发现时再由提供方给出令牌 |
 | 平台字段目录写死在代码里，对所有 Workflow 一样 | 不同 Workflow 对版本、提示词、仓库的需要不同；逐 key 覆盖的 `launchFields` 让作者决定，又不会让新加入的平台字段对已保存的 Workflow 不可见（D8） |
 | 为 Workflow 单独建 `WorkflowContextBuilder`、`WorkflowDispatcher` | 把一个抽象分叉成平行系统；Workflow 差异只在适配器层（D5） |
 
