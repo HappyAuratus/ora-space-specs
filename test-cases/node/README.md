@@ -35,10 +35,10 @@
 | --- | --- | --- |
 | agent-runtime | [插件模型 adapter](agent-runtime/plugin-model-adapters.md) | 首轮前准备失败残留授权、上下文泄入账本/日志、CLI 高优先级配置改路由、共享 provider 状态、别名与发现越权、收尾与撤销不收敛 |
 
-## 已批准的子代理投影与运行诊断
+## 子代理投影与运行诊断
 
-[子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)于 2026-10-20
-经 owner 批准为 `approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；
+[子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)为
+`implemented`，核心用例按现有测试登记证据并保留缺口；
 [会话执行用例](agent-runtime/session-execution.md)与[静默策略用例](../desktop/core/workflow/prompt-inactivity.md)的
 证据保持原范围，不推导来源保真或终态缺口已实现。
 
