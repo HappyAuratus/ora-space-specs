@@ -22,12 +22,12 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| lease 提交后、Git 创建后崩溃：lease 补偿回收资源，无残留任务行 | 尚未实现 | `Missing` |
-| 归属事务提交后崩溃：运行行带链接，恢复后由 retention 可见并分类 | 尚未实现 | `Missing` |
-| session 持久化后 `Start` 前崩溃：归属仍完整，`Start` 缺失不产生 `running` 或 `RunStarted` | 尚未实现 | `Missing` |
-| 重复恢复（多次重启）不产生第二个任务或重复副作用 | 尚未实现 | `Missing` |
-| 带链接的 `accepted` 运行在历史与侧栏不显示为 running | 尚未实现 | `Missing` |
-| 成功提交后重新打开数据库：task/run 绑定存在且 provisioning lease 已不存在（成功后无 lease 残留） | 尚未实现 | `Missing` |
+| lease 提交后、Git 创建后崩溃：lease 补偿回收资源，无残留任务行 | `ora_db::durability_tests::a_crash_between_lease_write_and_ownership_commit_leaves_no_half_commit`、`ora_application::task::scheduled_provisioning::tests::git_failure_after_the_lease_hands_resources_to_durable_cleanup` | `Covered` |
+| 归属事务提交后崩溃：运行行带链接，恢复后由 retention 可见并分类 | `ora_backend::scheduled_task::worktree::tests::integration_retention_reclaims_a_never_started_run_after_ownership_commit` | `Covered` |
+| session 持久化后 `Start` 前崩溃：归属仍完整，`Start` 缺失不产生 `running` 或 `RunStarted` | `ora_backend::scheduled_task::worktree::tests::integration_bootstrap_stops_sessions_before_scheduled_cleanup` | `Covered` |
+| 重复恢复（多次重启）不产生第二个任务或重复副作用 | `ora_db::durability_tests::a_crash_between_lease_write_and_ownership_commit_leaves_no_half_commit`（两次重开断言幂等）、`ora_db::repository::task_workspace::scheduled_ownership_tests::rejects_a_second_binding_for_the_same_run` | `Covered` |
+| 带链接的 `accepted` 运行在历史与侧栏不显示为 running | `ora_domain::scheduled_run::tests::start_reuses_the_committed_worktree_binding_and_rejects_a_mismatch`（`Start` 才转 running 的唯一写入者） | `Partial` |
+| 成功提交后重新打开数据库：task/run 绑定存在且 provisioning lease 已不存在（成功后无 lease 残留） | `ora_db::repository::task_workspace::scheduled_ownership_tests::binds_the_run_and_persists_the_task_in_one_commit`、`lease_delete_failure_rolls_back_the_whole_commit_and_keeps_the_lease` | `Covered` |
 
 ## Failed Ownership Commit Must Roll Back And Keep Compensation
 
@@ -43,10 +43,10 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 运行行非 `accepted` / project 不匹配 / 绑定冲突时提交整体回滚 | 尚未实现 | `Missing` |
-| 回滚后 lease 由既有补偿路径回收 | 尚未实现 | `Missing` |
-| 重放不创建第二份资源、不覆盖既有绑定 | 尚未实现 | `Missing` |
-| 删 lease 处注入失败：task/workspace/worktree 与 run 绑定整体回滚，lease 保留补偿责任且不启动 session | 尚未实现 | `Missing` |
+| 运行行非 `accepted` / project 不匹配 / 绑定冲突时提交整体回滚 | `ora_db::repository::task_workspace::scheduled_ownership_tests::rejects_a_settled_run_and_keeps_the_lease`、`rejects_a_run_from_another_project`、`rejects_a_second_binding_for_the_same_run` | `Covered` |
+| 回滚后 lease 由既有补偿路径回收 | `ora_application::task::scheduled_provisioning::tests::inadmissible_run_releases_the_lease_and_reports_the_error`、`commit_failure_releases_the_lease_to_compensation` | `Covered` |
+| 重放不创建第二份资源、不覆盖既有绑定 | `ora_db::repository::task_workspace::scheduled_ownership_tests::rejects_a_second_binding_for_the_same_run` | `Covered` |
+| 删 lease 处注入失败：task/workspace/worktree 与 run 绑定整体回滚，lease 保留补偿责任且不启动 session | `ora_db::repository::task_workspace::scheduled_ownership_tests::lease_delete_failure_rolls_back_the_whole_commit_and_keeps_the_lease`（触发器注入 + reopen） | `Covered` |
 
 ## Session Start Failure Must Not Loose The Ownership Binding
 
@@ -63,8 +63,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| session 启动失败：绑定保留，运行按 `TargetUnavailable` 结算且不发 `RunStarted` | 尚未实现 | `Missing` |
-| `Start` 校验原绑定被拒：不换绑、不丢失关联，runtime 走停会话 + janitor 丢弃分支 | 尚未实现 | `Missing` |
+| session 启动失败：绑定保留，运行按 `TargetUnavailable` 结算且不发 `RunStarted` | `ora_backend::scheduled_task::worktree::tests::integration_retention_reclaims_a_never_started_run_after_ownership_commit`（`Start` 前结算由恢复完成，`RunStarted` 只在 `Start` 后发布） | `Partial` |
+| `Start` 校验原绑定被拒：不换绑、不丢失关联，runtime 走停会话 + janitor 丢弃分支 | `ora_domain::scheduled_run::tests::start_reuses_the_committed_worktree_binding_and_rejects_a_mismatch` | `Covered` |
 
 ## Link Clearing Must Keep Durable Cleanup Responsible For Disk State
 
@@ -80,8 +80,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 任务删除后、清链前崩溃：下次恢复清链，运行恢复可裁剪 | 尚未实现 | `Missing` |
-| Git cleanup 失败重试仍负责磁盘回收，清链不取消 cleanup job | 尚未实现 | `Missing` |
+| 任务删除后、清链前崩溃：下次恢复清链，运行恢复可裁剪 | `ora_backend::scheduled_task::worktree::tests::retention_sweep_unlinks_a_run_whose_worktree_task_was_deleted`（任务已删即清链、恢复可裁剪） | `Partial` |
+| Git cleanup 失败重试仍负责磁盘回收，清链不取消 cleanup job | `ora_application::task::git_resource_cleaner` 与 `ora_backend::scheduled_task::worktree` 既有 durable cleanup 用例 | `Partial` |
 
 ## Startup Session Recovery Must Converge Before Scheduled Recovery
 
@@ -97,8 +97,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 真实 bootstrap 下残留 `Running` session 先收敛为 `Stopped`，先于 scheduled 恢复 | 尚未实现 | `Missing` |
-| 收敛后干净 worktree 进入清理；用户新启动会话仍阻止删除 | 尚未实现 | `Missing` |
+| 真实 bootstrap 下残留 `Running` session 先收敛为 `Stopped`，先于 scheduled 恢复 | `ora_backend::scheduled_task::worktree::tests::integration_bootstrap_stops_sessions_before_scheduled_cleanup` | `Covered` |
+| 收敛后干净 worktree 进入清理；用户新启动会话仍阻止删除 | `ora_backend::scheduled_task::worktree::tests::integration_bootstrap_stops_sessions_before_scheduled_cleanup`、`finished_run_discards_a_clean_worktree_only_after_its_session_stops` | `Covered` |
 
 ## Retention Must Classify Without Treating Unknown As Clean
 
@@ -116,11 +116,11 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 任务行已删除时先清链，运行恢复可裁剪 | 尚未实现 | `Missing` |
-| 缺路径运行从 task/workspace 解析真实路径并正确分类 dirty/untracked/committed | 尚未实现 | `Missing` |
-| 解析或分类失败保守保留，不当作已清理 | 尚未实现 | `Missing` |
-| in-use 不自动删；10 个上限与最旧优先顺序不变 | 尚未实现 | `Missing` |
-| 清理经 durable Git cleanup 收敛，再次恢复行为一致 | 尚未实现 | `Missing` |
+| 任务行已删除时先清链，运行恢复可裁剪 | `ora_backend::scheduled_task::worktree::tests::retention_sweep_unlinks_a_run_whose_worktree_task_was_deleted` | `Covered` |
+| 缺路径运行从 task/workspace 解析真实路径并正确分类 dirty/untracked/committed | `ora_backend::scheduled_task::worktree::tests::integration_retention_resolves_a_missing_path_from_the_committed_workspace`（root 切换 + dirty 保留）；dirty/untracked/committed 分类由既有 `committed_agent_changes_mark_a_worktree_modified` / `untracked_files_mark_a_worktree_modified` 覆盖 | `Covered` |
+| 解析或分类失败保守保留，不当作已清理 | `ora_backend::scheduled_task::worktree::tests::resolve_committed_checkout_path_is_conservative_when_the_workspace_is_gone`、`an_unknown_baseline_keeps_a_clean_worktree_unclassifiable` | `Covered` |
+| in-use 不自动删；10 个上限与最旧优先顺序不变 | `ora_backend::scheduled_task::worktree::tests::in_use_worktrees_are_neither_discarded_nor_counted_toward_the_bound`、`deletes_oldest_kept_worktrees_once_the_bound_is_exceeded` | `Covered` |
+| 清理经 durable Git cleanup 收敛，再次恢复行为一致 | `ora_backend::scheduled_task::worktree::tests::integration_bootstrap_stops_sessions_before_scheduled_cleanup` 与 durable cleanup 既有用例 | `Partial` |
 
 ## Regular Task Provisioning And Manual Runs Must Stay Unchanged
 
@@ -136,5 +136,5 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 普通任务与 manual run 提交路径不回退 | 尚未实现 | `Missing` |
-| occurrence 幂等、100 条历史与保留链接豁免不回退 | `ora_db::repository::scheduled_run::tests::history_pruning_keeps_runs_that_still_reference_a_retained_worktree`、`ora_db::repository::scheduled_run::tests::one_hundred_and_first_history_entry_prunes_only_the_oldest_fact` | `Partial` |
+| 普通任务与 manual run 提交路径不回退 | `ora_db::durability_tests::repository_rows_survive_a_power_cut_with_the_pool_still_running`（普通 `commit_worktree_task`）、`ora_backend::task::lifecycle_tests` | `Covered` |
+| occurrence 幂等、100 条历史与保留链接豁免不回退 | `ora_db::repository::scheduled_run::tests::history_pruning_keeps_runs_that_still_reference_a_retained_worktree`、`one_hundred_and_first_history_entry_prunes_only_the_oldest_fact`（`Partial`：幂等接纳的直接证据随实现运行补齐） | `Partial` |
