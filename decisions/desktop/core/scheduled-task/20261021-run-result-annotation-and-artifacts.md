@@ -4,117 +4,133 @@ status: proposed
 
 # Scheduled Run 携带独立业务结论，运行产物脱离 worktree 生命周期持久化
 
-本 ADR 处于 `proposed`。它在根决策 D7（运行记录与历史）之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行
-除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，
-按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义，Cloud 侧仅冻结接口边界与设计约束、不在
-本地轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
+本 ADR 处于 `proposed`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的
+Nightly QA 补齐两件能力：①运行除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离
+worktree 的生命周期持久化，按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结
+接口边界与设计约束、不在本地轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的
+后续 ADR 与核心用例。
 
 ## 继承与修改
 
-前序决策：根决策 [0-local-and-cloud-execution-ownership.md](0-local-and-cloud-execution-ownership.md)（下称根决策）。
+前序决策：根决策 [0-local-and-cloud-execution-ownership.md](0-local-and-cloud-execution-ownership.md)（下称根决策）与紧邻
+后续 [20261020-worktree-ownership-atomic-commit.md](20261020-worktree-ownership-atomic-commit.md)（下称 20261020）。
 
 | 约定 | 处置 |
 | --- | --- |
-| 根决策 D7：运行状态机 `accepted/running/succeeded/failed/cancelled/skipped_busy/skipped_capacity` 与 `failure_reason` 枚举 | 继承，不变；业务结论不写入、不复用这些字段 |
-| 根决策 D7：每个任务保留最近 100 条历史、仍带保留 worktree 链接的运行例外 | 继承，不变；产物保留随历史裁剪联动（D3） |
-| 根决策 D7：通知是交互辅助、不是运行事实源 | 继承，不变；verdict 不触发通知（另行决策） |
-| 根决策 D7 隐含：运行结果只有「执行层状态 + 历史行」两种表达 | **修改**：新增独立业务 verdict 与持久化产物，两者与执行层状态并存 |
-| 根决策 D1：本地任务及其运行历史只保存在本机、不上传 Cloud | 继承，不变；本地产物同样只落本机（D5） |
+| 根决策 D7：运行状态机与 `failure_reason` 枚举 | 继承，不变；业务结论不写入、不复用这些字段 |
+| 根决策 D7：每任务 100 条历史、保留 worktree 链接的运行例外 | 继承，不变；产物保留随历史裁剪联动（D3） |
+| 根决策 D3：调度器不得自行拼装未版本化 Prompt | 继承，不变；本 ADR 的 runtime 只**解析** Agent 最终响应，不注入任何 prompt 内容（哨兵是用户写在任务 prompt 里的可选约定） |
+| 根决策 D4：运行结束无改动即删、有改动保留（10 个上限） | 继承，不变；产物固定目录排除在 worktree 改动判定之外，搬出产物不改变保留判定（D3） |
+| 根决策 D8：`full_auto_in_worktree` 授权与 worktree 非沙箱 | 继承，不变；本 ADR 不扩大权限 |
+| 20261020 D1/D3：归属在任务提交事务原子建立、retention 先清链再分类 | 继承，不变；verdict/产物不触碰该事务与清理链 |
+| 根决策 D7 隐含：运行结果只有「执行层状态 + 历史行」两种表达 | **修改**：新增独立业务 verdict 与持久化产物 |
+| 根决策 D1：本地数据只驻留本机 | 继承，不变；本地产物同样只落本机（D5） |
 
 ## 决策
 
 ### D1：业务 verdict 是独立、可空、机器可读的运行结果字段
 
-`ScheduledRun` 增加 `verdict: Option<ScheduledRunVerdict>`，取值 `pass / warn / fail / blocked / idle /
-range_unresolved`，并可携带 `verdict_detail: Option<String>`（受长度约束的自由文本）。verdict 与 `status`、
-`failure_reason` 并存且互不推导：`status = succeeded` 且 `verdict = fail` 是合法且重要的状态（执行成功、业务判定失败）。
+`ScheduledRun` 增加 `verdict: Option<ScheduledRunVerdict>`（`pass / warn / fail / blocked / idle / range_unresolved`）、
+`verdict_detail: Option<String>`（受限自由文本）与 `verdict_at: Option<i64>`（独立的注解时间戳，不复用 `updated_at`，以免影响
+worktree 保留淘汰排序）。落点覆盖 domain、`ora_contracts` 与 TS `packages/contracts` 的契约、迁移（`verdict` / `verdict_detail` /
+`verdict_at` 三列可空，旧数据读作「未报告」）。
 
-- 为什么独立字段：质量巡检的「发现 Critical 缺陷」不等于「执行器失败」，复用 `failure_reason` 会污染执行层语义、
-  破坏既有故障映射、通知与统计；复用 `status` 则无法表达「执行成功但业务失败」。
-- 可空与兼容：旧任务、旧历史无 verdict 时读作「未报告」，列表/详情显示「未报告」，行为不变；旧 reader 忽略新字段。
-- 合法性：verdict 只在 `accepted` 之后的运行行上写入；对 `missed`（非运行）不提供 verdict。
+- **`status`×verdict 组合**：`skipped_busy` / `skipped_capacity` 与 `missed` 强制无 verdict（无运行体）；`accepted` /
+  `running` 无 verdict（尚未收尾）；`succeeded` / `failed` / `cancelled` 可携带 verdict。`status = succeeded` 且
+  `verdict = fail` 是合法且重要的状态（执行成功、业务失败）。
+- **`custom` 不进入首版枚举**：无界自由值难聚合、难校验；Agent 需要非标准结论时写入 `verdict_detail` 自由文本。
+- 为什么独立字段：质量巡检的「发现 Critical 缺陷」不等于「执行器失败」，复用 `failure_reason` 污染执行层语义，复用 `status`
+  无法表达「执行成功但业务失败」。
 
-### D2：verdict 由执行 Agent 经可信入口写入，末次写入生效
+### D2：verdict 由 runtime 在收尾时解析 Agent 最终响应并单次写入
 
-runtime 提供明确入口（repository 方法 `annotate_scheduled_run_verdict(run_id, verdict, detail)`），由执行 Agent 在
-会话内通过该入口提交；入口做校验：run 存在且非 `missed`、枚举合法、detail 长度受限，非法输入被拒绝且不改写运行事实。
+Agent 是 ACP 子进程，没有 desktop repository 通道，因此不存在「Agent 直接调用 repository 入口」的路径。写入权在 runtime：运行
+收尾（会话 `EndTurn` 后）时，runtime 从**持久会话历史**读取最终 Assistant 轮，解析文档化哨兵并调用
+`annotate_scheduled_run_verdict` 单次写入；随后才发布 `RunFinished`，保证前端刷新即见最终 verdict 而非「未报告」。
 
-- **提交机制（钉死为 prompt 契约哨兵）**：Agent 的最终响应以结构化标记
-  `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>` 结尾，可选另起一行 `QA_DETAIL: <自由文本>`。runtime 在
-  运行收尾时读取会话最终 Assistant 轮，解析该标记，校验枚举与 detail 后经 `annotate_scheduled_run_verdict` 持久化。
-  该标记是文档化、稳定的可解析契约（与 Nightly QA prompt 一致）；缺标记或格式非法 → 「未报告」，不报错、不改写运行事实。
-- 可信来源：只有执行该运行的 runtime/Agent 能写（与运行行关联，不开放任意客户端直写；解析也在 runtime 内部完成）。
-- 冲突处理：同一次运行可多次提交，**末次写入生效**（记录 `updated_at`），便于 Agent 在收尾时覆盖早先的临时结论；
-  不接受「部分成功」——一次提交要么整体写入、要么被拒。
-- 缺失降级：无提交即「未报告」；不因缺 verdict 影响历史裁剪、保留或通知。
+- **哨兵契约（冻结）**：最终 Assistant 轮文本中匹配
+  `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>`（标记名与取值大小写不敏感、规范化后匹配，取**第一个**匹配；
+  多余标记忽略）；可选紧随一行 `QA_DETAIL: <自由文本>`，detail 长度受 `MAX_SCHEDULED_RUN_VERDICT_DETAIL_CHARS` 约束。无匹配或
+  格式非法 → 「未报告」，不报错、不改写运行事实。
+- **单次写入**：一次运行只在收尾解析一次、写入一次；若运行因会话续跑而再次收尾，后写覆盖前写（仍是同一单写路径，不是多提交
+  模型）。枚举非法、detail 超长、运行不存在（含 `missed`）被拒且不改写运行事实。
+- **prompt 落点**：哨兵是**用户写在任务 prompt 里的可选约定**（如 Nightly QA V1.1 模板）；runtime 只解析、不注入，遵守根决策
+  D3。未采用该约定的任务 → 恒「未报告」。
 
-### D3：运行产物持久化到本机独立存储，按 Run ID 索引
+### D3：运行产物经固定目录 + 类型白名单声明，copy 到本机独立存储
 
-本地为定时运行建立独立的产物存储（应用数据目录下、按 `run_id` 分目录），生命周期不依赖隔离 worktree：Agent 在
-worktree 内产出 Markdown/JSON/测试报告/日志后，runtime 在运行收尾时把这些产物**登记并搬入**持久化存储，随后
-worktree 是否被回收都不影响产物。
+- **声明机制（冻结哪些文件算产物）**：Agent 只能通过 worktree 内的固定目录 `.ora-scheduled-artifacts/` 声明产物；类型白名单
+  `markdown/json/txt/log` 及测试报告扩展（`xml/html` 等，实现阶段列全）。固定目录之外的任何文件不登记——这是 #440「防非授权
+  文件收集」的落点。与 workflow 交互式节点产出物声明（circus#426）是不同领域，不复用其机制，仅复用路径安全工具。
+- **搬入方式**：**copy**（跨卷安全，且源文件留在 worktree、保留判定不被搬走改变）；固定目录本身从 worktree 改动判定中排除，
+  故 copy 出产物不使无改动 worktree 被误判为有改动、不占用 10 个保留上限。
+- **索引与崩溃对账**：按 `run_id` 建产物清单（名称、类型、大小、登记时间），先写清单（SQLite）再落文件；崩溃后启动 sweep 按
+  清单对账，孤文件清理、缺文件按清单删除索引项，恢复幂等。
+- **上限（冻结数值）**：单产物 ≤ 10 MiB、单运行 ≤ 64 个、单运行总 ≤ 64 MiB、每任务 ≤ 10 个运行的产物保留（与历史裁剪联动）。
+  超限或非法路径**被拒绝并记入运行历史可见的错误**（不静默丢弃）。
+- **清理**：随 100 条历史裁剪删除对应运行产物；任务软删除/禁用不即时删产物（保留至历史裁剪）；保留 worktree 链接的运行其
+  产物随链接例外保留。
 
-- 索引：按 `run_id` 建立产物清单（名称、类型、大小、登记时间），运行历史可列出、打开/下载。
-- 上限：单个产物大小、单运行产物数量与总体大小有明确上限；超限或非法路径被拒绝，不静默丢弃。
-- 保留：产物随运行历史裁剪联动——被 100 条历史裁剪的运行，其产物一并清理；仍带保留 worktree 链接的运行例外保留。
+### D4：路径安全复用既有工具，敏感信息按可判定口径约束
 
-### D4：路径安全与敏感信息防护
+- **路径安全**：复用 `crates/utils/src/path` 既有校验，并补 Windows ADS、大小写、NFC 归一与硬链接越界；产物名/相对路径不得含
+  `..`、绝对路径、盘符；不跟随指向存储目录之外的符号链接。威胁模型以「Agent 在非沙箱 worktree 内可写任意路径」为前提。
+- **敏感信息（可判定口径，待 owner 确认）**：产物存储只存元数据、不索引内容；靠类型白名单 + 大小上限 + 跟随运行可见性访问
+  约束暴露面，**不做内容密钥扫描**。这一口径与 #440 验收「敏感信息不进入产物存储」的强表述存在张力，需 owner 拍板（见
+  未解决问题，`#441` 标 `status:needs-owner`）。
 
-- 路径安全：产物文件名/相对路径不得含 `..`、绝对路径、盘符；解析时不跟随指向存储目录之外的符号链接；拒绝越界。
-- 敏感信息：登记与索引不抓取文件内容，仅存元数据；Agent 不得把密钥/token 写入产物（约束写入到 Prompt/使用说明），
-  存储不承诺对内容做密钥扫描（Non-goal）。
-- 访问：产物读取跟随运行历史可见性，本机访问；不开放任意文件系统路径读取。
+### D5：local 与 Cloud 的边界
 
-### D5：local 与 Cloud 的存储边界
-
-本地：产物与运行历史同机驻留、不自动上传、不跨设备同步（与根决策 D1 一致）。Cloud：产物走 Cloud 侧对象存储，权限与
-可见性沿用运行归属/可见性契约，作为未来能力在 Cloud ADR 另行定义；本 ADR 只冻结「Run ID 索引、类型、上限、保留」等
-共用语义，本地实现不得预埋上传或同步。
+- 本地：产物与 verdict 只落本机、不自动上传、不跨设备同步（继承根决策 D1）。
+- Cloud：verdict 与产物契约留待 Cloud ADR 承接（IssueRun ≠ ScheduledRun，Cloud 侧 verdict/产物字段、权限、生命周期、费用
+  归属需另立 Cloud 决策；本 ADR 不预置）。注意：已批准 Cloud ADR D6 的「100 条保留只作用于任务历史视图」与本 ADR 的产物
+  保留语义不同，Cloud 承接时需显式对齐。
 
 ## 不变量
 
 1. `status` 与 `failure_reason` 的语义、映射、通知与历史裁剪不回退。
 2. verdict 是独立、可空、机器可读字段；`status = succeeded` 且 `verdict = fail` 可合法并存。
-3. verdict 只有执行该运行的 runtime/Agent 能写；非法输入被拒且不改写运行事实；末次写入生效。
-4. 运行产物在 worktree 被回收后仍可从运行历史访问。
-5. 产物大小/数量受上限约束，越界或路径穿越被拒绝。
-6. 本地产物不离开本机；Cloud 产物作为未来能力，不在本地实现。
+3. verdict 只有 runtime 在收尾时能写；单次收尾单次写入；非法输入被拒且不改写运行事实；`verdict_at` 独立于 `updated_at`。
+4. 运行产物在 worktree 被回收后仍可从运行历史访问；产物固定目录排除于 worktree 改动判定。
+5. 产物大小/数量受冻结上限约束，越界或路径穿越被拒绝且可见。
+6. 本地产物不离开本机；Cloud 产物/verdict 作为未来能力，不在本地实现。
 7. 旧任务与旧历史无 verdict/产物时行为不变。
 
 ## 为什么不是这些替代方案
 
 | 方案 | 取舍 |
 | --- | --- |
-| 复用 `failure_reason` 表达业务失败 | 实现最快，但污染执行层语义：`failed` 会触发失败通知、进入故障统计，且无法表达「执行成功但业务 FAIL」 |
-| 在 `status` 里加业务终态 | 状态机与既有 D6/D7 语义、通知、裁剪全被打乱，`succeeded` 的含义被稀释 |
-| 给 Agent 提供专用 verdict 工具/命令，而非解析最终响应哨兵 | 结构化更可靠、不依赖文本格式，但需在 agent runtime 增加工具接线与授权面；对「每次运行只写一次结论」这个单一用途，成本高于收益 |
-| 暴露独立公开端点由前端/外部直写 verdict | 破坏「只有执行该运行的 runtime/Agent 能写」的信任边界，打开任意客户端写入，校验与授权成本放大 |
-| 产物留在 worktree、依赖「有改动即保留」 | 无改动即回收、有改动仅临时副本，无索引、无大小上限、无保留策略，不可靠 |
-| verdict 驱动自动重试/告警路由 | 有价值但属另一决策面（调度策略、通知语义、费用归属），本次不绑定 |
+| 复用 `failure_reason` 表达业务失败 | 实现最快，但污染执行层语义：`failed` 触发失败通知、进入故障统计，且无法表达「执行成功但业务 FAIL」 |
+| 在 `status` 里加业务终态 | 状态机与 D6/D7 语义、通知、裁剪全被打乱，`succeeded` 含义被稀释 |
+| 给 Agent 提供专用 verdict 工具/命令 | 结构化更可靠，但需在 agent runtime 增加工具接线与授权面；对「每次运行只写一次结论」的单一用途成本高于收益（作为哨兵漂移时的升级路径保留） |
+| 暴露独立公开端点由前端/外部直写 | 破坏「只有 runtime 能写」的信任边界，打开任意客户端写入 |
+| 产物留在 worktree、依赖「有改动即保留」 | 无改动即回收、有改动仅临时副本，无索引、无大小上限、无保留策略 |
+| 产物用 move 而非 copy | 跨卷 `fs::rename` 不可用，且搬走会改变 worktree 保留判定 |
+| verdict 驱动自动重试/告警路由 | 属另一决策面（调度策略、通知语义、费用归属），本次不绑定 |
 | 建通用文件资产管理/版本化产物仓库 | 超出定时运行产物的需求，复杂度与安全面大幅扩大 |
 
 ## 本决策未解决的问题
 
+- **敏感信息口径**（#440 验收「敏感信息不进入产物存储」与「不做内容扫描」的张力）——待 owner 拍板（`#441` 标 `status:needs-owner`）。
 - verdict 驱动的自动重试、任务启停或告警路由（另行决策）。
 - 运行历史按 verdict 过滤/排序、聚合看板。
-- Cloud 侧产物对象存储的凭据、权限、生命周期与费用归属（Cloud ADR）。
-- 产物的密钥扫描/内容审计（明确为 Non-goal）。
-- 哨兵解析若在实践中最优 Agent 不守约、格式漂移，可升级为专用结构化工具（本决策先钉哨兵为最小实现，升级另立决策）。
+- Cloud 侧 verdict/产物字段、权限、生命周期与费用归属（Cloud ADR；IssueRun ≠ ScheduledRun 需显式定义）。
+- 哨兵解析若在实践中 Agent 不守约、格式漂移，可升级为专用结构化工具（另立决策）。
 
 ## 核心测试用例
 
 本 ADR 的核心用例维护在
 [`test-cases/desktop/core/scheduled-task/run-result-annotation-and-artifacts.md`](../../../../test-cases/desktop/core/scheduled-task/run-result-annotation-and-artifacts.md)，
-至少覆盖：`succeeded + fail` 独立展示；旧任务无 verdict 显示「未报告」且行为不变；非法枚举/detail 超长被拒且不改写事实；
-末次写入生效；产物登记后 worktree 回收仍可访问；超限/路径穿越/符号链接越界被拒；产物随历史裁剪联动清理；本地产物
-不离开本机。
+覆盖：`succeeded + fail` 独立展示与 `RunFinished` 前写入时序；`skipped_*`/`missed` 无 verdict、`accepted/running` 无 verdict 的
+组合矩阵；非法枚举/detail 超长/多余标记被拒且不改写事实；旧任务无 verdict 显示「未报告」；产物固定目录白名单声明、目录外文件
+不登记；copy 出后 worktree 保留判定不变；超限/路径穿越/符号链接越界被拒且可见；清单崩溃对账幂等；产物随历史裁剪/任务软删除/
+链接清除/启动 sweep 的清理；本地产物不离开本机。
 
 ## 落地顺序
 
-1. **specs**：本 ADR 评审通过标记 `approved`，同步建立核心测试用例（义务初始为 `Missing`）。
-2. **#439 实现**：verdict 数据模型 + 可信写入入口 + 校验/兼容 + 历史展示 + 自动化测试（产品 PR，含
-   `succeeded + verdict=fail` 场景）。
-3. **#440 实现**：产物持久化存储 + Run ID 索引 + 登记/搬移 + 历史查看/下载 + 上限/保留/安全 + 测试。
-4. **集成验收**：真实 local 定时任务跑一次最小 Nightly QA，验证 verdict + 产物全链路、重启后历史与产物可读、安全与
-   兼容测试。
+1. **specs**：本 ADR 评审通过（作者在 PR 内改 `approved`）并合并，同步建立核心测试用例（义务初始 `Missing`），
+   `domain/glossary.md` 补「业务 verdict / 运行产物」术语。
+2. **#439 实现**：domain+迁移（含 `verdict_at`）+ 契约（Rust/TS）+ runtime 收尾解析哨兵 + 历史展示 + 自动化测试（产品 PR）。
+3. **#440 实现**：产物固定目录声明 + copy 搬入 + 索引/对账 + 上限/清理 + 路径安全 + 历史查看/下载 + 测试。
+4. **集成验收**：真实 local 定时任务跑一次最小 Nightly QA，验证 verdict + 产物全链路、重启后历史与产物可读、安全与兼容测试。
 5. **收尾**：核心用例证据补齐，ADR 转 `implemented`，关闭 #439/#440。
