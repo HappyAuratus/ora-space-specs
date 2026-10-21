@@ -225,7 +225,7 @@ Workflow 的 Start 节点声明变量；可能有多个已发布版本。
 | 投影与 404 | `TestFormDescriptorProjection`；单元 `TestFormDescriptorProjection*` | Covered |
 | 提供方失败与非法描述 | `TestFormDescriptorUnavailableAndInvalid` | Covered |
 | 版本表单按版本投影 | `TestWorkflowSnapshotFormProjectsTheChosenVersion` | Covered |
-| 带 `issueId` 的版本表单不渲染作者的 `snapshotId` 声明，平台选择器照样注入 | 真实 HTTP + PostgreSQL：`TestAuthorDeclaredSnapshotIDDoesNotTakeTheKeyBack`（活稿声明该键时 `@` 表单仍是平台选择器、默认最新可选版本）、`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`；单元 `TestLaunchKeysCollideLikeTheOlderOnes`（cloud#123 未合入 main，按 `Missing` 记） | Missing |
+| 带 `issueId` 的版本表单不渲染作者的 `snapshotId` 声明，平台选择器照样注入 | 真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`——带 `issueId` 时 `snapshotId` 是平台选择器（`select`）、不带 `issueId` 时仍是作者的 `text`；单元 `TestLaunchKeysCollideLikeTheOlderOnes`（cloud#123 未合入 main，按 `Missing` 记） | Missing |
 | 版本表单的作用域 | `TestWorkflowSnapshotFormScoping` | Covered |
 | 读取不是门禁 | `TestWorkflowSnapshotFormIsNotARunGate` | Covered |
 
@@ -250,7 +250,7 @@ Issue 有或没有 Project、父 Issue；Workflow 有或没有已发布快照、
 
 ### 必须成立
 
-- 无 Issue 上下文时不注入；有时按 D8 的顺序和条件注入，作者声明的 key 归作者，保留键 `snapshotId` 除外：它始终由平台注入，活稿里的同名声明不进入表单，Confirm 把它当版本游标读。
+- 无 Issue 上下文时不注入；有时按 D8 的顺序和条件注入，作者声明的 key 归作者，保留键 `snapshotId` 除外：只要有一个可选的已发布版本，它就由平台注入，活稿里的同名声明不进入表单，Confirm 把它当版本游标读。
 - 版本选择器只列出自身冻结图不声明 `snapshotId` 的已发布版本，默认最新的可选版本；有版本被排除时选择器的说明写明原因；没有可选版本时不注入选择器。
 - `launchFields` 逐 key 覆盖；撤下的 key 在 Assist 与 Confirm 中都是未知 key；对作者自己的 key 无效。
 - 旧名 `version` 的声明按 `snapshotId` 读取；Confirm 的旧 key 按 D8 规则 7 折叠。
