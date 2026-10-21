@@ -1,10 +1,11 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Scheduled Run 的 worktree 归属在任务提交事务内原子建立
 
-本 ADR 处于 `approved`，内容经 owner 批准（[ora-space/circus#376](https://github.com/ora-space/circus/issues/376) 逐项批准，其中存量孤儿的处理范围被缩小）并完成评审，尚待实现与验收。它解决一个已核实的崩溃窗口：local Scheduled Run 在
+本 ADR 为 `implemented`：内容经 owner 批准（[ora-space/circus#376](https://github.com/ora-space/circus/issues/376) 逐项批准，其中存量孤儿的处理范围被缩小），由 [ora-space/desktop#715](https://github.com/ora-space/desktop/pull/715) 实现并合入 `main`，核心用例的验证义务随实现登记证据（见
+[worktree-ownership-and-recovery](../../../../test-cases/desktop/core/scheduled-task/worktree-ownership-and-recovery.md)）。它解决一个已核实的崩溃窗口：local Scheduled Run 在
 `TaskApi::create`（provisioning）成功之后、`ScheduledRunTransition::Start` 落库之前进程死亡，会留下与运行行无链接的隔离
 worktree 任务——启动恢复把运行结算为 `failed`，而保留清理清单要求链接非空，该 worktree 与分支从此不可见、不可回收。
 
@@ -139,11 +140,12 @@ lease 补偿仍在；bootstrap 装配顺序下残留 session 先收敛、干净 
 
 ## 落地顺序
 
-1. **specs**：本 ADR 已完成评审并标记 `approved`（本提交）；核心测试用例随 ADR 同批建立（义务初始为 `Missing`）。
+1. **specs**：本 ADR 经批准建立（原 specs#161），核心测试用例同批建立（义务初始为 `Missing`）。
 2. **desktop 实现**（[ora-space/circus#379](https://github.com/ora-space/circus/issues/379)）：提交适配器、`Start`
-   校验、retention 修正扩展、装配顺序回归与故障注入测试；产品 PR 在 ADR `approved` 后交付，含存量孤儿的用户文档说明。
-3. **落地验收**（[ora-space/circus#380](https://github.com/ora-space/circus/issues/380)）：合并后在 `main` 验收不变
-   量，补证据状态，ADR 转 `implemented`。
+   校验、retention 修正扩展、装配顺序回归与故障注入测试；产品 PR [ora-space/desktop#715](https://github.com/ora-space/desktop/pull/715)
+   合入 `main`，含存量孤儿的用户文档说明。
+3. **落地验收**（[ora-space/circus#380](https://github.com/ora-space/circus/issues/380)）：本提交把 ADR 转 `implemented`
+   并按实现登记核心用例证据。
 
 行为变化边界：第 2 步合入前，现有行为（`Start` 才写链接、崩溃窗口产生孤儿）保持不变；合入后新运行不再产生孤儿，存量
 孤儿按 D5 由用户手动处理。
