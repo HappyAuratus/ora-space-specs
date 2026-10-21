@@ -1,6 +1,6 @@
 # Agent Run 残留资源的对账、受控回收与账本闭环
 
-依据[已实现的残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。下文的 D 编号与不变量编号都指这篇 ADR；“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，它的核心用例见[有界启动用例](bounded-agent-startup.md)。
+依据[已实现的残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)及[owner 的首版范围与运维授权决定](https://github.com/ora-space/circus/issues/251#issuecomment-6315318982)。下文的 D 编号与不变量编号都指这篇 ADR；“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，它的核心用例见[有界启动用例](bounded-agent-startup.md)。
 
 本文覆盖 D4/D5 业务收尾之后残留责任的收尾：账本清理状态机、自动对账层的证据与系统清理授权、部署运维的受控回收意图、逐目标终止与 late ensure fencing 的完成条件、三级显式升级，以及存量 D8 删除残留的按身份接管。业务结算、启动与创建截止、迟到事实接管本身的义务仍由[有界启动用例](bounded-agent-startup.md)拥有，本文不重复登记。
 
@@ -28,10 +28,10 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 ## Reclaim State Migration Marks Existing Rows Reconciling Without Backfilling Evidence
 
 - 风险：升级时按历史推断出“已清理”，把仍有物理资源的条目销账；或迁移失败让既有保护消失。
-- 前置状态：迁移前已有的 D4/D5 账本行，`cleared_at` 均为空，无任何证据列。
-- 触发：新库迁移、升级迁移、重复执行迁移。
-- 必须成立：存量行统一置 `reconciling`，不回溯判定任何证据；`cleared_at`、`reason`、`responsibility` 保持原值；`agent_run_residuals` 只增列，既有查询（`cleared_at IS NULL` 的保护条件）行为不变；重复迁移不重置状态。
-- 禁止结果：迁移推断出处置证据或写 `cleared_at`；改 `reason` CHECK 之外的来源；升级后残留保护失效。
+- 前置状态：迁移前已有的 D4/D5 账本行，无清理证据列；正常样本 `cleared_at` 为空，另有异常旧行已为非空。
+- 触发：新库迁移、升级迁移、重复执行迁移；异常旧行使升级受阻后，运维按 ADR D1 排查并决定兼容处理。
+- 必须成立：正常存量行统一置 `reconciling`，不回溯判定证据，保留空 `cleared_at`、原 `reason` 与 `responsibility`；表尚无 `reclaim_state` 而旧行 `cleared_at` 非空时，0057 明确报错并回滚本次迁移事务，不猜测处置、不记为已应用。运维以 D1 的旧列只读 SQL 定位，核对原身份及实际责任；只有证明误写后才允许单独审阅的定点数据库修正，真实历史闭环或无法查明者保持阻挡并另行设计兼容处理。`agent_run_residuals` 只增列，既有保护查询不变；重复迁移不重置进度。
+- 禁止结果：迁移推断出处置证据或写 `cleared_at`；为升级批量清空旧时间戳、删行、跳过 guard 或伪造迁移记录；将 `cloudctl residual` 当作迁移前修复工具；改 `reason` CHECK 之外的来源；升级后残留保护失效。
 - 验证义务与证据：**Covered** — cloud#112 的 `TestMigration0057ResidualReclamationFreshAndConstraints`、`TestMigration0057ResidualReclamationUpgradePreservesHistory`、`TestMigration0057ResidualReclamationReplayPreservesProgress`、`TestMigration0057ResidualReclamationRejectsLegacyClearedRows`（本应为空的旧 `cleared_at` 非空时迁移失败并回滚）；cloud#116 的 `TestControlledResidualMigrationFreshAndConstraints`、`TestControlledResidualMigrationUpgradePreserves0057HistoryAndDoesNotInventD8Ledger`；迁移后普通入口仍拒绝见 `TestResidualOrdinaryLifecycleGuardsAndUnrelatedD8StayProtected`。两轮候选均经正常迁移启动；这不代替存量行升级与迁移重放的直接测试。
 - 决策依据：D1（存量行迁移），兼容性边界。
 
@@ -39,8 +39,8 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 
 - 风险：自动层把“证据不足”解释成“已放弃”，对仍在执行的未知目标发起终止或数据删除；或把查询失败记成证据。
 - 前置状态：`reconciling` 行，其中一条执行状态未知、Controller 暂时不可达，另一条已有迟到终态但交付未确认，第三条全部证据齐全。
-- 触发：对账周期扫描；Controller 不可达；查询返回空结果；交付验证未完成。
-- 必须成立：自动层只收集证据、做成果救援（按原执行身份重放）与已授权范围内的 owned delete；证据齐才申请系统清理授权；Controller 不可达或租约失效按暂时失败处理，下周期重试，不记为任何证据；“没有结果记录”不代替完整证明。
+- 触发：对账周期扫描既有事实；Controller 不可达或无法回报历史事实；已有事实缺失；交付验证未完成。
+- 必须成立：自动层只读取经既有事实入口持久接管的原身份证据，成果救援经既有 Revision 核验路径，不新增取证查询 RPC 或 Controller 历史发现能力；证据齐才申请系统 owned delete 授权。交付资格仅来自原 `deliver_revision` 执行登记且按原身份核验完成的 Revision，其他交付执行也须各自核验完成；首版没有明确放弃交付的自动资格路径。Controller 无法回报历史事实时保持 `reconciling`，交运维依 D3 显式接管；不可达、租约失效或读取失败不算证据，下周期重读；“没有结果记录”不代替完整证明。
 - 禁止结果：自动层排 `sandbox_terminate` 或针对未知执行的数据删除；把 `done`、超时或查询失败当作放弃证据；因救援重开会话、输入或续期窗口。
 - 验证义务与证据：**Covered** — cloud#112 的 `TestResidualUnknownAndDeliveryFailureNeverAuthorizeDataDeletion`、`TestResidualPartialAndNullScopeTargetsRemainAUnion`、`TestResidualOwnedDeleteRunsCloudTopologyAndPreservesBusinessTerminal`；cloud#116 的 `TestControlledResidualDoesNotAuthorizeAutomaticEscalation`、`TestControlledResidualRaceAutomaticClaimBothCommitOrders`。证据只经既有事实入口到达，不新增查询 RPC；Controller 无法回报的历史事实使条目保持 `reconciling`。第一轮 S2 的 Substrate 约 300 秒不可达期间没有自动升级或数据删除，第一轮 D8 补跑的 Node 恢复后跨两个扫描周期没有新的删除；第二轮未重跑这两条路径。
 - 决策依据：D2，不变量 1、3。
@@ -69,8 +69,8 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 
 - 风险：受控回收变成租户侧可枚举隐藏 Workspace 的旁路，或终止成功即被当作删卷授权。
 - 前置状态：证据长期收不齐的残留（含无账本行的存量 D8 残留）；隐藏运行 Workspace 对公开 API 恒 404；同租户另有运行中的 Workspace。
-- 触发：部署运维经管理端点发起回收（带/不带显式放弃确认、重复幂等键、同键不同输入）；只终止不删数据；随后单独发起数据删除；租户管理员经公开 API 尝试同样操作。
-- 必须成立：受控回收只经部署管理端点发起，输入含目标范围、非空 `reason` 与语义同强停 `impactConfirmed=true` 的显式放弃确认；意图独立持久化为 `registered → terminating → succeeded` 并留发起者、时间、reason 审计；确认语义同强停，终止与数据删除分两个命令；只终止不删数据是合法终态（`terminated_data_retained`），删卷必须另有显式命令（`released`）；同幂等键重放返回原意图，同键不同输入拒绝；租户侧与公开 API 仍 404，不获得入口。
+- 触发：部署运维凭部署数据库凭据运行本地 `cloudctl residual` 发起回收（带/不带显式放弃确认、重复幂等键、同键不同输入）；只终止不删数据；随后单独发起数据删除；租户管理员经公开 API 尝试同样操作。
+- 必须成立：受控回收只经本地 `cloudctl residual` 发起，没有 HTTP 管理端点；授权来自受控部署主机及数据库凭据访问控制，认证主体为 PostgreSQL `session_user`，`--operator-label` 不能替代或覆盖它，租户角色不授予此权；输入含目标范围、非空 `reason` 与语义同强停 `impactConfirmed=true` 的显式放弃确认；意图独立持久化为 `registered → terminating → succeeded` 并留发起者、时间、reason 审计；确认语义同强停，终止与数据删除分两个命令；只终止不删数据是合法终态（`terminated_data_retained`），删卷必须另有显式命令（`released`）；同幂等键重放返回原意图，同键不同输入拒绝；租户侧与公开 API 仍 404，不获得入口。
 - 禁止结果：租户管理员或普通成员发起受控回收；缺确认即终止；终止成功隐式排 `workspace_data_delete`；重复命令产生第二份责任；改写 Run 终态、重开 admission 或重写 `deliveryState`。
 - 验证义务与证据：**Covered** — cloud#116 的 `TestControlledResidualCommands`、`TestControlledResidualRetainedThenReleased`、`TestControlledResidualRetainedThenReleasedOverGRPC`、`TestControlledResidualHiddenWorkspaceRemains404ForAdminAndMember`、`TestControlledResidualRaceIdempotencyBothCommitOrders`、`TestControlledResidualRaceDifferentKeysKeepOneRoot`、`TestCloudctlResidualManagement`、`TestCloudctlResidualRejectsUnsafeOrAmbiguousArguments`。部署运维入口是本地 `cloudctl residual` 命令，使用部署数据库凭据，操作主体为 PostgreSQL `session_user`，没有 HTTP 路由。第一轮 S1 与 D8 补跑用真实 `cloudctl residual` 走完 terminate → `terminated_data_retained` → 独立 `delete-data` → `released`，S3 验证非法请求拒绝、重放与冲突审计；已有卷保留再物理删除的证据来自第一轮 D8 补跑。第二轮 S1 只补证两阶段命令、独立删除 operation 与状态转换，终止前无卷，不能证明已有卷的保留和删除。本项 `Covered` 限上述 Cloud 授权、命令与审计契约；其测试注入的物理成功结果不是新版物理删卷证明。
 - 决策依据：D3，不变量 3、5。
@@ -80,7 +80,7 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 - 风险：用 Substrate 查询 `404` 或 Node 不可达代替终止证据，让仍在网络中的 ensure 之后创建出可写实例。
 - 前置状态：账本 `responsibility` 记录多个沙盒计划 ID，其中 A 已 ensure 成功、B 已持久计划但请求仍在网络中（查询得到 `404`）、C 从未 ensure；B 的 ensure 持有效许可。
 - 触发：回收意图经当前 Controller lease 计划 `sandbox_terminate`；对 A/B/C 逐一终止；terminate 双确认后再送达 B 的迟到 ensure；Controller 许可失效或 Substrate 不可达。
-- 必须成立：Cloud 只为既有 `sandbox_terminate` / `workspace_data_delete` 计划 effect，不新增直连 Substrate 路径；Controller 以当前 lease epoch 与许可执行，许可失效时不发起新动作；目标集合包含从未执行过的 ensure 计划，逐 ID 取得 `terminated` 与 `lateEnsureFenced` 双确认；生产 Substrate 适配器保持 Sandbox Server 已有语义（先墓碑后破坏、幂等、对不存在的目标也确认）；只有 Cloud 在与创建计划/派发互斥的事务中证明目标从未形成计划、许可或在途责任并封闭后续入口，才可记录“无目标待终止”；`404` 既不写墓碑也不排除在途 ensure。
+- 必须成立：Controller 在 terminate 前只尝试有界的既有 Shutdown 控制关闭，不为回收新增 EndSession 结束请求，也不以控制关闭响应作为终止前置或双确认替代；Cloud 只为既有 `sandbox_terminate` / `workspace_data_delete` 计划 effect，不新增直连 Substrate 路径；Controller 以当前 lease epoch 与许可执行，许可失效时不发起新动作；目标集合包含从未执行过的 ensure 计划，逐 ID 取得 `terminated` 与 `lateEnsureFenced` 双确认；生产 Substrate 适配器保持 Sandbox Server 已有语义（先墓碑后破坏、幂等、对不存在的目标也确认）；只有 Cloud 在与创建计划/派发互斥的事务中证明目标从未形成计划、许可或在途责任并封闭后续入口，才可记录“无目标待终止”；`404` 既不写墓碑也不排除在途 ensure。
 - 禁止结果：以 effect 查询 `404`、Node 不可达或许可过期作为终止或围栏证据；跳过未到达的 ensure 计划 ID；删卷先于全部终止确认；删除原 effect 行、假报 sandbox 缺失或新建 generation 挂载同一可写卷；墓碑后迟到 ensure 仍创建出实例。
 - 验证义务与证据：**Partial** — Cloud：cloud#112 的 `TestResidualCleanupRequiresEveryDualTerminationAndRemovedProof`、`TestResidualPartialAndNullScopeTargetsRemainAUnion`，cloud#116 的 `TestControlledResidualEveryPlannedSandbox`、`TestControlledResidualRetainedThenReleasedOverGRPC`、`TestControlledResidualRaceNoTargetProofAndDispatchBothCommitOrders`（从未计划证明与并发计划/派发只有一方取得责任）。Controller：desktop#710 的 `cloud::substrate::put_admission::destructive_put_requires_current_unexpired_permit`、`force_stop::force_stop_preserves_all_cloud_effect_targets_and_evidence`、`force_stop::force_stop_attempts_bounded_control_close_before_terminate`、`force_stop::tombstoned_ensure_does_not_retry_or_change_generation`、`force_stop::absence_and_unavailable_nodes_are_not_termination_confirmation`，对端是假 Cloud/Substrate/Node。Sandbox Server：`sandbox-server/internal/lifecycle` 既有的 `TestTerminateOfUnknownSandboxSucceedsAndTombstones`、`TestTerminateRemovesContainerAndBlocksLateEnsure`，以及 cluster#35 的 `TestTerminateTombstonePrecedesDestroyAndReplayIsIdempotent`、`TestTerminateOfExternallyRemovedContainerReturnsDualEvidence`、`TestEnsureTerminateInterleavingsPreserveTombstoneFence`、`TestPlannedEnsure404ThenTerminateRejectsLateAuthorizedEnsure`、`TestManagedTombstoneClassificationPreservesPermitChecksAndHistory`（fake Engine 与真实临时 journal）。部署演练：第一轮 S1、第二轮 S1 的两个目标逐一取得真实双确认、已确认目标没有再次 PUT；第一轮 S2 约 300 秒内真实 `404` 与 Node 失联都没有让意图完成，第二轮未重跑 S2。缺口：“terminate 双确认后送达的有效迟到 ensure 被墓碑拒绝”在第一轮 S2b `late-ensure-fenced` 中未能经生产路径触发（原 ensure 许可有效期内生产回收资格未成立，结论 inconclusive），目前只有 cluster#35 的单仓测试证明。
 - 决策依据：D4，不变量 8。
@@ -106,6 +106,8 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 - 决策依据：D6，不变量 7。
 
 ## 跨仓库验证边界
+
+产品 PR（cloud#112/#116/#117/#127、desktop#710/#712、cluster#35）均已合并；cluster#36 演练工具仍在审，specs#163 在其合并后再合并。以下 `Partial` 是固定版本的联合验收证据缺口，不表示产品实现仍未合并；不因合并状态升级覆盖结论。
 
 - 第 1、2 步的账本、授权、意图与事实接管义务在 cloud 内可直接验证；它们的 `Covered` 判定不依赖 desktop/cluster。
 - Node 侧停止证据未确认的命名原因、等待上限与到期转交由 [Node 恢复截止与停止确认用例](../../node/revision/restore-deadline-and-stop-confirmation.md)登记；本文承接其在残留账本上的命名证据（`stop_unconfirmed`）与后续回收义务，不重复登记。
