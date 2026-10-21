@@ -117,7 +117,8 @@ clone 步骤需要冻结输入、而 Binding 没有当前快照时，Cloud 读�
 - 等待期间不冻结输入，不登记 clone 执行，不派发任何 Node 工作；Workspace 保持 `admission_open = false`。
 - 运行公开的 `preparation`（根 D2 的 2026-10-11 修订）把 `snapshot_not_ready` 与 `git_server_unconfigured` 作为安全错误码原样
   展示；clone 步骤以 `repository_sync_failed` 结束时，`preparation.errorCode` 为 `repository_sync_failed`，`preparation.syncErrorCode`
-  取所记录同步 Operation 自己的 `error_code`（只在同一 Project 内查找；该同步没有错误码时为空）。两者都不暴露 Binding 或快照
+  取所记录同步 Operation 自己的 `error_code`（只在同一 Project 内查找）；没有记录同步 ID 时，取该 Binding 最近一次失败同步的
+  错误码；所取的同步没有错误码时为空。两者都不暴露 Binding 或快照
   身份，公开的 operation 视图也不含 `syncOperationId`。
 - 以 `repository_sync_failed` 结束的 operation 按 clone 步骤已有的失败路径处理（与第三次已知失败相同）：Workspace 置为
   `unavailable`、准入保持关闭，运行时维护控制归还；run Workspace 走原失败释放路径，项目主 Workspace 留存。
