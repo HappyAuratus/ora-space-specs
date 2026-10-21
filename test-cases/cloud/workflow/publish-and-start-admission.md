@@ -80,7 +80,7 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 三种入口共用同一个启动门禁 | 真实 HTTP + PostgreSQL：同一份非法图在三个入口同样被拒，拒绝后无运行行 | Partial |
-| 输入按运行将执行的那一份文档校验 | 真实 HTTP：选中字段与活稿不同的旧版本按该版本通过并记录该版本；缺该版本必填字段返回 `400 required_field_missing`、提交它未声明的字段返回 `400 invalid_field_value`，两条都定位到字段、不建运行，且同一交互随后按该版本确认成功（`TestWorkflowConfirmValidatesAgainstTheChosenVersion`；cloud#114 未合入 main，按 `Missing` 记） | Missing |
+| 输入按运行将执行的那一份文档校验 | 真实 HTTP：选中字段与活稿不同的旧版本按该版本通过并记录该版本；缺该版本必填字段返回 `400 required_field_missing`、提交它未声明的字段返回 `400 invalid_field_value`，两条都定位到字段、不建运行，且同一交互随后按该版本确认成功（`TestWorkflowConfirmValidatesAgainstTheChosenVersion`；cloud#114 未合入 main，`@` Confirm 这一入口按缺口记）。直接运行入口已在 main 上有直接证据：`TestWorkflowRunValidatesAgainstTheVersionItRuns` | Partial |
 | 拒绝不留痕且重复确认幂等 | 真实 PostgreSQL：拒绝后 `issue_runs` 计数不变，同一 interaction 成功确认一次 | Covered |
 
 - 决策依据：D3（三种启动方式表、三种入口走同一个启动函数），不变量 1、2；字段校验依据见 [Confirm 只按所选发布版本自身的 schema 校验](../../../decisions/cloud/issue-collaboration/20261020-confirm-validates-against-the-chosen-version.md)。
