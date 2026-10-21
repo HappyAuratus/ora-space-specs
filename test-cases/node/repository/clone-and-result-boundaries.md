@@ -1,45 +1,47 @@
 # 仓库获取与结果边界
 
 依据[clone 根决策](../../../decisions/node/repository/0-clone-selected-repository-branch.md)，
-本文件登记已实现的目标与职责边界。目标目录、凭据、分支移动、checkout 形态及失败恢复策略
+本文件登记已实现的目标与职责边界。目标目录、checkout 形态及失败恢复策略
 由[最小执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)规定，
-具体义务见[执行核心用例](minimal-clone-execution.md)。desktop 证据核对基线 `a37ca7e0`。
+具体义务见[执行核心用例](minimal-clone-execution.md)。输入由[Node 从快照 clone 决策](../../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)
+修改：clone 的输入是 Git Server 的快照，不再是外部仓库地址与分支，也不再有 SSH、部署凭据与 `origin`；对应义务见
+[快照 clone 与 `ora-git`](snapshot-clone-and-ora-git.md)。证据核对基线为 desktop `ff9de8f9`。
 
-## Clone Uses The Requested Repository And Branch
+## Clone Uses Only The Requested Snapshot
 
 ### 风险
 
-执行端隐式使用默认分支、另一个仓库或已有 checkout，会让实际结果偏离调用方意图。
+执行端隐式使用另一个分支、另一个提交或已有 checkout，会让实际结果偏离调用方意图。
 
 ### 前置状态
 
-可识别的源仓库具有不同内容的多个分支，指定分支不是默认分支；执行环境没有已有 Main Workspace。
-使用已批准的 HTTPS／显式 SSH 传输及 Node 分配的专用目标目录。
+Git Server 上的快照对应不同内容的多个分支，被请求的 Workspace 分支不是默认分支；执行环境没有已有 Main Workspace。
+使用 Node 分配的专用目标目录与 `git_access` 身份。
 
 ### 触发
 
-调用方提交指定仓库和分支的 clone 请求；另提交无法满足的指定分支。
+调用方提交指定快照（`snapshot_ref`、`base_commit`、`workspace_ref`）的 clone 请求；另提交无法满足的快照输入。
 
 ### 必须成立
 
-- Node 根据显式仓库与分支执行，不要求预先准备 main worktree。
-- 成功必须有匹配请求的实际仓库事实；不能满足指定分支时不能静默换成默认分支成功。
-- 分支移动时返回实际获取并检出的 commit；重放不更新历史结果，具体义务见执行核心用例。
+- Node 根据显式快照输入执行，不要求预先准备 main worktree。
+- 成功必须有匹配请求的实际仓库事实：Workspace 分支指向 `base_commit`；不能满足时不能静默换成其他分支或提交成功。
+- 返回实际检出的 commit，必须等于 `base_commit`；重放不更新历史结果，具体义务见执行核心用例。
 
 ### 禁止结果
 
-clone 另一个仓库、静默换分支、把 EnsureWorktree 或已有目录当作仓库获取完成。
+clone 另一个仓库、静默换分支或提交、把 EnsureWorktree 或已有目录当作仓库获取完成。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 实际仓库与请求的非默认分支匹配，且不依赖已有 Main Workspace | `managed_https_clone_selects_branch_and_replays_without_network` 以空 repositories 注册执行真实 HTTPS，核实非默认分支 commit／内容 | Covered |
-| 无法满足指定分支时不以其他分支宣称成功 | `managed_https_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖缺失分支及 tag-only 源 | Covered |
+| 实际提交与请求的快照匹配，且不依赖已有 Main Workspace | `apps/ora-node/tests/standalone/repository.rs` 的 `managed_snapshot_clone_checks_out_the_base_commit_without_a_remote` 以空 repositories 注册执行快照 clone，核实 Workspace 分支、提交与内容 | Covered |
+| 无法满足请求的快照时不以其他提交宣称成功 | `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖快照缺失、授权被拒绝与快照所指提交不符 | Covered |
 
 ### 决策依据
 
-根决策 D1、继承与修改及不变量 1。
+根决策 D1、继承与修改及不变量 1；快照 clone 决策 D1、D3。
 
 ## Clone Completion Requires Node Facts And Controller Takeover
 
@@ -49,8 +51,8 @@ clone 另一个仓库、静默换分支、把 EnsureWorktree 或已有目录当�
 
 ### 前置状态
 
-调用方、Controller 和 Node 的职责可区分；源仓库可访问，执行端使用显式注入路径。
-请求／结果／持久接管的具体协议待所属决策冻结。
+调用方、Controller 和 Node 的职责可区分；Git Server 的快照可访问，执行端使用显式注入路径。
+请求／结果／持久接管的协议见 clone 的执行契约与快照 clone 决策 D10。
 
 ### 触发
 
