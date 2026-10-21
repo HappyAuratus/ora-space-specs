@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Scheduled Run 的 worktree 归属在任务提交事务内原子建立
 
-本 ADR 处于 `proposed`，内容已获 owner 在 [ora-space/circus#376](https://github.com/ora-space/circus/issues/376) 逐项批准（其中存量孤儿的处理范围被缩小），待本 PR 评审通过后标记为 `approved`。它解决一个已核实的崩溃窗口：local Scheduled Run 在
+本 ADR 处于 `approved`，内容经 owner 批准（[ora-space/circus#376](https://github.com/ora-space/circus/issues/376) 逐项批准，其中存量孤儿的处理范围被缩小）并完成评审，尚待实现与验收。它解决一个已核实的崩溃窗口：local Scheduled Run 在
 `TaskApi::create`（provisioning）成功之后、`ScheduledRunTransition::Start` 落库之前进程死亡，会留下与运行行无链接的隔离
 worktree 任务——启动恢复把运行结算为 `failed`，而保留清理清单要求链接非空，该 worktree 与分支从此不可见、不可回收。
 
@@ -39,8 +39,9 @@ owner 在 ora-space/circus#254 中确认的「仍带保留 worktree 链接的运
 
 scheduled 用例提供一个内部提交适配器：Git worktree 创建前先持久化 `WorktreeProvisioningLease`（write-ahead，既有接缝，
 `application/src/task/handlers.rs`）；提交阶段在**同一个 SQLite immediate 事务**内写入 task、workspace、worktree 与
-运行行的 `worktree_task_id + worktree_path`，并在**同一事务内**删除 provisioning lease。不给公开 `CreateTaskRequest` 加
-scheduler 专用参数，runtime 不手写多段 SQL 拼事务。
+运行行的 `worktree_task_id + worktree_path`，**并在同一事务内删除 provisioning lease**——lease 删除是原子归属提交的一
+部分，任何写入（含删 lease）失败都整体回滚，不存在「task/run 已提交但 lease 仍在」的中间态。不给公开
+`CreateTaskRequest` 加 scheduler 专用参数，runtime 不手写多段 SQL 拼事务。
 
 承诺：
 
@@ -138,7 +139,7 @@ lease 补偿仍在；bootstrap 装配顺序下残留 session 先收敛、干净 
 
 ## 落地顺序
 
-1. **specs**：本 ADR 评审通过标记 `approved`，同步建立核心测试用例（义务初始为 `Missing`）。
+1. **specs**：本 ADR 已完成评审并标记 `approved`（本提交）；核心测试用例随 ADR 同批建立（义务初始为 `Missing`）。
 2. **desktop 实现**（[ora-space/circus#379](https://github.com/ora-space/circus/issues/379)）：提交适配器、`Start`
    校验、retention 修正扩展、装配顺序回归与故障注入测试；产品 PR 在 ADR `approved` 后交付，含存量孤儿的用户文档说明。
 3. **落地验收**（[ora-space/circus#380](https://github.com/ora-space/circus/issues/380)）：合并后在 `main` 验收不变
