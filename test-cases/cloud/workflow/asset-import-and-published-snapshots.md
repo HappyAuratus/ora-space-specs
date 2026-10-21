@@ -105,10 +105,10 @@
 | 升级不触碰已成功导入的路径 | 真实 HTTP + PostgreSQL：升级后副本的图与快照逐字节不变 | Covered |
 | 卸载不删除副本、不改写快照 | 真实 PostgreSQL：卸载后 workflow 与快照仍在，仍可发布、仍可运行 | Covered |
 | 已冻结运行与副本后续变化无关 | 真实 PostgreSQL：编辑或归档副本后，既有运行仍读到冻结的图 | Partial |
-| `workflow_snapshots` 只有 INSERT | 仓库级检查：不存在更新快照的 SQL 或写入路径 | Covered |
+| `workflow_snapshots` 只有 INSERT | 仓库级检查：不存在更新快照的 SQL 或写入路径 | Partial |
 
 - 决策依据：D2（资产生命周期不改写快照）、D3（来源不进入运行契约）、不变量 2、3。
-- 直接证据：**Covered（第一、二、四行）、Partial（第三行）** — cloud#77 的
+- 直接证据：**Covered（第一、二行）、Partial（第三、四行）** — cloud#77 的
   `TestWorkflowAssetImportFromInstalledPlugin` 让包从 `1.0.0` 升到 `1.1.0`：同一路径的 `workflowId`
   不变、该 workflow 的快照数仍为 1，升级前后分别读取活稿与 `v1` 快照的 `graph::text` 并逐字节
   比较，两者都没有变化，新版本只新增 `hotfix.json`。cloud#114 的
@@ -125,14 +125,16 @@
   `UPDATE`/`DELETE workflow_snapshots` 的语句（命中的 `UPDATE workflow_snapshots` 只出现在测试
   替身的种子数据里），建表语句也没有 `updated_at`
   （[`0028_workflow_snapshots.sql`](https://github.com/ora-space/cloud/blob/0db423055115065f6b072782f5a6e3d44958912e/internal/core/migrations/0028_workflow_snapshots.sql)）；
-  这一点没有自动回归测试守着。更广的快照不可变证据是 `TestWorkflowSnapshotPublishServices`，运行侧
+  这是在 cloud `0db4230` 上的一次人工检查，没有自动检查守着，以后新增的写入路径不会让任何测试失败，所以记 `Partial`。
+  更广的快照不可变证据是 `TestWorkflowSnapshotPublishServices`，运行侧
   由 `TestWorkflowRunValidatesAgainstTheVersionItRuns` 证明执行的是所选快照。
 - Partial 的原因：第三行的「编辑」一侧已覆盖——`TestImportedWorkflowSnapshotBindsConfirmAndDirectRuns`
   改活稿后重新读回改稿前创建的三条运行，`definitionSnapshot` 仍是导入快照的图；但「归档副本后既有
   运行仍读到冻结的图」没有直接证据：当前实现对归档 workflow 的读取整体返回 404
   （[`internal/core/workflow_run.go`](https://github.com/ora-space/cloud/blob/0db423055115065f6b072782f5a6e3d44958912e/internal/core/workflow_run.go)
   先过 workflow 门禁），`TestManualWorkflowRunResolvesItsExecutor` 只证明归档不改写既有 `issue_runs`
-  行，没有读回冻结的图。
+  行，没有读回冻结的图。第四行缺的是一条自动检查（例如断言生产代码与迁移里不存在 `UPDATE`/`DELETE workflow_snapshots`
+  的测试，或数据库层禁止更新快照行的约束），有了才能升为 `Covered`。
 
 ## Imported Workflows Carry No Author Or Publisher
 
