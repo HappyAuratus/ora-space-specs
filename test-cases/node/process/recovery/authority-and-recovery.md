@@ -74,12 +74,16 @@ host 强杀重启并重连原 guardian，持久绑定提交后使旧通道／执
 | 义务 | 直接证据 | 状态 |
 |---|---|---|
 | 原 Run／输出跨 host 强杀恢复 | apps/ora-process-host/tests/service.rs::host_kill_reconnect_stop_and_close_use_original_attempt | Covered |
+| 已关闭 Scope 停止周期协调后仍能恢复原身份并查询保留输出 | [真实 host/guardian 服务回归][closed-output] `closed_scope_output_survives_idle_and_host_recovery`：关闭、空闲与 host 恢复后查询原 Run 的精确输出；[host 持久状态回归][settled-facts] `settled_scope_requires_every_accepted_run_and_retains_its_facts` 验证缺少任一 Run 的清理事实不得提前停止协调，原意图与结果仍保留 | Covered（Linux BestEffort 证据，desktop#720，合并提交 `df5da60`） |
 | 持久新绑定和三旧通道失效 | apps/ora-process-guardian/tests/bootstrap/management.rs::durable_takeover_fences_old_channels_and_replays_original_session | Covered |
 | 提交失败与排队请求边界 | crates/process-runtime/src/guardian/management_tests.rs::persistence_failure_and_reopen_never_reset_authority、queued_request_checks_binding_after_takeover | Covered |
 | 所有断线政策和存储故障组合 | 正向与完整故障矩阵未齐 | Partial |
 | 服务管理器、机器重启、租约 | 未来部署／control ADR | Missing |
 
 决策依据：恢复根决策及 bootstrap D3。
+
+[closed-output]: https://github.com/ora-space/desktop/blob/df5da60297f8e3af6a271d17504dd34c4596e1e7/apps/ora-process-host/tests/service/closed.rs
+[settled-facts]: https://github.com/ora-space/desktop/blob/df5da60297f8e3af6a271d17504dd34c4596e1e7/crates/process-runtime/src/host_state/observations.rs
 
 ## Guardian Failure Closes Its Scope Without Inventing Results
 
