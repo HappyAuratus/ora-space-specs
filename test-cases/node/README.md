@@ -18,8 +18,8 @@
 ## 已批准的恢复截止、取消与停止确认
 
 [Node 恢复截止与停止确认决策](../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)经 owner 批准为
-`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；已实现的 bundle 恢复证据仍在
-[前序恢复用例](revision/prior-revision-restore.md)，不推导本文的新义务。
+`approved`。恢复已改为从 Git Server 拉取前序交付 ref，bundle 恢复不再存在；完整截止、取消与停止确认的实现尚未合入 desktop 的 main，
+这些义务目前都是 Missing。内部线恢复的证据在[Git 交付与恢复](revision/git-delivery-push-and-restore.md)，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
