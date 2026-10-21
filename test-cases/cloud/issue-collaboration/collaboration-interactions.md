@@ -171,7 +171,7 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 - 合法确认恰好一个运行，交互 `input` 与运行输入快照一致，来源为 `interaction` + 交互 id，版本被冻结。
 - 同 key 同请求重放原响应；同 key 不同请求 `409 idempotency_conflict`；再次确认 `409 interaction_already_confirmed`。
 - 只按所选版本校验：选中字段与活稿不同的旧版本，提交符合该版本即通过；缺该版本必填字段返回 `400 required_field_missing`，提交该版本未声明的字段返回 `400 invalid_field_value`，都不建运行。
-- 客户端渲染的表单与校验依据同源：未手动切换版本时也按默认选中的发布版本读取，活稿里未发布的字段不出现在默认视图。
+- 有平台版本选择器时，客户端渲染的表单与校验依据同源：未手动切换版本时也按默认选中的发布版本读取，活稿里未发布的字段不出现在默认视图。活稿自行声明保留键 `snapshotId`（或用启动字段移除它）时没有选择器，表单按活稿渲染、Confirm 仍执行最新已发布版本；这是作者占用保留键的边界，同源承诺不适用于它，也不得据此放行选择器行为。
 
 ### 禁止结果
 
@@ -183,8 +183,8 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 |---|---|---|
 | 重新校验并恰好一个运行 | `TestWorkflowConfirmValidatesAndExecutes` | Covered |
 | 幂等与二次确认 | `TestWorkflowConfirmIdempotencyAndDoubleConfirm` | Covered |
-| 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都不建运行（cloud#114 未合入 main，按 `Missing` 记） | Missing |
-| 客户端默认视图也按所选发布版本渲染 | 前端组件用例（cloud#114 未合入 main）：默认版本读取 `/snapshots/:id/form`，按该版本的字段确认；作者同名 `snapshotId` 不发快照表单请求 | Missing |
+| 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都断言不建运行且同一交互重新按该版本确认成功（cloud#114 未合入 main，按 `Missing` 记） | Missing |
+| 客户端默认视图也按所选发布版本渲染 | 前端组件用例（cloud#114 未合入 main）：`opens on the default published version by reading that version, so rendering and validation match` 断言默认视图读取 `/snapshots/:id/form` 并按该版本的字段确认；`keeps an authors text variable named snapshotId as ordinary input` 与 `keeps an authors select named snapshotId as ordinary input when any option is not published` 断言作者同名 `snapshotId` 仍是普通输入、不被当作选择器 | Missing |
 | 并发确认只成功一个 | 缺口：当前只有顺序二次确认（`TestWorkflowConfirmIdempotencyAndDoubleConfirm`），没有两个并发事务同时确认的用例；cloud#114 的 `TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` 合并后由落地运行改为 `Covered` | Partial |
 
 ### 决策依据
