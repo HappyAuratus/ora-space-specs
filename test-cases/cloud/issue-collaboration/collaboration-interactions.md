@@ -184,9 +184,9 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 |---|---|---|
 | 重新校验并恰好一个运行 | `TestWorkflowConfirmValidatesAndExecutes` | Covered |
 | 幂等与二次确认 | `TestWorkflowConfirmIdempotencyAndDoubleConfirm` | Covered |
-| 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都断言不建运行且同一交互重新按该版本确认成功（cloud#114 未合入 main，按 `Missing` 记） | Missing |
-| 客户端默认视图也按所选发布版本渲染 | 前端组件用例（cloud#114 未合入 main）：`opens on the default published version by reading that version, so rendering and validation match` 断言默认视图读取 `/snapshots/:id/form` 并按该版本的字段确认 | Missing |
-| 并发确认只成功一个 | 缺口：当前只有顺序二次确认（`TestWorkflowConfirmIdempotencyAndDoubleConfirm`），没有两个并发事务同时确认的用例；cloud#114 的 `TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` 合并后由落地运行改为 `Covered` | Partial |
+| 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都断言不建运行且同一交互重新按该版本确认成功 | Covered |
+| 客户端默认视图也按所选发布版本渲染 | 前端组件用例：`opens on the default published version by reading that version, so rendering and validation match` 断言默认视图读取 `/snapshots/:id/form` 并按该版本的字段确认 | Covered |
+| 并发确认只成功一个 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` —— 两个并发确认只产生一个 WorkflowRun 和一个 IssueRun | Covered |
 
 ### 决策依据
 
