@@ -70,8 +70,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 - 风险：调度器把图状态放在内存里，副本崩溃或重启后进程内状态丢失，已完成的节点被重跑、就绪节点再也派发不出去，或运行停在中间状态无人推进。
 - 前置状态：运行有已提交结果的节点、在途未提交结果的节点，以及尚未就绪的节点；调度副本随时可能崩溃。
 - 触发：推进过程中副本崩溃；崩溃后另一个副本（或重启后的同一副本）接手；派发已发出但结果未知。
-- 必须成立：每次推进都从 Cloud 已提交的状态重算已完成、在途与就绪集合，不缓存图状态；副本崩溃后不丢失进度，接手者从已提交状态继续；已经提交结果的节点不重复派发；在途没有结果的节点按中断结算为失败。
-- 禁止结果：把内存中的进度当成权威、崩溃后重跑已提交的节点、崩溃后运行永久卡在中间状态、把"派发过"当作"已完成"。
+- 必须成立：每次推进都从 Cloud 已提交的状态重算已完成、在途与就绪集合，不缓存图状态；副本崩溃后不丢失进度，接手者从已提交状态继续；已经提交结果的节点不重复派发；**恢复接手不等于中断**——在途没有结果的节点继续持有，由这次执行自己的结果结算，Node 失联（`node_unavailable`）或超过回合窗口仍无结果（`session_turn_deadline_exceeded`）时才结算为失败，持有不会无限期；没有已提交结果的节点绝不记为成功；Cloud 重启不推进派发时的执行代，重启前派发的会话其结果在重启后仍按同一执行身份被接受。
+- 禁止结果：把内存中的进度当成权威、崩溃后重跑已提交的节点、崩溃后运行永久卡在中间状态、把"派发过"当作"已完成"、把恢复接手当作中断而误杀仍在正常执行的会话、让在途节点无限期持有而没有失败判定、把重启前派发的会话结果当作过期而拒绝。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
@@ -79,7 +79,7 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 | 就绪集合只从已提交状态重算 | 真实 PostgreSQL：以任意中间状态作为起点（等价于崩溃后接手），重算结果与线性推进一致 | Partial |
 | 崩溃接手不重跑已提交节点、不丢进度 | 真实执行侧：推进中途杀死调度副本后由另一副本接手，检查派发集合与最终结果 | Missing |
 
-- 决策依据：D1 条件②（每次推进从已提交状态重算、崩溃后不恢复内部状态），D4（崩溃恢复只依据已提交的节点结果），不变量 4。
+- 决策依据：D1 条件②（每次推进从已提交状态重算、恢复接手不等于中断），D4（崩溃恢复只依据已提交的节点结果），不变量 4。
 - desktop 参考实现（`8909f07`）一侧：**Covered** — 分支激活与就绪集合只从持久化行推导（[`crates/application/src/workflow_run/engine/branch_projection.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/application/src/workflow_run/engine/branch_projection.rs) 的 `selected_branch_activates_only_the_matching_successor`、`fan_in_with_an_inactive_branch_still_becomes_ready`、`unresolved_condition_leaves_successors_unreached` 等），并且经编码 → 真实 SQLite 重载 → 再解析后执行仍成立（[`crates/backend/src/workflow/run/aggregator_persistence_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/aggregator_persistence_tests.rs) 的 `persisted_branch_outputs_reach_downstream`、`persisted_false_value_reaches_downstream`）；崩溃后只重做失败节点与其后继、已成功 sibling 保留（[`crates/backend/src/workflow/run/resume_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/resume_tests.rs) 的 `resume_from_failure_after_orphaned_crash_recovery`、`resume_from_failure_redoes_failed_join_and_finishes`）。说明：desktop 的串行执行者是进程内的，跨进程多副本不适用，这一条的多副本部分在参考实现里没有对应证据。
 - 本次直接证据：**Partial** — 第 1 行已部分就位：就绪集合是纯函数，[cloud#67](https://github.com/ora-space/cloud/pull/67) 的
   `TestWorkflowProjectionLinearGraph`、`TestWorkflowProjectionPendingUpstreamWaits`、`TestWorkflowProjectionRootlessNodeIsInactive`、
@@ -95,8 +95,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 - 风险：未知结果被当作成功，运行的终态谎报了一次没有发生或没有留下结果的执行；下游节点基于不存在的输出继续跑。
 - 前置状态：节点已派发，回调未到、结果丢弃，或进程在写入结果前消失。
 - 触发：执行侧超时、结果响应丢失、运行被中断后恢复、回调从未到达。
-- 必须成立：没有已提交结果的节点永不被记为成功；恢复时这种节点按中断结算为失败，失败随运行终态对外可见；只有提交了结果的成功才允许推进下游节点。
-- 禁止结果：把"已派发"或"未知"记成成功、用 HTTP 200 或夹具 trace 代替真实结果、恢复后把中断节点静默留成在途、把失败改写成成功以让运行通过。
+- 必须成立：没有已提交结果的节点永不被记为成功；恢复接手不改变这一点——在途无结果的节点由这次执行自己的结果结算，Node 失联或超过回合窗口仍无结果时结算为失败，失败随运行终态对外可见；只有提交了结果的成功才允许推进下游节点。
+- 禁止结果：把"已派发"或"未知"记成成功、用 HTTP 200 或夹具 trace 代替真实结果、让在途节点无限期持有或在 Node 已失联、超过回合窗口后仍不结算、把失败改写成成功以让运行通过。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
@@ -104,8 +104,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 | 无已提交结果的节点不进入成功状态 | 真实 PostgreSQL + 执行侧：丢弃回调、超时与中断后的节点状态与运行终态 | Partial |
 | 运行终态不早于最后一个节点的结果提交 | 真实执行侧：运行进入终态的时点与节点结果提交顺序 | Partial |
 
-- 决策依据：D1 条件②（在途未提交结果的节点按中断结算为失败、绝不记为成功），D4（崩溃恢复），D7（首期节点产出落在节点状态里），不变量 5。
-- desktop 参考实现（`8909f07`）一侧：**Covered** — 恢复把在途节点结算为 `interrupted_by_restart` 并让运行失败，已成功的节点保持成功（[`crates/backend/src/workflow/run/operations/tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/operations/tests.rs) 的 `recovery_fails_interrupted_turns_and_resumes_stalled_runs`、[`crates/backend/src/workflow/run/recovery.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/recovery.rs) 的 `an_interrupted_outer_row_still_fails_the_run` 与 `a_crashed_round_inside_a_fail_iteration_fails_the_node_and_the_run`、[`crates/backend/src/workflow/run/resume_gap_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/resume_gap_tests.rs) 的 `boot_sweep_interrupted_node_resumes_as_attempt_two`）。
+- 决策依据：D1 条件②（在途未提交结果的节点由这次执行自己的结果结算，Node 失联或超过回合窗口时结算为失败、绝不记为成功），D4（崩溃恢复），D7（首期节点产出落在节点状态里），不变量 5。
+- desktop 参考实现（`8909f07`）一侧：**Covered** — 恢复把在途节点结算为 `interrupted_by_restart` 并让运行失败，已成功的节点保持成功（[`crates/backend/src/workflow/run/operations/tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/operations/tests.rs) 的 `recovery_fails_interrupted_turns_and_resumes_stalled_runs`、[`crates/backend/src/workflow/run/recovery.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/recovery.rs) 的 `an_interrupted_outer_row_still_fails_the_run` 与 `a_crashed_round_inside_a_fail_iteration_fails_the_node_and_the_run`、[`crates/backend/src/workflow/run/resume_gap_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/resume_gap_tests.rs) 的 `boot_sweep_interrupted_node_resumes_as_attempt_two`）。说明：desktop 的串行执行者与进程同生死，进程崩溃就是执行中断，所以参考实现把在途节点结算为中断失败；Cloud 是无状态调度器，重启不打断已派发的会话，在途节点按这次执行的 Node 失联（`node_unavailable`）或回合窗口（`session_turn_deadline_exceeded`）结算为失败，两者都不把未知记为成功。
 - 本次直接证据：**Partial** — 第 1 行已部分就位：[cloud#72](https://github.com/ora-space/cloud/pull/72) 的
   `TestWorkflowAdvanceFailsRunOnProjectlessAgentNode`（#67 时代的 `TestWorkflowAdvanceFailsRunOnUnwiredAgentNode` 随真实会话接线改名）
   断言缺 Project 的 agent 节点以 `workflow_run_project_required` 结算为失败、既不进成功状态也不让下游提交状态；
@@ -129,7 +129,7 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   断言运行仍在执行时不带 `finishedAt`。唯一会写 `node_states` 成功的 `MockWorkflowRunSimulator` 在没有真实结果的
   情况下直接产出成功状态，根决策已把这类模拟 trace 排除在验收之外。
 - 仍缺：显式断言"终态写入发生在最后一个节点的结果提交之后"（现有用例只覆盖运行中不带 `finishedAt`）；回调丢失或
-  中断后重试仍不成功的用例；Node 不可达与回合窗口仍只在控制面接缝上验证，真实执行侧的中断结算与终态时点验证仍属 D1 落地顺序第 3 步。
+  中断后重试仍不成功的用例；Node 不可达与回合窗口仍只在控制面接缝上验证，真实执行侧的失败结算与终态时点验证仍属 D1 落地顺序第 3 步。
 
 ## Cancellation Is A Recorded Request With A Bounded Terminal State
 
