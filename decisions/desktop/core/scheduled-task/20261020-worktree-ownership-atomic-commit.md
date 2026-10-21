@@ -10,12 +10,12 @@ worktree 任务——启动恢复把运行结算为 `failed`，而保留清理�
 
 最终方案：把 Scheduled Run 的 worktree 归属并入既有的任务提交事务——Git worktree 创建前先持久化
 `WorktreeProvisioningLease`，scheduled 用例的内部提交适配器在同一个 SQLite immediate 事务里提交 task/workspace/worktree
-与运行行的 `worktree_task_id + worktree_path`，随后删除 lease。提交前崩溃由 lease 的既有补偿回收；提交后崩溃运行行已带
-稳定关联，交给既有恢复与 janitor。伴随两处修正：retention 对缺路径运行的分类不得把未知当干净，且必须先处理「任务已不
-存在」的清链；session 恢复复用既有 `reconcile_running_sessions`，不新增机制。涉及模块：desktop 的 scheduled_task
-runtime、task provisioning 接缝、scheduled-run repository 与 worktree janitor。兼容性边界：普通任务与 manual run 的
-provisioning 路径、`TaskApi::create` 公开契约、10 个保留上限与 100 条历史规则不变；本 ADR 不承担存量孤儿的数据迁移义务
-（见 D5）。
+与运行行的 `worktree_task_id + worktree_path`，并在**同一事务内**删除 lease。提交前崩溃由 lease 的既有补偿回收；提交后
+崩溃运行行已带稳定关联，交给既有恢复与 janitor，且事务提交成功后不再存在 lease 残留。伴随两处修正：retention 对缺路径
+运行的分类不得把未知当干净，且必须先处理「任务已不存在」的清链；session 恢复复用既有 `reconcile_running_sessions`，
+不新增机制。涉及模块：desktop 的 scheduled_task runtime、task provisioning 接缝、scheduled-run repository 与 worktree
+janitor。兼容性边界：普通任务与 manual run 的 provisioning 路径、`TaskApi::create` 公开契约、10 个保留上限与 100 条历史
+规则不变；本 ADR 不承担存量孤儿的数据迁移义务（见 D5）。
 
 ## 继承与修改
 
@@ -39,8 +39,8 @@ owner 在 ora-space/circus#254 中确认的「仍带保留 worktree 链接的运
 
 scheduled 用例提供一个内部提交适配器：Git worktree 创建前先持久化 `WorktreeProvisioningLease`（write-ahead，既有接缝，
 `application/src/task/handlers.rs`）；提交阶段在**同一个 SQLite immediate 事务**内写入 task、workspace、worktree 与
-运行行的 `worktree_task_id + worktree_path`，事务提交成功后删除 lease。普通 `TaskApi::create` 公开契约不加 scheduler
-专用参数，runtime 不手写多段 SQL 拼事务。
+运行行的 `worktree_task_id + worktree_path`，并在**同一事务内**删除 provisioning lease。不给公开 `CreateTaskRequest` 加
+scheduler 专用参数，runtime 不手写多段 SQL 拼事务。
 
 承诺：
 
@@ -48,7 +48,9 @@ scheduled 用例提供一个内部提交适配器：Git worktree 创建前先持
    `failed` 后，retention 仍能看到并处理该 worktree。系统不存在「任务已提交但没有持久归属」的中间态。
 2. 提交时校验运行行仍为 `accepted`、project 匹配且无冲突绑定；重放不创建第二份资源、不覆盖既有绑定；校验或写入失败
    时整个任务提交回滚，lease 留给既有补偿路径，本次运行按既有失败路径结算。
-3. 普通任务与 manual run 继续走原提交路径；scheduled 语义由 scheduled 用例拥有，共用的 Git 创建、Effect 接入与删除
+3. lease 的删除与任务行提交在同一事务内：事务提交成功后不存在 lease 残留——残留 lease 会被到期回收转为 cleanup job，
+   回收已归属运行的资源；lease 删除失败时整个提交回滚，资源回到 lease 手中。
+4. 普通任务与 manual run 继续走原提交路径；scheduled 语义由 scheduled 用例拥有，共用的 Git 创建、Effect 接入与删除
    级联由原所有者负责。
 
 这样选的原因：崩溃窗口的本质是「资源创建」与「归属记录」分属两个提交。「create 返回后另写一次链接」仍是两个独立提交，

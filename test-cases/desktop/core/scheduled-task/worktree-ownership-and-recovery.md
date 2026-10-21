@@ -45,6 +45,41 @@
 | 回滚后 lease 由既有补偿路径回收 | 尚未实现 | `Missing` |
 | 重放不创建第二份资源、不覆盖既有绑定 | 尚未实现 | `Missing` |
 
+## Session Start Failure Must Not Loose The Ownership Binding
+
+- 风险：归属提交后 session 启动失败或 `Start` 被拒绝时清掉关联或伪造开始通知，运行历史失去打开/丢弃已 provision worktree
+  的入口。
+- 前置状态：归属提交事务已成功（运行行带 `worktree_task_id + worktree_path`），session 启动失败或 `Start` 校验原绑定被拒。
+- 触发：运行经既有失败路径结算，或 runtime 收到 `InvalidState`。
+- 必须成立：失败与取消不清除归属绑定（清链仅发生在任务删除成功或确证任务已不存在）；不发布 `RunStarted` 或任何虚假开始
+  通知；worktree 交给 janitor/retention 按运行终态分类处理。
+- 禁止结果：失败路径删除绑定、把 `accepted` 带绑定渲染为 running、或发出未经 session 就绪的开始通知。
+- 决策依据：后续 ADR D2 与不变量 4、5。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| session 启动失败：绑定保留，运行按 `TargetUnavailable` 结算且不发 `RunStarted` | 尚未实现 | `Missing` |
+| `Start` 校验原绑定被拒：不换绑、不丢失关联，runtime 走停会话 + janitor 丢弃分支 | 尚未实现 | `Missing` |
+
+## Link Clearing Must Keep Durable Cleanup Responsible For Disk State
+
+- 风险：任务删除后、清链前再次崩溃，或 durable Git cleanup 失败重试期间清链——磁盘上的 worktree/分支失去最终回收者。
+- 前置状态：带链接运行的 worktree 任务已被删除（历史操作或 retention 丢弃），清链与磁盘回收分属两步。
+- 触发：清链提交后、durable cleanup job 完成前进程死亡；或 cleanup job 失败重试。
+- 必须成立：下次恢复仍识别「任务已不存在」并清链，清链后运行恢复可裁剪；Git worktree/分支的最终磁盘回收始终由持久
+  cleanup job 承担，失败可重试，不因清链或重启遗失；任务行删除或清链不能单独证明磁盘资源已回收。
+- 禁止结果：清链后磁盘资源无人认领、cleanup job 被取消或去重掉、或以「清链成功」宣称磁盘已回收。
+- 决策依据：后续 ADR D2、D3 与不变量 5。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 任务删除后、清链前崩溃：下次恢复清链，运行恢复可裁剪 | 尚未实现 | `Missing` |
+| Git cleanup 失败重试仍负责磁盘回收，清链不取消 cleanup job | 尚未实现 | `Missing` |
+
 ## Startup Session Recovery Must Converge Before Scheduled Recovery
 
 - 风险：残留 `Running` session 阻止 worktree 清理，或恢复顺序颠倒导致清理误判。
