@@ -10,7 +10,7 @@ Workspace 的推送只到达 Git Server，永远不会触达外部仓库。要�
 从 Git Server 读取源提交，确认是快进，以 `ls-remote` 比对旧值，再以 `--force-with-lease` 推送并再次核验。结果不明时进入
 `uncertain`，由 reconciler 以只读的 `ls-remote` 判定，从不重推。发布成功后自动同步一次，让当前快照反映外部仓库。
 
-本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main；核心测试用例见[显式发布用例](../../../test-cases/cloud/project/explicit-fast-forward-publish.md)，是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
+本 ADR 处于 `implemented`：实现已由 cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main，`revisionId` 入口由内部线的 cloud#81（`a9c5f20`）补齐；核心测试用例见[显式发布用例](../../../test-cases/cloud/project/explicit-fast-forward-publish.md)，是 `cloud/project` 领域在[同步 ADR](20261016-repository-binding-and-snapshot-sync.md)之后的后续决策。
 它按评审中推荐的方案确定只快进发布和审批人，遵守 [Git Server 代码中心契约](../git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)
 （下称“契约”）D5 第 3 项：发布 Operation 在 Git Server 上没有写权限，执行器只取 Operation 记录的源 ref 与源提交。涉及 Cloud（API、审批、状态机、reconciler、
 审计、前端）与 Repo Executor。凭据能力由 [identity-access 后续决策](../identity-access/20261016-git-credentials-in-independent-credential-store.md)
@@ -45,7 +45,7 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 {
   "sourceRef":      "refs/heads/workspaces/<workspaceId>/<branch>",
   "sourceCommit":   "<40 或 64 位小写 OID>",
-  // 或者只给 "revisionId": "<id>"，直接发布一次 run 的 Revision（最终实现不支持，见下表）
+  // 或者只给 "revisionId": "<id>"，发布一次 run 的 Revision（取其交付 ref 与最终提交）
   "targetBranch":   "main",
   "expectedOldOid": "<40 或 64 位小写 OID，或全零表示新建分支>",
   "credentialRefId": "<可选，缺省用 Binding 的凭据>"
@@ -55,7 +55,7 @@ POST /projects/{projectId}/repository/publishes        Idempotency-Key 必填
 | 字段 | 校验 |
 | --- | --- |
 | `sourceRef` | 本 Project 仓库中任意 Workspace 的分支 `refs/heads/workspaces/<workspaceId>/<branch>`，或任意交付 ref `refs/ora/deliveries/<deliveryWorkId>`；不按 Workspace 的创建者校验（契约 D3 的修改）。Cloud 经 ref 查询确认它存在 |
-| `revisionId` | 与 `sourceRef`、`sourceCommit` 二选一。最终实现中 Revision 记录保存的是逻辑 ref `refs/ora/revisions/<runId>`，不是交付 ref；发布只接受 `refs/ora/deliveries/<deliveryWorkId>`，所以带 `revisionId` 的发布总是以 `409 revision_not_publishable` 结束。客户端必须直接给出 `sourceRef` 与 `sourceCommit`。这是实现缺陷，见“与批准版本的偏离” |
+| `revisionId` | 与 `sourceRef`、`sourceCommit` 二选一。取该 Revision 登记时经 ref 查询核验的交付 ref `refs/ora/deliveries/<deliveryWorkId>` 与最终提交 `finalCommit` 作为发布源（Revision ADR D4）；`revision_ref` 只是 Node 本地的 `refs/ora/revisions/<runId>`，从不作为发布源。经 Git 交付的 Revision 都有交付 ref；迁移前登记、仍是 bundle 形状的 Revision（`delivery_ref` 为 NULL）没有可发布源，以 `409 revision_not_publishable` 结束 |
 | `sourceCommit` | 完整 OID。Cloud 只能查到 ref 的当前值，无法判定祖先关系，祖先关系由执行器判定（执行器根决策 D6 第 2 步） |
 | `targetBranch` | 具体分支短名，组成 `refs/heads/<targetBranch>`；不能是 `HEAD` |
 | `expectedOldOid` | 完整 OID 或全零；等于 `sourceCommit` 时以 `400 nothing_to_publish` 拒绝 |
@@ -204,7 +204,7 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 ### D8：界面
 
 - **发起**：Project 详情页的“代码来源”区块有“发布到外部仓库”按钮，没有按分支的入口。对话框列出 Workspace 的分支（经 ref 查询按
-  前缀 `refs/heads/workspaces/<workspaceId>/` 取得），可以选择源分支、填写 Revision ID（最终实现会拒绝，D1），并显示源提交、
+  前缀 `refs/heads/workspaces/<workspaceId>/` 取得），可以选择源分支或填写 Revision ID（D1），并显示源提交、
   目标分支（默认 Binding 的分支，可改为新分支名）、可编辑的完整 `expectedOldOid`（标签“基于外部提交（全零表示新分支）”）、只列出
   已验证 `publish` 的凭据，以及根据凭据算出的审批提示。发起人就是审批人时按钮写作“发布”，否则写作“请求发布”。
 - **审批**：Project 详情页的“发布”列表显示每个 Operation；没有单独的审批人待办提示。审批人看到源 ref、完整 `expectedOldOid`、
@@ -246,7 +246,6 @@ Cloud 的 reconciler 处理 `uncertain` 的发布：
 
 | 批准时的决策 | 最终实现 | 原因 |
 | --- | --- | --- |
-| `revisionId` 从 Revision 的登记记录取出交付 ref 和最终提交 | Revision 记录的 `revision_ref` 是 `refs/ora/revisions/<runId>`；发布要求 `GitDelivery`，所以所有带 `revisionId` 的发布以 `409 revision_not_publishable` 结束 | 实现缺陷：Revision 记录没有保存交付 ref，发布侧又只接受交付 ref；需要让 Revision 暴露实际交付 ref 才能恢复这个入口。界面和公开契约仍然列出 `revisionId`，且没有测试覆盖 |
 | 批准在 24 小时内有效，计时从批准时刻开始 | 待批准请求在创建时写为创建后 24 小时；人工批准时重设为批准后 24 小时；自批准从创建（即批准）时刻计时。过期的 `awaiting_approval` 和 `pending` 都以 `cancelled(approval_expired)` 结束 | 实现给待批准请求一个创建后 24 小时的窗口，并在人工批准时重新计时；自批准没有单独的批准动作，从创建时刻计时 |
 | OID 为 40 位小写十六进制 | 接受 40 或 64 位小写十六进制 | 支持 SHA-256 仓库；校验沿用 `GitObjectID` |
 | 发布触发的后继同步跳过原因写入 `result.successorSkipped`，取值 `credential_frozen`、`credential_unavailable`、`project_deleting` | 写入 `result.resyncSkipped`，值为凭据检查的错误码原文；Project 不是 `active` 时不记录 | 与同步 ADR D3 同一条偏离：两条触发路径未统一键名和错误码 |
