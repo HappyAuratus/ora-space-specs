@@ -7,6 +7,11 @@ status: implemented
 > 历史决策：D9 中「活稿与所选版本不一致时返回 `409 workflow_version_fields_changed`」已由
 > [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 修改，
 > 该部分当前系统承诺以后续决策为准；本决策其余内容与状态 `implemented` 不变。
+>
+> 历史决策：D8 规则 1 对保留键 `snapshotId` 不再适用（作者声明不生效，键归平台）；规则 2、规则 3 也被修改
+> （全部已发布版本都不可选时不注入选择器，选项只列未占用保留键的版本）；规则 7 中「作者声明该键就跳过旧名
+> 折叠」的 guard 随之失效。见 [snapshotId 是保留字段](20261021-snapshot-id-is-a-reserved-field.md)。该决策
+> 落地（circus#411）前，本决策 D8 的上述规则仍按原文执行。
 
 Issue 是多人与多种能力协作的地方。Cloud 的 Issues 模块只拥有 Issue 领域的状态（Issue、评论、交互、运行记录、
 活动与 Timeline、上下文引用），Agent、Team、Workflow、运行时、通知、实时推送都经消费侧端口接入。`@` 是**选择协作

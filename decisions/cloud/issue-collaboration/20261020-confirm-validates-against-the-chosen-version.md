@@ -61,6 +61,10 @@ schema 始终来自同一个版本：活稿里未发布的字段不出现在默�
 此前发布的、自己声明了该键的存量版本在选择器里不可选，在 Confirm 时返回
 `409 workflow_version_reserved_field`。所以显示与执行同源不再需要任何例外。
 
+这条改写**由 [circus#411](https://github.com/ora-space/circus/issues/411) 落地后生效**：在它合入之前，Cloud
+仍按本决策原先的例外运行——活稿声明了 `snapshotId` 时该键归作者，不读版本游标；本 ADR 的状态与其余内容
+（`implemented`）不变，落地运行负责把这段限定词删掉。
+
 用启动字段撤下 `snapshotId`（`launchFields` 里的 `enabled: false`）不属于作者声明该键：活稿没有声明它，
 Confirm 的版本游标仍会读提交值。界面因此没有选择器，不提交该键时执行最新已发布版本；如果调用方仍然提交了
 该键（例如直接调 API），它和平台选择器提交的值一样按版本游标读取。
@@ -88,8 +92,8 @@ Confirm 的版本游标仍会读提交值。界面因此没有选择器，不提
 3. 运行的 `snapshot_id` 与校验所用的版本是同一个。
 4. 同一交互重复确认仍是 `409 interaction_already_confirmed`；幂等键语义不变。
 5. 有平台版本选择器时，客户端渲染的表单与 Confirm 校验的版本是同一个，包括未手动切换时的默认视图。
-   保留键 `snapshotId` 由平台持有，作者声明不生效，所以这条同源承诺没有例外，见 D1。用启动字段撤下
-   选择器时本条不适用，见 D1。
+   保留键 `snapshotId` 由平台持有，作者声明不生效，所以这条同源承诺没有例外，见 D1；这条在
+   circus#411 落地后生效，此前仍按原例外。用启动字段撤下选择器时本条不适用，见 D1。
 
 ## 为什么不是这些替代方案
 
@@ -117,4 +121,6 @@ Confirm 的版本游标仍会读提交值。界面因此没有选择器，不提
   `opens on the default published version by reading that version, so rendering and validation match`。
 - `fixtures=false` 部署上的真实 Node 联合验收由 circus#71 承接，验收记录写在该 issue；它不改变本决策的
   校验规则与客户端渲染承诺。
+- D1 里「保留键由平台持有，作者声明不生效」的改写由 circus#411 落地（发布门禁与 Confirm 拒绝）；落地前
+  本决策仍按原例外运行，落地运行删掉这处限定词并同步核心用例证据。
 - 版本冻结、单事务与幂等语义全程不变；本决策不改变表结构，也不需要迁移或回填历史交互与运行。

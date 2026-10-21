@@ -225,12 +225,13 @@ Workflow 的 Start 节点声明变量；可能有多个已发布版本。
 | 投影与 404 | `TestFormDescriptorProjection`；单元 `TestFormDescriptorProjection*` | Covered |
 | 提供方失败与非法描述 | `TestFormDescriptorUnavailableAndInvalid` | Covered |
 | 版本表单按版本投影 | `TestWorkflowSnapshotFormProjectsTheChosenVersion` | Covered |
+| 带 `issueId` 的版本表单不渲染作者的 `snapshotId` 声明，平台选择器照样注入 | 真实 HTTP + PostgreSQL：`TestAuthorDeclaredSnapshotIDDoesNotTakeTheKeyBack`（活稿声明该键时 `@` 表单仍是平台选择器、默认最新可选版本）、`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`；单元 `TestLaunchKeysCollideLikeTheOlderOnes`（cloud#123 未合入 main，按 `Missing` 记） | Missing |
 | 版本表单的作用域 | `TestWorkflowSnapshotFormScoping` | Covered |
 | 读取不是门禁 | `TestWorkflowSnapshotFormIsNotARunGate` | Covered |
 
 ### 决策依据
 
-D7；不变量 9。
+D7、D8（版本表单投影）；保留键的投影规则见 [snapshotId 是保留字段](../../../decisions/cloud/issue-collaboration/20261021-snapshot-id-is-a-reserved-field.md)（D1、D2）；不变量 9。
 
 ## Launch Fields Follow The Catalogue And The Author's Declaration
 
