@@ -35,25 +35,27 @@ worktree 的生命周期持久化，按 Run ID 索引、随运行历史访问。
 worktree 保留淘汰排序）。落点覆盖 domain、`ora_contracts` 与 TS `packages/contracts` 的契约、迁移（`verdict` / `verdict_detail` /
 `verdict_at` 三列可空，旧数据读作「未报告」）。
 
-- **`status`×verdict 组合**：`skipped_busy` / `skipped_capacity` 与 `missed` 强制无 verdict（无运行体）；`accepted` /
-  `running` 无 verdict（尚未收尾）；`succeeded` / `failed` / `cancelled` 可携带 verdict。`status = succeeded` 且
-  `verdict = fail` 是合法且重要的状态（执行成功、业务失败）。
+- **`status`×verdict 组合**：只有 `succeeded` 可携带 verdict（执行完整走完、Agent 有最终轮可解析）；`failed` / `cancelled` /
+  `timeout` 的执行层原因已由 `failure_reason` 表达、且无 `EndTurn` 解析点，不提供 verdict；`skipped_busy` / `skipped_capacity`
+  与 `missed` 无运行体、强制无 verdict；`accepted` / `running` 尚无 verdict。`status = succeeded` 且 `verdict = fail` 是合法
+  且重要的状态（执行成功、业务失败）。
 - **`custom` 不进入首版枚举**：无界自由值难聚合、难校验；Agent 需要非标准结论时写入 `verdict_detail` 自由文本。
 - 为什么独立字段：质量巡检的「发现 Critical 缺陷」不等于「执行器失败」，复用 `failure_reason` 污染执行层语义，复用 `status`
   无法表达「执行成功但业务失败」。
 
-### D2：verdict 由 runtime 在收尾时解析 Agent 最终响应并单次写入
+## D2：verdict 由 runtime 在 `succeeded` 收尾时解析 Agent 最终响应并单次写入
 
-Agent 是 ACP 子进程，没有 desktop repository 通道，因此不存在「Agent 直接调用 repository 入口」的路径。写入权在 runtime：运行
-收尾（会话 `EndTurn` 后）时，runtime 从**持久会话历史**读取最终 Assistant 轮，解析文档化哨兵并调用
-`annotate_scheduled_run_verdict` 单次写入；随后才发布 `RunFinished`，保证前端刷新即见最终 verdict 而非「未报告」。
+Agent 是 ACP 子进程，没有 desktop repository 通道，因此不存在「Agent 直接调用 repository 入口」的路径。写入权在 runtime：仅在
+运行以 `EndTurn` 正常结束（映射 `succeeded`）后，runtime 从**持久会话历史**读取最终 Assistant 轮，解析文档化哨兵并调用
+`annotate_scheduled_run_verdict` 单次写入；随后才发布 `RunFinished`。`failed / cancelled / timeout` 无 `EndTurn`，不写入
+verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 - **哨兵契约（冻结）**：最终 Assistant 轮文本中匹配
   `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>`（标记名与取值大小写不敏感、规范化后匹配，取**第一个**匹配；
-  多余标记忽略）；可选紧随一行 `QA_DETAIL: <自由文本>`，detail 长度受 `MAX_SCHEDULED_RUN_VERDICT_DETAIL_CHARS` 约束。无匹配或
-  格式非法 → 「未报告」，不报错、不改写运行事实。
-- **单次写入**：一次运行只在收尾解析一次、写入一次；若运行因会话续跑而再次收尾，后写覆盖前写（仍是同一单写路径，不是多提交
-  模型）。枚举非法、detail 超长、运行不存在（含 `missed`）被拒且不改写运行事实。
+  多余标记忽略；标记行以换行为界，不跨行）；可选紧随一行 `QA_DETAIL: <自由文本>`，detail 长度受
+  `MAX_SCHEDULED_RUN_VERDICT_DETAIL_CHARS` 约束。无匹配或格式非法 → 「未报告」，不报错、不改写运行事实。
+- **单次写入**：一个 `succeeded` 运行只在收尾解析一次、写入一次（不是多提交模型）。枚举非法、detail 超长、运行不存在或不处于
+  可注解状态时被拒且不改写运行事实。
 - **prompt 落点**：哨兵是**用户写在任务 prompt 里的可选约定**（如 Nightly QA V1.1 模板）；runtime 只解析、不注入，遵守根决策
   D3。未采用该约定的任务 → 恒「未报告」。
 
@@ -64,10 +66,13 @@ Agent 是 ACP 子进程，没有 desktop repository 通道，因此不存在「A
   文件收集」的落点。与 workflow 交互式节点产出物声明（circus#426）是不同领域，不复用其机制，仅复用路径安全工具。
 - **搬入方式**：**copy**（跨卷安全，且源文件留在 worktree、保留判定不被搬走改变）；固定目录本身从 worktree 改动判定中排除，
   故 copy 出产物不使无改动 worktree 被误判为有改动、不占用 10 个保留上限。
-- **索引与崩溃对账**：按 `run_id` 建产物清单（名称、类型、大小、登记时间），先写清单（SQLite）再落文件；崩溃后启动 sweep 按
-  清单对账，孤文件清理、缺文件按清单删除索引项，恢复幂等。
-- **上限（冻结数值）**：单产物 ≤ 10 MiB、单运行 ≤ 64 个、单运行总 ≤ 64 MiB、每任务 ≤ 10 个运行的产物保留（与历史裁剪联动）。
-  超限或非法路径**被拒绝并记入运行历史可见的错误**（不静默丢弃）。
+- **索引与崩溃对账**：按 `run_id` 建产物清单，字段为已登记产物（名称、类型、大小、登记时间）与**被拒清单**（名称 + 拒绝原因，
+  供历史展示「N 个产物被拒绝」）。落盘顺序：先 copy 到存储内临时文件 → 校验大小 → 原子 rename 到最终名 → 再写清单条目
+  （清单后置，杜绝清单指向截断/半写文件）；崩溃后启动 sweep 对账：无清单条目的存储内文件（含残留临时文件）按孤文件清理，清单
+  指向但文件缺失/大小不符则删除索引项，恢复幂等。
+- **上限（冻结数值）**：单产物 ≤ 10 MiB、单运行 ≤ 64 个、单运行总 ≤ 64 MiB；**产物保留按每任务 ≤ 10 个运行**（独立于 worktree
+  保留的**跨任务全局 10**，两者不互占），按运行 `updated_at` 最旧优先淘汰，与 100 条历史裁剪联动。超限或非法路径记入**被拒清单**
+  并随运行历史可见（不静默丢弃）。
 - **清理**：随 100 条历史裁剪删除对应运行产物；任务软删除/禁用不即时删产物（保留至历史裁剪）；保留 worktree 链接的运行其
   产物随链接例外保留。
 
