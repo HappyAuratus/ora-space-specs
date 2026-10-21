@@ -1,8 +1,9 @@
 # 子代理投影、终态缺口与运行诊断
 
 本文件守住子代理来源保真、父回合结束后的终态缺口与委托结果关联、可见子活动与父 prompt 计时的
-隔离，以及诊断时间来源。决策依据：[保留子代理投影来源](../../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)。
-实现尚未合入 desktop 的 main，下列义务目前都是 `Missing`；[静默策略用例](../../desktop/core/workflow/prompt-inactivity.md)
+隔离，以及诊断时间来源。决策依据：[保留子代理投影来源](../../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)
+（`implemented`）。证据路径以产品仓库名开头：`desktop/<文件>::<测试函数>` 是 desktop 的 Rust 测试，
+前端测试写文件路径与用例标题。[静默策略用例](../../desktop/core/workflow/prompt-inactivity.md)
 与[会话执行用例](session-execution.md)的证据保持各自范围，不推导来源保真或终态缺口已实现。
 
 ## Explicit Child Sources Must Reach History Without Merging Across Child Sessions
@@ -21,8 +22,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 显式来源进入 history 且分组稳定 | 真实帧经生产 runtime 写入会话 JSONL，再由生产 history/load 组装；比较实时、运行中重开与暖/冷加载的子组归属与内容 | Missing |
-| 无来源与异常关系降级 | 缺 metadata、缺父、自环、未知扩展的负例不串组、不递归、不丢内容；旧历史不被补造来源 | Missing |
+| 显式来源进入 history 且分组稳定 | `desktop/crates/history/src/projection_tests.rs` 的 `projected_text_keeps_sources_and_annotations_with_same_or_missing_message_ids`、`unidentified_source_switches_preserve_order_through_disk_reload`（生产 assembler 与 `HistoryWriter`/`read_session_history` 的 JSONL 往返）；`desktop/packages/chat/tests/projection.test.ts` 的 `live batching and reload keep colliding child text ids and annotations distinct`（实时与冷加载逐项相等）；`desktop/packages/app-shell/src/features/chat/subagent-replay.test.tsx` 的 `renders nested read-only details from the production store and keeps cold replay attribution`。缺口：没有真实 ACP transport 帧经生产 runtime 写入 JSONL 的端到端用例，也没有“运行中重开”的独立用例；聊天 store 的 plan 去重按完整 metadata 键、history 按有效 child id 保留最新一份，同一子组 metadata 变化时实时可能多一份 plan、重载只剩一份（无对应 TS 测试） | Partial |
+| 无来源与异常关系降级 | `projection_tests.rs` 的 `cleared_or_invalid_child_sources_settle_as_parent_tools`（null、空对象、空白 id/parentID、非法 depth，含 JSONL 回读）、`integral_float_depth_keeps_the_same_child_source_as_live_projection`；`projection.test.ts` 的 `cleared or invalid child sources settle as parent tools in live and reloaded turns`；`subagent-items.test.ts` 的 `keeps cycles, missing parents and invalid sources readable`（互环、缺父、非法来源）；`subagent-replay.test.tsx` 的 `does not invent a stopped projection from old EOF-only history`。缺口：没有字面自环用例，未知扩展在渲染层的不透明保留没有单独断言 | Partial |
 
 - 决策依据：D1，不变量 1。
 
@@ -43,8 +44,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 完整块与 metadata 保真 | 真实帧经生产组装与 JSONL 往返后，文本/思考的外层与内容层 metadata、annotations 逐项一致 | Missing |
-| 追加与替换语义 | 相同/缺失 messageId、显式 null、整体替换与晚到结果的负例按 D2 规则归属，重载后同一快照 | Missing |
+| 完整块与 metadata 保真 | `projection_tests.rs` 的 `projected_text_keeps_sources_and_annotations_with_same_or_missing_message_ids`（外层与内容层 metadata、annotations，经 serde 往返）、`non_text_chunks_and_thoughts_keep_their_full_metadata`（图像内容块与 thought 外层 metadata）；`desktop/packages/chat/tests/projection.test.ts` 的 `live batching and reload keep colliding child text ids and annotations distinct`（实时与冷加载的 metadata、annotations 相等）。缺口：文本与思考完整 chunk 经 JSONL 文件的逐项往返只有 serde 往返和工具快照的文件往返，没有单独的文本文件往返断言；thought 内容层 metadata 与聊天层非文本块没有直接断言 | Partial |
+| 追加与替换语义 | `projection_tests.rs` 的 `late_tool_metadata_replaces_namespaces_and_survives_terminal_refinement`（顶层命名空间替换、显式 null、同一快照）、`delegation_results_survive_a_late_snapshot_and_reload`、`plans_from_distinct_sources_do_not_overwrite_each_other`、`plans_replace_by_source_despite_changing_metadata_through_reload`；`projection.test.ts` 的 `late attribution, opaque replacement and unknown child outcomes survive finalization`、`a source switch does not discard leading whitespace or merge unidentified runs`、`cleared or invalid child sources settle as parent tools in live and reloaded turns` | Covered |
 
 - 决策依据：D2，不变量 2。
 
@@ -74,9 +75,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 委托已返回与未知的标注选择 | 三种父结束方式 × ACP `completed` 且 provider `status=completed`/`running`、未完成、失败、取消、关联缺失；实时与暖/冷重载均按规则给出同一标注 | Missing |
-| 标注不越界 | 两种标注都不产生完成、失败、取消或进行中；未完成工具不显示成功；不释放资源 | Missing |
-| 持久化来源与回合隔离 | 从 JSONL/Thread 重载不新增或丢失子组；旧子组不因新 prompt 复活为进行中；崩溃历史不标停止 | Missing |
+| 委托已返回与未知的标注选择 | `subagent-replay.test.tsx` 的 `keeps missing child terminal state explicit after parent completed in live, warm and cold views`（`failed`、`cancelled` 同组）、`settles a child only from the delegation that names it in live, warm and cold views`、`keeps a background delegation's child on the projection-stopped wording`；`subagent-items.test.ts` 的 `links a child only through the provider's session id`、`requires the provider to report completion, not a settled or failed call`；`desktop/packages/chat/tests/delegation.test.ts` 的 `requires both the ACP completion and the provider's completed result`；`projection_tests.rs` 的 `delegation_results_survive_a_late_snapshot_and_reload`、`parent_end_does_not_complete_unsettled_projected_tools`。缺口：失败、取消、未完成与无可关联 `sessionID` 的委托在真实界面 × 三种父结束下没有逐一断言（由 store 判定单测覆盖）；provider 的 `completed` 结果随不带工具状态的晚到增量到达、回合结束再结算 ACP `completed` 的组合没有直接测试 | Partial |
+| 标注不越界 | `subagent-replay.test.tsx` 断言未上报终态的子工具显示 `Outcome unknown` 且不显示 `Completed`，并确认界面没有 steer、取消或关闭子代理的按钮。缺口：两种标注不产生 completed/failed/cancelled 的显式状态断言，资源配置断言没有单独测试 | Partial |
+| 持久化来源与回合隔离 | `subagent-replay.test.tsx` 的 `keeps a settled child projection unknown after the same session starts a new prompt`、`keeps an earlier turn's returned delegation after the same child is resumed`、`does not invent a stopped projection from old EOF-only history`（有/无 attribution）；`projection_tests.rs` 的 JSONL 往返用例。缺口：没有把真实 JSONL/Thread 文件重载到聊天 store 的端到端用例，子组数量的显式断言也只在渲染层间接覆盖 | Partial |
 
 - 决策依据：D2、D3，不变量 3、7。
 
@@ -103,8 +104,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 关联只来自同回合、同来源流中的 provider 字段 | 真实帧经生产 store 完成并发、嵌套、续接与缺失 metadata 的配对；跨回合续接 X 后，实时及暖/冷重载均不改判回合 1 的 X 组；晚到结果不改变调用顺序 | Missing |
-| 不产生生命周期结论 | 配对与 `status` 不产生完成、失败或取消；重载后关联不变 | Missing |
+| 关联只来自同回合、同来源流中的 provider 字段 | `desktop/packages/chat/tests/delegation.test.ts` 的 `reads only the provider's session id from the delegation result`（空白、非字符串、缺失字段与近义键都不关联）、`requires both the ACP completion and the provider's completed result`；`subagent-items.test.ts` 的 `links a child only through the provider's session id`、`takes the latest call by persisted position, not the newest timestamp`、`keeps a top-level child scoped to the parent stream`；`subagent-replay.test.tsx` 的 `settles a child only from the delegation that names it in live, warm and cold views`（嵌套）、`keeps an earlier turn's returned delegation after the same child is resumed`。缺口：两个并发的顶层委托没有交叉配对的直接断言；晚到结果不改变调用顺序只有位置单测；缺 metadata 的 store/UI 集成用例没有 | Partial |
+| 不产生生命周期结论 | `delegation.test.ts` 与 `subagent-replay.test.tsx` 只断言「委托已返回结果 / 后续未知（投影已停止）」两种文案，在实时、暖、冷加载下不变；没有据此生成完成、失败或取消的断言。缺口：没有显式断言两种标注不产生终态，也没有资源相关的断言 | Partial |
 
 - 决策依据：D3，不变量 1、7。
 
@@ -124,12 +125,12 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 子来源更新不续期父计时 | 生产 runtime 与暂停时钟，经真实 ACP transport 观察子文本、工具增量与子权限往返后父 prompt 仍按原窗口推进；重试后旧来源不残留 | Missing |
-| 来源继承与父工具边界 | 省略 metadata 的增量沿用已知子来源；父委托 `in_progress` 的暂停计时仍成立 | Missing |
+| 子来源更新不续期父计时 | `desktop/crates/agent-runtime/src/prompt_policy_tests.rs` 的 `projected_child_activity_does_not_keep_an_unrelated_parent_prompt_alive`、`projected_child_permission_does_not_rearm_the_parent_prompt`、`parent_permission_rearms_the_prompt_window`（正对照）；`desktop/crates/agent-runtime/src/prompt_liveness.rs` 的 `child_permission_does_not_renew_the_parent_deadline`；`desktop/packages/chat/tests/diagnostics.test.ts` 的 `projected text and metadata-free child tool deltas never advance the parent observation`。缺口：runtime 侧“重试清除旧投影来源观察”没有直接测试 | Partial |
+| 来源继承与父工具边界 | `prompt_policy_tests.rs` 的 `projected_child_activity_does_not_keep_an_unrelated_parent_prompt_alive`（省略 metadata 的子工具增量仍不续期）、`running_delegate_pauses_default_policy_until_it_finishes`（父委托 `in_progress` 暂停计时）；`projection.test.ts` 的 `late attribution, opaque replacement and unknown child outcomes survive finalization` 与 `diagnostics.test.ts` 的 `toolSources` 继承断言 | Covered |
 
 既有 `ora_agent_runtime::connection::prompt_policy_tests::child_updates_do_not_rearm_the_parent_prompt`
-只证明不同 ACP session 的更新不会唤醒父 prompt，不覆盖同一会话中带子来源 metadata 的更新，不作为
-本用例证据。
+只证明不同 ACP session 的更新不会唤醒父 prompt；上表的直接证据覆盖同一会话内带子来源 metadata
+的更新，该测试不作为本用例证据。
 
 - 决策依据：D4，不变量 4；继承[静默策略决策](../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)，
   不改变其窗口与重试规则。
@@ -151,8 +152,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 观察时间与记录时间可区分 | 实时、运行中重开、暖/冷加载分别核对时间来源与标注；重放流不刷新最近实时活动 | Missing |
-| 状态、静默与待处理请求不越界 | 未上报状态的 provider、长时间静默、question 缺能力与权限往返的负例都保持未知或缺口，不制造健康与等待结论 | Missing |
+| 观察时间与记录时间可区分 | `diagnostics.test.ts` 的 `live observation clears on reload and remains isolated from another session`、`a load stream that replays an open turn exposes no live observation`；`desktop/packages/app-shell/src/features/chat/run-diagnostics.test.tsx` 的 `does not invent provider health or turn replay into live activity`、`says no parent activity was observed yet for a fresh attempt with a live snapshot`、`keeps the unknown wording while a load replays an open turn`、`reports elapsed silence without creating activity and releases its timer`。缺口：最终实现不展示历史记录时间，重放只显示“未知；重放不是新活动”，与批准文本“明确标注为记录时间”不同（见 ADR 的差异说明） | Partial |
+| 状态、静默与待处理请求不越界 | `diagnostics.test.ts` 的 `only recognized provider reports establish state and null clears retries`、`failure and cancellation clear transient reports while a new prompt clears prior observations`；`run-diagnostics.test.tsx` 的 `labels parent, child and unobserved tools separately`、`reports elapsed silence without creating activity and releases its timer` 与自动处理权限的文案。缺口：question 缺能力时不制造等待状态没有代码或测试断言（只有文档说明）；未决权限的“等待”正例与权限往返不进入诊断没有直接断言 | Partial |
 
 - 决策依据：D3，不变量 5。
 
@@ -172,7 +173,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 真实界面与重载一致 | 真实 Desktop/浏览器经生产 store 展开并发嵌套、缺失来源与旧历史，实时与重载的内容、来源、终态标注一致 | Missing |
-| 降级与只读边界 | 循环、缺父、未知 metadata 与历史缺口不崩溃不丢内容；界面没有新增控制入口 | Missing |
+| 真实界面与重载一致 | `subagent-replay.test.tsx` 以生产 store 渲染生产组件：`renders nested read-only details from the production store and keeps cold replay attribution`（实时与冷加载摘要相等、展开两层、父内容不混入子组）、`keeps missing child terminal state explicit after parent completed in live, warm and cold views`、`settles a child only from the delegation that names it in live, warm and cold views`。缺口：这是 jsdom 组件级测试，没有真实 Desktop/浏览器或 E2E；思考、工具输入/输出在子卡片中的可见性没有单独断言；虚拟滚动没有覆盖 | Partial |
+| 降级与只读边界 | `subagent-items.test.ts` 的 `keeps cycles, missing parents and invalid sources readable`、`connects a late parent and keeps unrelated root content`；`subagent-replay.test.tsx` 断言界面没有 steer、取消或关闭子代理的按钮。缺口：循环与缺父在渲染层“不崩溃、不丢内容”没有直接断言，只读边界按按钮名称正则间接断言 | Partial |
 
 - 决策依据：D1、D3，不变量 1、3、6。
