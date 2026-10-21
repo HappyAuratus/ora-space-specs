@@ -1,8 +1,8 @@
 # Node 恢复截止、取消与停止确认
 
-依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)。下文的 D 编号与不变量编号都指这篇 ADR；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
+依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)；其中 D6 的停止确认证据另由[恢复停止确认接受 host 权威 NotStarted 决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)扩展（下称“扩展决策”）。下文的 D 编号与不变量编号未加限定时指前一篇 ADR，引用扩展决策时写明其 D 编号或“扩展决策不变量”；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
 
-本文覆盖完整恢复截止与预算裁剪、取消点、停止证据未知与上限、窗口衔接和启动清理交接。已实现的 bundle 恢复仍是 desktop main 的现状，它的直接证据留在 [Node 恢复前序 Revision](prior-revision-restore.md)；内部线恢复的交付与拉取证据留在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。两处证据都不覆盖本文新增的义务：实现尚未合入 desktop 的 main，下列义务都是 `Missing`，落地运行按最终实现补上具体测试名与 commit 后再改状态。
+本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。已实现的 bundle 恢复仍是 desktop main 的现状，它的直接证据留在 [Node 恢复前序 Revision](prior-revision-restore.md)；内部线恢复的交付与拉取证据留在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。两处证据都不覆盖本文新增的义务：实现尚未合入 desktop 的 main，下列义务都是 `Missing`，落地运行按最终实现补上具体测试名与 commit 后再改状态。
 
 ## A Restore Deadline Covers Every Step And Clips Command Budgets To Its Remainder
 
@@ -62,25 +62,70 @@ D1、D6；不变量 1、2、4、11。
 
 ### 必须成立
 
-- 只有“受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出”才是停止确认。
-- 预算到期只表示恢复不再等这条命令，关闭请求只表示关闭已被提出；两者都不是停止确认。
+- 基础证据是“受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出”；扩展决策在此之外接受 host 权威的 `NotStarted`，两者的共同前提都是原 Scope 已 `Closed`。本节验证基础证据的边界与“其余事实都不是停止确认”，`NotStarted` 的来源、fencing 前提与矛盾检测按 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证。
+- 预算到期只表示恢复不再等这条命令，关闭请求只表示关闭已被提出；两者都不是停止确认，也都不能推导 `NotStarted`。
 - 停止确认按实际纳管保证报告：Strong 在声明范围内给出完整退出证据；当前 Linux BestEffort 的尽力清理完成不能排除未跟踪后代，不得写成已确认静止。
 
 ### 禁止结果
 
-- 用关闭请求被接受、清理预算耗尽、`process_attempts` 记录缺失或 Node 重启推断停止。
+- 用关闭请求被接受、清理预算耗尽、`process_attempts` 记录缺失或 Node 重启推断停止，或用它们推断 host 将报告 `NotStarted`。
 - 在未取得停止确认时发出作为停止确认的终态，或用清理结果替代停止确认。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 三种事实分开 | 注入“关闭请求成功但未观测到 `Closed`”“直接进程退出但 Scope 未 `Closed`”“清理预算耗尽”，断言前两者不产生停止确认、第三者不产生终态 | Missing |
+| 三种事实分开 | 注入“关闭请求成功但未观测到 `Closed`”“直接进程退出但 Scope 未 `Closed`”“清理预算耗尽”，断言前两者不产生停止确认、第三者不产生终态，且三者都不能被当成 `NotStarted` 的依据 | Missing |
 | 证据分级 | BestEffort 下尽力清理完成不报告“已确认静止”；Strong 启用时只在声明范围内报告；两者的结果可区分 | Missing |
 
 ### 决策依据
 
-D6；不变量 3。
+D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)。
+
+## Stop Confirmation Also Accepts A Host-Authoritative NotStarted
+
+### 风险
+
+把“查不到记录”或“还没看到进程”当作“没有进程在跑”，或者把平台/guardian 合成的 `NotStarted` 用在没有 fencing 保证的路径上，在仍可能有 `Start` 到达或进程仍可能写入时发终态、开始交付。
+
+### 前置状态
+
+恢复命令的 attempt 已持久化，`Start` 未送达 host 或已被取消；host 可能返回 `DirectProcessState::NotStarted`（平台 spawn 明确未启动，或 worker 对 `Stop` 的 `UnknownRun` 合成 `cancelled()`）或 `HostRejection::UnknownIdentity`；可注入已确认启动的 Run（用于矛盾检测）、guardian 在接受到启动请求前后的两种时机，以及 host 记录不完整（journal 缺失、`process_attempts` 被清理）。
+
+### 触发
+
+原 Scope 已 `Closed` 后查询该 Run：host 报告 `NotStarted`；或报告 `UnknownIdentity`；或对一个已确认启动的 Run 报告 `NotStarted`。
+
+### 必须成立
+
+- 原 Scope 已 `Closed` 且 host 权威报告该 Run 为 `NotStarted`（`direct` 为 `DirectProcessState::NotStarted`、`launch` 为 `LaunchFact::NotStarted`、cleanup 为 `CleanupState::Complete`）构成停止确认，走与直接进程退出相同的正常路径：在有界清理预算内清理临时目录与传输仓库（失败只记录），报告 `prior_revision_unavailable`（取消先生效时按取消原因），会话以 `agent_failed` 结束；不进入 `stop_unconfirmed`。
+- `NotStarted` 的来源限于平台 spawn 明确报告未启动与 guardian 在接受到启动请求前取消两类；后者由 worker 在发 `Stop` 收到 `GuardianRunRejection::UnknownRun` 后合成，可信前提是 fencing：当前 host binding 挡住旧请求，且 worker 发出 `Stop` 之后不再排 `Start`。
+- `UnknownIdentity` 仍不是停止确认：不发终态、不交付、不读 HEAD、不重开或复制执行、不解除 checkout 冲突责任，停止证据上限到期后在原执行上登记 `stop_unconfirmed`，迟到证据仍按原执行身份补报一次。
+- 对已确认启动的 Run 报 `NotStarted` 是矛盾，必须作为错误拒绝，不能当作停止确认。
+- cleanup 证据按实际取得的结果分级报告：平台 spawn 路径取 `cleanup_evidence(guarantee)`，guardian 取消路径固定 `CleanupEvidence::BestEffortComplete`；BestEffort 的尽力清理完成不等于已确认静止。
+
+### 禁止结果
+
+- 由预算到期、关闭请求、清理预算耗尽或等待上限推导 `NotStarted`。
+- 接受 `UnknownIdentity` 作为停止确认，或把“查不到记录”解释为“从未启动”。
+- 在没有 fencing 前提（旧请求可能到达，或 `Stop` 之后仍可能排入 `Start`）的路径上合成 `NotStarted`。
+- 把已确认启动的 Run 的 `NotStarted` 静默当成停止确认。
+- 把 `BestEffortComplete` 报告成已确认静止。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| `NotStarted` 走正常路径 | 原 Scope `Closed` 且 host 报告 `NotStarted`：断言进入正常路径、在有界清理预算内清理、报告 `prior_revision_unavailable`、会话 `agent_failed`，且不登记 `stop_unconfirmed` | Missing |
+| 两种来源各自成立 | 平台 spawn 明确返回未启动；guardian 在接收到启动请求前取消（worker 对 `Stop` 的 `UnknownRun` 合成）：两种情况都得到 `NotStarted` 并进入正常路径 | Missing |
+| fencing 前提 | 证明只有“已决定停止、旧请求已被挡住、收到 `UnknownRun` 且之后不再排 `Start`”的路径能产生 `NotStarted`；去掉任一 fencing 条件时不产生 `NotStarted`，仍按未知处理 | Missing |
+| 矛盾检测 | 对已确认启动的 Run 注入 `NotStarted`，断言作为错误拒绝，不产生停止确认、不发终态 | Missing |
+| `UnknownIdentity` 保守 | 注入 `UnknownIdentity`：无终态、交付读 HEAD/快照/推送被拒、checkout 复用被拒、原 Run 记录保留，上限到期后登记 `stop_unconfirmed`；迟到证据仍只按原身份补报一次 | Missing |
+| cleanup 证据分级 | guardian 取消路径固定 `BestEffortComplete`；平台 spawn 路径按实际保证取证据；BestEffort 下不报告已确认静止 | Missing |
+
+### 决策依据
+
+扩展决策 D1、D2；扩展决策不变量 3、4、5。
 
 ## An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout
 
