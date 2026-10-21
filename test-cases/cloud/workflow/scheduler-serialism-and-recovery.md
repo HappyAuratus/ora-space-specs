@@ -13,7 +13,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 [cloud#113](https://github.com/ora-space/cloud/pull/113)（调度器崩溃接手，merge `9814cacd`）与
 [cloud#119](https://github.com/ora-space/cloud/pull/119)（WorkflowRun 的 Workspace 释放终态与有界放弃，merge `df9799c5`）的堆叠里落地，
 下表因此不再全是 `Missing`。仍为 `Missing` 的是**多副本**：没有用例让两个副本同时竞争同一个运行。
-**崩溃接手**已由 cloud#113 的 DB 用例与运行 #377 的真实重启验收补齐；其余要求"真实执行侧"而尚未覆盖的
+**崩溃接手**中重启后的同一副本接手已由 cloud#113 的 DB 用例与运行 #377 的真实重启验收覆盖，由另一副本接手仍随
+多副本缺证据；其余要求"真实执行侧"而尚未覆盖的
 路径继续记 `Partial`，整体属 D1 落地顺序第 3 步（ora-space/circus#70）。
 
 ## At Most One Serial Executor Advances A Workflow Run
@@ -79,20 +80,20 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 就绪集合只从已提交状态重算 | 真实 PostgreSQL：以任意中间状态作为起点（等价于崩溃后接手），重算结果与线性推进一致 | Covered |
-| 崩溃接手不重跑已提交节点、不丢进度 | 真实执行侧：推进中途杀死调度副本后由另一副本接手，检查派发集合与最终结果 | Covered |
+| 崩溃接手不重跑已提交节点、不丢进度 | 真实执行侧：推进中途杀死调度副本后由另一副本接手，检查派发集合与最终结果 | Partial |
 
 - 决策依据：D1 条件②（每次推进从已提交状态重算、恢复接手不等于中断），D4（崩溃恢复只依据已提交的节点结果），不变量 4。
 - desktop 参考实现（`8909f07`）一侧：**Covered** — 分支激活与就绪集合只从持久化行推导（[`crates/application/src/workflow_run/engine/branch_projection.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/application/src/workflow_run/engine/branch_projection.rs) 的 `selected_branch_activates_only_the_matching_successor`、`fan_in_with_an_inactive_branch_still_becomes_ready`、`unresolved_condition_leaves_successors_unreached` 等），并且经编码 → 真实 SQLite 重载 → 再解析后执行仍成立（[`crates/backend/src/workflow/run/aggregator_persistence_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/aggregator_persistence_tests.rs) 的 `persisted_branch_outputs_reach_downstream`、`persisted_false_value_reaches_downstream`）；崩溃后只重做失败节点与其后继、已成功 sibling 保留（[`crates/backend/src/workflow/run/resume_tests.rs`](https://github.com/ora-space/desktop/blob/8909f07/crates/backend/src/workflow/run/resume_tests.rs) 的 `resume_from_failure_after_orphaned_crash_recovery`、`resume_from_failure_redoes_failed_join_and_finishes`）。说明：desktop 的串行执行者是进程内的，跨进程多副本不适用，这一条的多副本部分在参考实现里没有对应证据。
-- 本次直接证据：**Covered** — 第 1 行由两部分构成：就绪集合是纯函数，[cloud#67](https://github.com/ora-space/cloud/pull/67) 的
+- 本次直接证据：**Partial** — 第 1 行 `Covered`，由两部分构成：就绪集合是纯函数，[cloud#67](https://github.com/ora-space/cloud/pull/67) 的
   `TestWorkflowProjectionLinearGraph`、`TestWorkflowProjectionPendingUpstreamWaits`、`TestWorkflowProjectionRootlessNodeIsInactive`、
   `TestWorkflowProjectionUnlabeledEdgeIsElse` 覆盖它的四类结果，`TestWorkflowAdvanceSucceedsLinearRun` 与
   `TestWorkflowAdvanceIsIdempotent` 证明推进每次都从行上的已提交状态重算、不缓存图状态（参考语义为 desktop 的
   `resume`，`engine.rs:328-330`："Recomputes the ready set from persisted state"）；[cloud#113](https://github.com/ora-space/cloud/pull/113)
   （merge `9814cacd`）的 `TestWorkflowAdvanceResumesFromCommittedStateAfterRestart` 再以崩溃留下的已提交中点为起点，
   用第二个 `Store`（同一配置、同一数据库，等价于重启后的新进程）推进：分支条件读到的是已提交的启动输出而不是重跑会
-  产生的值，已提交节点没有被重跑，运行正常收尾，重复推进不再改动终态行。第 2 行由 cloud#113 的
-  `TestWorkflowAdvanceResumesAnInFlightSessionFromItsOwnResult`、`TestWorkflowAdvanceHoldsAProductionSessionAcrossRestart`
-  与运行 #377 的 `restart-takeover` 场景共同覆盖：崩溃留下已注册但无结果的执行与未登记工作项，接手者不发明结果、
+  产生的值，已提交节点没有被重跑，运行正常收尾，重复推进不再改动终态行。第 2 行 `Partial`：重启后的同一副本接手由
+  cloud#113 的 `TestWorkflowAdvanceResumesAnInFlightSessionFromItsOwnResult`、`TestWorkflowAdvanceHoldsAProductionSessionAcrossRestart`
+  与运行 #377 的 `restart-takeover` 场景共同覆盖，义务要求的"由另一副本接手"没有直接证据：崩溃留下已注册但无结果的执行与未登记工作项，接手者不发明结果、
   不重派、运行与节点保持 `running`、下游不提交，未登记工作项仍可领取，会话自己的结果到达后由下一轮结算并推进；
   生产形态的用例保留真实 Workspace 绑定与心跳中的 Node。#377 在真实栈上让真实 bash 工具阻塞回合后重启 Cloud 容器，
   15 秒后仍只有一条执行、`executionId` 与 `dispatchedEpoch` 与重启前相同、执行无结果、运行保持 `running`，
