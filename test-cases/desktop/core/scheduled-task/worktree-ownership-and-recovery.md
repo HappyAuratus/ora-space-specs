@@ -13,7 +13,8 @@
   分别注入进程死亡并重启。
 - 必须成立：每个时点后资源仍有可证明的 owner——提交前崩溃由 lease 既有补偿回收，提交后崩溃由运行行链接承载并进入
   既有恢复与 retention；重复恢复不产生第二个任务、第二次资源创建或重复副作用；带链接的 `accepted` 运行不渲染为
-  running，也不提前发 `RunStarted`。
+  running，也不提前发 `RunStarted`。崩溃验证通过重新打开数据库核对落盘状态，且至少一组注入跳过正常 Drop/补偿路径，
+  避免只测到正常错误返回的补偿。
 - 禁止结果：任务已提交但没有持久归属的中间态；恢复路径绕过 lease 或运行行自行创建第二份资源；归属提前触发通知。
 - 决策依据：后续 ADR D1、D2 与不变量 1–4。
 
@@ -26,6 +27,7 @@
 | session 持久化后 `Start` 前崩溃：归属仍完整，`Start` 缺失不产生 `running` 或 `RunStarted` | 尚未实现 | `Missing` |
 | 重复恢复（多次重启）不产生第二个任务或重复副作用 | 尚未实现 | `Missing` |
 | 带链接的 `accepted` 运行在历史与侧栏不显示为 running | 尚未实现 | `Missing` |
+| 成功提交后重新打开数据库：task/run 绑定存在且 provisioning lease 已不存在（成功后无 lease 残留） | 尚未实现 | `Missing` |
 
 ## Failed Ownership Commit Must Roll Back And Keep Compensation
 
@@ -33,8 +35,8 @@
 - 前置状态：scheduled 提交适配器执行中；运行行可能已被启动恢复结算为终态、project 可能被并发删除、绑定可能冲突。
 - 触发：运行行非 `accepted`、project 不匹配、绑定冲突、写入失败时提交。
 - 必须成立：整个任务提交回滚；lease 留给既有补偿路径；重放不创建第二份资源、不覆盖既有绑定；本次运行按既有失败路径
-  结算。
-- 禁止结果：部分提交、绕过校验覆盖绑定、回滚后 lease 丢失或资源无主。
+  结算；在删 lease 处注入失败时同样整体回滚且不启动 session。
+- 禁止结果：部分提交、绕过校验覆盖绑定、回滚后 lease 丢失或资源无主、吞掉 lease 删除失败并保留任务行。
 - 决策依据：后续 ADR D1 与不变量 2、3、7。
 
 ### 验证义务与证据
@@ -44,6 +46,7 @@
 | 运行行非 `accepted` / project 不匹配 / 绑定冲突时提交整体回滚 | 尚未实现 | `Missing` |
 | 回滚后 lease 由既有补偿路径回收 | 尚未实现 | `Missing` |
 | 重放不创建第二份资源、不覆盖既有绑定 | 尚未实现 | `Missing` |
+| 删 lease 处注入失败：task/workspace/worktree 与 run 绑定整体回滚，lease 保留补偿责任且不启动 session | 尚未实现 | `Missing` |
 
 ## Session Start Failure Must Not Loose The Ownership Binding
 
