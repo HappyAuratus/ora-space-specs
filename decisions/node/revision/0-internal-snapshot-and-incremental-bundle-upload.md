@@ -145,9 +145,11 @@ Scope 中运行，并在下一条命令开始前关闭。
 
 核心用例见 [Node 的交付快照与会话记录上传](../../../test-cases/node/revision/snapshot-and-history-upload.md)；
 bundle 生成与上传的义务已随内部线删除，交付推送的义务见[Git 交付与恢复](../../../test-cases/node/revision/git-delivery-push-and-restore.md)。
-desktop `apps/ora-node/src/revision/tests/snapshot.rs` 以真实 Git 覆盖有/无改动、修改删除与新增、忽略文件、
-提交钩子失败不影响快照、工作区与分支不变、bundle 可在只有基础提交的新仓库中 fetch 出最终提交、续接后停在
-前序最终提交时为 `unchanged`；`upload.rs` 以本地 HTTP 替身覆盖签名头原样携带、`412`、`403` 换授权、次数耗尽、
-部分上传后重启复用冻结字节、冻结字节被改动；`apps/ora-node/tests/standalone/agent_sessions/delivery.rs`
-以真实 Node 进程完成交付且账本中没有签名 URL。子模块、LFS、clean 过滤器、无提交仓库以及 Node 服务层的
+desktop `ff9de8f9` 上，`apps/ora-node/src/revision/tests/snapshot.rs` 以真实 Git 覆盖无改动时只冻结会话记录、
+修改删除与新增、忽略文件、提交钩子失败不影响快照、工作区与分支不变、续接后停在前序最终提交时为 `unchanged`、
+输入不可用时失败且不冻结对象、重新准备时丢弃中断的尝试；`tests/upload.rs` 以本地 HTTP 替身覆盖签名头原样携带、
+`412` 视为已上传、`403` 换授权、三次失败、丢失应答后重启复用冻结字节、冻结字节被改动、忽略别的授权；
+`apps/ora-node/tests/standalone/agent_sessions/delivery.rs` 以真实 Node 进程完成交付且账本中没有签名 URL。
+bundle 的生成、上传和“bundle 可在只有基础提交的新仓库中 fetch 出最终提交”的测试已随内部线删除，交付提交改由
+`tests/push.rs` 推送到 Git Server，证据见 Git 交付用例。子模块、LFS、clean 过滤器、无提交仓库以及 Node 服务层的
 `session_not_settled` 分支尚无直接测试。
