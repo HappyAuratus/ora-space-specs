@@ -2,29 +2,32 @@
 
 依据[已实现的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
 以及修改其 D6 的[中断失败判定](../../../decisions/node/repository/20260925-terminated-clone-attempt-fails-as-interrupted.md)。
-本文件登记首版行为义务。协议、schema v3 和 Linux 受管 clone 已接通，已有真实 HTTPS／SSH 与恢复证据；
-已有 Worktree／process 测试不替代这些业务证据。端到端职责另见[结果边界](clone-and-result-boundaries.md)；
+契约 D1、D2、D4、D5 已被[Node 从快照 clone 决策](../../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)
+修改：输入不再是外部仓库地址与分支，不再有 SSH 与部署凭据，checkout 不配置 `origin`；这些义务由
+[快照 clone 与 `ora-git`](snapshot-clone-and-ora-git.md) 登记。目录独占、受管执行、结果持久、恢复与中断判定的义务继续按本文件维护，
+下文已按快照 clone 的最终实现同步。已有 Worktree／process 测试不替代这些业务证据。端到端职责另见[结果边界](clone-and-result-boundaries.md)；
 clone 的 Git 移出受理 worker 后的受理与在途义务见[受理与 Git 执行分离](admission-and-git-execution.md)。
 
 ## Clone Input And Authentication Stay Noninteractive
 
 ### 风险
 
-地址或参数成为任意程序入口；认证等待交互，或诊断泄露凭据。
+输入成为任意程序入口；认证等待交互，或诊断泄露凭据。
 
 ### 前置状态
 
-Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显式 SSH 服务以及认证失败、未知主机场景。
+Node 显式配置 Git、环境和 `git_access` 身份；分别准备认证被拒绝与 Git Server 不可达的场景。
 
 ### 触发
 
-通过生产入口提交合法请求、非法传输、含秘密地址、tag／revision 及需要交互的认证请求。
+通过生产入口提交合法的快照输入、旧形状的仓库地址与分支、含执行控制的输入，以及需要交互的认证请求。
 
 ### 必须成立
 
-- 仅接受 HTTPS 与显式 ssh://，输入为源仓库分支；拒绝本地路径、file、scp 缩写和自定义 remote helper。
-- 不允许请求传入任意 Git 参数、目标路径、shell、环境或秘密；SSH 用户名不被当作密码拒绝。
-- 凭据由部署提供；缺少凭据或需要确认主机时明确失败，不弹窗、自动信任或无限等待。
+- 输入只能是 Git Server 的快照输入，形状规则登记在[快照 clone 与 `ora-git`](snapshot-clone-and-ora-git.md)；旧的仓库地址与分支形状、
+  本地路径、`file`、scp 缩写和自定义 remote helper 一律拒绝。
+- 不允许请求传入任意 Git 参数、目标路径、shell、环境或秘密。
+- 认证只使用 `git_access` 证书，并且只在传输仓库中；不使用部署的凭据来源。证书不可用或被拒绝时明确失败，不弹窗、不无限等待。
 - 网络和认证子进程受期限及收尾管理；journal、业务结果和日志不传播秘密，诊断有上限且脱敏。
 
 ### 禁止结果
@@ -35,13 +38,13 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 输入限制与安全参数调用 | `crates/node-protocol/tests/protocol/repository.rs` 的 6 项测试覆盖请求 wire、分片往返、传输／凭据／分支及未知输入拒绝；尚缺实际 Git 参数派发检查 | Partial |
-| 非交互认证与子进程收尾 | `apps/ora-node/tests/standalone/repository_policy.rs`、`repository_ssh.rs` 覆盖真实部署凭据、未知主机与成功；`repository_recovery.rs` 覆盖网络中 Node 强杀后的原 scope 收尾；尚缺专门认证子进程超时测试 | Partial |
-| 秘密不进入持久记录或输出 | `private_https_uses_deployment_credentials_without_running_checkout_extensions` 检查 Node／host SQLite 不含凭据内容；clone 使用 Discard 输出；尚缺敏感 stderr 注入及 guardian／日志联合检查 | Partial |
+| 输入限制与安全参数调用 | `crates/node-protocol/tests/protocol/repository.rs` 的 `clone_request_has_independent_wire_and_fragmented_round_trip`、`clone_accepts_only_git_server_https_addresses`、`clone_rejects_malformed_snapshot_inputs`、`clone_rejects_the_retired_repository_and_branch_shape`、`clone_rejects_execution_controls_in_payload_and_spec` 覆盖请求 wire、分片往返、地址、旧形状及执行控制拒绝；尚缺实际 Git 参数派发检查 | Partial |
+| 非交互认证与子进程收尾 | `apps/ora-node/tests/standalone/repository.rs` 的 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖授权被拒绝与 `401` 不重试；`unavailable_git_server_is_retried_within_the_fetch_pass`、`unavailable_git_server_fails_the_clone_once_the_attempts_run_out` 覆盖 Git Server 不可用的有界重试；`repository_recovery.rs` 覆盖网络中 Node 强杀后的原 scope 收尾；尚缺专门认证子进程超时测试 | Partial |
+| 秘密不进入持久记录或输出 | `apps/ora-node/tests/standalone/repository_policy.rs` 的 `snapshot_clone_ignores_deployment_credentials_and_checkout_extensions` 检查 Node／host SQLite 不含部署凭据内容；clone 使用 Discard 输出；尚缺敏感 stderr 注入及 guardian／日志联合检查 | Partial |
 
 ### 决策依据
 
-执行契约 D1、D2，不变量 4。
+执行契约 D1、D2，不变量 4；快照 clone 决策 D1、D2。
 
 ## Clone Reserves And Verifies Its Exclusive Destination
 
@@ -73,31 +76,31 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 路径隔离、独占创建和持久顺序 | `ora-node-db::tests::repository` 覆盖预留事务；`repository_policy.rs` 覆盖状态根父子重叠；`repository_commit.rs` 覆盖创建证据写入失败；`repository_recovery.rs` 覆盖真实排他创建与派发 | Partial |
+| 路径隔离、独占创建和持久顺序 | `ora-node-db::tests::repository` 覆盖预留事务；`repository_policy.rs` 的 `clone_configuration_rejects_protected_roots_without_changing_permissions` 覆盖受保护根目录被拒绝且权限不变；`repository_commit.rs` 覆盖创建证据写入失败；`repository_recovery.rs` 覆盖真实排他创建与派发 | Partial |
 | 中断及目录替换不丢失保护 | `accepted_clone_never_adopts_an_existing_directory_or_replaced_root`、`clone_preserves_directory_when_creation_evidence_write_fails` 及 `ora_utils::path::identity` 覆盖已有文件、替换根与创建证据缺失；尚缺所有持久边界和叶子替换恢复组合 | Partial |
 
 ### 决策依据
 
 执行契约 D3，不变量 1、2、3。
 
-## Clone Checks Out The Requested Branch With Fixed Content Policy
+## Clone Checks Out The Snapshot With Fixed Content Policy
 
 ### 风险
 
-同名 tag 被当成分支，隐式浅克隆或初始化脚本改变承诺，外部资产被误称为已就绪。
+隐式浅克隆或初始化脚本改变承诺，外部资产被误称为已就绪。
 
 ### 前置状态
 
-真实远端含非默认分支、分支完整历史、仅有同名 tag 的场景，以及 hooks、submodule、LFS 内容；部署辅助程序可观测。
+Git Server 上的快照含 hooks、submodule、LFS 指针内容；部署辅助程序可观测。
 
 ### 触发
 
-通过受管 Git 执行 clone 并检查仓库、命令副作用及资源访问。
+通过受管 Git 执行快照 clone 并检查仓库、命令副作用及资源访问。
 
 ### 必须成立
 
-- 普通非 bare 仓库检出指定分支并具备其完整可达历史；不使用 shallow、partial、mirror 或共享外部对象库。
-- 分支不存在明确失败，同名 tag、默认分支或 detached HEAD 不替代成功。
+- 普通非 bare 仓库，位于 Workspace 分支上、指向 `base_commit`，具备其完整可达历史；不使用 shallow、partial、mirror，checkout 不借用外部对象库。
+- 快照不可用、地址不可达或 `snapshot_ref` 所指提交不等于 `base_commit` 时明确失败，不以其他分支或提交替代成功。
 - 调用级禁用 hooks，不改用户持久配置；不运行项目初始化、构建或依赖安装。
 - 不递归初始化 submodule，抑制 LFS smudge，不主动下载 LFS；允许指针和未初始化 submodule，公开此内容边界。
 - 其他 filter／helper 遵守可信部署的明确策略，不将禁用 hooks 宣称为沙盒。
@@ -110,33 +113,33 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 分支与仓库形态符合固定政策 | `managed_https_clone_selects_branch_and_replays_without_network`、`managed_https_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖非默认分支、实际 commit、缺失分支及 tag-only；命令构造固定完整历史；尚缺外部 metadata 篡改组合 | Partial |
-| hooks 和外部资产边界 | `private_https_uses_deployment_credentials_without_running_checkout_extensions` 使用可观测 hooks／LFS 程序、真实指针与 gitlink；尚缺部署持久配置前后逐项比较 | Partial |
+| 分支与仓库形态符合固定政策 | `apps/ora-node/tests/standalone/repository.rs` 的 `managed_snapshot_clone_checks_out_the_base_commit_without_a_remote` 核实 Workspace 分支、`base_commit`、无 remote 与远端跟踪 ref、无 alternates、非浅仓库及传输仓库清理；`snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖快照缺失与提交不符；尚缺外部 metadata 篡改组合 | Partial |
+| hooks 和外部资产边界 | `apps/ora-node/tests/standalone/repository_policy.rs` 的 `snapshot_clone_ignores_deployment_credentials_and_checkout_extensions` 使用可观测 hooks／LFS 程序、真实指针与 gitlink；尚缺部署持久配置前后逐项比较 | Partial |
 
 ### 决策依据
 
-执行契约 D4，不变量 5。
+执行契约 D4（hooks、submodule、LFS 规则不变），不变量 5；快照 clone 决策 D2、D3。
 
 ## Clone Persists Actual Completion Before Replaying It
 
 ### 风险
 
-分支移动导致历史结果变化，或只根据目录外观／进程退出就报告业务成功。
+快照 ref 被改动导致结果与输入不符，或只根据目录外观／进程退出就报告业务成功。
 
 ### 前置状态
 
-远端分支可移动，Node 使用持久执行与结果记录；具备可独立检查的目标身份、来源、分支和 commit。
+Git Server 上的快照 ref 可被改动，Node 使用持久执行与结果记录；具备可独立检查的目标身份、Workspace 分支和 commit。
 
 ### 触发
 
-接受后移动远端分支；执行完成后在结果持久化边界断开，重开并重传；成功后再修改本地 HEAD 或远端。
+接受后改动快照 ref；执行完成后在结果持久化边界断开，重开并重传；成功后再修改本地 HEAD 或快照。
 
 ### 必须成立
 
-- 结果保存实际获取并检出的 commit，不承诺接受时快照；包含原输入关联、Node 资源身份、实际路径和分支。
-- 成功同时具备原尝试完成／收尾和有效 checkout 证据；目标归属、来源、非 bare 形态与元数据边界均核实。
+- 结果保存实际检出的 commit，并且必须等于输入的 `base_commit`；包含原输入关联、Node 资源身份、实际路径和 Workspace 分支。
+- 成功同时具备原尝试完成／收尾和有效 checkout 证据；目标归属、`base_commit`、非 bare 形态、无 remote 与元数据边界均核实。
 - 先持久保存业务终态及待交付结果，再报告完成。
-- 原身份不同输入返回冲突；已有终态重放原结果，不访问远端、重新 clone、reset 或刷新历史 commit。
+- 原身份不同输入返回冲突；已有终态重放原结果，不访问 Git Server、重新 clone、reset 或刷新历史 commit。
 
 ### 禁止结果
 
@@ -146,12 +149,12 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 实际 commit 与完整成功证据 | `managed_https_clone_selects_branch_and_replays_without_network` 核实实际非默认分支 commit；`repository_commit.rs` 验证 Git 成功后的终态／outbox 回滚与离线补交；尚缺移动远端、错误来源／metadata 组合 | Partial |
-| 持久完成后不可变重放 | DB 精确确认测试和 `managed_https_clone_selects_branch_and_replays_without_network` 覆盖真实结果重开、离线重传、用户编辑保留；尚缺结果交接处独立进程强杀 | Partial |
+| 实际 commit 与完整成功证据 | `managed_snapshot_clone_checks_out_the_base_commit_without_a_remote` 核实结果 commit 等于输入的 `base_commit`；`snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 核实快照所指提交与输入不符时失败；`repository_commit.rs` 验证 Git 成功后的终态／outbox 回滚与离线补交；尚缺成功后快照被改动、错误来源／metadata 组合 | Partial |
+| 持久完成后不可变重放 | DB 精确确认测试和 `managed_snapshot_clone_checks_out_the_base_commit_without_a_remote` 覆盖真实结果重开、离线重传、用户编辑保留；尚缺结果交接处独立进程强杀 | Partial |
 
 ### 决策依据
 
-执行契约 D1、D5、D6、D7，不变量 1、2。
+执行契约 D1、D5、D6、D7，不变量 1、2；快照 clone 决策 D3。
 
 ## Clone Recovery Keeps Original Responsibility And Failed Residue
 
@@ -185,7 +188,7 @@ Node 显式配置 Git、环境和可信凭据来源；分别准备 HTTPS、显�
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 各故障边界恢复原尝试而非重复派发 | `killed_clone_recovers_original_run_without_redispatch` 使用独立 Node／host／guardian；`clone_recovers_completed_git_after_terminal_or_outbox_write_failure` 验证原唯一 Run 与离线补交；尚缺派发丢回复边界 | Partial |
-| 失败残留和 Unknown 责任保持 | `repository_recovery.rs` 与 HTTPS 失败／新目录重试测试覆盖原目标保留及不重跑；尚缺 clone 专用 guardian 丢失与独立新请求组合 | Partial |
+| 失败残留和 Unknown 责任保持 | `repository_recovery.rs` 与 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖原目标保留及不重跑；尚缺 clone 专用 guardian 丢失与独立新请求组合 | Partial |
 
 ### 决策依据
 
@@ -232,7 +235,7 @@ Node 主动或被动终止的尝试被当作证据缺失，永久停留在 Unkno
 | 强杀恢复以 `Interrupted` 结束 | `killed_clone_recovers_original_run_without_redispatch` 断言完整 `Interrupted` 终态与单一尝试 | Covered |
 | 证据缺失仍为 Unknown | `guardian_loss_keeps_interrupted_clone_unknown` 覆盖 guardian 丢失；尚缺 host 无法回答 Run 查询的直接测试 | Partial |
 | 一个 Run 只有一种结束事实，终止只支撑 `Interrupted` | `crates/node-db/src/tests/repository.rs` 的 `clone_interruption_requires_recorded_termination`、`clone_exit_code_cannot_back_an_interruption`；`version_four_upgrade_adds_termination_evidence_without_rewriting_clones` 覆盖 v4 升级不改写未完成 clone | Covered |
-| 终态跨边界交付 | `apps/ora-node/tests/standalone/repository_websocket.rs` 的 `controller_session_takes_over_interrupted_clone_after_node_stop`：生产 Controller 会话经 WebSocket 接管正常停止后的完整中断终态，且不再保留待查询派发；`apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返、Cloud `integration/clone_api_test.go` 公开 `interrupted` | Covered |
+| 终态跨边界交付 | `apps/ora-node/tests/standalone/repository_websocket.rs` 的 `controller_session_takes_over_clone_stopped_in_its_snapshot_fetch`：生产 Controller 会话经 WebSocket 接管正常停止后的 clone 终态；`apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返。租户级 clone 的公开接口已删除，原 Cloud 侧公开 `interrupted` 的证据不再适用 | Covered |
 
 ### 决策依据
 

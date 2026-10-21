@@ -130,12 +130,14 @@ Node 在会话与交付能力都可用时声明 `revision_restore`。未声明�
 
 ## 验证
 
-核心用例见 [Node 恢复前序 Revision](../../../test-cases/node/revision/prior-revision-restore.md)。
-desktop `apps/ora-node/src/revision/restore/tests/git.rs` 以真实 Git 覆盖正常恢复、前置提交缺失后从 `origin`
-补取成功（同时远端已改写）、补取失败为 `prior_revision_base_unavailable`、远端不可达为
-`prior_revision_unavailable`、head 不符与 bundle 损坏、恢复后的交付判定；`restore/tests/restorer.rs` 覆盖授权
-下载、5xx 重试、403 换授权一次、拒绝签发、摘要不符与超时；`bundle.rs` 单元测试覆盖 bundle 头的形状；
-`apps/ora-node/tests/agent_session/resume.rs` 覆盖恢复失败时插件未启动、无 Thread 事件，以及远端改写提示的
-全文；`apps/ora-node/tests/standalone/agent_sessions/resume.rs` 以真实 Node 进程经中继授权完成恢复且账本中没有
-签名。尚无直接测试的：带前序但最终提交等于基础提交的交付判定、插件缺失时不下载、恢复中停机、目录权限与
-启动时清空、Node 日志不含授权。
+核心用例见 [Node 经 Git Server 交付与恢复前序 Revision](../../../test-cases/node/revision/git-delivery-push-and-restore.md)；
+本决策的 bundle 下载与取入义务已随内部线删除，恢复的完整截止与停止确认见[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)。
+本决策的 bundle 下载、校验与取入连同它们的测试（`restore/tests/git.rs`、`restore/tests/restorer.rs`、`bundle.rs`）
+已随内部线删除。仍然成立的义务在 desktop `ff9de8f9` 上由下列测试覆盖：`apps/ora-node/src/revision/tests/restore.rs`
+以真实 Git 和 Git Server 替身覆盖默认分支指向前序最终提交、按快照历史判断外部历史是否改写、交付 ref 缺失或请求被拒为
+`prior_revision_base_unavailable`、Git Server 不可达等为 `prior_revision_unavailable` 且失败时不移动分支、取消或截止已过时
+不发请求；`tests/snapshot.rs` 的 `resumed_delivery_stopping_at_the_prior_final_commit_is_unchanged` 覆盖恢复后的交付判定；
+`apps/ora-node/tests/agent_session/resume.rs` 覆盖恢复失败时插件未启动、来自其他仓库的前序被拒绝、外部历史改写提示
+写入首轮、恢复中结束会话即取消；`apps/ora-node/tests/standalone/agent_sessions/resume.rs` 以真实 Node 进程从交付 ref
+完成恢复。尚无直接测试的：带前序但最终提交等于基础提交的交付判定、插件缺失时不开始恢复、恢复中停机、目录权限与
+启动时清空。

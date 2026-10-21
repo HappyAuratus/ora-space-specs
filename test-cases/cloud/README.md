@@ -91,9 +91,8 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 
 内部线的三篇 Cloud 决策（[clone 步骤消费快照](../../decisions/cloud/operation/20261016-clone-step-consumes-binding-snapshot.md)、
 [快照 clone 输入与执行授权](../../decisions/cloud/controller-integration/20261016-snapshot-clone-input-and-execution-ref-grants.md)、
-[Revision Git 交付](../../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md)）经 owner 批准为 `approved`，在契约之上
-登记 clone 消费快照、执行授权与 Git 交付的义务；Node 一侧见 [Node 核心测试用例](../node/README.md)。实现尚未合入 main，这些义务
-目前都是 Missing；以 bundle 交付与外部 clone 为依据的既有用例在实现合入时改写或改挂。
+[Revision Git 交付](../../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md)）为 `implemented`，在契约之上
+登记 clone 消费快照、执行授权与 Git 交付的义务，按现有测试登记证据并保留缺口；Node 一侧见 [Node 核心测试用例](../node/README.md)。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

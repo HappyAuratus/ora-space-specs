@@ -2,7 +2,7 @@
 
 依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)；其中 D6 的停止确认证据另由[恢复停止确认接受 host 权威 NotStarted 决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)扩展（下称“扩展决策”）。下文的 D 编号与不变量编号未加限定时指前一篇 ADR，引用扩展决策时写明其 D 编号或“扩展决策不变量”；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
 
-本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。已实现的 bundle 恢复仍是 desktop main 的现状，它的直接证据留在 [Node 恢复前序 Revision](prior-revision-restore.md)；内部线恢复的交付与拉取证据留在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。两处证据都不覆盖本文新增的义务：实现尚未合入 desktop 的 main，下列义务都是 `Missing`，落地运行按最终实现补上具体测试名与 commit 后再改状态。
+本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不覆盖本文新增的义务：内部线实现的恢复时限固定为 5 分钟，只覆盖建立传输仓库、拉取、重试与取入，不覆盖检出与祖先检查，也没有停止确认与停止证据未知的路径，所以下列义务都是 `Missing`，落地运行按最终实现补上具体测试名与 commit 后再改状态。
 
 ## A Restore Deadline Covers Every Step And Clips Command Budgets To Its Remainder
 
@@ -228,7 +228,7 @@ D6；不变量 8、11；残留回收决策 D1、D2、D5。
 - 取消在命令边界或无副作用的等待中生效；已开始的命令等它结束或按裁剪预算被关闭，之后不再开始新步骤、不再写 checkout。
 - 取消点的 checkout 停在 clone 基线或前序最终提交；检出中途失败、被截止终止或崩溃可能留下混合工作区，但 HEAD 只可能是这两个提交之一。
 - 终态原因按先到者（用户结束/取消/`interrupted`），并且只在取得停止确认后发出；取不到时走未知路径，不在崩溃重启时发 `interrupted`。
-- 带前序输入且 Agent 从未启动的已确认停止会话，交付不探查工作区、最终提交取 HEAD、结果恒为 `unchanged`，不生成 bundle、不推新内容。
+- 带前序输入且 Agent 从未启动的已确认停止会话，交付不探查工作区、最终提交取 HEAD、结果恒为 `unchanged`，不推新内容。
 
 ### 禁止结果
 

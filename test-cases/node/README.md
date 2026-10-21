@@ -3,12 +3,12 @@
 本目录与 `specs/decisions/node/` 镜像。Node 各能力的根决策进入 `approved` 后，再在对应子目录
 登记需要长期维护的跨进程、外部副作用、ownership、重试和恢复用例。
 
-## 已批准的 Git 原生代码链路（内部线）
+## Git 原生代码链路（内部线）
 
-[Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)与
-[Node 交付推送与 Git 恢复决策](../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)经 owner 批准为
-`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；以外部 clone 与 bundle 交付为依据的既有用例在实现合入时
-改写或改挂。
+[Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)为
+`implemented`，repository 一行的用例按现有测试登记证据并保留缺口。
+[Node 交付推送与 Git 恢复决策](../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)为
+`implemented`，revision 一行的用例按现有测试登记证据并保留缺口。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -18,8 +18,8 @@
 ## 已批准的恢复截止、取消与停止确认
 
 [Node 恢复截止与停止确认决策](../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)经 owner 批准为
-`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；已实现的 bundle 恢复证据仍在
-[前序恢复用例](revision/prior-revision-restore.md)，不推导本文的新义务。
+`approved`。恢复已改为从 Git Server 拉取前序交付 ref，bundle 恢复不再存在；完整截止、取消与停止确认的实现尚未合入 desktop 的 main，
+这些义务目前都是 Missing。内部线恢复的证据在[Git 交付与恢复](revision/git-delivery-push-and-restore.md)，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
