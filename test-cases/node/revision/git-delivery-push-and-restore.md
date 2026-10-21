@@ -26,7 +26,7 @@
 | 义务 | 证据 | 状态 |
 |---|---|---|
 | 三种最终提交都推到各自的交付 ref，Git Server 上只有交付 ref 与 Workspace 分支 | desktop `apps/ora-node/src/revision/tests/push.rs` `every_outcome_is_pushed_and_a_replay_succeeds`；cluster `scripts/cross-line-acceptance.py` 检查项“内部线交付” | Covered |
-| `delivered`/`unchanged` 按最终提交判定，快照不经钩子、无改动不产生新提交 | desktop `apps/ora-node/src/revision/tests/snapshot.rs` `unchanged_checkout_freezes_only_the_history`、`resumed_delivery_stopping_at_the_prior_final_commit_is_unchanged`、`changes_become_a_hookless_snapshot_on_top_of_the_agent_commits` | Covered |
+| `delivered`/`unchanged` 按最终提交判定，快照不经钩子、无改动不产生新提交 | desktop `apps/ora-node/src/revision/tests/snapshot.rs` `unchanged_checkout_freezes_only_the_history`、`resumed_delivery_stopping_at_the_prior_final_commit_is_unchanged`、`changes_become_a_hookless_snapshot_on_top_of_the_agent_commits`；desktop `crates/node-db/src/tests/revision.rs` `unchanged_plans_stop_at_the_base_or_the_prior_final_commit` | Covered |
 | 端到端交付只存会话 JSONL，结果不带 bundle | desktop `apps/ora-node/tests/standalone/agent_sessions/delivery.rs` `ended_session_is_delivered_with_requested_grants`；`crates/node-protocol/tests/protocol/revision.rs` `revision_failures_name_push_outcomes`；cluster `scripts/revision-acceptance.py` 检查项“有改动的运行”“无改动的运行”，`scripts/revision-resume-acceptance.py` 检查项“第二次运行（只续接）” | Covered |
 | `workspaceRef` 与 clone 记录不符时以 `checkout_unavailable` 失败，不推送、不上传 | desktop `apps/ora-node/tests/standalone/agent_sessions/delivery.rs` `delivery_for_another_workspace_branch_is_refused` | Covered |
 | 交付 ref 推送失败时不上传 JSONL、不发送成功结果 | 推送层失败路径有测试（见 `Push Failures Are Classified And Retried Within Bounds`），交付编排层“推送失败则不上传”的顺序没有直接测试 | Partial |
