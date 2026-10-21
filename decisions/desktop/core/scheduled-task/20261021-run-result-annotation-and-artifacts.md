@@ -39,7 +39,8 @@ worktree 保留淘汰排序）。落点覆盖 domain、`ora_contracts` 与 TS `p
   `timeout` 的执行层原因已由 `failure_reason` 表达、且无 `EndTurn` 解析点，不提供 verdict；`skipped_busy` / `skipped_capacity`
   与 `missed` 无运行体、强制无 verdict；`accepted` / `running` 尚无 verdict。`status = succeeded` 且 `verdict = fail` 是合法
   且重要的状态（执行成功、业务失败）。
-- **`custom` 不进入首版枚举**：无界自由值难聚合、难校验；Agent 需要非标准结论时写入 `verdict_detail` 自由文本。
+- **`custom` 不进入首版枚举（owner 结论，2026-10-21）**：无界自由值难聚合、难校验；Agent 需要非标准结论时写入
+  `verdict_detail` 自由文本。以后需要再扩枚举、另行决策。
 - 为什么独立字段：质量巡检的「发现 Critical 缺陷」不等于「执行器失败」，复用 `failure_reason` 污染执行层语义，复用 `status`
   无法表达「执行成功但业务失败」。
 
@@ -80,16 +81,16 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 - **路径安全**：复用 `crates/utils/src/path` 既有校验，并补 Windows ADS、大小写、NFC 归一与硬链接越界；产物名/相对路径不得含
   `..`、绝对路径、盘符；不跟随指向存储目录之外的符号链接。威胁模型以「Agent 在非沙箱 worktree 内可写任意路径」为前提。
-- **敏感信息（可判定口径，待 owner 确认）**：产物存储只存元数据、不索引内容；靠类型白名单 + 大小上限 + 跟随运行可见性访问
-  约束暴露面，**不做内容密钥扫描**。这一口径与 #440 验收「敏感信息不进入产物存储」的强表述存在张力，需 owner 拍板（见
-  未解决问题，`#441` 标 `status:needs-owner`）。
+- **敏感信息（owner 结论）**：**不做内容密钥扫描**。可判定口径：Ora 自身不往产物存储写入任何凭据（模型 Key、token、环境变量
+  等）；产物是 Agent 写出的用户内容，暴露面靠固定目录 + 类型白名单 + 大小上限 + 只留本机 + 跟随运行可见性来约束。依据：worktree
+  不是沙箱（根决策 D8），Agent 本就能把内容写到任意位置；规则扫描漏报率高、只带来虚假安全感。
 
 ### D5：local 与 Cloud 的边界
 
 - 本地：产物与 verdict 只落本机、不自动上传、不跨设备同步（继承根决策 D1）。
-- Cloud：verdict 与产物契约留待 Cloud ADR 承接（IssueRun ≠ ScheduledRun，Cloud 侧 verdict/产物字段、权限、生命周期、费用
-  归属需另立 Cloud 决策；本 ADR 不预置）。注意：已批准 Cloud ADR D6 的「100 条保留只作用于任务历史视图」与本 ADR 的产物
-  保留语义不同，Cloud 承接时需显式对齐。
+- Cloud：verdict **枚举与本地共用**（见 D1，即 #439「Cloud 与 local 共用同一 verdict 契约」）；Cloud 侧的 verdict 写入通道、
+  产物存储、权限、生命周期与费用归属**另开 circus issue 承接**（需要时再出 Cloud ADR），不阻塞本 ADR（IssueRun ≠ ScheduledRun，
+  需显式定义）。
 
 ## 不变量
 
@@ -116,10 +117,10 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 ## 本决策未解决的问题
 
-- **敏感信息口径**（#440 验收「敏感信息不进入产物存储」与「不做内容扫描」的张力）——待 owner 拍板（`#441` 标 `status:needs-owner`）。
 - verdict 驱动的自动重试、任务启停或告警路由（另行决策）。
 - 运行历史按 verdict 过滤/排序、聚合看板。
-- Cloud 侧 verdict/产物字段、权限、生命周期与费用归属（Cloud ADR；IssueRun ≠ ScheduledRun 需显式定义）。
+- Cloud 侧 verdict 写入通道与产物存储、权限、生命周期、费用归属（另开 circus issue 承接，见 D5；IssueRun ≠ ScheduledRun 需显式
+  定义）。
 - 哨兵解析若在实践中 Agent 不守约、格式漂移，可升级为专用结构化工具（另立决策）。
 
 ## 核心测试用例
