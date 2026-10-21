@@ -35,7 +35,7 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
 | 未设置与空字符串区分，`exists` / `not_exists` / `empty` / `not_empty` 据此回答 | 真实 PostgreSQL：两者都无时 `not_exists` 命中、`empty` 不把缺失当空串；空串覆盖值与空 authored 提示词是 present-empty | Covered |
 | 保留键 `input` 只接受字符串，非字符串在启动门禁被拒；作者声明同名变量被覆盖 | 真实 HTTP + 单元：非字符串覆盖值 400 `invalid_field_value`（`field=input`）；声明了 `input` 变量的图不因类型判断卡死 | Covered |
 | manual workflow IssueRun 把提交的 `input` 键映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：manual 运行的运行行 `input` 键是提交值、Start 输出读到它；非字符串同为 400 `invalid_field_value` | Covered |
-| `@` Confirm 入口把平台 `prompt` 映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：确认后的运行行 `input` 键是表单 `prompt`、Start 输出读到它；作者在所选版本里声明了同名变量时该键归变量 | Covered |
+| `@` Confirm 入口把平台 `prompt` 映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：确认后的运行行 `input` 键是表单 `prompt`、Start 输出读到它；作者在所选版本里声明了同名变量时该键归变量；工作流的 `launchFields` 禁用 `prompt` 时回退 authored | Partial |
 | 历史行按其快照冻结时的文本求值，既有键按新语义重新解释 | 真实 PostgreSQL：无键历史行回退 authored；既有字符串 `input` 键被读作 kickoff；既有非字符串键回退 authored | Partial |
 
 - 决策依据：D2（Start `input` 根在运行时的取值来源）；范围拆分依据 [circus#287](https://github.com/ora-space/circus/issues/287)。
@@ -44,7 +44,7 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
   解析，`Some(text)` 写进 `workflow_runs.input` 并 mirror 到 `{start_id}.input`，`None` 时不写这个池值；`mirror_run_input_into_pool`
   在更新运行时按同一条规则维护，历史运行保留创建时写的文本。Cloud 的「直接运行／manual／`@` Confirm 三个入口共用门禁」
   与「历史行的保留键重新解释」是 Cloud 自己的边界，参考实现侧没有对应入口或迁移，按 `Missing` 记。
-- 本次直接证据：**前五行 Covered，第六行 Partial** — 取值链的共用解析函数是
+- 本次直接证据：**前四行 Covered，第五、六行 Partial** — 取值链的共用解析函数是
   [`internal/core/workflow_scheduler.go`](https://github.com/ora-space/cloud/blob/fda6e1d642f055ade47daf08da3cc76b96dbd8e2/internal/core/workflow_scheduler.go)
   的 `WorkflowStartKickoff`（先读 `input["input"]` 的非 `nil` 字符串，再回退 `data["input"]`，都没有返回未设置；导出给
   dev simulator 共用，避免模拟 trace 与真实 Start 输出漂移）。第一行的直接证据是
@@ -80,3 +80,8 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
   authored」（`TestWorkflowStartOutputMatchesDesktopVariableRoots` 的「未提交回退」与 `TestWorkflowAdvanceSucceedsLinearRun`），
   而「旧行已经带着字符串 `input` 键时，该键被读作 kickoff」这个重新解释边界（[circus#289](https://github.com/ora-space/circus/issues/289)
   检视里明确要求登记的）还没有一条用例钉住，因此按 `Partial` 记。
+- 仍缺：**第五行「工作流的 `launchFields` 禁用 `prompt` 时回退 authored」没有直接用例**——D2 为 `@` Confirm 列了两条回退
+  authored 的边界，现有证据只钉住「作者声明了同名 `prompt`」一条。禁用时 `injectPlatformFields` 不注入该字段，
+  `validateFormValues` 拒绝描述符外的键，`formKickoff` 因而取不到值，按实现应回退 authored；但
+  `integration/workflow_interaction_test.go` 里禁用平台字段的用例只禁用了 `repository` / `snapshotId` / `version`，没有一条禁用
+  `prompt` 后确认并断言 Start 输出回退 authored，因此按 `Partial` 记。
