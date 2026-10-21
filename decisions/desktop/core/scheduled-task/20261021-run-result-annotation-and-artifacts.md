@@ -1,14 +1,14 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Scheduled Run 携带独立业务结论，运行产物脱离 worktree 生命周期持久化
 
-本 ADR 处于 `proposed`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的
-Nightly QA 补齐两件能力：①运行除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离
-worktree 的生命周期持久化，按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结
-接口边界与设计约束、不在本地轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的
-后续 ADR 与核心用例。
+本 ADR 处于 `approved`：评审已通过，是 #439 / #440 实现的依据，核心用例已按最终方案建立、证据随实现补齐。它在根决策 D7
+与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行除执行层
+状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，按 Run ID 索引、随运行
+历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在本地轮实现。涉及模块：desktop 的
+scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
 
 ## 继承与修改
 
@@ -96,7 +96,7 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 - 本地：产物与 verdict 只落本机、不自动上传、不跨设备同步（继承根决策 D1）。
 - Cloud：verdict **枚举与本地共用**（见 D1，即 #439「Cloud 与 local 共用同一 verdict 契约」）；Cloud 侧的 verdict 写入通道、
-  产物存储、权限、生命周期与费用归属**另开 circus issue 承接**（需要时再出 Cloud ADR），不阻塞本 ADR（IssueRun ≠ ScheduledRun，
+  产物存储、权限、生命周期与费用归属**由 circus#455 承接**（需要时再出 Cloud ADR），不阻塞本 ADR（IssueRun ≠ ScheduledRun，
   需显式定义）。
 
 ## 不变量
@@ -106,7 +106,7 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 3. verdict 只有 runtime 在收尾时能写；单次收尾单次写入；非法输入被拒且不改写运行事实；`verdict_at` 独立于 `updated_at`。
 4. 运行产物在 worktree 被回收后仍可从运行历史访问；产物固定目录排除于 worktree 改动判定。
 5. 产物大小/数量受冻结上限约束，越界或路径穿越被拒绝且可见。
-6. 本地产物不离开本机；Cloud 产物/verdict 作为未来能力，不在本地实现。
+6. 本地产物与 verdict 不离开本机；Cloud 侧写入通道与产物存储由 circus#455 承接，不在本地实现。
 7. 旧任务与旧历史无 verdict/产物时行为不变。
 
 ## 为什么不是这些替代方案
@@ -126,7 +126,7 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 - verdict 驱动的自动重试、任务启停或告警路由（另行决策）。
 - 运行历史按 verdict 过滤/排序、聚合看板。
-- Cloud 侧 verdict 写入通道与产物存储、权限、生命周期、费用归属（另开 circus issue 承接，见 D5；IssueRun ≠ ScheduledRun 需显式
+- Cloud 侧 verdict 写入通道与产物存储、权限、生命周期、费用归属（circus#455 承接，见 D5；IssueRun ≠ ScheduledRun 需显式
   定义）。
 - 哨兵解析若在实践中 Agent 不守约、格式漂移，可升级为专用结构化工具（另立决策）。
 
@@ -134,10 +134,11 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 本 ADR 的核心用例维护在
 [`test-cases/desktop/core/scheduled-task/run-result-annotation-and-artifacts.md`](../../../../test-cases/desktop/core/scheduled-task/run-result-annotation-and-artifacts.md)，
-覆盖：`succeeded + fail` 独立展示与 `RunFinished` 前写入时序；`skipped_*`/`missed` 无 verdict、`accepted/running` 无 verdict 的
-组合矩阵；非法枚举/detail 超长/多余标记被拒且不改写事实；旧任务无 verdict 显示「未报告」；产物固定目录白名单声明、目录外文件
-不登记；copy 出后 worktree 保留判定不变；超限/路径穿越/符号链接越界被拒且可见；清单崩溃对账幂等；产物随历史裁剪/任务软删除/
-链接清除/启动 sweep 的清理；本地产物不离开本机。
+覆盖：verdict 独立于执行层状态、只有 `succeeded` 可携带、先于 `RunFinished` 单次写入；哨兵解析规则与「未报告」降级、runtime
+不注入 prompt；非法枚举/detail 超长/非可注解运行被拒且不改写事实；`verdict_at` 不推进 `updated_at`；产物只在 `succeeded`
+收尾且早于 janitor 采集、固定目录与白名单闭集、采集失败进被拒清单；产物目录不计入改动判定；超限/路径越界被拒且可见；落盘
+顺序与崩溃对账；每任务 10 个运行上限与链接例外；历史裁剪、软删除任务的 sweep 清理与禁用任务保留；Ora 不往产物存储写凭据；
+本地产物与 verdict 不离开本机。
 
 ## 落地顺序
 

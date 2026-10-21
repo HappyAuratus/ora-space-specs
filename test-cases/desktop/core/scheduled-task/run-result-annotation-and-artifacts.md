@@ -11,17 +11,21 @@
 - 触发：runtime 在 `EndTurn` 收尾解析最终 Assistant 轮并写入 verdict；或旧任务运行无 verdict 被读取。
 - 必须成立：`verdict` 独立、可空、取值 `pass/warn/fail/blocked/idle/range_unresolved` 且带受限 detail 与独立 `verdict_at`；
   `status=succeeded` 与 `verdict=fail` 合法并存；`failed/cancelled/timeout/skipped_*` 与 `missed` 均无 verdict；`accepted/running`
-  无 verdict；verdict 在 `RunFinished` 发布前写入（前端刷新即见）；旧运行无 verdict 显示「未报告」且行为不变。
-- 禁止结果：verdict 触发失败通知或进入故障统计；复用 `failure_reason`；`verdict_at` 改写 `updated_at`；缺 verdict 时行为回退。
-- 决策依据：后续 ADR D1、D2 与不变量 1–3。
+  无 verdict；verdict 在 `RunFinished` 发布前单次写入（前端刷新即见）；哨兵无匹配或格式非法、任务未采用哨兵约定时为
+  「未报告」；runtime 只解析、不向 prompt 注入内容；旧运行无 verdict 显示「未报告」且行为不变。
+- 禁止结果：verdict 触发失败通知或进入故障统计；复用 `failure_reason`；`verdict_at` 改写 `updated_at`；缺 verdict 时行为回退；
+  解析失败改写运行事实；runtime 向任务 prompt 拼装哨兵说明。
+- 决策依据：后续 ADR D1、D2、根决策 D3 与不变量 1–3。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | `succeeded + verdict=fail` 在历史中独立展示，不触发失败语义 | 尚未实现 | `Missing` |
-| 哨兵解析：首个匹配生效、多余标记忽略、大小写不敏感规范化 | 尚未实现 | `Missing` |
-| 非法枚举 / detail 超长 / 运行不存在被拒且不改写事实 | 尚未实现 | `Missing` |
+| 哨兵解析：LF 归一、大小写不敏感、行尾空白忽略、不跨行、取首个匹配（含 fence 内）、多余标记忽略 | 尚未实现 | `Missing` |
+| `QA_DETAIL` 只认紧随标记的下一行，上限 2000 字符；无匹配或格式非法为「未报告」且不报错 | 尚未实现 | `Missing` |
+| 每个 `succeeded` 运行只解析、写入一次；未采用哨兵约定的任务恒「未报告」，runtime 不注入 prompt | 尚未实现 | `Missing` |
+| 非法枚举 / detail 超长 / 运行不存在 / 运行不是 `succeeded` 时写入被拒，且不改写运行事实 | 尚未实现 | `Missing` |
 | `failed/cancelled/timeout/skipped_*` 与 `missed` 均无 verdict | 尚未实现 | `Missing` |
 | verdict 先于 `RunFinished` 落库，前端刷新即见最终 verdict | 尚未实现 | `Missing` |
 | `verdict_at` 独立，不推进 `updated_at`（不改变保留淘汰排序） | 尚未实现 | `Missing` |
@@ -37,24 +41,28 @@
   （已登记：名称/类型/大小/登记时间）与被拒清单（名称 + 原因），可列出/打开/下载；单产物 ≤10 MiB、单运行 ≤64 个、总 ≤64 MiB、
   每任务保留 ≤10 个运行的产物（独立于 worktree 全局 10、按最旧运行淘汰）；超限或非法路径进入被拒清单且可见；落盘顺序
   copy→临时文件→校验大小→原子 rename→写清单，崩溃对账幂等（孤文件清理、缺文件删索引、半写不残留）；产物随 100 条历史裁剪
-  清理，保留 worktree 链接运行例外保留；软删除任务的产物由启动 sweep 清理，禁用任务的产物保留。
-- 禁止结果：产物随 worktree 一起被回收；无索引或被拒不可见；目录外文件被登记；路径穿越/符号链接越界；清单指向半写/截断文件。
-- 决策依据：后续 ADR D3、D4 与不变量 4、5。
+  清理，保留 worktree 链接运行例外保留；软删除任务的产物由启动 sweep 清理，禁用任务的产物保留；产物存储只含从固定目录
+  copy 的文件与清单元数据，Ora 不往其中写入凭据。
+- 禁止结果：产物随 worktree 一起被回收；无索引或被拒不可见；目录外文件被登记；路径穿越/符号链接越界；清单指向半写/截断文件；
+  只写了产物的 worktree 被判有改动而保留；禁用任务的产物被 sweep 删除；Ora 把模型 Key、token 或环境变量写进产物存储。
+- 决策依据：后续 ADR D3、D4、根决策 D4 / D8 与不变量 4、5。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 采集早于 janitor 丢弃：只写了产物的运行判定无改动仍回收，但产物先落库 | 尚未实现 | `Missing` |
+| 采集早于 janitor 丢弃：只写了产物的运行判定无改动仍回收，但产物先落库；采集失败进被拒清单、不改写运行事实 | 尚未实现 | `Missing` |
 | `failed/cancelled/timeout` 与启动恢复结算为 `failed` 的中断运行不采集（取舍） | 尚未实现 | `Missing` |
-| 固定目录 + 类型白名单之外的文件不登记 | 尚未实现 | `Missing` |
+| 固定目录 + 白名单闭集（`markdown/json/txt/log/xml/html`）之外的文件不登记 | 尚未实现 | `Missing` |
+| 产物目录下未跟踪、已暂存、已修改或已提交的路径都不计入改动判定；目录外的改动仍使 worktree 保留 | 尚未实现 | `Missing` |
 | 登记后 worktree 被回收，产物仍可从运行历史访问；copy 不改变保留判定 | 尚未实现 | `Missing` |
-| 超限 / 路径穿越 / 符号链接越界记入被拒清单且可见 | 尚未实现 | `Missing` |
+| 超限 / 路径穿越 / 符号链接越界 / Windows ADS、大小写、NFC、硬链接越界记入被拒清单且可见 | 尚未实现 | `Missing` |
 | 落盘顺序（临时文件 + 大小校验 + 原子 rename + 清单后置）崩溃对账幂等（含 rename 后写清单前崩溃的取舍） | 尚未实现 | `Missing` |
 | 每任务 ≤10 个运行的产物按最旧运行淘汰，独立于 worktree 全局 10；链接例外优先于 10 上限 | 尚未实现 | `Missing` |
 | 产物随历史裁剪清理（先删索引行、事务提交后删文件，失败由启动 sweep 兜底） | 尚未实现 | `Missing` |
 | 软删除或已不存在的任务的产物由启动 sweep 清理；禁用任务的产物保留、不被 sweep 清理 | 尚未实现 | `Missing` |
 | 旧运行无产物显示「无产物」；访问跟随运行可见性；清单只存元数据 | 尚未实现 | `Missing` |
+| 产物存储只含固定目录 copy 的文件与清单元数据，Ora 不写入模型 Key、token 或环境变量 | 尚未实现 | `Missing` |
 
 ## Local Artifacts And Verdicts Must Stay On The Device
 
