@@ -6,7 +6,7 @@ status: proposed
 
 交互式 Agent 节点每轮结束后停在 `Pending`。本决策把「完成」从一个人工动作改为由本轮终态支撑的门禁：只有本轮以 `EndTurn` 结束、且声明的输出契约通过时才允许完成；`Cancelled`、截断、拒答、缺失或未知都视为未完成，必须继续对话或显式强制完成。完成判定在 per-run 锁内以持久状态和 turn key 复核，park 快照进入读取投影；会话消息不被拦截，由后端在每个回合前注入步骤边界。
 
-本决策为 `proposed`。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点按 D3 的一次性物化处理。
+本决策为 `proposed`。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点按 D3 的一次性物化处理。
 
 ## 继承与修改
 
@@ -36,7 +36,7 @@ status: proposed
 | `Refusal` | `turn_refused` | 否 |
 | 缺失或未知 | `turn_unknown` | 否 |
 
-节点正在 `Running` 时不能完成，沿用现有 `workflow_node_not_awaiting_input`，不新增 `turn_in_progress` blocker。声明 `outputContract=Structured` 的节点在 **park 计算快照时**按 schema 校验，失败把 `structured_invalid` 放进 blockers；`Text` 要求本轮最终输出非空（`output_missing`）；无契约（`None`）只校验回合终态，空输出只记非阻塞 warning。编辑器目前只能声明 `Structured`，`Text` 只用于旧快照或导入图。`completeWorkflowNode` 使用 park 快照，不重算 schema。
+节点正在 `Running` 时不能完成，沿用现有 `workflow_node_not_awaiting_input`，不新增 `turn_in_progress` blocker。声明 `outputContract=Structured` 的节点在 **park 计算快照时**按 schema 校验，失败把 `structured_invalid` 放进 blockers；`Text` 要求本轮最终输出非空（`output_missing`）；无契约（`None`）只校验回合终态，空输出只记非阻塞 warning。编辑器目前只能声明 `Structured`，`Text` 只用于旧快照或导入图。
 
 `HistoryIntegrity` 不是 `Complete` 时，park 无法确认本轮是否收敛，统一判 `turn_unknown` 并把完整性缺口记为 warning；用户可以显式 `force`，但系统不自动 ready。
 
@@ -52,13 +52,15 @@ status: proposed
 
 `userSeq` 是最后一条用户消息的 `HistoryLine.seq`，`endedSeq` 是它之后那条 `TurnEnded` 的 `seq`；两者共同唯一标识本轮。park 时从历史推导并随快照落盘（`payload.completion.turnKey`）。若最后一条用户消息之后没有 `TurnEnded`，判 `turn_unknown`，不生成 turn key，也不得读取上一轮的 `EndTurn` 或上一轮的 assistant 文本。
 
-事件流不带 seq（`PromptSessionEvent` 没有该字段），`record_settled` 也不是可用的历史写入点；因此 turn key 只能从历史读取，不能由流累积推导。`complete` 的 `prepare` 必须从同一历史重新推导二元组并比对，不一致返回冲突，不做完成。布尔值「是否存在 `TurnEnded`」无法当版本比对，也无法区分两轮之间的错配；因此这里使用二元组，而不是布尔标记。
+**本轮最终 assistant 文本**固定为：在 `(userSeq, endedSeq]` 窗口内按 `seq` 取最后一条 assistant 消息的文本；可能为空；不取「最后一条非空」，也不把更早的进度说明拼进来。没有收尾消息时就是空，交给 `Text` / `Structured` / `None` 的规则处理。现有的 `assistant_output_from_history` 取最后一条非空 assistant 文本，不能复用到这条路径。
+
+事件流不带 seq（`PromptSessionEvent` 没有该字段），`record_settled` 也不是可用的历史写入点；因此 turn key 与最终文本只能从历史读取，不能由流累积推导。`complete` 的 `prepare` 必须从同一历史重新推导二元组并比对，不一致返回冲突，不做完成。布尔值「是否存在 `TurnEnded`」无法当版本比对，也无法区分两轮之间的错配；因此这里使用二元组，而不是布尔标记。
 
 ### D3：首轮与人类回合共用同一个 park 函数，一次事务写快照与状态
 
-两个 park 入口必须调用同一个函数：executor 的首轮停靠（`pauses_interactive_node` 分支）与人类回合的 cleanup。每次调用：
+两个 park 入口必须调用同一个函数：executor 的首轮停靠（`pauses_interactive_node` 分支）与人类回合的 cleanup。这个函数**自己获取 per-run 门**，调用点不得已经持有该门（门不可重入）。每次调用：
 
-1. 读一次历史：定位最后一条用户消息、它之后的 `TurnEnded`、本轮最终 assistant 文本与 `HistoryIntegrity`；读取按 `HistoryLine.seq` 排序。
+1. 在门外读一次历史：按 `seq` 排序，定位最后一条用户消息、它之后的 `TurnEnded`、`(userSeq, endedSeq]` 窗口内的最后一条 assistant 文本（D2）与 `HistoryIntegrity`。
 2. 计算 blockers 与 warnings：D1 的 stop reason 映射；`Structured` / `Text` 校验；`HistoryIntegrity` 非 `Complete` 判 `turn_unknown`。
 3. 生成快照：
 
@@ -70,34 +72,40 @@ status: proposed
     "blockers": [{ "kind": "turn_stopped", "params": {} }],
     "warnings": [],
     "outputDigest": "sha256:...",
-    "structuredOutput": { "...": "..." }
+    "provisional": false
   }
 }
 ```
 
-`outputDigest` 是本轮最终 assistant 文本的摘要，用来在 `complete` 时确认读到的仍是同一份文本；`structuredOutput` 只在 Structured 通过时写入。
+`outputDigest` 是本轮最终 assistant 文本的摘要，用来在 `complete` 时确认读到的仍是同一份文本。快照**不存 `structuredOutput`**；`Structured` 的结构化值由 `prepare` 在门外用 digest 校验过的文本重跑 schema 得到（纯 CPU，不进入锁内）。
 
-4. **在 per-run 锁内用同一个 `Immediate` 事务**提交：guarded `UPDATE workflow_node_runs SET status = 'pending', payload = <JSON merge>`，只允许 `status = 'running'`，并保留 `error_detail` / `ai_diagnosis` / `file_changes` 等全部既有 key。一条语句同时写 `payload.completion` 和状态；观察者只会看到「`Running` + 旧 payload」或「`Pending` + 快照」，不会出现 `Pending` 无快照。guard 拒绝时什么都不写，不产生孤儿快照；因此不需要失败标记或离开 `Pending` 时的清理规则。投影只在 `Pending` 读取 `completion`，节点进入终态后该字段不再参与展示。
+4. 获取 per-run 门，用同一个 `Immediate` 事务提交：guarded `UPDATE workflow_node_runs SET status = 'pending', payload = <JSON merge>`，只允许 `status = 'running'`，并保留 `error_detail` / `ai_diagnosis` / `file_changes` 等全部既有 key。一条语句同时写 `payload.completion` 和状态；观察者只会看到「`Running` + 旧 payload」或「`Pending` + 快照」，不会出现 `Pending` 无快照。guard 拒绝时什么都不写，不产生孤儿快照；因此不需要失败标记或离开 `Pending` 时的清理规则。投影只在 `Pending` 读取 `completion`，节点进入终态后该字段不再参与展示。
 
-新 run 的写入是原子的；若仍出现 `Pending` 且无 `completion`，只可能是升级前的旧 run。旧 run 的 lazy materialize 由 `get` 和 `complete` 的 `prepare` 共用同一个函数：读一次历史、计算并回填；`get` 只做一次，`prepare` 在完成前也会确保快照存在（payload-only guarded Pending update），两条路径都幂等。
-
-`structuredOutput` 只对 Structured 节点写入，且只在该节点 `Pending` 期间存在；节点离开 `Pending` 时删除。它的体积受 schema 与模型回复约束，内容本来就会作为节点输出暴露；run detail 会带出 payload，但投影不渲染该字段。若后续发现体积或暴露面不可接受，可以改成只存 digest、在 `prepare` 用同一份历史重解析，但本决策先保留自包含快照。
+新 run 的写入是原子的；若仍出现 `Pending` 且无 `completion`，只可能是升级前的旧 run。旧 run 的 lazy materialize 由 `get` 与 `complete` 的 `prepare` 共用同一个函数：读一次历史、计算并回填；两条路径都先读历史、再获取 per-run 门做 payload-only guarded Pending update，guard 拒绝就丢弃结果并按当前状态投影。`get` 只对无快照的 `Pending` 节点做一次，成功回填后不再重复；`prepare` 在完成前确保快照存在。
 
 读取投影（`GetWorkflowRun` 的节点状态）只解析 `payload.completion`，不读会话历史、不跑 schema。原因有两条：`map_node_run` 是纯字段映射，拿不到 `sessions_root` 与历史；run detail 以 1.5 秒轮询，实时读历史或跑校验的成本与缓存都无法接受。不新增 `check` 接口，`completeWorkflowNode` 仍是唯一提交权威，投影只是同一份快照的只读视图。
 
-### D4：人类回合的 cleanup 打开 per-run 门，只做单行事务
+### D4：人类回合的 cleanup 先等 actor 收敛，再 park
 
-`WorkflowSessionTurns::prompt` 只负责转发事件与会话清理；不再承担“累积文本作为快照输入”的职责。人类回合结束时，admission 必须携带 `run_id` 与 node run id，cleanup 在流结束后读取历史、计算快照（与首轮相同的函数），然后打开 per-run 门执行 D3 的单行事务。门内只做一条 guarded UPDATE，不读历史、不跑 schema。
+`WorkflowSessionTurns::prompt` 只负责转发事件与会话清理，不再承担“累积文本作为快照输入”的职责。人类回合结束时，admission 必须携带 `run_id`、`sessions_root`、冻结图与会话 id；cleanup 在流结束后**先等待 owning prompt 的 actor 收敛**（有界等待 `TurnEnded` 写入），再调用 D3 的 park 函数。
 
-流在完成前被丢弃时，cleanup 读到“最后一条用户消息之后没有 `TurnEnded`”就写 `turn_unknown` 快照；cleanup 必须幂等，不能覆盖已提交的快照。`end_human_turn` 目前刻意不打开 per-run 门，本决策要求它打开，但只在门内做这一条更新；历史读取与快照计算仍在门外。首轮 executor 的 park 同样走这个函数，只是调用点已经在 run 流程内。
+这样避免一个已知竞态：流被 drop 时 actor 可能还在收尾，cleanup 立即读历史会看不到 `TurnEnded`，把实际以 `EndTurn` 结束的一轮写成 `turn_unknown`，而且之后没有路径修复。规则是：
+
+- 有界等待内看到 `TurnEnded`：按正常路径写快照；
+- 等待超时仍没有 `TurnEnded`：写 `provisional: true` 的 `turn_unknown` 快照；
+- 之后 `get` / `prepare` 若在同一个 `userSeq` 之后看到 `TurnEnded`，重新计算并替换这条 provisional 快照（payload-only guarded Pending update），完成修复；替换前投影显示 `turn_unknown`。
+
+cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只做一条 guarded UPDATE，不读历史、不跑 schema。cleanup 必须幂等，不能覆盖已经提交的非 provisional 快照。
 
 ### D5：`completeWorkflowNode` 在锁内做权威比对，force 必须留痕
 
-`completeWorkflowNode` 在 per-run 锁内重校验：run 仍 `Running`、节点仍 `Pending`、completion claim 仍持有、turn key 与 prepare 记录一致。不满足且没有 `force` 时返回 `WorkflowNodeIncomplete { node_id, blockers[] }`；`force` 必须由用户二次确认，并在 payload 记录 `completion_forced` 与 blockers 快照。`completion_forced.reason` 只记 blockers 快照，不混入用户自由文本。
+`completeWorkflowNode` 在 per-run 锁内重校验：run 仍 `Running`、节点仍 `Pending`、completion claim 仍持有、turn key 与 prepare 记录一致。不满足且没有 `force` 时返回 `WorkflowNodeIncomplete { node_id, blockers[] }`；turn key 不一致返回 `PublicError::WorkflowNodeTurnChanged { node_id, expected, actual }`，前端刷新运行后再试，不把它伪装成 blocker。
 
-`complete` 不重算 schema：`prepare` 在门外读取本轮最终文本、比对快照的 `outputDigest`，使用快照里的 `structuredOutput` 与 blockers；锁内只比对 turn key、状态与 claim。快照与 complete 使用同一份 blockers，避免「UI 显示 ready、complete 拒绝」的分叉。turn key 不一致返回冲突，不做完成。无快照的旧节点由 `prepare` 先做一次 lazy materialize，再走同一路径。
+`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对快照的 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）；同一文本与同一纯函数的结果确定，若与 park blockers 不一致，以 prepare 结果为准、刷新快照并返回冲突。锁内只比对 turn key、状态与 claim。
 
-payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部既有 key；不能整体覆盖 `error_detail` / `ai_diagnosis` / `file_changes`。`turn key` 比对是防御性一致性检查：`claim_node_for_completion` 已经在同一把锁下阻止 `prepare` 之后插入新回合；真正要处理的是 park 事务失败后的恢复和升级前无快照。structured 校验失败时 `force` 不写 `structured_output`，raw output 仍保存；下游引用 `{node}.structured_output` 按变量缺失处理，由现有变量模板校验报错，不引入静默降级。
+无快照的旧节点由 `prepare` 先做一次 lazy materialize，再走同一路径。payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部既有 key；不能整体覆盖 `error_detail` / `ai_diagnosis` / `file_changes`。`completion_forced` 作为 payload 的独立 key 记录，不与 `completion` 混用；`completion_forced.reason` 只记 blockers 快照，不混入用户自由文本。
+
+`turn key` 比对是防御性一致性检查：`claim_node_for_completion` 已经在同一把锁下阻止 `prepare` 之后插入新回合；真正要处理的是 park 事务失败后的恢复、provisional 快照修复和升级前无快照。structured 校验失败时 `force` 不写 `structured_output`，raw output 仍保存；下游引用 `{node}.structured_output` 按变量缺失处理，由现有变量模板校验报错，不引入静默降级。
 
 ### D6：会话消息不被拦截，每个回合注入步骤边界
 
@@ -131,16 +139,18 @@ payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部�
 
 1. 只有本轮 `EndTurn` 才能完成；截断、停止、拒答、缺失与未知一律阻塞。
 2. 完成使用的是本轮输出；本轮没有终态时不读取上一轮输出。
-3. executor 首轮与人类 cleanup 共用同一个 park 函数；快照与 `Running → Pending` 在同一个 `Immediate` 事务提交，新 run 不会出现 `Pending` 无快照。
-4. park 与 `prepare` 使用同一份历史、同一组输入；turn key、文本与 stop reason 都从历史读取，不用事件流累积。
-5. 每次交互回合读取一次整文件历史；这是本决策接受的成本，不把历史读取放进 1.5 秒的读取投影。
-6. `Structured` / `Text` 校验在 park 计算快照时完成，blockers 与 `completeWorkflowNode` 使用同一份结果；`complete` 不重算 schema。
-7. `completeWorkflowNode` 是唯一提交权威；UI 的 ready/blockers 只是同一份快照的预览。
-8. `force` 必须二次确认并留痕；结构化失败时 force 不写 `structured_output`。
-9. 用户消息不被拦截或改写；每个 workflow 人类回合都带步骤边界。
-10. 正常 `EndTurn`、无契约空输出、既有平图行为保持不变。
-11. 区域 interactive 行为不变；本契约只覆盖外层平图。
-12. `Pending` 跨重启保留；在途 `Running` 仍按既有失败边界处理。
+3. 本轮最终 assistant 文本取 `(userSeq, endedSeq]` 窗口内按 `seq` 的最后一条 assistant 消息，可能为空，不取最后一条非空。
+4. executor 首轮与人类 cleanup 共用同一个 park 函数；快照与 `Running → Pending` 在同一个 `Immediate` 事务提交，新 run 不会出现 `Pending` 无快照。
+5. park 与 `prepare` 使用同一份历史、同一组输入；turn key、文本与 stop reason 都从历史读取，不用事件流累积。
+6. 每次交互回合读取一次整文件历史；这是本决策接受的成本，不把历史读取放进 1.5 秒的读取投影。
+7. `Structured` / `Text` 校验在 park 计算快照时完成，blockers 用于展示；`prepare` 在门外用同一段文本重跑 schema 得到结构化值，锁内不重算。
+8. `completeWorkflowNode` 是唯一提交权威；UI 的 ready/blockers 只是同一份快照的预览。
+9. `force` 必须二次确认并留痕；结构化失败时 force 不写 `structured_output`。
+10. 用户消息不被拦截或改写；每个 workflow 人类回合都带步骤边界。
+11. 正常 `EndTurn`、无契约空输出、既有平图行为保持不变。
+12. 区域 interactive 行为不变；本契约只覆盖外层平图。
+13. `Pending` 跨重启保留；在途 `Running` 仍按既有失败边界处理。
+14. cleanup 在流 drop 后先等 actor 收敛；超时写 provisional `turn_unknown`，并可由 `get` / `prepare` 修复。
 
 ## 为什么不是这些替代方案
 
@@ -157,20 +167,23 @@ payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部�
 | park 分两次写快照与状态，再配失败标记/孤儿清理 | 两次写会引入「Pending 但快照缺失」的窗口和额外规则；单事务 guarded UPDATE 已足够 |
 | 用布尔值“本轮有 TurnEnded”当 turn key | 不能唯一标识回合，无法发现两轮之间的错配 |
 | 用事件流累积文本/stop reason 作为快照输入 | 事件流没有 `HistoryLine.seq`，无法推导 turn key；且 `prepare` 读历史，两条路径输入不同源 |
+| 在 payload 里存 `structuredOutput` | 增加 payload 体积和暴露面，还要定义离开 `Pending` 的删除事务；改为只存 digest，`prepare` 用同一段文本重跑 schema |
+| cleanup 在流 drop 后立即写 `turn_unknown` | actor 可能还没写 `TurnEnded`，会把实际 `EndTurn` 的一轮误判且无法修复；应先有界等待，超时用 provisional + 修复 |
 
 ## 落地顺序
 
-1. **后端门禁与事实**：D1 的 stop reason/输出校验与 `HistoryIntegrity`、D2 的 `{userSeq, endedSeq}`、D3 的共享 park 函数与单事务写入、D4 的 cleanup 开门、D5 的 complete/force 审计；升级前旧 run 的 lazy materialize 随本阶段上线。
-2. **前端入口**：D7 的 trailing slot、当前步骤卡片、按钮/徽标与中英文案。
+1. **后端门禁与事实**：D1 的 stop reason/输出校验与 `HistoryIntegrity`、D2 的 `{userSeq, endedSeq}` 与窗口文本、D3 的共享 park 函数与单事务写入、D4 的 cleanup 等待/开门、D5 的 complete/force 审计与 `WorkflowNodeTurnChanged`；升级前旧 run 的 lazy materialize 随本阶段上线。
+2. **前端入口**：D7 的 trailing slot、当前步骤卡片、按钮/徽标与中英文案；`WorkflowNodeTurnChanged` 时刷新运行。
 3. **验证与文档**：单测矩阵、重启 restore/rebuild 集成测试、e2e 两条复现路径、前端测试；同步 `docs/workflows/workflow-runs.md` 与 `.zh.md` 的 Interactive nodes / Recovery after restart。
 4. **后续能力**：`completion.files` / `criteria`、运行时验收清单、LLM judge 与 agent 自报完成另开 issue；真正无法继续时的「重新运行本步骤」也另开 issue，不阻塞本决策。
 
 ## 风险、未解决问题与验收
 
 - **每次交互回合读一次整文件历史**：turn key 依赖 `HistoryLine.seq`，事件流不提供，park 必须读历史；这是本决策接受的成本，长会话是 O(会话) 的读取。后续若 runtime 能提供本轮的事件 id/文本，可再降，但不能改变“park 与 prepare 同源”的要求。
+- **provisional 快照修复**：流 drop 且等待超时会先写 `turn_unknown`；`get` / `prepare` 在同一个 `userSeq` 之后看到 `TurnEnded` 时替换。修复窗口内界面显示未完成，用户仍可 `force`。
 - **升级前的 Pending 节点**：新 run 的 park 是单事务，不会出现 `Pending` 无快照；旧 run 由 `get` 与 `prepare` 共用的 lazy materialize 处理，两条路径幂等。
-- **`structuredOutput` 的体积与暴露面**：只对 Structured 且通过时写入，只在该节点 `Pending` 期间存在，离开 `Pending` 删除；体积受 schema/回复约束，内容本来就会作为节点输出暴露。若不可接受，后续改为只存 digest、在 `prepare` 重解析。
-- **`HistoryIntegrity` 缺口**：非 `Complete` 统一判 `turn_unknown`，用户只能显式 `force`；这是保守选择，避免把断裂的历史当成 ready。
+- **`structuredOutput` 不落 payload**：避免体积和暴露面；`prepare` 用 digest 校验过的文本重跑 schema（纯 CPU）。如果 schema 校验耗时异常，后续再单独优化，不把结果塞回投影。
+- **per-run 门不可重入**：park 函数自己获取门；executor 与 cleanup 调用点都不得持有门。`get` 的 lazy materialize 同样先读历史、再获取门写 payload。
 - **UI 卡片挂载**：`ChatView` 目前只有 `contextBar` 和 `composerActions`，需要新增可选 trailing slot；这是共享组件改动，实现时要保证普通聊天不受影响。
 - **区域 HITL**：本决策不改变 foreach 的拒绝规则，也不补齐 while 区域内的整链证据；该缺口仍由现有区域用例记录。
 - **不在本决策范围**：`completion.files` / `criteria`、运行时验收清单、LLM judge 与 agent 自报完成均另开 issue，可依赖本决策。
@@ -179,11 +192,12 @@ payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部�
 
 - 停止生成 → 重启 → 点完成：返回 `turn_stopped`，不调度下一节点；「继续当前步骤」在 `session/load` 成功/失败→rebuild 两条路径都能得到一轮回复；continue 失败时明确报错、节点保持 `Pending`、仍可强制完成；
 - `MaxTokens` / `MaxTurnRequests` / `Refusal` / 未知 stop reason、以及 `HistoryIntegrity` 非 `Complete` 同样不能直接完成；
+- 本轮最终文本按 `(userSeq, endedSeq]` 窗口取最后一条 assistant 消息；空文本不会被早先的进度说明掩盖；
 - 正常 `EndTurn` 后完成与现在一致；无契约节点空输出仍可完成，只显示 warning；
 - 首轮 executor park 与人类 cleanup 都经过同一个函数；`payload.completion` 与 `Running → Pending` 同事务提交，新 run 不会出现 `Pending` 无快照；
-- `{userSeq, endedSeq}` 从历史推导；complete 重新推导并比对，不一致返回冲突；
-- `Structured` / `Text` 校验在 park 完成，blockers 与 complete 同源；`outputDigest` 不一致时完成返回冲突；
+- `{userSeq, endedSeq}` 从历史推导；complete 重新推导并比对，不一致返回 `WorkflowNodeTurnChanged`；
+- `Structured` / `Text` 校验在 park 完成，blockers 与 complete 同源；`outputDigest` 不一致时完成返回冲突；`structuredOutput` 不落 payload；
 - 无快照旧节点的 `get` 与 `complete` 两条 lazy materialize 路径都幂等；
-- `structuredOutput` 只在 Pending 期间存在，离开 Pending 删除；
+- cleanup 在流 drop 后先有界等待；超时写 provisional `turn_unknown`，后续 `get` / `prepare` 能修复；
 - 点击前能看到 blockers；`Running` 时快照被忽略；
 - 区域 interactive 行为不变；核心用例在 `approved` 后补到 `test-cases/desktop/core/workflow/interactive-node-completion.md`。
