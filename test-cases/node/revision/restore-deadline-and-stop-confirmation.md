@@ -62,13 +62,14 @@ D1、D6；不变量 1、2、4、11。
 
 ### 必须成立
 
-- 基础证据是“受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出”；扩展决策在此之外接受 host 权威的 `NotStarted`，两者的共同前提都是原 Scope 已 `Closed`。本节验证基础证据的边界与“其余事实都不是停止确认”，`NotStarted` 的来源、fencing 前提与矛盾检测按 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证。
+- 基础证据是“受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出”；扩展决策在此之外接受 host 权威的 `NotStarted`。两者的共同前提都是原 Scope 已 `Closed`，`UnknownIdentity` 只说明查不到记录，不成立停止确认；`NotStarted` 的来源、fencing 前提与矛盾检测按 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证。
 - 预算到期只表示恢复不再等这条命令，关闭请求只表示关闭已被提出；两者都不是停止确认，也都不能推导 `NotStarted`。
 - 停止确认按实际纳管保证报告：Strong 在声明范围内给出完整退出证据；当前 Linux BestEffort 的尽力清理完成不能排除未跟踪后代，不得写成已确认静止。
 
 ### 禁止结果
 
 - 用关闭请求被接受、清理预算耗尽、`process_attempts` 记录缺失或 Node 重启推断停止，或用它们推断 host 将报告 `NotStarted`。
+- 把 `UnknownIdentity` 当作停止确认，或把“查不到记录”解释为“从未启动”。
 - 在未取得停止确认时发出作为停止确认的终态，或用清理结果替代停止确认。
 
 ### 验证义务与证据
@@ -76,6 +77,7 @@ D1、D6；不变量 1、2、4、11。
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 三种事实分开 | 注入“关闭请求成功但未观测到 `Closed`”“直接进程退出但 Scope 未 `Closed`”“清理预算耗尽”，断言前两者不产生停止确认、第三者不产生终态，且三者都不能被当成 `NotStarted` 的依据 | Missing |
+| 两侧结论 | 同一「原 Scope `Closed`」前置下分别注入 `NotStarted` 与 `UnknownIdentity`：断言前者构成停止确认并进入正常路径，后者不构成停止确认、不进入正常路径；`UnknownIdentity` 的具体禁令按 `An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout` 与 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证 | Missing |
 | 证据分级 | BestEffort 下尽力清理完成不报告“已确认静止”；Strong 启用时只在声明范围内报告；两者的结果可区分 | Missing |
 
 ### 决策依据
