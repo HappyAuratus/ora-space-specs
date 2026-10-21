@@ -27,7 +27,7 @@
 | session 持久化后 `Start` 前崩溃：归属仍完整，`Start` 缺失不产生 `running` 或 `RunStarted` | `ora_backend::scheduled_task::worktree::tests::integration_bootstrap_stops_sessions_before_scheduled_cleanup` | `Covered` |
 | 重复恢复（多次重启）不产生第二个任务或重复副作用 | `ora_db::durability_tests::a_crash_between_lease_write_and_ownership_commit_leaves_no_half_commit`、`ora_backend::scheduled_task::worktree::tests::integration_expired_lease_is_reclaimed_after_a_crash_before_commit`（二次重启无重复 job）、`ora_db::repository::task_workspace::scheduled_ownership_tests::rejects_a_second_binding_for_the_same_run` | `Covered` |
 | 带链接的 `accepted` 运行在历史与侧栏不显示为 running | `ora_domain::scheduled_run::tests::start_reuses_the_committed_worktree_binding_and_rejects_a_mismatch`（`Start` 才转 running 的唯一写入者） | `Partial` |
-| 成功提交后重新打开数据库：task/run 绑定存在且 provisioning lease 已不存在（成功后无 lease 残留） | `ora_db::repository::task_workspace::scheduled_ownership_tests::binds_the_run_and_persists_the_task_in_one_commit`（同连接断言绑定 + lease 删除，尚未有成功提交后的独立 reopen 复验） | `Partial` |
+| 成功提交后重新打开数据库：task/run 绑定存在且 provisioning lease 已不存在（成功后无 lease 残留） | `ora_db::repository::task_workspace::scheduled_ownership_tests::binds_the_run_and_persists_the_task_in_one_commit`、`committed_ownership_survives_reopen`（drop + reopen 复验绑定/task/lease） | `Covered` |
 
 ## Failed Ownership Commit Must Roll Back And Keep Compensation
 
