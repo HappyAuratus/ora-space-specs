@@ -39,7 +39,11 @@ range_unresolved`，并可携带 `verdict_detail: Option<String>`（受长度约
 runtime 提供明确入口（repository 方法 `annotate_scheduled_run_verdict(run_id, verdict, detail)`），由执行 Agent 在
 会话内通过该入口提交；入口做校验：run 存在且非 `missed`、枚举合法、detail 长度受限，非法输入被拒绝且不改写运行事实。
 
-- 可信来源：只有执行该运行的 runtime/Agent 能写（与运行行关联，不开放任意客户端直写）。
+- **提交机制（钉死为 prompt 契约哨兵）**：Agent 的最终响应以结构化标记
+  `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>` 结尾，可选另起一行 `QA_DETAIL: <自由文本>`。runtime 在
+  运行收尾时读取会话最终 Assistant 轮，解析该标记，校验枚举与 detail 后经 `annotate_scheduled_run_verdict` 持久化。
+  该标记是文档化、稳定的可解析契约（与 Nightly QA prompt 一致）；缺标记或格式非法 → 「未报告」，不报错、不改写运行事实。
+- 可信来源：只有执行该运行的 runtime/Agent 能写（与运行行关联，不开放任意客户端直写；解析也在 runtime 内部完成）。
 - 冲突处理：同一次运行可多次提交，**末次写入生效**（记录 `updated_at`），便于 Agent 在收尾时覆盖早先的临时结论；
   不接受「部分成功」——一次提交要么整体写入、要么被拒。
 - 缺失降级：无提交即「未报告」；不因缺 verdict 影响历史裁剪、保留或通知。
@@ -83,6 +87,8 @@ worktree 是否被回收都不影响产物。
 | --- | --- |
 | 复用 `failure_reason` 表达业务失败 | 实现最快，但污染执行层语义：`failed` 会触发失败通知、进入故障统计，且无法表达「执行成功但业务 FAIL」 |
 | 在 `status` 里加业务终态 | 状态机与既有 D6/D7 语义、通知、裁剪全被打乱，`succeeded` 的含义被稀释 |
+| 给 Agent 提供专用 verdict 工具/命令，而非解析最终响应哨兵 | 结构化更可靠、不依赖文本格式，但需在 agent runtime 增加工具接线与授权面；对「每次运行只写一次结论」这个单一用途，成本高于收益 |
+| 暴露独立公开端点由前端/外部直写 verdict | 破坏「只有执行该运行的 runtime/Agent 能写」的信任边界，打开任意客户端写入，校验与授权成本放大 |
 | 产物留在 worktree、依赖「有改动即保留」 | 无改动即回收、有改动仅临时副本，无索引、无大小上限、无保留策略，不可靠 |
 | verdict 驱动自动重试/告警路由 | 有价值但属另一决策面（调度策略、通知语义、费用归属），本次不绑定 |
 | 建通用文件资产管理/版本化产物仓库 | 超出定时运行产物的需求，复杂度与安全面大幅扩大 |
@@ -93,6 +99,7 @@ worktree 是否被回收都不影响产物。
 - 运行历史按 verdict 过滤/排序、聚合看板。
 - Cloud 侧产物对象存储的凭据、权限、生命周期与费用归属（Cloud ADR）。
 - 产物的密钥扫描/内容审计（明确为 Non-goal）。
+- 哨兵解析若在实践中最优 Agent 不守约、格式漂移，可升级为专用结构化工具（本决策先钉哨兵为最小实现，升级另立决策）。
 
 ## 核心测试用例
 
