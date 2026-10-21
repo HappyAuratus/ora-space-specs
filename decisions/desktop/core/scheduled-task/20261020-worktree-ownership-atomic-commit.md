@@ -1,5 +1,5 @@
 ---
-status: approved
+status: proposed
 ---
 
 # Scheduled Run 的 worktree 归属在任务提交事务内原子建立
