@@ -72,7 +72,7 @@
 
 - 风险：三种入口各自校验，规则不一致——某一入口用任意 UUID 就能造出绕过存在性、租户、归档与发布状态的工作流运行，或者放行一份与提交值不符的图。
 - 前置状态：直接运行、issue 里的 manual workflow IssueRun、`@` Confirm 三种入口都存在，且都会创建运行。
-- 触发：manual 入口给一个任意 UUID 或别的 workflow 的 id；`@` Confirm 提交的表单值与所选版本或活稿不一致；同一 interaction 重复确认；对已归档的 workflow 启动运行。
+- 触发：manual 入口给一个任意 UUID 或别的 workflow 的 id；`@` Confirm 提交的表单值与所选版本不符（包括选中一个字段与活稿不同的旧版本）；同一 interaction 重复确认；对已归档的 workflow 启动运行。
 - 必须成立：三种入口走同一套门禁（同一个启动函数），都按同一份冻结文档判断存在性、租户、归档状态与发布状态并校验输入；被拒的启动不留下运行行、不占用 interaction、不产生活动；重复确认幂等；manual 入口不能再用 UUID 形状绕过校验。
 - 禁止结果：某入口跳过门禁、按活稿而不是所选版本校验、被拒后留下可派发的运行行、重复确认产生第二个运行。
 - 验证义务与证据：
@@ -80,12 +80,12 @@
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
 | 三种入口共用同一个启动门禁 | 真实 HTTP + PostgreSQL：同一份非法图在三个入口同样被拒，拒绝后无运行行 | Partial |
-| 输入按运行将执行的那一份文档校验 | 真实 HTTP：与所选版本不符的提交被拒且可定位到字段，改选版本后可继续 | Covered |
+| 输入按运行将执行的那一份文档校验 | 真实 HTTP：选中字段与活稿不同的旧版本按该版本通过；缺该版本必填或提交它未声明的字段被拒且可定位到字段，不建运行 | Covered |
 | 拒绝不留痕且重复确认幂等 | 真实 PostgreSQL：拒绝后 `issue_runs` 计数不变，同一 interaction 成功确认一次 | Covered |
 
 - 决策依据：D3（三种启动方式表、三种入口走同一个启动函数），不变量 1、2。
 - desktop 参考实现（`8909f07`）一侧：**Missing** — desktop 只有一个本地启动入口，没有"多个入口共用一个门禁"这件事，也没有"手动运行不能靠 UUID 形状绕过校验"的对应义务；这条完全靠 Cloud 自己的测试证明。
-- 本次直接证据：**Partial** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 是唯一的启动门禁（解析要执行的快照、按它的图收集并解析槽位），三个调用点是 `workflow_run.go`、`issue_runs.go`、`issue_interactions.go`。真实 HTTP 的证据按入口分开：manual 入口 `TestManualWorkflowRunResolvesItsExecutor`（未知 id 404、没有已发布版本 400 `workflow_no_published_snapshot`、归档 404，且被拒的那次不留运行行）与 `TestManualWorkflowRunCannotNameAForeignWorkflow`（别的租户的 workflow 同样 404，`issue_runs` 计数为 0）；直接运行入口 `TestWorkflowRunSnapshotIsScopedToItsWorkflow`（别的 workflow 的 snapshot 与未知 id 都是 404，且不回退到最新版本）与 `TestWorkflowRunValidatesAgainstTheVersionItRuns`（旧版本只按自己的 schema 收，未指名版本时用最新版本，运行行记下执行的 `snapshot_id`）；`@` Confirm 入口 `TestWorkflowConfirmRefusesAVersionTheLiveFormHasLeft`（提交与所选版本不符时 409 并点名字段，不创建运行、不占用 interaction，改发布或改选版本后同一次提交通过）；幂等由 `TestWorkflowConfirmIdempotencyAndDoubleConfirm` 证明（同 key 重放返回同一个运行、同 key 不同体 409、已确认的 interaction 换 key 409，`issue_runs` 只有一个）。
+- 本次直接证据：**Partial** — [`internal/core/workflow_admission.go`](https://github.com/ora-space/cloud/blob/df507f0/internal/core/workflow_admission.go) 的 `admitWorkflowRun` 是唯一的启动门禁（解析要执行的快照、按它的图收集并解析槽位），三个调用点是 `workflow_run.go`、`issue_runs.go`、`issue_interactions.go`。真实 HTTP 的证据按入口分开：manual 入口 `TestManualWorkflowRunResolvesItsExecutor`（未知 id 404、没有已发布版本 400 `workflow_no_published_snapshot`、归档 404，且被拒的那次不留运行行）与 `TestManualWorkflowRunCannotNameAForeignWorkflow`（别的租户的 workflow 同样 404，`issue_runs` 计数为 0）；直接运行入口 `TestWorkflowRunSnapshotIsScopedToItsWorkflow`（别的 workflow 的 snapshot 与未知 id 都是 404，且不回退到最新版本）与 `TestWorkflowRunValidatesAgainstTheVersionItRuns`（旧版本只按自己的 schema 收，未指名版本时用最新版本，运行行记下执行的 `snapshot_id`）；`@` Confirm 入口 `TestWorkflowConfirmValidatesAgainstTheChosenVersion`（选中一个字段与活稿不同的旧版本，提交符合该版本即通过并记录该版本；缺该版本必填字段或提交它未声明的字段被 `400` 拒绝并点名字段，不创建运行、不占用 interaction，随后同一次交互按该版本确认成功）；幂等由 `TestWorkflowConfirmIdempotencyAndDoubleConfirm` 证明（同 key 重放返回同一个运行、同 key 不同体 409、已确认的 interaction 换 key 409，`issue_runs` 只有一个）。
 - 仍缺：没有任何一个用例把**同一份**非法文档依次送进三个入口并断言同样的拒绝；"三种入口同一个门禁"今天由"一个 `admitWorkflowRun` + 三个调用点"与各入口各自的拒绝用例支撑，按 `Partial` 记。另外，门禁落地后仍需按 D3 在同一事务里冻结发起者与 Project（落地顺序第 4 步），本用例不把"门禁到位"等同于"身份已冻结"。
 
 ## A Slot The Initiator Cannot Supply Refuses The Run Instead Of Substituting

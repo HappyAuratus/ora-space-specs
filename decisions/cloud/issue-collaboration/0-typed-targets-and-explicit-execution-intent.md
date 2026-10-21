@@ -4,6 +4,10 @@ status: implemented
 
 # Issue 协作：`@` 只选择类型化目标，执行只来自显式意图
 
+> 历史决策：D9 中「活稿与所选版本不一致时返回 `409 workflow_version_fields_changed`」已由
+> [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 修改，
+> 该部分当前系统承诺以后续决策为准；本决策其余内容与状态 `implemented` 不变。
+
 Issue 是多人与多种能力协作的地方。Cloud 的 Issues 模块只拥有 Issue 领域的状态（Issue、评论、交互、运行记录、
 活动与 Timeline、上下文引用），Agent、Team、Workflow、运行时、通知、实时推送都经消费侧端口接入。`@` 是**选择协作
 目标**，不是执行触发：目标类型决定交互模式，人只被提及，Agent/Team 必须带明确任务才产生运行，Workflow 先渲染表单，
