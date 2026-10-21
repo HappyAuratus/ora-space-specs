@@ -30,8 +30,10 @@
 - 验证义务与证据：**Partial** — `integration/repository_publish_external_test.go` 的
   `TestRepositoryPublishPersonalApprovalMatrixAndIdempotency` 覆盖交付 ref 作为源、创建前经 Cloud ref 查询确认；
   `integration/repository_publish_revision_test.go` 的 `TestPublishingARevisionUsesItsVerifiedDeliveryRef` 覆盖带
-  `revisionId` 的发布返回 `201`，且 `sourceRef` 与 `sourceCommit` 等于该 Revision 的交付 ref 与最终提交。仍缺：
-  他人的 Workspace 分支作源、跨 Project ref 拒绝、bundle 形状 Revision 返回 `409 revision_not_publishable`、`400 nothing_to_publish`。
+  `revisionId` 的发布返回 `201`，且 `sourceRef` 与 `sourceCommit` 等于该 Revision 的交付 ref 与最终提交；
+  `TestPublishingABundleShapedRevisionIsRefused` 覆盖 bundle 形状的 Revision 只给 `revisionId` 时返回
+  `409 revision_not_publishable`，且不创建 Operation、不访问 Git Server。仍缺：他人的 Workspace 分支作源、
+  跨 Project ref 拒绝、`400 nothing_to_publish`。
 - 决策依据：D1，不变量 5。
 
 ## Publish States Follow The Executor Classification And Running Happens Once
