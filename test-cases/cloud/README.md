@@ -28,7 +28,8 @@
 [执行器槽位决策](../../decisions/cloud/workflow/20261015-executor-slots-replace-agent-model-ids.md)、
 [个人槽位映射与按槽位绑定决策](../../decisions/cloud/model-access/20261015-executor-slot-mappings-and-per-slot-run-bindings.md)、
 [工作流会话结束决策](../../decisions/cloud/workflow/20261019-workflow-session-end-after-initial-turn.md)
-于 2026-10-16 与 2026-10-20 经 owner 批准，为 `approved`，本领域核心用例同批建立。Cloud 至今没有工作流执行者：生产里的
+于 2026-10-16 与 2026-10-20 经 owner 批准，为 `approved`，本领域核心用例同批建立。[节点重试与恢复契约](../../decisions/cloud/workflow/20261021-node-retry-and-resume-contract.md)
+于 2026-10-21 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 至今没有工作流执行者：生产里的
 运行停在 `pending`，唯一写节点状态的是开发夹具，而根决策已把模拟 trace 排除在验收之外，所以执行类义务在
 cloud 侧全部为 `Missing`；main 也还没有个人槽位映射。门禁类义务（图校验、启动门禁、槽位解析）的实现在
 [cloud#65](https://github.com/ora-space/cloud/pull/65) 上，已随合并提交
@@ -45,6 +46,7 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [执行器槽位](workflow/executor-slots.md) | 槽位名变体、`hint` 被当兜底或被自动写入、旧图拒收或保留执行器 |
 | workflow | [工作流会话结束与有界等待](workflow/session-end-after-initial-turn.md) | 成功回合无人结束会话、重复或跨节点结束请求、确认窗口无界、把未知当成功 |
 | workflow | [Start 输入 kickoff 取值](workflow/start-input-kickoff.md) | 运行读到编辑器默认提示词而非本次 kickoff、unset 与空串混淆、非字符串 `input` 被放行、历史行被误读 |
+| workflow | [节点重试与恢复](workflow/retry-and-resume.md) | 可重试失败被直接失败或误判成功、等待依赖进程内定时器、跨尝试证据串用、取消被等待拖延、resume 改写状态 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的定时任务决策
