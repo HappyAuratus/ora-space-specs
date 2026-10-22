@@ -29,7 +29,7 @@
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 并发顺序与幂等 | Cloud `internal/core/task_conversation_db_test.go::TestTaskConversationConcurrentWindowsPreserveOrderAndIdempotency`、`::TestTaskConversationMessageOrderIdempotencyAndCancellation`，真实 PostgreSQL 与生产 Public 入口 | Covered |
-| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测离线恢复后消息与回复可读、没有重复 Run；[#312 长回复 UI/Markdown 安全补充](https://github.com/ora-space/circus/issues/312#issuecomment-6334326387)覆盖表格/代码块、375px、键盘、危险链接及普通评论不触发 Run；[#312 本地候选四运行浏览器补充](https://github.com/ora-space/circus/issues/312#issuecomment-6333843436)逐一重开四份历史 URL，刷新保持选中 Run 与正文。正式包下的引用、结论来源去重和跨服务记录一致性仍缺 | Partial |
+| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测离线恢复后消息与回复可读、没有重复 Run；[#312 长回复 UI/Markdown 安全补充](https://github.com/ora-space/circus/issues/312#issuecomment-6334326387)覆盖表格/代码块、375px、键盘、危险链接及普通评论不触发 Run；[#312 取消执行历史](https://github.com/ora-space/circus/issues/312#issuecomment-6334750487)在最新 main 结算/释放后仍可按 URL 读取，并在执行记录中显示已取消；[#312 本地候选四运行浏览器补充](https://github.com/ora-space/circus/issues/312#issuecomment-6333843436)逐一重开四份历史 URL，刷新保持选中 Run 与正文。正式包下的引用、结论来源去重和跨服务记录一致性仍缺 | Partial |
 | 工具轮次关联 | Cloud `integration/agent_run_thread_read_test.go::TestThreadReadReturnsNodeTurnIdentityOverHTTP` 经真实 HTTP/PG 验证排队用户消息之间 Node 条目的真实 turnId；`frontend/src/features/issues/thread/thread-entries.test.ts` 覆盖同调用 ID 跨轮隔离、稀疏更新及旧公开响应缺少 Node turnId 时的用户边界。此项仅证明公开读取与显示归并，不替代真实 Agent 输出验证 | Covered |
 
 ### 决策依据
