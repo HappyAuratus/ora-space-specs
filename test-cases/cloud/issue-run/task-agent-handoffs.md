@@ -62,7 +62,7 @@ Thread ended 或运行 done 就启动下一位，实际上最新成果尚未保�
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 状态屏障 | Cloud `TestTaskConversationWaitsForHandoffThenStartsNextAgent`、`TestTaskConversationIdleExpiryWaitsForReleaseBeforeFreshRun`、直接领取屏障测试，覆盖 ending/交付/释放及 done 但未删除 Workspace 的拒绝；删除与结算使用阶段 fixture | Partial |
-| 实际保存与释放 | cluster 候选四运行验收检查不同 Workspace、Revision、实际文件与容器/卷释放；尚未运行真实 OpenCode 与第二 Agent | Missing |
+| 实际保存与释放 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)核对默认 idle 后的 Revision、交付 ref、实际文件、历史对象和 Workspace 容器/卷物理释放，再由同任务新 Run 继承成果；cluster `scripts/task-conversation-acceptance.py` 的第二 Agent 与切回四运行尚未通过，不能据此宣称跨 Agent 的保存/释放屏障已验收 | Partial |
 
 ### 决策依据
 
@@ -87,8 +87,8 @@ D2，不变量 3、4、6。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 持久暂停与明确恢复 | Cloud `task_conversation_stop_db_test.go`、`TestTaskConversationFailedMessageHoldsFollowingMessagesUntilResolved`、`TestTaskConversationPausesAfterFailureUntilExplicitResume`、`TestTaskConversationUndeliveredRunRequiresExplicitDiscard` 验证数据库状态和恢复权限；旧入口也不能绕过暂停 | Partial |
-| 重启与实际故障 | 仍需真实 Cloud/Controller/Node 重启、模型撤权和保存故障演练，证明运行、队列与成果恢复一致 | Missing |
+| 持久暂停与明确恢复 | Cloud `task_conversation_stop_db_test.go`、`TestTaskConversationFailedMessageHoldsFollowingMessagesUntilResolved`、`TestTaskConversationPausesAfterFailureUntilExplicitResume`、`TestTaskConversationUndeliveredRunRequiresExplicitDiscard` 验证数据库状态和恢复权限；[#312 最新 main Node SIGKILL 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测失败后排队消息保持 waiting、同键显式 resume 只建一个新 Run。跨 Agent 的失败屏障与放弃未保存成果仍需验证 | Partial |
+| 重启与实际故障 | [#312 最新 main 分项验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)分别覆盖工具执行中 Controller/Cloud 重启、Node SIGKILL 与显式恢复、个人模型凭据撤销、暂时 Git Server 交付失败；各自核对同 Run 历史、队列或成果和物理释放。永久交付失败仅有 #471 独立 90s 测试配置证据，正式双 Agent 故障联合矩阵仍缺 | Partial |
 
 ### 决策依据
 

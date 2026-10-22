@@ -1,7 +1,7 @@
 # 任务持续对话与跨运行上下文
 
 依据[已批准的任务持续对话决策](../../../decisions/cloud/thread/20261018-task-conversation-across-runs.md)。
-下列证据引用 Cloud、Desktop 与 cluster 的候选实现和测试；它们不等于产品已合并或真实 Agent 联合验收完成。
+下列证据包括已合并代码的测试与固定 main 上的真实 OpenCode 分项验收；单 Agent 通过不等于跨 Agent 联合验收完成。
 跨运行成果恢复继续受[Revision 续接用例](../issue-run/resume-from-latest-revision.md)约束，不能以对话存在替代成果证据。
 
 ## Task Messages Have Stable Order And One Execution Intent
@@ -29,7 +29,7 @@
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 并发顺序与幂等 | Cloud `internal/core/task_conversation_db_test.go::TestTaskConversationConcurrentWindowsPreserveOrderAndIdempotency`、`::TestTaskConversationMessageOrderIdempotencyAndCancellation`，真实 PostgreSQL 与生产 Public 入口 | Covered |
-| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；仍需真实浏览器验证历史重开、引用、结论来源去重与跨服务记录的一致性 | Partial |
+| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测离线恢复后任务消息与最终回复可读、没有重复 Run。历史重开、引用、结论来源去重与完整跨服务记录仍需联合验证 | Partial |
 | 工具轮次关联 | Cloud `integration/agent_run_thread_read_test.go::TestThreadReadReturnsNodeTurnIdentityOverHTTP` 经真实 HTTP/PG 验证排队用户消息之间 Node 条目的真实 turnId；`frontend/src/features/issues/thread/thread-entries.test.ts` 覆盖同调用 ID 跨轮隔离、稀疏更新及旧公开响应缺少 Node turnId 时的用户边界。此项仅证明公开读取与显示归并，不替代真实 Agent 输出验证 | Covered |
 
 ### 决策依据
@@ -61,9 +61,9 @@ D1、D4，不变量 2、4。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 空闲、释放与新执行 | Cloud `task_conversation_lifecycle_db_test.go` 两项真实 PostgreSQL 测试覆盖窗口内复用、空闲期满结束、未释放阻塞、新执行与既有正文；物理删除在该测试中使用阶段证据 fixture，不是 Docker 联合证据 | Partial |
-| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 的测试验证正文提取和 UTF-8 截断。CloudStore 转发与真实跨 Agent 上下文恢复尚待贯通 | Partial |
-| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义 OpenCode、第二 Agent、切回与主动结束后新运行续聊的四次运行检查；尚无实际模型运行结果 | Missing |
+| 空闲、释放与新执行 | Cloud `task_conversation_lifecycle_db_test.go` 两项真实 PostgreSQL 测试覆盖窗口内复用、空闲期满结束、未释放阻塞、新执行与既有正文；[#312 最新 main 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)经历默认 15 分钟窗口，以新的 Run/Workspace 续接，核对两次 Revision、Git 结果和容器/卷物理释放。跨 Agent 交接仍缺 | Partial |
+| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 验证正文提取与截断；[#312 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6311738034)分别核对过同 Agent 的成果与对话恢复。真实跨 Agent 上下文和截断可见性仍缺 | Partial |
+| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义四运行检查；[#312 最新 main 单 Agent 验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)已完成同 Thread 多轮、默认 idle 结束后新 Run 的成果续接与物理释放。第二 Agent、切回及完整四运行尚未通过 | Partial |
 
 ### 决策依据
 
@@ -88,7 +88,7 @@ D2、D3，不变量 1、5、6。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration`，及旧入口跨发起者交接拒绝测试；实际授权撤销与浏览器/模型进程联合演练尚缺 | Partial |
+| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run。不同发起者的真实 Agent 联合演练仍缺 | Partial |
 
 ### 决策依据
 

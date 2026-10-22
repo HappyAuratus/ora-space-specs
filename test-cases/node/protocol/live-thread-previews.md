@@ -1,8 +1,8 @@
 # 实时 Thread 预览旁路
 
 依据[已批准的实时预览决策](../../../decisions/node/protocol/20261018-live-thread-previews.md)。
-可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。以下局部证据不代表
-Node → Controller → Cloud → 浏览器已全部接通；尤其 CloudStore 适配和真实 Agent 联合验收仍需直接证据。
+可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。固定 main 上的真实 OpenCode
+已产生 Node → Controller → Cloud → 浏览器预览；第二 Agent、慢消费者与故障组合仍需直接证据。
 
 ## Stable Identity And Final Records Defeat Reordered Previews
 
@@ -28,8 +28,8 @@ Node → Controller → Cloud → 浏览器已全部接通；尤其 CloudStore �
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 的握手、往返和拒绝测试覆盖可选协商、版本及位置约束；不证明 CloudStore 转发 | Partial |
-| 定型优先和乱序 | Cloud `internal/core/thread_preview_test.go::TestThreadPreviewAuthorityAndFinalRecordDominance`、替换/隔离测试与 `frontend/src/features/thread-preview/preview.test.tsx` 证明缓存与浏览器的采用/覆盖规则；真实跨服务乱序仍缺 | Partial |
+| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 覆盖可选协商、版本及位置约束；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)经 SSE 观察到最终正文的严格前缀和工具终态配对，证明本组合的转发已接通。旧 Node 降级与第二 Agent 仍缺 | Partial |
+| 定型优先和乱序 | Cloud `internal/core/thread_preview_test.go::TestThreadPreviewAuthorityAndFinalRecordDominance`、替换/隔离测试与 `frontend/src/features/thread-preview/preview.test.tsx` 覆盖采用/覆盖规则；[#312 生产者 RPC/SSE 注入](https://github.com/ora-space/circus/issues/312#issuecomment-6320732885)验证低版本、重复、冲突、定型覆盖和重放，但不代表 Node WebSocket 逐跳乱序或最新 main 的全部故障组合 | Partial |
 
 ### 决策依据
 
@@ -58,8 +58,8 @@ Agent，也不改变 Run/Thread/Revision 的权威状态；原持久写失败仍
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| Node 真实发送与有界缓冲 | Desktop Node 单元与 `apps/ora-node/tests/standalone/agent_sessions/previews.rs::negotiated_preview_streams_before_the_agent_turn_finishes` 使用真实 IPC 和 Echo Agent，证明轮次完成前出现正文预览；不是实际模型证据 | Partial |
-| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；`::completed_executions_do_not_exhaust_preview_capacity` 验证同一中继连续 128 次完成后仍可发布；`::terminal_takeover_cancels_only_its_in_flight_publisher` 验证终态取消阻塞发布、重复回收及其他活跃执行隔离。Cloud 的并发 hub、订阅容量和取消测试验证有界通知。仍需实际 CloudStore 与跨服务终态/迟到预览故障测试 | Partial |
+| Node 真实发送与有界缓冲 | Desktop Node 单元与 `apps/ora-node/tests/standalone/agent_sessions/previews.rs::negotiated_preview_streams_before_the_agent_turn_finishes` 使用真实 IPC 和 Echo Agent；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)又在轮次定型前观测到正文严格前缀和 5 个工具配对。有界缓冲承诺仍以定向测试为证据，真实慢消费者尚缺 | Partial |
+| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；`::completed_executions_do_not_exhaust_preview_capacity` 验证同一中继连续 128 次完成后仍可发布；`::terminal_takeover_cancels_only_its_in_flight_publisher` 验证终态取消阻塞发布、重复回收及其他活跃执行隔离。Cloud 的并发 hub、订阅容量和取消测试验证有界通知。[#312 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接后仍完成交付；实际慢消费者与迟到预览组合仍缺 | Partial |
 
 ### 决策依据
 
@@ -88,8 +88,8 @@ D2，不变量 1、2、4。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；尚缺真实三服务共同重启/撤权的验证 | Partial |
-| 实际供应商流式与工具过程 | cluster 候选验收要求观测到同一历史位置最终正文的严格前缀，以及进行中工具到终态的配对；OpenCode 与第二种真实 Agent 尚未实际运行 | Missing |
+| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测执行中离线重连后消息/回复不丢。真实成员撤权与多服务组合仍缺 | Partial |
+| 实际供应商流式与工具过程 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接中取得 103 次可用快照，严格正文前缀、5 个进行中工具与终态配对均通过；第二种真实 Agent 及完整四运行预览尚缺 | Partial |
 
 ### 决策依据
 
