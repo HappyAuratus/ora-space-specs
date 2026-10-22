@@ -7,7 +7,7 @@
 钩子驱动结算、派发与释放）。
 
 跨仓库真实链路证据来自 cluster 的 M2 验收（`task agent:session:acceptance` 与 `task agent:session:browser`，见
-[agent-session-acceptance](https://github.com/ora-space/cluster/blob/main/docs/agent-session-acceptance.md)）：真实
+[Agent 会话验收](https://github.com/ora-space/cluster/blob/main/docs/testing/agent-session.md)）：真实
 Gateway/Cloud/Controller/Node 与 Deno 运行的 echo agent 上，@agent 评论创建运行；Thread 依次出现 `meta`、echo 回复与
 `turnEnded` 并进入 `idle`；订阅者收到 SSE `issue_run.thread_appended`；追加的用户轮次变为 `delivered` 并得到回复；结束会话后
 `threadState` 为 `ended`，会话结果为 `agent_session_ended/user_ended`；未配置对象存储时交付记为 `skipped`，运行 Workspace
@@ -115,7 +115,7 @@ Revision 未登记就删除运行 Workspace，Agent 的修改丢失；或交付�
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 未结算不释放 | `integration/agent_run_delivery_test.go::TestFailedDeliveryKeepsDeliveringAndReleasesOneBackoffRetry`：交付失败后运行保持 `delivering/running`、没有 delete，恰好放出一个 30 秒退避、尚不可领取的新交付工作项；`internal/core/agent_run_release_db_test.go::TestDeliveryRetryBackoffFollowsD5sNumbers`：退避 30 秒起、翻倍、10 分钟封顶；`integration/agent_run_delivery_test.go::TestRevisionVerificationFailureIsCloudsOwnVerdict`：对象校验不符时由 Cloud 判定失败，不登记 Revision | Covered |
-| 放弃上限 | `integration/agent_run_delivery_test.go::TestDeliveryGiveUpReleasesTheRunWithD5StateAndD4Status`：连续失败窗口与 Node 不可达窗口到期都使运行进入 `releasing`、`deliveryState = failed`、`revisionId` 为 null，`status` 取自会话结束原因，恰好一个 delete；`::TestGiveUpStaleDeliveriesPassReleasesOnItsOwnClock`：无 Node 上报时放弃扫描按 Cloud 时钟释放，重复扫描不再写入。缺口：测试把窗口配置为 1ns 或回拨心跳，默认值 2 小时/30 分钟（`internal/config/config.go`）没有测试断言 | Partial |
+| 放弃上限 | `integration/agent_run_delivery_test.go::TestDeliveryGiveUpReleasesTheRunWithD5StateAndD4Status`：连续失败窗口与 Node 不可达窗口到期都使运行进入 `releasing`、`deliveryState = failed`、`revisionId` 为 null，`status` 取自会话结束原因，恰好一个 delete；`::TestGiveUpStaleDeliveriesPassReleasesOnItsOwnClock`：无 Node 上报时放弃扫描按 Cloud 时钟释放，重复扫描不再写入；`integration/agent_run_node_unknown_test.go::TestNodeUnknownDisconnectedWithinWindowKeepsDeliveryAndRelease`：明确 `disconnected` 但最后一次 `connected` 报告仍在配置窗口内时，交付保持 `delivering` 且不声明 delete，释放保持 `releasing` 且不改写已有 delete；`::TestNodeUnknownDisconnectedPastWindowSettlesDeliveryAndRelease`：最后一次 `connected` 报告超过窗口后，交付进入 `releasing`、`deliveryState = failed`、保留会话业务状态并声明一个 delete，释放按 D8 放弃；`::TestNodeUnknownReconnectRestartsWindowButRepeatedDisconnectDoesNot`：重连刷新最后可达时间并重新起算窗口，重复断连不刷新该时间、不推迟放弃；`::TestNodeUnknownNoLiveSandboxReleasesDeliveryButPreservesCleanup`：没有存活沙盒时交付立即放弃，但释放侧不终结仍在推进的 `cleanup`。补充证据（共享 Node 未知判定，不单独证明 IssueRun 放弃上限）：`internal/core/workflow_run_session_db_test.go::TestWorkflowSessionDisconnectedWithinWindowHoldsUntilExpired`：Workflow 会话在断连窗口内保持运行，超时后因 Node 不可用而失败；`::TestWorkflowRunCancelDisconnectedWithinWindowWaitsForEndConfirmation`：窗口内取消仍发出 `EndSession{cancelled}` 并等待确认期限，确认超时后结算为 `cancelled`。缺口：已有测试缩短配置窗口或回拨心跳，新增断连测试也显式配置 1 小时窗口，默认值 2 小时/30 分钟（`internal/config/config.go`）仍没有测试断言 | Partial |
 | 取消是请求 | `internal/core/agent_run_thread_end_db_test.go::TestCancelWithASessionEndsTheThread`：已声明会话（`starting` 的 `pending`、`active`、`idle`）时取消只把 Thread 置为 `ending` 并放出一个 `EndSession{cancelled}`，阶段不变；`::TestCancelWithoutASessionReleasesTheRun`：尚无会话时取消直接进入 `releasing/cancelled`、`deliveryState = skipped` 并声明一个 delete；`::TestCancelDuringProvisioningIsLeftToSettlement`：`provisioning` 的取消留给建 Workspace 结算，不声明 delete；`integration/agent_run_release_giveup_test.go::TestG032_8_BusinessStatusMatrixSurvivesTheGiveUp`（cancelled 子用例）：以 `cancelled` 结束的会话经交付后 `status = cancelled` | Covered |
 
 ### 决策依据

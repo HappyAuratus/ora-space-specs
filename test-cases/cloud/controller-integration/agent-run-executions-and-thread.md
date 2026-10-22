@@ -2,13 +2,16 @@
 
 依据[已批准的 controller-integration 后续决策](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
 proto 已在 `ora-space/cloud` 合并（cloud#35）；服务端证据来自 [cloud#41](https://github.com/ora-space/cloud/pull/41)
-原分支后续提交中经真实 gRPC、PostgreSQL、RustFS 的集成测试。以下覆盖控制面；生产 Rust Node/Controller 与 B 业务投影仍需各自验收。Revision 草案状态保留，实际实现差异见[实现与验收记录](../../../implementation/agent-control-plane-a.md)。
+原分支后续提交中经真实 gRPC、PostgreSQL、RustFS 的集成测试。以下覆盖控制面；生产 Rust Node/Controller 与 B 业务投影仍需各自验收。Revision 草案状态保留，实际实现差异见
+[历史实现与验收记录](https://github.com/ora-space/specs/blob/41f9dd1910feb071e055685a1172a4dd488cc5ec/implementation/agent-control-plane-a.md)。
+该固定快照仅保存原证据，不替代下述验证义务与覆盖状态。
 
 ## Session And Delivery Work Is Registered On Its Cloud-Chosen Node
 
 ### 风险
 
-Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 Node，或以不同输入重复登记。
+Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 Node，或以不同输入重复登记；
+已进入释放/完成阶段的工作仍占住队头，或通过结算前领取的快照重新登记。
 
 ### 前置状态
 
@@ -17,16 +20,19 @@ Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 
 ### 触发
 
 `ClaimWork` 后以正确/错误的 `node_id`、相同/不同的输入调用 `RecordDispatch`；重复调用。
+交付放弃进入 `releasing` 后再次领取；持有旧领取快照时 Run 先进入 `releasing`/`done`，再尝试新登记。
 
 ### 必须成立
 
 - `WorkItem.target` 给出运行 Workspace 当前 generation 的 Node；`RecordDispatch` 的 `node_id` 与输入必须与工作项一致。
 - 同一执行同输入重复登记是幂等的；不同输入 `CONFLICT`。
 - 登记后该工作项不再由 `ClaimWork` 返回；`GetDispatch`、`ListPendingDispatches` 覆盖新种类。
+- Run 进入 `releasing`/`done` 或软删除后，其未登记工作不被领取；新登记在与结算共用的事务锁内核验同一资格。该资格只约束 IssueRun 所属的工作（`run_id`）。
+- 历史 work/执行/收据保留用于恢复；退出领取不证明 Node 停止或物理释放。其他租户的合格工作，以及 `workflow_run_id` 所属的 WorkflowRun 工作，仍可领取并登记。
 
 ### 禁止结果
 
-登记到其他 Node；一个工作项对应两个执行。
+登记到其他 Node；一个工作项对应两个执行；已放弃工作挡住其他租户或 WorkflowRun 的工作，或旧领取快照在业务收尾后新建执行。
 
 ### 验证义务与证据
 
@@ -34,12 +40,13 @@ Controller 把会话或交付派发到非运行 Workspace 当前 generation 的 
 |---|---|---|
 | 目标与输入校验 | `integration/agent_run_control_test.go` 的 `TestSessionWorkIsRegisteredOnTheCloudChosenNode`；`agent_run_boundary_test.go` 的 `TestRunTargetIncludesTheCurrentSandbox`、`TestExecutionIdentityCannotCrossRegistries`：错误 Node、sandbox、输入和跨表身份冲突被拒绝 | Covered |
 | 恢复读取 | `TestSessionWorkIsRegisteredOnTheCloudChosenNode` 覆盖会话 pending；Revision 测试公共 `registeredDelivery` 对 pending 与 `GetDispatch` 返回的完整输入作 protobuf 等值比较 | Covered |
+| 业务收尾后的领取与新登记 | [Cloud `49be24b`](https://github.com/ora-space/cloud/commit/49be24b041876995ae89ef36feb33e685bf93948)（cloud#61 合并提交）中 `internal/core/execution_work_lifecycle_test.go::TestRetiredRunWorkCannotBlockOrRegister`：releasing/done 的历史旧项不挡住另一租户，旧快照的新登记被拒绝，后继仍可登记；`TestWorkflowWorkStaysClaimableBesideRetiredIssueRunWork`：退休 IssueRun 的旧项排在队头时，`workflow_run_id` 所属的工作仍被领取、`claimedRunId` 投影为 WorkflowRun 的 id，并能通过 `RecordDispatch` 登记；`integration/execution_work_lifecycle_test.go::TestReleasedDeliveryIsNotOfferedAgain`：真实 give-up 结算进入 releasing 后，经 gRPC/PG 不再领到旧交付。前两者直接构造终态前置条件，后者通过生产生命周期结算；尚未直接覆盖软删除、实际 Rust Controller 的暂时失败延后及登记响应丢失整链 | Partial |
 | 运行独占许可 | `TestRunExecutionPermitRetainsScopeAndChecksCurrentPermission`：初始化后保留运行 maintenance epoch，不占 Project operation；旧 epoch、权限撤销拒绝 | Covered |
 | 触发者身份 | `TestRunWorkspaceUsesTheTriggerActorAndRequiresEvidence`：Issue 作者与触发者不同，Workspace creator/operation actor 来自 run.enqueued；缺失证据拒绝，Project durable owner 保留 | Covered |
 
 ### 决策依据
 
-controller-integration D1、D6，不变量 2。
+controller-integration D1、D6，不变量 2；[IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md) D3–D5 的阶段与交付放弃/释放语义。
 
 ## Thread Events Are Acknowledged Only After Ordered Takeover
 

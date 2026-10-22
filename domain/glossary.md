@@ -1,5 +1,40 @@
 # Glossary
 
+## Desktop Cloud Connection
+
+`Deployment Identity`（部署身份）是 Gateway 部署的稳定 deployment ID 与签名公钥身份，
+随部署数据迁移；不是 URL、TLS 证书或仅一个自声明 ID。相同 ID 换密钥不证明旧身份。
+
+`Desktop Session`（Desktop 会话）是 Gateway 为原生宿主建立的独立会话，由部署策略与
+PG 权威状态决定有效性；不是网页 Cookie、provider token、内部 JWT 或 Agent Session。
+
+`Desktop Login Transaction`（Desktop 登录事务）是宿主拥有的一次有限期交接，绑定部署
+身份、目标地址、state、PKCE 与回调目标；回调不能更改原换票目标。
+
+`Handoff Code`（交接码）是 Gateway 经浏览器批准后返回的短时一次性换票资格，绑定登录
+事务与账号；不是可长期调用 Cloud 的凭据，也不是 provider OAuth code。
+
+`Reported Activity`（上报活动）是正常客户端汇总的前台使用事实，用于推进空闲期限；
+Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的安全边界。
+
+职责与协议分别由 [Desktop 宿主连接根 ADR](../decisions/desktop/cloud-connection/0-host-owned-cloud-connection-and-session.md)
+和 [Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义。
+
+## Agent Conversation
+
+`Ora Session`（Ora 会话）是 Workspace 中一条对话的稳定身份，切换 Agent 不改变该身份与历史归属。
+它不同于登录用的 Desktop Session，也不同于 Cloud IssueRun 或一次 Workflow 节点执行。
+
+`Agent Session`（插件会话）是 Agent 插件通过 ACP 返回的 provider 会话，其 id 是不透明字符串；
+定位时必须保留插件身份和所属 Ora 会话，不能将它当作全局 Ora 身份或控制资格。
+
+`Agent Binding`（Agent 绑定）是一条 Ora 会话当前关联的完整插件引用与 Agent Session ID。
+`Binding Segment`（绑定段）是这条对话中一次连续绑定的历史片段；同一插件再次绑定不合并旧段。
+绑定记录时间不等于插件服务端的创建时间。
+
+身份与诊断读取边界见 [Session 根 ADR](../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)
+（`approved`，尚无已合并实现证据）。
+
 ## Session MCP
 
 `Session MCP Selection` 是一次 Agent Session 的 MCP 选择策略。普通聊天使用 `Automatic` 自动发现；
@@ -94,6 +129,71 @@ acme-plugins.3f9a1c2d/image-tools
 source URL 的等价写法可以归一化到同一个 source 身份，但 URL 写法的变化不能改写已经落盘的
 canonical Plugin ID。
 
+## Personal Model Access
+
+本节统一个人模型设置与 Agent 运行中的领域语言；接口和实现决策见对应 ADR。
+
+### Model Connection（模型连接）
+
+用户拥有的一组模型服务设置，包含一个访问入口、协议和可选择的多个模型。
+_Avoid_: 把连接称为 API Key，或把每个模型都称为一条连接
+
+### Default Model（默认模型）
+
+用户选定的全局模型连接与该连接内的一个模型，供 OpenCode 普通运行和工作流 `default` 槽位使用。
+显式 Claude 的个人配置不继承或改变该选择。
+_Avoid_: 空间共享默认值、平台统一模型
+
+### Model Binding（模型绑定）
+
+创建一次运行时固定的发起者、连接版本、凭据引用和模型。
+_Avoid_: 运行中随设置变化的默认值
+
+### Model Grant（模型授权）
+
+允许特定运行在限定时间内使用其模型绑定的临时资格。
+_Avoid_: 用户长效 API Key、登录会话
+
+### Run Initiator（运行发起者）
+
+触发该次 Agent 运行的用户，其个人模型连接承担本次模型调用。
+_Avoid_: 项目拥有者、后来追加评论的人
+
+个人 Agent 配置、冻结执行配置、模型访问上下文与 adapter 的区别见
+[Agent 模型配置术语](#agent-model-configuration)。这些术语复用本节的连接和授权概念，
+不另建插件级 Key 或第二份全局默认值。
+
+## Agent Model Configuration
+
+本节术语复用[个人模型术语](#personal-model-access)中的 Model Connection（模型连接）、Default Model、
+Model Binding 和 Model Grant；“个人模型连接”是同一连接概念，不新增一种插件或空间所有的连接。
+
+### Agent Configuration Declaration
+
+Agent 配置声明是插件发行版本对可配置选项和模型访问能力的静态约定，不包含任何用户的配置值。
+声明有效、个人配置完整、插件已安装和模型调用成功是相互独立的事实。
+
+### Personal Agent Configuration
+
+个人 Agent 配置是某个用户对一个完整插件身份的默认模型选择与专属选项。
+它引用个人模型连接，不拥有另一份上游凭据；空间的插件安装选择不代表成员已完成个人配置。
+
+### Frozen Agent Execution Configuration
+
+冻结 Agent 执行配置是一次运行创建时确定的执行器、配置契约、选项和模型选择。
+它包含执行器/选项与 Model Binding 的关联，描述这次运行实际选择了什么；普通配置编辑不会改变它，
+它也不替代 Model Grant 的当前授权判断。
+
+### Model Access Context
+
+模型访问上下文是一次会话消费冻结模型选择所需的受控运行输入。它只授予该会话当前有效的模型访问，
+不代表用户全部连接的访问权，也不是可再次使用的个人配置。
+
+### Agent Model Adapter
+
+Agent 模型 adapter 负责把平台模型访问上下文解释为某个 Agent 所需的配置与交互行为。
+它不拥有个人凭据、授权范围或平台执行策略，不能由配置转换自行扩大用户授予的能力。
+
 ## Agent Issue Run
 
 ### Agent Run（Agent 运行）
@@ -117,6 +217,21 @@ Revision 登记后删除，释放沙盒与数据。
 Thread 中交给 Agent 执行的一条用户输入，身份 `turn_id` 由 Cloud 生成。首条 prompt 由 Cloud 按 Issue
 上下文渲染，后续轮次由用户在 Thread 中追加；状态为 `queued → delivered`，会话结束时未执行的为 `discarded`。
 
+### 启动意图
+
+平台已准备启动一次 Agent 会话的计划，尚不证明执行实例承接了它。
+_Avoid_: 把准备好的首条提问称为 Agent 已启动
+
+### 派发登记
+
+平台已将一次执行绑定给特定实例，之后的执行结果可能尚未确认。
+_Avoid_: 以没有回复或请求超时推断执行没有发生
+
+### 运行受理
+
+执行实例已承诺处理这次执行；它与 Agent 已产出回复是不同的事实。
+_Avoid_: 将连接、登记和真实回复统称为启动成功
+
 ### Revision
 
 一次运行结束时保存的成果：最终提交（Agent 提交之后可能追加的内部快照提交）、相对 clone 基础提交的
@@ -131,6 +246,44 @@ Node 用临时 index、`write-tree`、`commit-tree` 为剩余未提交改动创�
 
 Cloud 为一次交付执行签发的、针对固定对象键和限定时长的预签名上传请求。它是短期持有者凭据，不属于执行
 输入，任何一方都不持久化。
+
+## Scheduled Task
+
+### Scheduled Task（定时任务）
+
+用户创建的周期任务持久定义：把随版本冻结的 Prompt、执行目标与无人值守同意组合为一个持久定义，
+执行归属（`local` 或 `cloud`）在创建时固定且不可切换。`local` 端的 future occurrence 只由 Desktop
+进程内 scheduler 产生；`cloud` 端的 future occurrence 只由服务端持久调度器产生。任务定义与运行
+历史的存储位置和可见范围由执行归属一端决定。
+
+### Scheduled Occurrence（计划触发）
+
+一次计划触发的稳定身份，由 `(taskId, scheduledAt)` 唯一标识，`scheduledAt` 是 UTC 时间点。同一
+occurrence 至多接纳一个 Scheduled Run；重启、重复评估与迟到重放都复用同一身份。
+
+### Scheduled Run（定时运行）
+
+被接纳的一次计划触发的记录：冻结接纳时的任务 revision 与执行输入，引用由此产生的目标运行；
+运行终态从目标运行的持久事实投影，调度层不复制运行状态机。
+
+### Scheduled Run Verdict（定时运行业务结论）
+
+一次定时运行独立于执行层状态、由执行 Agent 在收尾时通过文档化哨兵表达的机器可读业务结论
+（`pass / warn / fail / blocked / idle / range_unresolved`）。它不与 `status` / `failure_reason` 互推，
+`status = succeeded` 且 `verdict = fail` 可合法并存；无结论即「未报告」。
+_Avoid_: execution status, failure reason
+
+### Scheduled Run Artifact（定时运行产物）
+
+定时运行产出、经固定目录与类型白名单声明后持久化到本机独立存储的文件（报告、测试结果、日志）。
+产物生命周期独立于隔离 worktree，按 Run ID 索引，随运行历史裁剪，本地产物不离开本机。
+_Avoid_: worktree file, user file
+
+### Unattended Consent（无人值守同意）
+
+用户为定时任务授予的显式授权：在执行归属一端规定的隔离执行环境中全自动批准工具调用（`local` 为
+独立 worktree——worktree 不是沙箱；`cloud` 为一次性运行 Workspace），并知晓额度消耗与执行身份
+代价。策略名与同意时间随任务持久化；撤销同意自动停用任务，既有运行事实不改写。
 
 ## Node Worktree
 

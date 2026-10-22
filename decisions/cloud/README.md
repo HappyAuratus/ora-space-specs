@@ -20,11 +20,14 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
+| `issue-collaboration` | Issue 上的协作交互：`@` 目标与模式、评论/交互/运行的关系、Timeline、Workflow 发起表单与 Confirm 边界 |
 | `issue-run` | Issue 上 @Agent 的运行编排：运行 Workspace、阶段状态机、取消、交付与释放 |
 | `thread` | Agent 运行的对话记录：Thread 条目、用户追加消息、结束条件与实时刷新 |
 | `revision` | 对象存储配置、上传授权、Revision 校验与登记 |
 | `git-server` | 沙盒访问的 Git Server：协议、git-access 身份、按 Cloud 当前状态的逐请求授权与 ref 规则 |
+| `repo-executor` | 唯一访问外部 Git 仓库的执行器：服务身份、一次性授权与凭据兑换、同步与发布的执行步骤、结果分类和部署 |
 | `workflow` | 工作流图 schema、执行器槽位、发布与运行的门禁和执行契约 |
+| `scheduled-task` | 定时任务：持久定义、服务端调度、幂等触发、无人值守授权与任务历史 |
 
 Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node 的 Git、文件、进程、Agent、
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他

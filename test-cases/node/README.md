@@ -3,3 +3,45 @@
 本目录与 `specs/decisions/node/` 镜像。Node 各能力的根决策进入 `approved` 后，再在对应子目录
 登记需要长期维护的跨进程、外部副作用、ownership、重试和恢复用例。
 
+## Git 原生代码链路（内部线）
+
+[Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)为
+`implemented`，repository 一行的用例按现有测试登记证据并保留缺口。
+[Node 交付推送与 Git 恢复决策](../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)为
+`implemented`，revision 一行的用例按现有测试登记证据并保留缺口。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| repository | [快照 clone 与 `ora-git`](repository/snapshot-clone-and-ora-git.md) | 访问外部仓库、checkout 留下 remote、带证书的 Git 读到 checkout 配置、拉取次数无界、冒充会话、推到别人的分支 |
+| revision | [Git 交付与恢复](revision/git-delivery-push-and-restore.md) | 交付 ref 未写入就成功、`403` 被重试、快进失败拖垮交付、恢复访问外部、`401` 让前序永久不可续、缺证书仍启动 |
+
+## 已批准的恢复截止、取消与停止确认
+
+[Node 恢复截止与停止确认决策](../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)经 owner 批准为
+`approved`。恢复已改为从 Git Server 拉取前序交付 ref，bundle 恢复不再存在；完整截止、取消与停止确认的实现尚未合入 desktop 的 main，
+这些义务目前都是 Missing。内部线恢复的证据在[Git 交付与恢复](revision/git-delivery-push-and-restore.md)，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| revision | [恢复截止、取消与停止确认](revision/restore-deadline-and-stop-confirmation.md) | 截止被重置或命令越过截止、执行预算/停止请求/停止确认混同、未知停止证据下交付或复用、上限被重启重置、取消中途打断 Git、启动清理越过原执行交接、BestEffort 当作 Strong |
+
+## 已批准的插件模型 adapter
+
+[插件模型 adapter 决策](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)于 2026-10-17 经 owner
+批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；[既有模型代理用例](agent-runtime/model-proxy.md)的
+证据保持原范围，不推导 adapter 路线已实现。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [插件模型 adapter](agent-runtime/plugin-model-adapters.md) | 首轮前准备失败残留授权、上下文泄入账本/日志、CLI 高优先级配置改路由、共享 provider 状态、别名与发现越权、收尾与撤销不收敛 |
+
+## 子代理投影与运行诊断
+
+[子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)为
+`implemented`，核心用例按现有测试登记证据并保留缺口；
+[会话执行用例](agent-runtime/session-execution.md)与[静默策略用例](../desktop/core/workflow/prompt-inactivity.md)的
+证据保持原范围，不推导来源保真或终态缺口已实现。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |

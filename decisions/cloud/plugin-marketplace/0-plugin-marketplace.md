@@ -4,6 +4,9 @@ status: implemented
 
 # 插件市场:cloud 权威选择状态、目录快照与自闭合 effect 载荷
 
+> 后续决策：[Agent 配置元数据](20261017-agent-configuration-metadata.md) 已批准增加静态声明的
+> 目录分发与安装一致性验证，尚待实现。配置读取仍不出网、不启动插件，旧安装证据不覆盖该扩展。
+
 > 后续已实现决策：[管理员选择与空闲维护](20260927-admin-selection-and-idle-maintenance.md)限制空间插件修改并让实例维护持久等待独占资格；[Node 插件执行](20260928-node-executes-plugin-installs.md)拥有实际执行和新实例补装，两者均为 `implemented`。完整联合故障验收仍按其核心用例保留缺口；本文保留原实现状态。
 
 cloud 自己维护插件市场目录快照(每 5 分钟 git fetch + 扫描 `registry/**/orax.toml`,单事务整源
@@ -51,7 +54,10 @@ sha256 校验为必选项。desktop 仓本期零改动,其本地同步与安装�
   pull --ff-only(go-git 只支持 fast-forward merge,非 ff 报错,与 desktop gitlancer 同语义)。
 - 单飞准入:并发 Sync 直接返回(不排队);失败保留上一版目录快照,只写
   `plugin_sources.sync_error`,下个 tick 重试。
-- 扫描镜像 desktop 校验(≤1MiB、resolver=1、8 种 kind、slug 标识符、文本策略、sha256、
+- 扫描镜像 desktop 校验(≤1MiB、resolver=1、8 种 kind（`workbench`、`agent`、`webview`、
+  `skill`、`mcp`、`hook`，以及 [Extension Pack 决策](../../desktop/plugin/extension-pack/0-extension-pack.md)
+  加入的 `pack` 与 [Workflow 插件类别根决策](../../desktop/plugin/category/workflow/0-workflow-package-format.md)
+  加入的 `workflow`）、slug 标识符、文本策略、sha256、
   url/targets 互斥、pack 无 release、canonical 三元组白名单);损坏条目单独跳过,同 canonical
   id 按路径序首个胜出;`marketplace_visible=false` 不进目录;README 截断、logo 只存组合描述。
 
