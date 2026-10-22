@@ -62,7 +62,7 @@ Thread ended 或运行 done 就启动下一位，实际上最新成果尚未保�
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 状态屏障 | Cloud `TestTaskConversationWaitsForHandoffThenStartsNextAgent`、`TestTaskConversationIdleExpiryWaitsForReleaseBeforeFreshRun`、直接领取屏障测试覆盖 ending/交付/释放及 done 但未删除 Workspace 的拒绝；删除与结算使用阶段 fixture。[#312 同租户成员受控模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334568694)实测另一成员消息等待、不结束原 idle 会话，取消后未派发；真实跨发起者交接仍缺 | Partial |
-| 实际保存与释放 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)核对默认 idle 后的 Revision、交付 ref、实际文件、历史对象和 Workspace 物理释放；[#312 A 标准四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6337641836)在 owner 认定的环境（固定 main 源码加 `--agent-configuration` 构建包，记录三个仓库完整 SHA、镜像 revision 与声明摘要）进一步验证不同 Workspace 的串行交接、两份文件和 Revision 链、四次释放。正式 release 产物及与 #407 永久失败相交的保存/释放仍缺 | Partial |
+| 实际保存与释放 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)核对默认 idle 后的 Revision、交付 ref、实际文件、历史对象和 Workspace 物理释放；[#312 A 标准四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6337641836)在 owner 认定的环境（固定 main 源码加 `--agent-configuration` 构建包，记录三个仓库完整 SHA、镜像 revision 与声明摘要）进一步验证不同 Workspace 的串行交接、两份文件和 Revision 链、四次释放；[#312 暂时交付失败分项](https://github.com/ora-space/circus/issues/312#issuecomment-6338204804)停掉 Git Server 后结束 Thread，内部阶段停在 `delivering`、未提前完成，发给另一 Agent 的消息保持 waiting（8 秒 Run 数不变），恢复后同一 Run 保存 Revision 并释放，Claude 才被派发且完成 Revision 的前驱正是该 Saved Revision。正式 release 产物及与 #407 永久失败相交的保存/释放仍缺 | Partial |
 
 ### 决策依据
 
