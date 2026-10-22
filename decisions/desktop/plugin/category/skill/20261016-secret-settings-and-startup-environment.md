@@ -1,10 +1,10 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Skill 配置通过宿主启动环境快照交付，敏感字段按声明脱敏
 
-静态 Skill 插件用 `assets/config.json` 声明配置，通过宿主启动时冻结的环境快照交付给 Agent 进程树。敏感字段不回传编辑器；公开字段正常显示。本 ADR 记录已批准的契约；approved 不代表实现已完成，直接行为证据验收后另行转为 implemented。
+静态 Skill 插件用 `assets/config.json` 声明配置，通过宿主启动时冻结的环境快照交付给 Agent 进程树。敏感字段不回传编辑器；公开字段正常显示。本 ADR 记录 Desktop 已落地的配置契约；实现与代表性直接证据见对应核心用例。
 
 ## 继承与修改
 
@@ -81,8 +81,8 @@ Agent 插件启动及宿主 `childprocess/spawn` 创建子进程前（包括不�
 4. 无效配置整包跳过；无配置的 Skill 继续物化，其他 Agent 和 Skill 不受影响。
 5. 变量撞名按大小写不敏感检测，涉及的插件整包不注入；继承环境和调用方 env 中的保留前缀先移除再注入。
 
-批准阶段的[核心用例](../../../../../test-cases/desktop/plugin/category/skill/configuration-and-startup-environment.md)固定配置保存与脱敏、跨进程注入、规范化和撞名整包拒绝、保留前缀清理、NUL、缺失必填值、重启更新和卸载边界的验证义务。尚无已合并直接证据的义务标为 Missing，不以预开发代码充作完成证据。
+[核心用例](../../../../../test-cases/desktop/plugin/category/skill/configuration-and-startup-environment.md)固定配置保存与脱敏、跨进程注入、规范化和撞名整包拒绝、保留前缀清理、NUL、缺失必填值、重启更新和卸载边界的验证义务。证据固定到已合并的 Desktop 提交；尚未完整覆盖的组合义务保留 Partial，不将分层测试等同于完整交互验收。
 
 ## 落地顺序与未解决的问题
 
-先评审本 ADR，再对照结论修订预开发实现，最后验收并更新状态。旧配置无需迁移；带 secret 的新声明不保证可被旧版本宿主接受。工作区隔离、运行时热更新、系统钥匙串、Cloud/远程执行及普通 Skill 导入配置留待后续决策。
+配置声明、编辑器脱敏、启动快照和两条进程交付路径已在 Desktop 落地。旧配置无需迁移；带 secret 的新声明不保证可被旧版本宿主接受。工作区隔离、运行时热更新、系统钥匙串、Cloud/远程执行及普通 Skill 导入配置留待后续决策。
