@@ -1,6 +1,9 @@
 # 会话身份、绑定历史与统一诊断核心用例
 
-本文件依据[会话根决策](../../../../../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)维护验证义务。证据均为 `Missing`；未合并分支不构成实现证据。
+本文件依据[会话根决策](../../../../../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)维护验证义务。
+下列自动化证据固定到 desktop `d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116`，对应 [desktop#722](https://github.com/ora-space/desktop/pull/722)。
+本变更在产品合并后合并；`Partial` 表示仅部分义务有直接证据，不表示整项已验收。
+真实 Desktop 的合并后交互验收仍为 `Missing`，由实现运行 [circus#482](https://github.com/ora-space/circus/issues/482) 补证；自动化测试与 E2E 不替代此项。
 
 子代理来源、委托结果、终态缺口和活动观察由根决策“继承与职责”引用的运行诊断 ADR 定义。
 面板只定位父时间线的同一份只读详情树，保留其展开行为，不复制第二份内容或组件；本文件只验证组合边界。
@@ -16,7 +19,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 段数量、次序、当前标记和完整复制分别断言；查询前后核对身份及无写入、无插件调用。 | Missing | 无已合并直接证据 |
+| 段数量、次序、当前标记和完整复制分别断言；查询前后核对身份及无写入、无插件调用。 | Partial | [真实 SQLite/JSONL 查询测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证三段顺序、当前唯一及忽略 handoff；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证完整复制。尚缺 at/seq 反序、前后无写入和全部插件入口的显式观测。 |
 
 ## Repeated plugin bindings remain distinct segments
 
@@ -29,7 +32,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 对重复插件及重复 id 验证三段定位互异、当前标记唯一，并覆盖插件名称不可解析。 | Missing | 无已合并直接证据 |
+| 对重复插件及重复 id 验证三段定位互异、当前标记唯一，并覆盖插件名称不可解析。 | Partial | [bindings_preserve_repeated_segments_and_ignore_handoff_without_starting_plugins](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 断言 A/x → B/y → A/x 的不同 key 和唯一当前段；同文件截断回归断言上限外 B → A 不把 history:0 标当前。尚缺已卸载/名称解析失败的独立断言。 |
 
 ## Lagging history and concurrent switches never fabricate a stable binding
 
@@ -42,7 +45,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 控制读取交错，分别验证稳定补段、有界重试、无当前绑定和未落盘旧段永久不可恢复；验证查询不写历史且不持调度事务等待 IO。 | Missing | 无已合并直接证据 |
+| 控制读取交错，分别验证稳定补段、有界重试、无当前绑定和未落盘旧段永久不可恢复；验证查询不写历史且不持调度事务等待 IO。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证活绑定补段、受控行变化最多两次读取和持续变化返回 Retry。尚缺“有历史但无当前绑定”、崩溃未落盘不可恢复及 IO 不阻塞 prompt 的直接行为证据。 |
 
 ## Unavailable histories remain distinguishable from absent sessions
 
@@ -55,7 +58,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 逐状态断言结果及降级文案；验证有限读取、可验证部分保留和删除会话无恢复副作用。 | Missing | 无已合并直接证据 |
+| 逐状态断言结果及降级文案；验证有限读取、可验证部分保留和删除会话无恢复副作用。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 覆盖缺失、外来身份、损坏、不支持 schema、8 MiB 截断保留历史并补 live；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证不可用不误称未创建。权限不可读、Gap、冲突 seq 与删除后残存历史矩阵及逐项原生文案待补。 |
 
 ## An uncreated agent session stays uncreated during inspection
 
@@ -68,7 +71,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 断言两种未创建状态的呈现与复制能力，并观测全部插件入口没有调用。 | Missing | 无已合并直接证据 |
+| 断言两种未创建状态的呈现与复制能力，并观测全部插件入口没有调用。 | Partial | [binding_reads_distinguish_uncreated_from_truncated_history](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证无绑定且空历史为 Readable 空段，与截断 Incomplete 区分。无 session 执行项、空值复制能力及全部插件入口无调用的显式观测待补。 |
 
 ## Workflow retries keep three execution entries and all binding segments
 
@@ -81,7 +84,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 以持久 node-run 夹具核对三次定位、状态及绑定明细；断言去重查询不合并行，编辑态无执行索引。 | Missing | 无已合并直接证据 |
+| 以持久 node-run 夹具核对三次定位、状态及绑定明细；断言去重查询不合并行，编辑态无执行索引。 | Partial | [执行投影测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/state/data/workflow-session-executions.test.ts) 验证两节点加失败尝试三项；[索引测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/workflow-run/run-session-index.test.tsx) 验证共享 session 查询去重仍三行、删除会话保留并可打开面板。尚缺持久 node-run 到完整明细的合并后原生链路及编辑态无索引直接断言。 |
 
 ## Workflow rounds and runs retain their own session ownership
 
@@ -94,7 +97,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 核对每个入口的 run/作用域/执行/session 归属及不可用项；切换 run 后旧结果不能填入新索引。 | Missing | 无已合并直接证据 |
+| 核对每个入口的 run/作用域/执行/session 归属及不可用项；切换 run 后旧结果不能填入新索引。 | Partial | [执行投影测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/state/data/workflow-session-executions.test.ts) 验证 scope、原始 iteration/loopRound、缺失 session 和不从重试次数推算 attempt；[索引测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/workflow-run/run-session-index.test.tsx) 验证不可用行保留。跨 run/轮次各入口及迟到响应完整矩阵仍待补。 |
 
 ## Batch queries isolate per session failures and enforce access bounds
 
@@ -107,7 +110,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 验证去重、分批、并发上限、逐项错误及乱序回包映射；拒绝越权及任意路径输入。 | Missing | 无已合并直接证据 |
+| 验证去重、分批、并发上限、逐项错误及乱序回包映射；拒绝越权及任意路径输入。 | Partial | [批量查询测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/state/data/session-bindings.test.ts) 验证 65 项分为 32/32/1、去重、单批失败不抹去其他结果及关闭后不继续请求；[后端测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证去重及超过 32 项拒绝。越权/任意路径输入、乱序回包和并发峰值直接断言仍待补。 |
 
 ## Every diagnostic entry shares one panel and rejects stale responses
 
@@ -120,7 +123,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 验证入口组合与迟到响应隔离；用运行诊断领域提供的观察结果验证面板只组合，不重建子状态，记录时间不冒充实时活动时间。 | Missing | 无已合并直接证据 |
+| 验证入口组合与迟到响应隔离；用运行诊断领域提供的观察结果验证面板只组合，不重建子状态，记录时间不冒充实时活动时间。 | Partial | [面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证按需查询、切会话中止和迟到结果隔离、单一诊断正文；[虚拟列表测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/message-list.virtual.test.tsx) 验证定位未挂载子组、deferred resize 不覆盖定位及键盘展开。完整入口/关闭重开/run 切换矩阵与合并后真实 Desktop 交互待补。 |
 
 ## Diagnostic identifiers do not expand public session exposure
 
@@ -133,4 +136,4 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 分别断言公开契约、默认呈现及日志无新增 provider id；查询输出无敏感原始数据，主动复制完整 id；子详情输出沿用原领域契约，不经绑定查询扩权。 | Missing | 无已合并直接证据 |
+| 分别断言公开契约、默认呈现及日志无新增 provider id；查询输出无敏感原始数据，主动复制完整 id；子详情输出沿用原领域契约，不经绑定查询扩权。 | Partial | [后端测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 断言公共 getSession 不包含 provider id 并深比较绑定响应；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 断言主动打开前不查询/展示 id、复制完整字符串。默认日志/列表/气泡和含敏感历史的显式泄漏矩阵待补。 |
