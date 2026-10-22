@@ -4,7 +4,7 @@ status: implemented
 
 # Project 归属 Space：以成员身份取代个人所有作为可见与授权边界
 
-> 后续决策：[仓库凭据连续性](20260927-repository-credential-continuity.md)仍为 `approved`，保留项目归属外键并处理成员离开后的凭据使用；[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)为 `implemented`，收紧运行时内容与操作，UI/完整故障矩阵由后续 ADR 承接。两项的规则和证据分别判断，本文保留原状态。
+> 后续决策：[仓库凭据连续性](20260927-repository-credential-continuity.md)为 `implemented`，保留项目归属外键并处理成员离开后的凭据使用；[运行时使用权限](../workspace/20260927-runtime-workspace-use-permissions.md)为 `implemented`，收紧运行时内容与操作，UI/完整故障矩阵由后续 ADR 承接。两项的规则和证据分别判断，本文保留原状态。
 
 > 历史决策：空间归属与项目持久外键保留；下文关于独立空间成员授权、空间 owner 和租户内多个空间的规则，已由 [20260923-one-space-per-tenant](../tenancy/20260923-one-space-per-tenant.md) 取代。当前项目访问按活动租户成员身份判定。
 

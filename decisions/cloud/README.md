@@ -36,7 +36,7 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 ## 多人协作运行时控制
 
 使用权限、独占准入、停止/强停、控制交付和插件维护五份 ADR 的后端规则为 `implemented`。
-仓库凭据连续性仍为 `approved`，三处前端 UI 与完整联合故障矩阵由独立 `approved` ADR 承接。
+仓库凭据连续性也已 `implemented`（验证与执行改走 Repo Executor 与 Credential Store），三处前端 UI 与完整联合故障矩阵由独立 `approved` ADR 承接。
 状态描述各自的交付边界；局部证据不等于真实跨进程故障矩阵全部通过。
 
 Controller 继续遵守[只拨出与过渡监听退役](../controller/api-boundary/20260928-retire-transitional-json-surface-and-listener.md)，
@@ -49,7 +49,7 @@ Controller 继续遵守[只拨出与过渡监听退役](../controller/api-bounda
 | 3 | [普通停止与管理员强停](operation/20260927-safe-stop-and-administrative-force-stop.md) | implemented：活动保护、真实终止证据与数据保留 |
 | 4 | [跨进程协议与同步交付](controller-integration/20260927-fenced-runtime-control-delivery.md) | implemented：身份、旧资格隔离与持久责任 |
 | 5 | [空间插件维护](plugin-marketplace/20260927-admin-selection-and-idle-maintenance.md) | implemented：管理员选择、维护互斥与持久等待 |
-| 6 | [仓库凭据连续性](project/20260927-repository-credential-continuity.md) | approved：团队/个人/未知引用、成员离开与验证重绑 |
+| 6 | [仓库凭据连续性](project/20260927-repository-credential-continuity.md) | implemented：团队/个人/未知引用、成员离开冻结与候选同步重绑 |
 | 7 | [前端交互与联合故障验收](execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md) | approved：三处 UI、十一项矩阵与未开放入口归属 |
 
 ### 实施边界与默认值
