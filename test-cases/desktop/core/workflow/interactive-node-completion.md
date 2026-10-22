@@ -38,6 +38,45 @@
 
 [交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D1。
 
+## Empty Output And Integrity Gaps Follow The Declared Contract
+
+### 风险
+
+把 `None` 契约的空输出误判为失败，或把 `Text` / `Structured` 的空输出当成可完成；历史完整性缺口被静默当成 ready。
+
+### 前置状态
+
+- `None` 契约节点只改文件、最终回复为空；
+- `Text` 契约节点空输出；
+- `Structured` 契约节点没有合法 JSON；
+- `HistoryIntegrity` 非 `Complete`，可能仍有一条 `TurnEnded`。
+
+### 触发
+
+park 计算快照；完成。
+
+### 必须成立
+
+- `None` 空输出只记非阻塞 warning，仍可完成。
+- `Text` 空输出产生 `output_missing` blocker；`Structured` 失败产生 `structured_invalid` blocker。
+- `HistoryIntegrity` 非 `Complete` 判 `turn_unknown` 并加 `history_integrity_gap` warning；能找到 `TurnEnded` 时字段可填，但 blocker 不变，只能 `force`。
+
+### 禁止结果
+
+- `None` 空输出被阻塞；`Text` / `Structured` 失败被放行；完整性缺口自动 ready。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据 | 状态 |
+| --- | --- | --- |
+| `None` 空输出仍可完成，只显示 warning | 待实现运行补单测 | `Missing` |
+| `Text` / `Structured` 失败产生对应 blocker | 待实现运行补单测 | `Missing` |
+| 完整性缺口判 `turn_unknown` 且字段形状正确 | 待实现运行补单测 | `Missing` |
+
+### 决策依据
+
+[交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D1。
+
 ## A Park Commit Writes The Snapshot And Pending Status In One Transaction
 
 ### 风险
@@ -150,6 +189,43 @@ cleanup；之后的 `prepare`。
 
 [交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D3、D4。
 
+## Human Turns Carry A Step Boundary Without Rewriting The Prompt
+
+### 风险
+
+后端改写或吞掉用户消息，或边界块承诺运行时阻止后续节点；DAG 多后继与末节点的文案错误。
+
+### 前置状态
+
+- workflow 人类回合；当前节点有多个直接后继，或没有后继。
+
+### 触发
+
+发送人类回合 prompt。
+
+### 必须成立
+
+- 后端从冻结图渲染 `<workflow_step_boundary>` 并前置到 prompt。
+- `record_prompt` 保留用户原文。
+- 文案写直接后续节点（可能多个）或「下一步」；末节点不出现空的「下一步」。
+- 不承诺运行时阻止后续节点；不写死 Desktop 按钮名。
+- 首轮自动 handoff 保持不变。
+
+### 禁止结果
+
+- 拦截或改写用户消息；写死单个下一节点；末节点出现空下一步。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据 | 状态 |
+| --- | --- | --- |
+| 人类回合 prompt 带步骤边界，`record_prompt` 保持原文 | 待实现运行补集成测试 | `Missing` |
+| 多后继 / 末节点文案正确 | 待实现运行补前端测试 | `Missing` |
+
+### 决策依据
+
+[交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D6。
+
 ## Force Is Bounded By State And Claim And Audited
 
 ### 风险
@@ -185,6 +261,46 @@ cleanup；之后的 `prepare`。
 ### 决策依据
 
 [交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D5。
+
+## Restart Preserves Pending And Continue Uses Runtime Restore Or Rebuild
+
+### 风险
+
+重启后 `Pending` 丢失或被自动续算；「继续当前步骤」假设恢复成功；无法继续时静默丢回合。
+
+### 前置状态
+
+- 一个交互式节点停在 `Pending`，进程重启；
+- 另一个 run 有 `Running` 节点。
+
+### 触发
+
+重启；点击「继续当前步骤」。
+
+### 必须成立
+
+- `Pending` 跨重启保留。
+- 重启后 `session/load` 成功、失败→`rebuild_provider_session` 两条路径，「继续当前步骤」都能得到一轮回复（真实 agent 集成测试）。
+- continue 的 prompt 失败时：界面明确报错，节点保持 `Pending`，「仍然完成」仍可用，不静默丢回合。
+- 在途 `Running` 仍按 `interrupted_by_restart` 失败，不自动续算。
+- 工作流层不预设「重新运行本步骤」的降级路径。
+
+### 禁止结果
+
+- 重启后自动继续或丢失 `Pending`；把 restore 失败当成功。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据 | 状态 |
+| --- | --- | --- |
+| `Pending` 跨重启保留 | 待实现运行补集成测试 | `Missing` |
+| `session/load` 成功与 rebuild 两条路径都能继续 | 待实现运行补真实 agent 集成测试 | `Missing` |
+| continue 失败保持 `Pending` 且仍可完成 | 待实现运行补集成测试 | `Missing` |
+| `Running` 仍按既有失败边界处理 | 现有 boot sweep 测试部分覆盖 | `Partial` |
+
+### 决策依据
+
+[交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md) D8、不变量 16。
 
 ## Interactive Refusal And Unknown Turns Park Instead Of Failing
 
