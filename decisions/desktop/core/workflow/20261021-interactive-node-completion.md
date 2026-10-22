@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 交互式节点完成契约：以本轮终态门禁推进，暂停可继续，强制完成可审计
 
 交互式 Agent 节点每轮结束后停在 `Pending`。本决策把「完成」从一个人工动作改为由本轮终态支撑的门禁：只有本轮以 `EndTurn` 结束、且声明的输出契约通过时才允许完成；`Cancelled`、截断、拒答、缺失或未知都视为未完成，必须继续对话或显式强制完成。完成判定在 per-run 锁内以持久状态和 turn key 复核，park 快照进入读取投影；会话消息不被拦截，由后端在每个回合前注入步骤边界。
 
-本决策为 `proposed`。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged`、`WorkflowNodeOutputChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点只在 `prepare` 做一次性物化。
+本决策为 `approved`。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged`、`WorkflowNodeOutputChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点只在 `prepare` 做一次性物化。核心用例见[交互式节点完成用例](../../../../test-cases/desktop/core/workflow/interactive-node-completion.md)。
 
 ## 继承与修改
 
@@ -232,4 +232,4 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 - `Structured` / `Text` 校验在 park 完成，blockers 与 complete 同源；`structuredOutput` 不落 payload；
 - cleanup 在流 drop 后先有界等待；超时写 provisional `turn_unknown`，`prepare` 能修复；
 - park/修复提交后发布一次 run invalidation；
-- 区域 interactive 行为不变；核心用例在 `approved` 后补到 `test-cases/desktop/core/workflow/interactive-node-completion.md`。
+- 区域 interactive 行为不变；核心用例见 `test-cases/desktop/core/workflow/interactive-node-completion.md`。
