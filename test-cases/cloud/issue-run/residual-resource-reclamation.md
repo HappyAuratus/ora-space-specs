@@ -4,7 +4,11 @@
 
 本文覆盖 D4/D5 业务收尾之后残留责任的收尾：账本清理状态机、自动对账层的证据与系统清理授权、部署运维的受控回收意图、逐目标终止与 late ensure fencing 的完成条件、三级显式升级，以及存量 D8 删除残留的按身份接管。业务结算、启动与创建截止、迟到事实接管本身的义务仍由[有界启动用例](bounded-agent-startup.md)拥有，本文不重复登记。
 
-回收实现尚未合入 cloud、desktop、cluster 的 main，下列义务都是 **Missing**。每条给出实现落地时必须产生的直接证据类型；落地运行按最终实现补上具体测试名与 commit，再按证据完整度改为 `Covered` 或 `Partial`。跨进程与跨仓库的义务（Controller 许可、Substrate 墓碑、联合故障演练）不能由 Cloud 侧单仓测试单独记为 `Covered`。
+本文件尚未由落地运行补齐直接证据，下列义务保持 **Missing**，不因部分产品 PR 已合并自动提升状态。
+每条给出必须产生的直接证据类型；落地运行按最终实现补上具体测试名与 commit，再按证据完整度改为
+`Covered` 或 `Partial`。迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建
+Run 守卫约束，不能把 receipt-only 当作已验证 Revision 或清理授权。跨进程与跨仓库的义务（Controller
+许可、Substrate 墓碑、联合故障演练）不能由 Cloud 侧单仓测试单独记为 `Covered`。
 
 ## Residual Ledger Reclaim State Advances Only With Per-Target Disposal Evidence
 

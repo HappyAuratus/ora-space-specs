@@ -4,9 +4,14 @@ status: approved
 
 # 残留 Agent Run 资源以真实证据分层回收：证据齐沿 owned delete，未确认执行经部署运维受控回收，账本按目标闭环清除
 
+> 历史决策：D2 的迟到成果救援由
+> [迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md) D2、D3 补充：同 Issue 已有后创建 Run 时，
+> 所有清理阶段与 D8 受控接管都只收原声明与 receipt，不登记迟到 Revision，不把 receipt-only 当作已验证
+> 交付或额外清理授权。无账本、无意图的根 D5/D8 事实接收不创建本 ADR 的回收责任。本文保持 `approved`。
+
 D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周期收集真实证据——迟到的执行终态与交付结果、执行已终结、沙盒已物理终止——证据齐的条目取得本文新增的系统清理授权后，复用 `delete_workspace` owned delete 的执行步骤清理，成果能救则先救；清理完成前账本保护不解除。证据收不齐的条目只能由部署运维按租户与资源范围发起受控回收：显式确认放弃未交付成果，复用管理强停的终止与围栏语义（终止与数据删除分离、逐目标确认 `terminated` 与 `lateEnsureFenced`、不因超时判成功），经当前 Controller lease 与既有 Substrate effects 执行，不新增物理路径、不伪造 `impactConfirmed`、不由业务 `done` 隐式强停。账本条目在全部目标资源取得闭环证据或显式处置记录后清除；Substrate 永久不可用时保留未完成意图，由运维外部确认兜底。存量 D8 删除残留按原身份接入同一路径，不改写历史。
 
-本文为 `approved`：决策方向已经 owner 批准，核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，用例义务如实标为 `Missing`；实现合入并完成联合验证后，再由落地运行按最终实现同步正文并改为 `implemented`。
+本文为 `approved`：决策方向已经 owner 批准，核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。部分产品实现已合入不代表本文全部义务已经验证；由落地运行按最终实现补齐直接证据并同步正文，再决定是否改为 `implemented`。本次不提升原有证据状态，新增迟到守卫义务为 `Missing`。
 
 本文承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署管理端点；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
 
@@ -162,4 +167,4 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，按�
 
 ## 核心测试用例
 
-本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。实现尚未合入 cloud、desktop、cluster 的 main，义务都如实标为 `Missing`；每项落地步骤完成时按直接证据更新对应义务的证据状态。
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。现有义务尚待落地运行补齐直接证据，不因部分产品 PR 已合并自动提升状态；新增登记守卫见[迟到交付用例](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，证据同样由落地运行提供。
