@@ -8,14 +8,14 @@ status: approved
 execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接和连接报告，并保留 Cloud 原错误码。
 真实重连或重启可以重新提交原事实，只有成功的原事件接管回执才能解除。其他 Conflict 的处理不变。
 
-本文为 `approved`，新拒绝隔离行为尚待产品实现与直接验证；不把现有中继测试当作已覆盖。本决策不改
+本文为 `approved`，依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)；新拒绝隔离行为尚待产品实现与直接验证，不把现有中继测试当作已覆盖。本决策不改
 Node 协议、Cloud 业务阶段或释放授权，不新增本地持久化状态机、超时成功或新的 disposition。
 
 ## 继承与修改
 
 | 前序约定 | 本文处理 |
 | --- | --- |
-| [Controller session 根决策](0-controller-relays-agent-sessions.md) D1/D4：原身份登记与许可派发，终态经 takeover 后确认 | 继承，不变；增加原终态精确拒绝的 execution 内隔离，不把拒绝升级为整连接故障（D1）。 |
+| [Controller session 根决策](0-controller-relays-agent-sessions.md) D1/D4：原身份登记与许可派发，终态经 takeover 后确认 | 继承原身份登记与许可派发；修改根 D4 的终态接管，增加精确拒绝的 execution 内局部隔离，不把拒绝升级为整连接故障（D1）。 |
 | 根 D2：Thread 批次 Conflict 关闭连接以触发重放 | 继承，不变；本决策仅处理已经匹配原登记信息的 delivery terminal，不推广到 Thread 批次。 |
 | 根 D4/D5：Completed 查询不能代替终态 receipt，未结束执行使 quiesce busy | 继承并明确：查询与重复状态也不能清除被拒绝的 unresolved（D2）。 |
 | [迟到事实接管](../../cloud/issue-run/20261022-late-delivery-fact-takeover.md) D1–D3 | 继承原事件持久接管及 ACK 与业务结论的区别；成功 receipt 处理与局部拒绝处理分开。 |
@@ -45,6 +45,9 @@ Node 协议、Cloud 业务阶段或释放授权，不新增本地持久化状态
 
 没有原事件成功回执时，该执行仍属于 unresolved，quiesce 不能把它当作 idle。单纯的状态查询、计时器、
 轮询成功或 Run 已终态都不能解除拒绝状态，也不能把其他 execution 的 receipt 用于本执行。
+
+被隔离的 execution 仍使 quiesce busy；只有 Cloud 按迟到事实接管决策 D1 接收原迟到事实后，释放流程
+才能继续完成。只部署 Controller 一侧的改动会停止重连循环，但本故障中的 Run 仍停在 `releasing`。
 
 ### D3：真实重连或重启重交原事实，成功回执才解除
 

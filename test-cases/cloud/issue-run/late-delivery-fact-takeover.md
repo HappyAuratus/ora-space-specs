@@ -36,7 +36,8 @@
 - 触发：对 R 首次提交有效迟到成功终态；另一组让 N 在事务外证据读取之后、最终登记之前创建。
 - 必须成立：所有路径都保存原声明与精确 receipt 并返回接管成功，但不登记 R 的 Revision；同 Issue
   任一后创建 Run 都阻止登记，不按 Agent、status、Project 或是否已有 Revision 缩小条件。不同 Issue/
-  租户不能错误阻挡。最终事务与创建互斥，两种提交顺序各自符合迟到决策 D2；顺序证据不充分不猜资格。
+  租户不能错误阻挡。最终事务与创建互斥，两种提交顺序各自符合迟到决策 D2；顺序证据不充分时，
+  原声明与 receipt 存在、Revision 不存在。
 - 禁止结果：按 revisions.created_at 或随机 UUID 猜创建先后；只保护已有成功 Revision 的 N；残留路径
   绕过守卫；先返回 ACK 再尝试补登记；把 receipt-only 当成 verified delivery 或额外清理授权。
 - 验证义务与证据：

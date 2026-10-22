@@ -7,7 +7,7 @@ status: implemented
 > 历史决策：D4 的交付终态拒绝处理由
 > [局部隔离终态拒绝决策](20261022-isolate-refused-delivery-terminals.md)修改：已登记原交付的精确
 > dispatch_conflict 只使该 execution unresolved，不 ACK、不重派、不关闭整 Node 连接；真实重连/重启
-> 重交原事实，成功 receipt 才解除。D2 的 Thread 批次冲突规则不变。本文保留 `implemented`，新规则为 `approved`。
+> 重交原事实，成功 receipt 才解除。D2 的 Thread 批次冲突规则不变。本文保留 `implemented`。
 
 云端持久模式的 Controller 从 Cloud 领取 IssueRun 放出的 Agent 会话与 Revision 交付工作项，派发给运行
 Workspace 的 Node；把 Node 的 Thread 事件按序批量交给 Cloud 接管后再确认；把 Cloud 持久化的用户消息与

@@ -8,7 +8,7 @@ Cloud 已按交付上限放弃一个 Run 后，仍按原 execution、work 和资
 不要求先有残留账本或运维接管意图。接管成功允许确认原事件，不改变已结算的业务结果。只有同一 Issue
 尚无后创建的 Run，且原交付证据验证成立，才登记迟到的原 Revision；否则仅保存声明与事件收据。
 
-本文为 `approved`：决定已获批准，Cloud 与 Controller 的相应修复和联合验收尚待实现运行、落地运行
+本文为 `approved`：依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，Cloud 与 Controller 的相应修复和联合验收尚待实现运行、落地运行
 提供直接证据。本次不宣称这些新承诺已经实现，不新增协议状态码或数据库结构，不改变 D5/D8 窗口、
 残留回收授权、普通交付资格或同任务交接的暂停与恢复授权。
 
@@ -18,7 +18,7 @@ Cloud 已按交付上限放弃一个 Run 后，仍按原 execution、work 和资
 | --- | --- |
 | [同任务串行交接](20261018-serialize-task-agent-handoffs.md) D1–D3 | 继承，不变；接管迟到事实不自行恢复 waiting 消息，不越过失败暂停或释放确认。 |
 | [IssueRun 根决策](0-agent-run-in-disposable-isolated-workspace.md) D4/D5/D8 | 继承业务结论、放弃窗口和失败删除历史；修改放弃后的原交付事实入口，使其不再依赖存活的交付资格（D1）。 |
-| [残留回收](20261018-residual-agent-run-reclamation.md) D2/D6 | 继承原身份事实接管、同事实幂等和回收保护；迟到 Revision 登记同样受 D2 的后创建运行限制，无账本接收不创建回收责任。 |
+| [残留回收](20261018-residual-agent-run-reclamation.md) D2/D6 | 继承原身份事实接管、同事实幂等和回收保护；修改该 ADR D2 的成果救援：同 Issue 已有后创建 Run 时不登记迟到 Revision，具体条件见本文 D2；无账本接收不创建回收责任。 |
 | [IssueRun 续接](20261010-resume-run-from-latest-issue-revision.md) D1 与 [Git 交付及续作](../revision/20261017-git-native-delivery-refs-and-resume.md) D7 | 继承已登记 Revision 的候选条件、按登记时间选择和启动时固定；修改迟到 Revision 的登记资格，防止旧运行取得新的登记时间后覆盖后续成果（D2）。 |
 | [执行接管与收据](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md) D2/D6 及 [内部 gRPC](../controller-integration/0-cloud-owned-internal-grpc-contract.md) | 继承原事件收据、原子提交、重放及错误分类；现有 takeover 成功只确认事件事实接管，不重新宣告业务成功（D3）。 |
 
@@ -67,8 +67,8 @@ Node 已形成交付终态但 Cloud 尚未接管时连接中断，Cloud 可能�
 这使用已有创建事件的提交顺序，不用 `revisions.created_at` 判断 Run 的创建先后，也不用
 `issue_runs.created_at` 与随机 UUID 推测真实先后。创建事件只作为顺序证据，不从 Timeline 重建
 Run 的业务状态。只有能唯一定位原 Run 及同 Issue 其他 Run 的创建记录、并确认不存在后创建运行，
-才满足登记资格；顺序证据缺失或有歧义时仍接收声明与收据，但不猜测登记资格。不需要为此新增序号
-列或迁移。
+才满足登记资格；顺序证据缺失或有歧义时按 receipt-only 处理：保存原声明与收据，不登记 Revision。
+当前代码每个 Run 都在同一事务写入 `run.enqueued`，该分支仅作防御性处理。不需要为此新增序号列或迁移。
 
 判断在最终登记事务中进行，与同 Issue 的 Run 创建互斥：若新 Run 先提交，迟到接收只能保存声明和
 收据；若迟到 Revision 先提交，新 Run 后创建，则按既有续作规则选取已提交候选。事务外证据读取前
@@ -76,7 +76,7 @@ Run 的业务状态。只有能唯一定位原 Run 及同 Issue 其他 Run 的�
 
 本规则也约束残留回收 D2 的成果救援：有 ledger 的 `reconciling`、`reclaiming`、`cleared` 路径，
 以及 D8 已显式受控接管的原身份路径，都不能绕过限制。它们同样可能登记一个时间更晚的旧 Revision，
-因此没有豁免理由。账本仍按既有规则追加真实证据与冲突审计；receipt-only 不伪造 verified delivery，
+因此没有豁免理由。同 Issue 没有后创建 Run 时，残留成果救援的行为不变。账本仍按既有规则追加真实证据与冲突审计；receipt-only 不伪造 verified delivery，
 不自动产生清理授权，不改变回收所需的完整证据或明确放弃依据。
 
 限制只针对首次迟到登记，不回溯删除已经提交的 Revision，不改变已有候选排序或已经冻结的
