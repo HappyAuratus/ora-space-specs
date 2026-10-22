@@ -104,11 +104,14 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
   分钟` 与产物声明一起持久化。截止以运行身份唯一、不可续期：重启、重放或重派同一执行都不重算、
   不延长；重派新执行沿用同一运行级截止。签发给 Node 的上传授权有效期取
   `min(upload_grant_ttl, 剩余截止)`，使截止之后不再存在仍可写入的有效授权。
-- **截止与成功登记的竞争**：截止结算与 `ScheduledArtifactsDelivered` 登记分属不同事务，靠
-  `artifact_delivery_state` 的终态化在同一事务内竞争。登记事务写 `scheduled_run_artifacts` 前检查
-  状态仍为 `delivering`，否则只确认回执、不登记、不改变状态；截止结算把状态置为终态（`failed` /
-  `expired` 等）后，任何迟到回执都不再登记、不再改动事实。回执按执行身份幂等（与 Revision 相同
-  规则），同一事件重放得到同一结果。
+- **截止与成功登记的竞争**：截止结算与 `ScheduledArtifactsDelivered` 登记分属不同事务，是否接受成功
+  回执以持久截止为绝对判据，而非超时扫描与回执到达的先后。登记事务在锁定 `artifact_delivery_state`
+  的同一事务内按数据库当前时间检查 `artifact_delivery_deadline`：只有 `artifact_delivery_state =
+  delivering` 且 `now < artifact_delivery_deadline` 同时成立，才登记 `scheduled_run_artifacts` 并把
+  状态推进到终态；`now >= artifact_delivery_deadline`（含恰好到期）时，无论超时扫描是否已执行、回执
+  是否先到，一律按超时结算——只确认回执、不登记对象、不改写交付事实，对象交给 D3 的前缀 GC 兜底
+  清理。这样固定 10 分钟窗口取决于绝对截止，截止前发起、截止后完成的 PUT 产生的迟到回执同样先过
+  截止判据。回执按执行身份幂等（与 Revision 相同规则），同一事件重放得到同一结果。
 - **迟到与孤对象的最终清理**：对象已上传但回执未被接管（或 PUT 在截止后完成）的对象是「已上传未
   登记」对象，不进入索引、不受每任务 10 个运行淘汰约束，但都落在
   `scheduled-runs/{tenantId}/{issueRunId}/` 前缀内。Cloud 的清理任务按已结算/被淘汰运行的键前缀扫描
@@ -179,7 +182,7 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 8. 产物只随绑定 issue 的读取权限可见；Cloud 与 local 不互相同步或上传。
 9. 产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制；产物文件是否进入 Revision 的 Git 快照由既有 Node 快照规则决定，不构成产物事实源。
 10. verdict 与产物的 `task_id`、`scheduled_at`、`issue_run_id` 是不可变持久事实，不随 occurrence 裁剪置空；读取权限、排序与每任务淘汰只依赖它们，`occurrence_id` 是可空的审计引用。
-11. 产物交付有以运行身份唯一、不可续期的持久截止；截止结算后任何迟到回执都不登记、不改写事实；已上传未登记的孤对象按键前缀由 Cloud 兜底清理。
+11. 产物交付有以运行身份唯一、不可续期的持久截止；成功登记在同一事务内按数据库时间校验 `now < artifact_delivery_deadline`，到期（含恰好到期）的成功回执只确认、不登记、不改写事实；已上传未登记的孤对象按键前缀由 Cloud 兜底清理。
 
 ## 为什么不是这些替代方案
 
