@@ -88,7 +88,7 @@ D2、D3，不变量 1、5、6。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run；[#312 非成员隔离分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334438380)实测四读两写入口均 403 且原状态不变。已获任务读取权但不是原发起者的真实 Agent 联合用例仍缺 | Partial |
+| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run；[#312 非成员隔离](https://github.com/ora-space/circus/issues/312#issuecomment-6334438380)四读两写均 403；[#312 同租户成员受控模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334568694)证明可读原 Run 但旧追加/结束均 403，自身模型消息 waiting、取消后未建新 Run。真实供应商 Key 的跨用户联合演练仍缺 | Partial |
 
 ### 决策依据
 
