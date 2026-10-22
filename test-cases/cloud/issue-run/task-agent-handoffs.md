@@ -88,7 +88,7 @@ D2，不变量 3、4、6。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 持久暂停与明确恢复 | Cloud `task_conversation_stop_db_test.go`、`TestTaskConversationFailedMessageHoldsFollowingMessagesUntilResolved`、`TestTaskConversationPausesAfterFailureUntilExplicitResume`、`TestTaskConversationUndeliveredRunRequiresExplicitDiscard` 验证数据库状态和恢复权限；[#312 最新 main Node SIGKILL 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测失败后排队消息保持 waiting、同键显式 resume 只建一个新 Run。跨 Agent 的失败屏障与放弃未保存成果仍需验证 | Partial |
-| 重启与实际故障 | [#312 最新 main 分项验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)分别覆盖工具执行中 Controller/Cloud 重启、Node SIGKILL 与显式恢复、个人模型凭据撤销、暂时 Git Server 交付失败；各自核对同 Run 历史、队列或成果和物理释放。[最新 main 独立 90s 永久交付失败演练](https://github.com/ora-space/circus/issues/312#issuecomment-6333268333)却卡在 `releasing`、Workspace 未释放，关联 #407 的待决迟到结果语义；不能以先前 #471 候选通过替代。正式双 Agent 故障联合矩阵仍缺 | Partial |
+| 重启与实际故障 | [#312 最新 main 分项验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)分别覆盖工具执行中 Controller/Cloud 重启、Node SIGKILL 与显式恢复、个人模型凭据撤销、暂时 Git Server 交付失败；各自核对同 Run 历史、队列或成果和物理释放。[最新 main 独立 90s 永久交付失败演练](https://github.com/ora-space/circus/issues/312#issuecomment-6333268333)却卡在 `releasing`、Workspace 未释放，证明该故障下的资源释放义务尚未成立；#407 承接原结果接收与续接保护，落地后须从新 main 复验，不能以先前 #471 候选通过替代。正式双 Agent 故障联合矩阵仍缺 | Partial |
 
 ### 决策依据
 
