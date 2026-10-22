@@ -4,6 +4,15 @@ status: implemented
 
 # Issue 协作：`@` 只选择类型化目标，执行只来自显式意图
 
+> 历史决策：D9 中「活稿与所选版本不一致时返回 `409 workflow_version_fields_changed`」已由
+> [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 修改，
+> 该部分当前系统承诺以后续决策为准；本决策其余内容与状态 `implemented` 不变。
+>
+> 历史决策：D8 规则 1 对保留键 `snapshotId` 不再适用（作者声明不生效，键归平台）；规则 2、规则 3 也被修改
+> （全部已发布版本都不可选时不注入选择器，选项只列未占用保留键的版本）；规则 7 中「作者声明该键就跳过旧名
+> 折叠」的 guard 随之失效。见 [snapshotId 是保留字段](20261021-snapshot-id-is-a-reserved-field.md)。该改写已随
+> cloud#123 落地，D8 的上述规则不再按原文执行。
+
 Issue 是多人与多种能力协作的地方。Cloud 的 Issues 模块只拥有 Issue 领域的状态（Issue、评论、交互、运行记录、
 活动与 Timeline、上下文引用），Agent、Team、Workflow、运行时、通知、实时推送都经消费侧端口接入。`@` 是**选择协作
 目标**，不是执行触发：目标类型决定交互模式，人只被提及，Agent/Team 必须带明确任务才产生运行，Workflow 先渲染表单，
@@ -237,7 +246,7 @@ Workflow 的人类可读输出是 `run.message` 活动，不是评论。Agent/Te
 | 把 Workflow 当作 `ActorRef`，输出写成评论 | 评论没有承载 Workflow 来源的字段，需要迁移；也把一个能力当成了对话参与者。活动的 `details` 天然承载来源（D2） |
 | 在目标投影里内嵌完整 `FormDescriptor` | 每次打开选择器都要解析所有 Workflow 的表单，真实 Workflow 模块可能很慢；`formRef` + 单独读取把代价推迟到选中时（D7） |
 | 服务端保存表单草稿 | 每次输入都要带版本的持久化写入，而用户可能放弃；交互本身是否存在已足够，丢失的只是未确认的值（D9） |
-| 描述带版本令牌做陈旧检测 | 当前由 Confirm 按版本重新校验并显式报告字段差异（D9）替代；需要更早发现时再由提供方给出令牌 |
+| 描述带版本令牌做陈旧检测 | 当前由 Confirm 按所选发布版本重新校验（D9，后续 [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 已删除活稿比较与显式字段差异报告）替代；需要更早发现时再由提供方给出令牌 |
 | 平台字段目录写死在代码里，对所有 Workflow 一样 | 不同 Workflow 对版本、提示词、仓库的需要不同；逐 key 覆盖的 `launchFields` 让作者决定，又不会让新加入的平台字段对已保存的 Workflow 不可见（D8） |
 | 为 Workflow 单独建 `WorkflowContextBuilder`、`WorkflowDispatcher` | 把一个抽象分叉成平行系统；Workflow 差异只在适配器层（D5） |
 

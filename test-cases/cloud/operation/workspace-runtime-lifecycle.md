@@ -45,6 +45,13 @@ clone 未成功时开放准入；计划 `storage_ensure`、`worktree_ensure`、`
 | 新步骤表与只计划保留的 effect | `integration/workspace_lifecycle_test.go` `TestWorkspaceStepsPlanOnlyRetainedEffects`：create_project、create_workspace、stop、start 各自计划的 effect 种类与 clone 执行数；计划退役 kind 返回 `invalid_step`，数据库拒绝退役行 | Covered |
 | clone 成功才开放准入 | `integration/workspace_operations_grpc_test.go` `TestGRPCControllerDrivesWorkspaceThroughNodeAndClone`：空插件集合时 clone_ready 后写入基线并开放准入；非空集合由 `TestRunWorkspaceAndPluginStep` 证明 plugin 完成前仍关闭 | Covered |
 | clone 失败与未知的处理 | `integration/workspace_lifecycle_test.go` `TestCloneFailureRetriesAsNewExecutionAndUnknownBlocks`：失败进入 `retry_wait`/`clone_failed` 并保留执行记录、准入保持关闭、重试为第二个执行；未知结果阻止登记第二个执行、不能推进，`blocked` 后不再被领取 | Covered |
+| 原未知结果变为已知后消费同一执行，不重置创建预算或提前开放准入 | [原结果顺序回归][known-clone] `TestKnownCloneResultCannotRemainParkedAsUnknown`：真实 PostgreSQL/gRPC 覆盖结果晚于 defer、早于 defer 和主动查询三个顺序；同一操作重新可领取、只有一个 clone 执行、冻结截止不变，仍由生命周期推进写基线 | Covered（cloud#135，合并提交 `84419c5`） |
+| 迟到结果不复活过期、已放弃或强停的创建，不解除其他阻塞 | [原结果边界回归][known-clone] `TestLateCloneResultDoesNotRenewOrReopenExpiredCreation`：过期、已放弃、强停、其他阻塞原因四组真实 PostgreSQL/gRPC 场景均保留原边界 | Covered（cloud#135，合并提交 `84419c5`） |
+
+“未知不重试”约束尚无确定结果的原执行；原结果已确定后恢复同一操作，不代表派发第二个 clone。
+以上证据固定到已合并的修复提交，不覆盖 D5/D8 后迟到交付的接收语义。
+
+[known-clone]: https://github.com/ora-space/cloud/blob/84419c53c0962ab85ef37273a3ebaac7e552433e/integration/workspace_clone_late_result_test.go
 
 ### 决策依据
 

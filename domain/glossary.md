@@ -266,6 +266,19 @@ occurrence 至多接纳一个 Scheduled Run；重启、重复评估与迟到重�
 被接纳的一次计划触发的记录：冻结接纳时的任务 revision 与执行输入，引用由此产生的目标运行；
 运行终态从目标运行的持久事实投影，调度层不复制运行状态机。
 
+### Scheduled Run Verdict（定时运行业务结论）
+
+一次定时运行独立于执行层状态、由执行 Agent 在收尾时通过文档化哨兵表达的机器可读业务结论
+（`pass / warn / fail / blocked / idle / range_unresolved`）。它不与 `status` / `failure_reason` 互推，
+`status = succeeded` 且 `verdict = fail` 可合法并存；无结论即「未报告」。
+_Avoid_: execution status, failure reason
+
+### Scheduled Run Artifact（定时运行产物）
+
+定时运行产出、经固定目录与类型白名单声明后持久化到本机独立存储的文件（报告、测试结果、日志）。
+产物生命周期独立于隔离 worktree，按 Run ID 索引，随运行历史裁剪，本地产物不离开本机。
+_Avoid_: worktree file, user file
+
 ### Unattended Consent（无人值守同意）
 
 用户为定时任务授予的显式授权：在执行归属一端规定的隔离执行环境中全自动批准工具调用（`local` 为
