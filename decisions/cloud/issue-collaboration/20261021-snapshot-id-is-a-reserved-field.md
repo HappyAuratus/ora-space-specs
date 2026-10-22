@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # `snapshotId` 是保留字段：发布门禁拒绝作者声明，存量版本不可选
@@ -15,19 +15,24 @@ circus#405 的 owner 结论（方案 D）落地，并采用 [circus#417](https:/
   该键的活稿不把这个变量渲染进表单，Confirm 也始终把提交里的这个键当版本游标读，不看活稿是否声明同名变量。
 - **存量版本**：已经发布、自己声明了该键的版本不进入平台的版本选择器，选择器同时给出「占用了保留字段，
   请重新发布」的提示；Confirm 解析到这类版本时按可定位的原因拒绝，不论提交里有没有版本游标。
-- **`launchFields` 撤下 `snapshotId` 不是作者声明**：行为不变，界面没有选择器，不提交该键时执行最新已发布
-  版本，提交了仍按版本游标读取。
+- **`launchFields` 撤下 `snapshotId` 不是作者声明**：行为不变，界面没有选择器，不提交该键时按最新已发布
+  版本解析（该版本自己声明了保留键时按 D3 拒绝），提交了仍按版本游标读取。
 
 本决策修改 [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md)
 的 D1 限定与不变量 5：「作者在图里声明 `snapshotId` 时不承诺显示与执行同源」不再是一条需要读者记住的例外：
 保留键由平台持有，作者声明不生效；发布门禁让新版本不能声明它，存量占用版本按 D2 不可选、按 D3 拒绝。存量
 版本的不可选与拒绝对该决策承诺的同源性没有影响。
 
-本决策当前为 `approved`：它涉及 Cloud 的发布（`POST /workflows/{wfid}/publish`）与 workflow 资产导入两个冻结
+本决策已 `implemented`：它涉及 Cloud 的发布（`POST /workflows/{wfid}/publish`）与 workflow 资产导入两个冻结
 入口、`GET /collaboration/forms/{formRef}?issueId=` 与 `GET /workflows/{wfid}/snapshots/{sid}/form` 的版本
-选择器投影，以及 `POST /issues/{iid}/interactions/{ixid}/confirm` 的版本游标解析。核心用例已按最终结论补充，
-证据在实现合并前记为 `Missing` / `Partial`。本决策不改变任何表结构，不迁移、不改写已发布快照，也不改写历史
-interaction 的 `input`：已经冻结的文档是不可变数据，处理放在读取侧。
+选择器投影，以及 `POST /issues/{iid}/interactions/{ixid}/confirm` 的版本游标解析，实现见
+[cloud#123](https://github.com/ora-space/cloud/pull/123)（合并提交
+[`fc12dbe4`](https://github.com/ora-space/cloud/commit/fc12dbe4722b291a806ea07a1217655cdd7789b5)）。核心用例与
+证据已同步为 `Covered`，见
+[发布与启动准入核心用例](../../../test-cases/cloud/workflow/publish-and-start-admission.md) 与
+[Issue 协作交互核心用例](../../../test-cases/cloud/issue-collaboration/collaboration-interactions.md)。本决策不改变
+任何表结构，不迁移、不改写已发布快照，也不改写历史 interaction 的 `input`：已经冻结的文档是不可变数据，处理
+放在读取侧。
 
 ## 继承与修改
 
@@ -87,7 +92,8 @@ interaction 的 `input`：已经冻结的文档是不可变数据，处理放在
 
 **`launchFields` 不落入门禁。** 图信封里的 `launchFields: [{key: "snapshotId", enabled: false}]` 是作者要求平台
 **撤下**这个字段，不是把名字声明成自己的变量：`snapshotId` 不会进入表单，也不会与平台游标争夺同一个值。这种
-配置保持现状（协作根决策 D8 规则 5）：界面没有选择器，不提交该键时执行最新已发布版本，提交了仍按版本游标读取。
+配置保持现状（协作根决策 D8 规则 5）：界面没有选择器，不提交该键时按最新已发布版本解析——如果解析到的版本
+自己声明了该键，Confirm 按 D3 拒绝——提交了仍按版本游标读取。
 
 **`version` 不是保留字段。** 旧名 `version` 只用于读取改名前的提交与已发布快照里的声明（协作根决策 D8 规则
 7）；平台不再渲染、也不再写入这个名字。作者自己声明 `version` 时，平台照常注入键为 `snapshotId` 的选择器，
@@ -157,8 +163,8 @@ Confirm 解析出要执行的版本后（不论提交里有没有版本游标、
 4. 已发布版本如果声明了 `snapshotId`，平台版本选择器不会把它当成可选版本；存量快照不被改写。
 5. Confirm 不执行自己声明了 `snapshotId` 的已发布版本，不论提交里有没有版本游标、活稿是否还声明着该键；
    被拒绝时不产生运行，也不改选版本。
-6. `launchFields` 撤下 `snapshotId` 的配置行为与决策前相同：没有选择器，不提交该键时执行最新已发布版本，
-   提交了仍按版本游标读取。
+6. `launchFields` 撤下 `snapshotId` 的配置行为与决策前相同：没有选择器，不提交该键时按最新已发布版本解析，
+   解析到的版本自己声明了保留键时按 D3 拒绝；提交了仍按版本游标读取。
 
 ## 为什么不是这些替代方案
 
@@ -173,24 +179,30 @@ Confirm 解析出要执行的版本后（不论提交里有没有版本游标、
 | 上传/导入时只在 CI 或离线工具里检查 | 资产导入会在服务端自动冻结快照，检查必须在那条路径上；离线工具覆盖不到 API 发布的图 |
 | 让 Confirm 遇到这类游标时静默执行最新版本 | 用户选择的版本被无声替换，正是 circus#405 明确不允许的结果 |
 
-## 落地顺序
+## 落地
 
-按 circus#411 的三个运行推进：
-
-1. **ADR 与核心用例**（本运行，specs）：本决策评审到 `approved`；`publish-and-start-admission.md` 的发布门禁义务、
-   `collaboration-interactions.md` 的版本选择器与 Confirm 义务按最终决策补上，证据在实现合并前记 `Missing` /
-   `Partial`。
-2. **实现**（cloud）：发布与资产导入的保留键判定、`@` 表单与带 `issueId` 的版本表单按 D2 注入选择器（不看
-   活稿是否声明该键，作者的同名变量不渲染）、版本选择器的过滤与提示、Confirm 的
-   `409 workflow_version_reserved_field`；
-   补单元与真实 HTTP + PostgreSQL 用例，通过 `task check`、`task frontend:check` 与 `task test:race`。
-3. **落地同步**（specs）：本决策改为 `implemented`，证据升 `Covered`。[Confirm 只按所选发布版本自身的 schema
-   校验](20261020-confirm-validates-against-the-chosen-version.md) 里「作者在图里声明 `snapshotId` 时不承诺显示与
-   执行同源」的限定在第 1 步按 owner 结论改为「保留键由平台持有，作者声明不生效」，并在同一处注明该改写
-   **由 circus#411 落地后生效，此前仍按原例外**。
+- 发布与资产导入的保留键判定、`@` 表单与带 `issueId` 的版本表单按 D2 注入选择器、版本选择器的过滤与提示、
+  Confirm 的 `409 workflow_version_reserved_field`，已随
+  [cloud#123](https://github.com/ora-space/cloud/pull/123)（合并提交
+  [`fc12dbe4`](https://github.com/ora-space/cloud/commit/fc12dbe4722b291a806ea07a1217655cdd7789b5)）落地，并通过
+  `task check`、`task frontend:check` 与 `task test:race`。两处判定顺序是有意的：保留键判定先于全局变量的
+  限定名判定；Confirm 的保留键拒绝先于执行器槽位门禁——解析到的版本根本不能执行，让发起人先去配置槽位只会
+  指错地方。
+- [Confirm 只按所选发布版本自身的 schema 校验](20261020-confirm-validates-against-the-chosen-version.md) 的 D1
+  限定与不变量 5 已按本决策同步为「保留键由平台持有，作者声明不生效」，不存在此前仍按原例外运行的窗口。
+- 核心用例与证据已同步为 `Covered`，指向 main 上的
+  `TestWorkflowReservedFieldIsRefusedOnPublishAndImport`、
+  `TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`、
+  `TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`、
+  `TestWorkflowReservedFieldSelectorCoversEveryDeclarationShape`、
+  `TestWorkflowReservedFieldRefusalOutranksTheExecutorSlotGate`、
+  `TestWorkflowPublishRefusesReservedFieldDeclarations`、
+  `TestAuthorDeclaredSnapshotIDDoesNotTakeTheKeyBack`、
+  `TestWorkflowVersionCursorIsThePlatformsForTheReservedKey`、
+  `TestLaunchKeysCollideLikeTheOlderOnes` 与 `TestVersionFieldExplainsWithheldVersions`。
 
 不改变的行为：活稿保存、直接运行入口、`launchFields` 撤下字段、已有快照的内容与历史 interaction 的 `input`。
 Assist 不执行、也不创建运行；它按提交里的版本游标选择要投影的版本，读的是同一份表单投影，保留键的处理随 D1 变化。
-从第 2 步起改变的行为：新的发布与资产导入开始拒绝保留键声明（名字恰为 `snapshotId` 的全局从
+从本决策起改变的行为：新的发布与资产导入拒绝保留键声明（名字恰为 `snapshotId` 的全局从
 `global_name_invalid` 变为 `reserved_field_name`），版本选择器不再列出存量占用版本，Confirm 对解析到它们的
 确认（不论提交里有没有版本游标）返回新的 `409`。

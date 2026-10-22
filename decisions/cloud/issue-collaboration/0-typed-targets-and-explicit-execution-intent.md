@@ -10,8 +10,8 @@ status: implemented
 >
 > 历史决策：D8 规则 1 对保留键 `snapshotId` 不再适用（作者声明不生效，键归平台）；规则 2、规则 3 也被修改
 > （全部已发布版本都不可选时不注入选择器，选项只列未占用保留键的版本）；规则 7 中「作者声明该键就跳过旧名
-> 折叠」的 guard 随之失效。见 [snapshotId 是保留字段](20261021-snapshot-id-is-a-reserved-field.md)。该决策
-> 落地（circus#411）前，本决策 D8 的上述规则仍按原文执行。
+> 折叠」的 guard 随之失效。见 [snapshotId 是保留字段](20261021-snapshot-id-is-a-reserved-field.md)。该改写已随
+> cloud#123 落地，D8 的上述规则不再按原文执行。
 
 Issue 是多人与多种能力协作的地方。Cloud 的 Issues 模块只拥有 Issue 领域的状态（Issue、评论、交互、运行记录、
 活动与 Timeline、上下文引用），Agent、Team、Workflow、运行时、通知、实时推送都经消费侧端口接入。`@` 是**选择协作
