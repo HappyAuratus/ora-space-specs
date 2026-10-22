@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 个人连接统一保存，Agent 默认配置按插件解析并在创建运行时冻结
@@ -8,8 +8,8 @@ status: approved
 冻结本次 Agent 执行配置，model-gateway 保管真实 Key，插件只消费运行临时授权。首期增加 Claude
 普通 Agent Run，并保留 OpenCode 与工作流 `default` 的既有语义。
 
-本文为 `approved`，记录已批准方案而非已实现能力。范围包含 Cloud 个人配置、运行准入/绑定、
-Thread 权限和 Messages 兼容；不实现 Pi、Codex Responses、其他 CLI 或 Claude 工作流节点。
+本文为 `implemented`。范围包含 Cloud 个人配置、运行准入/绑定、Thread 权限和 Messages 兼容；
+不实现 Pi、Codex Responses、其他 CLI 或 Claude 工作流节点。
 术语见[个人 Agent 配置](../../../domain/glossary.md#personal-agent-configuration)。
 
 ## 继承与修改
@@ -64,8 +64,9 @@ version 校验，不能拿插件选项 revision 代替它。
 | OpenCode 工作流 default 槽位 | 同一个全局默认值，槽位规则不变 | 按槽位门禁列出缺口 |
 | 显式 Claude 普通 Agent Run | 该用户的 Claude 个人配置 | 拒绝，不取 OpenCode default、作者配置或宿主登录态 |
 
-OpenCode 不另存一份连接/模型默认值。插件专属非秘密选项可有自身 revision，但不能复制并竞争
-全局默认选择。Claude 配置保存成功不改变全局 default，选用 Claude 也不会改变工作流槽位的 CLI。
+OpenCode 不另存一份连接/模型默认值：保存 OpenCode 插件配置时带连接或模型会被拒绝
+（`agent_use_model_default`），读取时展示全局默认选择。插件专属非秘密选项可有自身 revision，但
+不能复制并竞争全局默认选择。Claude 配置保存成功不改变全局 default，选用 Claude 也不会改变工作流槽位的 CLI。
 不同来源的同名插件不是同一默认配置，迁移来源必须显式处理。
 
 首期 Claude 使用一个 `anthropic-messages` 连接和一个明确的冻结模型 ID。主模型与所有会产生
@@ -79,6 +80,26 @@ OpenCode 不另存一份连接/模型默认值。插件专属非秘密选项可�
 创建普通 Agent Run 时，Cloud 校验显式 Agent、空间资格、选定发行/声明、配置归属及 revision、
 协议交集、连接启用状态、凭据已配置、模型仍在连接目录，以及执行所需的模型代理/adapter 能力。
 发行目标还不能确认或平台不支持相应能力时明确拒绝，不能创建永远等待用户补配置的运行。
+
+个人 Agent 运行由部署方显式开启：Cloud 配置一个受支持的 target（只接受
+`x86_64-unknown-linux-gnu` 或 `aarch64-unknown-linux-gnu`），冻结时按它选定包摘要；未配置时，
+所有带声明的 Agent 运行都以 `agent_adapter_unavailable` 拒绝。准入拒绝使用有限的公开错误码：
+
+| 缺口 | 错误码 |
+| --- | --- |
+| 没有该插件的个人配置 | `agent_configuration_required` |
+| 声明指纹已变化、需要显式修复 | `agent_configuration_repair_required` |
+| 连接协议与声明不符 | `agent_model_protocol_mismatch` |
+| 空间没有可执行的该插件 | `agent_plugin_unavailable` |
+| 发行缺少声明或声明非法 | `agent_declaration_required`、`agent_declaration_invalid` |
+| 编辑期间发行或声明已变化 | `agent_release_conflict`、`agent_declaration_conflict` |
+| 发行没有部署 target 的包 | `agent_target_unavailable` |
+| 连接停用、缺凭据或模型已不在目录 | 沿用既有执行器缺口错误码 |
+| 平台未开启 adapter 能力，或其契约版本、协议与声明不符 | `agent_adapter_unavailable` |
+
+派发时，Node 必须已登记与冻结的 target、adapter 契约版本和协议一致的 adapter 能力；没有匹配的
+Node 时工作留在队列，已断开或过期的 Node 不当作确定性拒绝。会话层失败只公开白名单内的类别，其余
+归为 `agent_failed`。
 
 门禁与持久化运行/评论/交互的原子边界一致：校验失败不残留可派发运行、有效绑定或成功交互。
 配置解析只读已验证的持久声明和个人资源，不在 SQL 事务内执行插件、下载或调用模型。
@@ -136,7 +157,7 @@ Key、不重算历史运行、不把缺新字段的旧执行自动解释为 Clau
 字节有任何差异——包括仅排版变化——都按指纹不匹配处理并要求显式修复，不存在“字节不同
 但兼容”的中间状态，指纹定义见[Agent 声明决策 D2](../../desktop/plugin/manifest/20261017-agent-configuration-declarations.md)。
 
-显式修复不能继续使用旧编辑器的保存条件：重新加载返回当前发行关联/声明指纹、旧配置的指纹与
+显式修复是与普通保存分开的独立操作，不能继续使用旧编辑器的保存条件：重新加载返回当前发行关联/声明指纹、旧配置的指纹与
 revision，并将旧值作为待确认数据展示，不把它们直接应用为新配置。用户按新声明提交完整选项和
 模型选择，带当前声明指纹及预期旧配置 revision；服务器重新校验当前发行、引用归属、必填项与
 类型，再以同一 CAS 原子写入新指纹和新 revision。期间再次升级或有其他修改则冲突，保留草稿。
@@ -149,7 +170,9 @@ query/非认证协议头及 SSE/工具数据必须在 model-gateway 的明确受
 某个 CLI 而关闭认证替换、模型比对、TLS、当前授权或部署出网检查。
 
 Messages 的必需推理请求与可选发现/计数请求分别验证。实现须为选定 CLI 版本列出实际允许的
-路径、方法、query 和协议头，并证明未知输入拒绝；不能透传任意 URL/头或通过“OpenAI-compatible”
+路径、方法、query 和协议头，并证明未知输入拒绝。固定 CLI 及其 SDK 实际发送的 beta 协议头维护在
+model-gateway 的受限白名单里，由回放这些固定请求头的测试守住；升级 CLI 时如出现新头，先扩充白名单
+和测试。不能透传任意 URL/头或通过“OpenAI-compatible”
 标签自动开放 Responses。可选能力未实现不能伪装成功，adapter 必须在该能力组合下仍满足冻结模型
 约束，否则拒绝使用该组合。网关不自动重试生成，统计仍按已登记 HTTP 尝试计算。
 
@@ -175,7 +198,7 @@ CLI、临时授权、成果和资源释放已贯通。真实证据不得包含�
 4. 已撤销绑定不复活；schema 可渲染、配置完整和上游能力声明均不等于可执行。
 5. 个人模型 UI 不能放宽权限、文件、网络或任意进程参数策略。
 
-按声明分发、个人存储/准入、Node adapter/网关、真实验收顺序落地。新行为必须通过
+落地顺序为声明分发、个人存储/准入、Node adapter/网关，最后在固定版本栈上做真实运行验收。新行为必须通过
 [个人 Agent 配置用例](../../../test-cases/cloud/model-access/personal-agent-configurations.md)，
 保留[原个人模型用例](../../../test-cases/cloud/model-access/personal-model-access.md)的覆盖边界。
 同插件多份配置（含多空间不同声明的区分保存）、其他 CLI 的多角色模型、账号登录和多 CLI 槽位

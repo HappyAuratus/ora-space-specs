@@ -102,14 +102,14 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | controller-integration | [快照 clone 输入与执行授权](controller-integration/snapshot-clone-input-and-execution-grants.md) | Controller 拼输入、基线提交写错、残留外部 clone 入口、执行越权写 ref、WorkflowRun 会话误获授权、bundle 契约残留 |
 | revision | [Git 交付与续作](revision/git-native-delivery-refs-and-resume.md) | 未核验就登记、短暂不可用被判失败、`unchanged` 没有自己的 ref、续作拨回旧提交、一次取消永久不可续 |
 
-## 已批准的多 Agent 个人配置与静态声明分发
+## 多 Agent 个人配置与静态声明分发
 
 [Agent 配置声明](../../decisions/desktop/plugin/manifest/20261017-agent-configuration-declarations.md)、
 [Cloud 静态元数据分发](../../decisions/cloud/plugin-marketplace/20261017-agent-configuration-metadata.md)、
 [个人 Agent 配置](../../decisions/cloud/model-access/20261017-personal-agent-configurations.md)与
 [插件模型 adapter](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)四份 ADR 于 2026-10-17 经 owner
-批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；OpenCode 与个人连接的既有 Covered/Partial 证据保持
-原范围。Node 一侧的 adapter 用例见 [Node 核心测试用例](../node/README.md)，Desktop 一侧的声明用例见其领域目录。
+批准；后两份已实现，状态为 `implemented`。个人配置义务的证据多为 store 层或单用户 HTTP 的 Partial，缺口逐项写在
+用例里；OpenCode 与个人连接的既有 Covered/Partial 证据保持原范围。Node 一侧的 adapter 用例见 [Node 核心测试用例](../node/README.md)，Desktop 一侧的声明用例见其领域目录。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
