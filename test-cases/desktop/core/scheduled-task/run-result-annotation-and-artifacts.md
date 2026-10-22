@@ -52,7 +52,7 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 采集早于 janitor 丢弃：只写了产物的运行判定无改动仍回收，但产物先落库；采集失败进被拒清单、不改写运行事实 | `ora_backend::scheduled_task::worktree::tests::untracked_artifacts_do_not_mark_a_worktree_modified`、`committed_artifacts_do_not_mark_a_worktree_modified`；`ora_backend::scheduled_task_runtime::tests::succeeded_settlement_annotates_the_verdict_before_run_finished`（transition → annotate → collect → publish 顺序） | `Covered` |
-| `failed/cancelled/timeout` 与启动恢复结算为 `failed` 的中断运行不采集（取舍） | `ora_backend::scheduled_task_runtime::tests::failed_settlement_never_annotates_nor_collects`；启动恢复结算路径未单独落测，但其终态同为 `failed`、走同一不采集分支 | `Covered` |
+| `failed/cancelled/timeout` 与启动恢复结算为 `failed` 的中断运行不采集（取舍） | `ora_backend::scheduled_task_runtime::tests::failed_settlement_never_annotates_nor_collects`；启动恢复结算路径未单独落测 | `Partial` |
 | 固定目录 + 白名单闭集（`markdown/json/txt/log/xml/html`）之外的文件不登记 | `ora_application::scheduled_task::artifact_store::tests::reports_unsupported_types_without_copying_them`、`collects_whitelisted_files_recursively_and_copies_them_out_of_the_worktree` | `Covered` |
 | 产物目录下未跟踪、已暂存、已修改或已提交的路径都不计入改动判定；目录外的改动仍使 worktree 保留 | `ora_backend::scheduled_task::worktree::tests::untracked_artifacts_do_not_mark_a_worktree_modified`、`committed_artifacts_do_not_mark_a_worktree_modified`、`a_change_outside_the_artifact_directory_still_marks_the_worktree_modified` | `Covered` |
 | 登记后 worktree 被回收，产物仍可从运行历史访问；copy 不改变保留判定 | `ora_application::scheduled_task::artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；worktree 判定由上面的 artifact-only 测试覆盖 | `Covered` |
@@ -63,7 +63,8 @@
 | 每任务 ≤10 个运行的产物按最旧运行淘汰，独立于 worktree 全局 10；链接例外优先于 10 上限 | `ora_application::scheduled_task::artifact_handlers::tests::sweep_keeps_the_newest_ten_unlinked_runs_and_exempts_linked_runs` | `Covered` |
 | 产物随历史裁剪清理（先删索引行、事务提交后删文件，失败由启动 sweep 兜底） | `ora_db::repository::scheduled_artifact::tests::sweeping_removes_artifacts_pruned_by_the_history_bound`、`sweep_removes_artifacts_after_the_run_row_is_pruned` | `Covered` |
 | 软删除或已不存在的任务的产物由启动 sweep 清理；禁用任务的产物保留、不被 sweep 清理 | `ora_db::repository::scheduled_artifact::tests::sweep_removes_artifacts_after_the_task_is_soft_deleted`、`sweep_keeps_artifacts_for_a_disabled_task`、`artifact_handlers::tests::sweep_removes_orphan_rows_and_soft_deleted_task_storage` | `Covered` |
-| 旧运行无产物显示「无产物」；访问跟随运行可见性；清单只存元数据 | `scheduled-task-artifacts-dialog.test.tsx::shows the empty state for a run that produced no artifacts`；`artifact_handlers::tests::list_and_read_reject_pruned_or_soft_deleted_runs` | `Covered` |
+| 旧运行无产物显示「无产物」；访问跟随运行可见性 | `scheduled-task-artifacts-dialog.test.tsx::shows the empty state for a run that produced no artifacts`；`artifact_handlers::tests::list_and_read_reject_pruned_or_soft_deleted_runs` | `Covered` |
+| 清单只存元数据，不存文件内容或凭据 | 尚无直接测试 | `Missing` |
 | 产物存储只含固定目录 copy 的文件与清单元数据，Ora 不写入模型 Key、token 或环境变量 | 尚无直接测试：实现只写入从固定目录复制的文件与清单行；待真实 local 集成验收确认 | `Partial` |
 
 ## Local Artifacts And Verdicts Must Stay On The Device
