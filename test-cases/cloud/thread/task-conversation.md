@@ -1,7 +1,7 @@
 # 任务持续对话与跨运行上下文
 
 依据[已批准的任务持续对话决策](../../../decisions/cloud/thread/20261018-task-conversation-across-runs.md)。
-下列证据包括已合并代码的测试与固定 main 上的真实 OpenCode 分项验收；单 Agent 通过不等于跨 Agent 联合验收完成。
+下列证据包括已合并代码的测试、固定 main 上的真实 OpenCode 分项及本地 Claude 候选四运行预演；候选通过不等于正式发布包的联合验收完成。
 跨运行成果恢复继续受[Revision 续接用例](../issue-run/resume-from-latest-revision.md)约束，不能以对话存在替代成果证据。
 
 ## Task Messages Have Stable Order And One Execution Intent
@@ -62,8 +62,8 @@ D1、D4，不变量 2、4。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 空闲、释放与新执行 | Cloud `task_conversation_lifecycle_db_test.go` 两项真实 PostgreSQL 测试覆盖窗口内复用、空闲期满结束、未释放阻塞、新执行与既有正文；[#312 最新 main 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)经历默认 15 分钟窗口，以新的 Run/Workspace 续接，核对两次 Revision、Git 结果和容器/卷物理释放。跨 Agent 交接仍缺 | Partial |
-| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 验证正文提取与截断；[#312 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6311738034)分别核对过同 Agent 的成果与对话恢复。真实跨 Agent 上下文和截断可见性仍缺 | Partial |
-| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义四运行检查；[#312 最新 main 单 Agent 验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)已完成同 Thread 多轮、默认 idle 结束后新 Run 的成果续接与物理释放。第二 Agent、切回及完整四运行尚未通过 | Partial |
+| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 验证正文提取与截断；[#497 本地候选四运行](https://github.com/ora-space/circus/issues/497#issuecomment-6333754438)分别核对了跨 Agent 正文和文件继承。正式包与真实截断范围展示仍缺 | Partial |
+| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义四运行检查；[#312 最新 main 单 Agent 验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)完成默认 idle 后新 Run 续接；[#497 本地 Claude 候选四运行](https://github.com/ora-space/circus/issues/497#issuecomment-6333754438)得到 `passed-api`，含交接、切回与四次物理释放。正式发布包及与 #407 失败边界相交的联合复验仍缺 | Partial |
 
 ### 决策依据
 

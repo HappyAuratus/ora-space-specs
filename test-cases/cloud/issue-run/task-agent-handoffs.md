@@ -62,7 +62,7 @@ Thread ended 或运行 done 就启动下一位，实际上最新成果尚未保�
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 状态屏障 | Cloud `TestTaskConversationWaitsForHandoffThenStartsNextAgent`、`TestTaskConversationIdleExpiryWaitsForReleaseBeforeFreshRun`、直接领取屏障测试，覆盖 ending/交付/释放及 done 但未删除 Workspace 的拒绝；删除与结算使用阶段 fixture | Partial |
-| 实际保存与释放 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)核对默认 idle 后的 Revision、交付 ref、实际文件、历史对象和 Workspace 容器/卷物理释放，再由同任务新 Run 继承成果；cluster `scripts/task-conversation-acceptance.py` 的第二 Agent 与切回四运行尚未通过，不能据此宣称跨 Agent 的保存/释放屏障已验收 | Partial |
+| 实际保存与释放 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)核对默认 idle 后的 Revision、交付 ref、实际文件、历史对象和 Workspace 物理释放；[#497 本地 Claude 候选四运行](https://github.com/ora-space/circus/issues/497#issuecomment-6333754438)进一步验证不同 Workspace 的串行交接、两份文件和 Revision 链、四次释放。正式发布包及与 #407 永久失败相交的保存/释放仍缺 | Partial |
 
 ### 决策依据
 
