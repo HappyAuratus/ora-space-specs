@@ -43,7 +43,7 @@ status: proposed
 
 节点正在 `Running` 时不能完成，沿用现有 `workflow_node_not_awaiting_input`，不新增 `turn_in_progress` blocker。声明 `outputContract=Structured` 的节点在 **park 计算快照时**按 schema 校验，失败把 `structured_invalid` 放进 blockers；`Text` 要求本轮最终输出非空（`output_missing`）；无契约（`None`）只校验回合终态，空输出只记非阻塞 warning。编辑器目前只能声明 `Structured`，`Text` 只用于旧快照或导入图。
 
-`HistoryIntegrity` 不是 `Complete` 时：若历史里仍能找到本轮 `TurnEnded`，快照写入 `userSeq` / `turnKey` / `stopReason` / `outputDigest`，但 blocker 仍是 `turn_unknown`，并加 `history_integrity_gap` warning；找不到 `TurnEnded` 时这些字段为 `null`。两种情况都只能显式 `force`，系统不自动 ready。
+`HistoryIntegrity` 不是 `Complete` 时：若历史里仍能找到本轮 `TurnEnded`，快照写入 `userSeq` / `turnKey` / `stopReason` / `outputDigest`，但 blocker 仍是 `turn_unknown`，并加 `history_integrity_gap` warning；找不到 `TurnEnded` 时 `turnKey` / `stopReason` / `outputDigest` 为 `null`，`userSeq` 仍写入（如果有最后一条用户消息）。两种情况都只能显式 `force`，系统不自动 ready。
 
 选择只认 `EndTurn`，是因为截断、停止和拒答都意味着产出不完整；把 `MaxTokens` / `MaxTurnRequests` 当作自然结束会让暂停后重启的问题在 token 截断时静默复发。`None` 不检查空输出，是为了不误伤只改文件、最终回复为空的既有节点。
 
@@ -57,9 +57,9 @@ status: proposed
 
 `userSeq` 是最后一条用户消息的 `HistoryLine.seq`，`endedSeq` 是它之后那条 `TurnEnded` 的 `seq`；两者共同唯一标识本轮。park 时从历史推导并随快照落盘（`payload.completion.turnKey`）。若最后一条用户消息之后没有 `TurnEnded`，判 `turn_unknown`，**快照不生成 turn key**（`turnKey: null`），也不得读取上一轮的 `EndTurn` 或上一轮的 assistant 文本。
 
-**本轮最终 assistant 文本**固定为：在 `(attemptStart, endedSeq]` 窗口内按 `seq` 取最后一条 assistant 消息的文本；可能为空；不取「最后一条非空」，也不把更早的进度说明拼进来。`attemptStart` 见下段；无重试时等于 `userSeq`。没有收尾消息时就是空，交给 `Text` / `Structured` / `None` 的规则处理。现有的 `assistant_output_from_history` 取最后一条非空 assistant 文本，不能复用到这条路径。
+**本轮最终 assistant 文本**固定为：在 `(attemptStart, endedSeq]` 窗口内按 `seq` 取最后一条 assistant 消息的文本；可能为空；不取「最后一条非空」，也不把更早的进度说明拼进来。`attemptStart` 当前等于 `userSeq`（重试限制见下段）。没有收尾消息时就是空，交给 `Text` / `Structured` / `None` 的规则处理。现有的 `assistant_output_from_history` 取最后一条非空 assistant 文本，不能复用到这条路径。
 
-**重试后的最终文本**：`Retrying` 会重置 executor 的 accumulator；历史里被放弃尝试的 assistant 消息也会保留，并由 `settle_cancelled_prompt` 写入自己的 `TurnEnded`。因此最终文本不能简单取窗口内最后一条 assistant 消息，而要取 `attemptStart` 之后的最后一条：`attemptStart = max(userSeq, endedSeq 之前最后一条 TurnEnded 的 seq)`。这样被放弃尝试的文本不会混入最终输出，和 executor 的 `Retrying` 重置一致。
+**重试后的最终文本（已知限制）**：`Retrying` 会重置 executor 的 accumulator；历史里被放弃尝试的 assistant 消息会保留，但 `settle_cancelled_prompt` 只写更新、不写 `TurnEnded`，重试路径 settle 后直接重发，唯一的 `TurnEnded` 来自最终 response。因此当前历史没有可用的 attempt 边界，`attemptStart` 只能等于 `userSeq`；重试时被放弃尝试的文本可能进入最终窗口。本决策接受这一限制，并在风险与核心用例里登记；后续 runtime 增加独立的 attempt boundary `HistoryRecord`（不复用 `TurnEnded`）后，再把 `attemptStart` 定义为最后一个 boundary 之后的 seq。
 
 事件流不带 seq（`PromptSessionEvent` 没有该字段），`record_settled` 也不是可用的历史写入点；因此 turn key 与最终文本只能从历史读取，不能由流累积推导。`complete` 的 `prepare` 必须从同一历史重新推导二元组并比对，不一致返回冲突，不做完成。布尔值「是否存在 `TurnEnded`」无法当版本比对，也无法区分两轮之间的错配；因此这里使用二元组，而不是布尔标记。
 
@@ -120,7 +120,7 @@ cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只�
 
 `complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对快照的 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）；同一文本与同一纯函数的结果确定，若与 park blockers 不一致，以 prepare 结果为准并刷新快照，再按刷新后的 blockers 返回 `WorkflowNodeIncomplete`（防御性路径）。锁内只比对 turn key、状态与 claim。
 
-没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：`attemptStart` 之后的最后一条 assistant 消息文本（可能为空），其中 `attemptStart = max(userSeq, 历史末尾之前最后一条 TurnEnded 的 seq)`；没有 TurnEnded 时按最后一条用户消息。不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
+没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：最后一条用户消息之后的最后一条 assistant 消息文本（可能为空）；不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
 
 无快照的旧节点由 `prepare` 先做一次 lazy materialize，再走同一路径。payload 合并必须在同一个 `Immediate` 事务内完成，并保护全部既有 key；不能整体覆盖 `error_detail` / `ai_diagnosis` / `file_changes`。`completion_forced` 作为 payload 的独立 key 记录，不与 `completion` 混用。
 
@@ -138,7 +138,7 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 ### D7：UI 只暴露一个推进动作，卡片只展示状态
 
-会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。
+会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 拒答 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。
 
 右下角按钮与卡片共用同一套 `ready` / `blockers`，是唯一推进入口；卡片不提供第二个主操作。「继续当前步骤」是用户明确点击的动作，直接发送一条带边界与未完成原因的作用域指令，不需要额外确认；只有强制完成需要确认并留痕。徽标区分「等待参与」和「已暂停（上一轮未正常结束）」，原因覆盖停止、截断、中断/超时；act card 不再直接渲染原始 `cancelled`。运行列表不派生 paused，只保留 Theater 节点徽标。
 
@@ -158,14 +158,14 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 1. 正常完成只认本轮 `EndTurn`；截断、停止、拒答、缺失与未知一律阻塞，`force` 是显式例外。
 2. 完成使用的是本轮输出；本轮没有终态时不读取上一轮输出。
-3. 本轮最终 assistant 文本取 `(attemptStart, endedSeq]` 窗口内按 `seq` 的最后一条 assistant 消息，可能为空，不取最后一条非空；`attemptStart = max(userSeq, endedSeq 之前最后一条 TurnEnded 的 seq)`，被放弃尝试的文本不进入输出。
+3. 本轮最终 assistant 文本取 `(userSeq, endedSeq]` 窗口内按 `seq` 的最后一条 assistant 消息，可能为空，不取最后一条非空；重试时被放弃尝试的文本可能进入，见 D2 已知限制。
 4. 交互式节点对所有 terminal stop reason 停靠；非交互节点保持现有失败语义。
 5. executor 首轮与人类 cleanup 共用同一个 park 函数；快照与 `Running → Pending` 在同一个 `Immediate` 事务提交，新 run 不会出现 `Pending` 无快照。
 6. park 与 `prepare` 使用同一份历史、同一组输入；turn key、文本与 stop reason 都从历史读取，不用事件流累积。
 7. 每次交互回合读取一次整文件历史；读取投影不读历史、不跑 schema、不做修复。
 8. `Structured` / `Text` 校验在 park 计算快照时完成，blockers 用于展示；`prepare` 在门外用同一段文本重跑 schema 得到结构化值，锁内不重算。
 9. 错误优先级固定：状态/claim → `workflow_node_not_awaiting_input`；turn key → `WorkflowNodeTurnChanged`；digest → `WorkflowNodeOutputChanged`；只有 blockers 可被 `force` 覆盖。
-10. 无 turn key 的 `turn_unknown` 只能 force；force 的文本固定为 `attemptStart` 之后的最后一条 assistant 消息，可能为空。
+10. 无 turn key 的 `turn_unknown` 只能 force；force 的文本固定为最后一条用户消息之后的最后一条 assistant 消息，可能为空。
 11. `completeWorkflowNode` 是唯一提交权威；UI 的 ready/blockers 只是同一份快照的预览。
 12. `force` 必须二次确认并留痕；结构化失败时 force 不写 `structured_output`。
 13. 用户消息不被拦截或改写；每个 workflow 人类回合都带步骤边界。
@@ -208,10 +208,10 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 ## 风险、未解决问题与验收
 
 - **每次交互回合读一次整文件历史**：turn key 依赖 `HistoryLine.seq`，事件流不提供，park 必须读历史；这是本决策接受的成本，长会话是 O(会话) 的读取。读取投影不读历史，修复只在 `prepare` 做一次。
-- **重试边界**：被放弃尝试的 assistant 消息与 `TurnEnded` 留在历史里；最终文本从 `attemptStart` 之后取，和 executor 的 `Retrying` 重置一致。
+- **重试边界（已知限制）**：`settle_cancelled_prompt` 不写 `TurnEnded`，重试没有可用的 attempt 边界，`attemptStart` 只能等于 `userSeq`；被放弃尝试的文本可能进入最终窗口。后续增加独立 attempt boundary record 后修复。
 - **provisional 快照修复**：流 drop 且等待超时会先写 `turn_unknown`；只有 `prepare` 在同一个 `userSeq` 之后看到 `TurnEnded` 时替换。修复窗口内界面显示未完成，用户仍可 `force`。
 - **旧节点只在完成时物化**：升级前的 `Pending` 节点在 `prepare` 前显示「回合未知」；用户点击完成后由 `prepare` 一次性回填，不在 1.5 秒轮询里读历史。
-- **`turn_unknown` 的 force**：没有 turn key/digest，只能显式 force；文本取 `attemptStart` 之后的最后一条 assistant 消息，可能为空，不写 `structured_output`，审计 `without_turn`。
+- **`turn_unknown` 的 force**：没有 turn key/digest，只能显式 force；文本取最后一条用户消息之后的最后一条 assistant 消息，可能为空，不写 `structured_output`，审计 `without_turn`。
 - **交互式 Refusal/未知停靠**：修改 `pauses_interactive_node` 的集合，使交互式节点在拒答/未知时也停在 `Pending`；非交互节点保持现有失败语义。这是有意的行为变化，需在实现运行里验证。
 - **`structuredOutput` 不落 payload**：避免体积和暴露面；`prepare` 用 digest 校验过的文本重跑 schema（纯 CPU）。
 - **per-run 门不可重入**：park 函数自己获取门；executor 与 cleanup 调用点都不得持有门。
@@ -223,7 +223,7 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 - 停止生成 → 重启 → 点完成：返回 `turn_stopped`，不调度下一节点；「继续当前步骤」在 `session/load` 成功/失败→rebuild 两条路径都能得到一轮回复；continue 失败时明确报错、节点保持 `Pending`、仍可强制完成；
 - `MaxTokens` / `MaxTurnRequests` / `Refusal` / 未知 stop reason、以及 `HistoryIntegrity` 非 `Complete` 同样不能直接完成；交互式 Refusal/未知会停靠，非交互仍失败；
-- 本轮最终文本按 `(attemptStart, endedSeq]` 窗口取最后一条 assistant 消息；重试前的被放弃文本不进入输出；空文本不会被早先的进度说明掩盖；
+- 本轮最终文本按 `(userSeq, endedSeq]` 窗口取最后一条 assistant 消息；重试时被放弃尝试的文本可能进入（已知限制，核心用例登记）；空文本不会被早先的进度说明掩盖；
 - `HistoryIntegrity` 非 `Complete` 时字段形状按 ADR：能找到 `TurnEnded` 就填 `userSeq` / `turnKey` / `stopReason` / `outputDigest`，但 blocker 仍是 `turn_unknown`；快照总是存 `userSeq`，provisional 修复按它匹配；
 - 正常 `EndTurn` 后完成与现在一致；无契约节点空输出仍可完成，只显示 warning；
 - 首轮 executor park 与人类 cleanup 都经过同一个函数；`payload.completion` 与 `Running → Pending` 同事务提交，新 run 不会出现 `Pending` 无快照；
