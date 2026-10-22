@@ -25,11 +25,11 @@
 | --- | --- | --- |
 | revision | [恢复截止、取消与停止确认](revision/restore-deadline-and-stop-confirmation.md) | 截止被重置或命令越过截止、执行预算/停止请求/停止确认混同、未知停止证据下交付或复用、上限被重启重置、取消中途打断 Git、启动清理越过原执行交接、BestEffort 当作 Strong |
 
-## 已批准的插件模型 adapter
+## 插件模型 adapter
 
 [插件模型 adapter 决策](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)于 2026-10-17 经 owner
-批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；[既有模型代理用例](agent-runtime/model-proxy.md)的
-证据保持原范围，不推导 adapter 路线已实现。
+批准，已实现，状态为 `implemented`。义务多为 Partial：Node 侧测试用回显 fixture 代替真实 CLI，缺口逐项写在
+用例里；[既有模型代理用例](agent-runtime/model-proxy.md)的证据保持原范围。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

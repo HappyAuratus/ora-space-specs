@@ -1,5 +1,9 @@
 # 同一 Issue 的运行续接最近一次 Revision
 
+迟到原 Revision 不得越过同 Issue 后创建 Run 的新增登记限制见
+[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)。其顺序守卫及 residual 路径义务当前为 `Missing`，
+下列已有最近候选选取证据不自动覆盖这一限制。
+
 依据[已实现的 IssueRun 续接决策](../../../decisions/cloud/issue-run/20261010-resume-run-from-latest-issue-revision.md)。
 续接决策的 bundle 候选、沿用 bundle 与一跳规则（D1、D5）已被 [Cloud Revision Git 交付决策](../../../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md) D7 修改：
 候选是有交付 ref 且有新提交的最近 Revision，选取与恢复失败的义务见 [Revision 经 Git Server 交付与续作](../revision/git-native-delivery-refs-and-resume.md)；
