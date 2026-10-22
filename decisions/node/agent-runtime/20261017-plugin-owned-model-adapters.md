@@ -78,8 +78,8 @@ provider 初始化材料不能进入控制账本、JSONL、用户 prompt、普�
 | 插件未确认已应用冻结配置 | `agent_model_adapter_not_applied` | 否 |
 
 是否重试由情形决定，不由分类码决定：同一个 `agent_model_adapter_failed` 对应两种重试类别。前两行
-的分类码就是会话公开的失败码；插件阶段的分类码只进 Node 私有错误上下文和日志，会话对外以既有的
-启动失败码结束（`agent_start_failed` 或 `agent_unavailable`，插件未确认冻结配置时为后者）。
+的分类码就是会话公开的失败码；插件阶段的分类码只进 Node 私有错误上下文和日志，会话对外一律以
+`agent_unavailable` 结束；`agent_start_failed` 只用于建会话或运行时装配失败，不承载插件阶段的失败。
 
 原始供应商/CLI 错误不直接公开。
 
