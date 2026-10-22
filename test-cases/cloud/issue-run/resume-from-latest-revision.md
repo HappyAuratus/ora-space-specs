@@ -1,8 +1,14 @@
 # 同一 Issue 的运行续接最近一次 Revision
 
 迟到原 Revision 不得越过同 Issue 后创建 Run 的新增登记限制见
-[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)。其顺序守卫及 residual 路径义务当前为 `Missing`，
-下列已有最近候选选取证据不自动覆盖这一限制。
+[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)。顺序守卫覆盖根 D5/D8、residual 及 controlled 入口，
+直接证据固定在 Cloud #142 head `818226b49b8a97779f41d6191e69f6fc8518b0fb` 的
+[integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_order_test.go)：
+`TestLateDeliveryFactRunCreationOrderOverGRPC`、`TestLateDeliveryFactResumeKeepsLaterRevisionOverGRPC` 与
+`TestLateDeliveryFactNoLaterRunResumesRescuedRevisionOverGRPC` 分别直接覆盖后创建守卫、下一会话不回到旧成果、
+无后创建时可选已救援 Revision。原 Run 软删除仍服从相同 D1/D2；缺失/歧义创建记录长期 receipt-only，
+不猜时间戳或 UUID，不通过重放升级。workflow executor 后创建的直接路径仍 `Missing`，双向竞争交错及
+缺创建记录首次 receipt-only 后的重放证据仍 `Partial`；完整义务以该核心文件为准，下面的旧候选测试不补齐这些缺口。
 
 依据[已实现的 IssueRun 续接决策](../../../decisions/cloud/issue-run/20261010-resume-run-from-latest-issue-revision.md)。
 续接决策的 bundle 候选、沿用 bundle 与一跳规则（D1、D5）已被 [Cloud Revision Git 交付决策](../../../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md) D7 修改：

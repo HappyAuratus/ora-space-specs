@@ -1,8 +1,10 @@
 # Controller 中继 Agent 会话与 Revision 交付
 
 已登记原交付的精确终态拒绝、单 execution unresolved 及成功 receipt 后解除由
-[终态拒绝用例](refused-delivery-terminals.md)登记，新增证据均为 `Missing`；本文件的已有中继覆盖不自动
-证明这项连接存续修复，也不改变 Thread 批次冲突的既有规则。
+[终态拒绝用例](refused-delivery-terminals.md)逐项登记。desktop 固定 head
+`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的单仓直接证据已覆盖局部隔离及 receipt/ACK；
+真实栈拒绝窗口、Controller 重启后首次重放直接成功及真实 Node 新 incarnation 的缺口仍保留。
+本文件的已有中继覆盖不自动证明这些新增义务，也不改变 Thread 批次冲突的既有规则。
 
 依据[已实现的 Controller session 根决策](../../../decisions/controller/session/0-controller-relays-agent-sessions.md)。
 本文件登记云端 Controller 派发会话与交付、中继 Thread 事件与命令、转交上传授权的承诺；Node 侧消息见
@@ -89,9 +91,9 @@ Cloud 放出了会话或交付工作项，或为某运行持久化了用户命�
 | 当前许可 | `registered_sessions_wait_for_current_runtime_permission`；`delivery_waits_for_its_permit_and_relays_checksum_bound_grants_unlogged` | Covered |
 | 命令顺序与投递证据 | `commands_retry_in_order_and_closed_session_rejection_is_delivered`、`restart_redelivers_the_unconfirmed_command_before_later_turns`、`foreign_command_reply_is_not_delivery_evidence` | Covered |
 | 授权绑定校验和且不落日志 | `delivery_waits_for_its_permit_and_relays_checksum_bound_grants_unlogged`、`reconnect_refreshes_grants_for_an_unfinished_delivery`、`refused_grants_never_fail_the_delivery` | Covered |
-| 交付结算与重启 | `revision_result_is_acknowledged_only_after_cloud_commits`、`restart_resumes_a_registered_delivery_without_failing_it` | Covered |
+| 交付结算与重启 | `revision_result_is_acknowledged_only_after_cloud_commits`、`restart_resumes_a_registered_delivery_without_failing_it`；精确拒绝后的恢复另见[终态拒绝用例](refused-delivery-terminals.md#real-reconnect-replays-the-original-fact-and-only-its-success-receipt-clears-refusal)，不能由这两个旧测试推断已覆盖 | Covered |
 | idle 证据 | `quiesce_counts_unfinished_agent_sessions`、`quiesce_counts_unfinished_deliveries` | Covered |
-| 真实 Cloud 与 Node 链路 | cluster 的 Agent 会话与 Revision 验收为手工运行，未纳入 CI | Partial |
+| 真实 Cloud 与 Node 链路 | cluster 的 Agent 会话与 Revision 验收为手工运行，未纳入 CI；[#407 作者记录](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)补充固定 Cloud `818226b4`/desktop `13de5a35` 的正常迟到恢复与释放，未进入拒绝隔离窗口，也未重启 Controller | Partial |
 
 ### 决策依据
 

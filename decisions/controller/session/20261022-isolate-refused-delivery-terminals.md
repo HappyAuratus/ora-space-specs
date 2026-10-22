@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 原交付终态遭精确 dispatch_conflict 拒绝时，只隔离该执行并保留 Node 连接
@@ -8,8 +8,11 @@ status: approved
 execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接和连接报告，并保留 Cloud 原错误码。
 真实重连或重启可以重新提交原事实，只有成功的原事件接管回执才能解除。其他 Conflict 的处理不变。
 
-本文为 `approved`，依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)；新拒绝隔离行为尚待产品实现与直接验证，不把现有中继测试当作已覆盖。本决策不改
-Node 协议、Cloud 业务阶段或释放授权，不新增本地持久化状态机、超时成功或新的 disposition。
+本文为 `implemented`，依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，
+对应 [desktop#726](https://github.com/ora-space/desktop/pull/726) 固定 head
+`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的实现与直接测试。单仓证据覆盖局部拒绝隔离与回执恢复，
+真实栈拒绝窗口及 Controller 重启仍缺直接证据。本决策不改 Node 协议、Cloud 业务阶段或释放授权，
+不新增本地持久化状态机、超时成功或协议 disposition。
 
 ## 继承与修改
 
@@ -26,7 +29,8 @@ Node 协议、Cloud 业务阶段或释放授权，不新增本地持久化状态
 
 必须先确认该 `deliver_revision` 已在 Cloud 登记，原 execution、operation、Node、Node-local operation
 与冻结输入均匹配，终态生产者与声明也匹配；随后只有这次 `TakeOverNodeEvent` 返回
-`gRPC Aborted`、`ErrorDetail.CONFLICT` 且原 status message 为 `dispatch_conflict`，才能进入局部隔离。
+`gRPC Aborted`、正确类型的 `ora.cloud.internal.v1.ErrorDetail` 分类为 `CONFLICT`
+（生成枚举 `ERROR_CODE_CONFLICT`），且 Cloud 原 status **message** 精确为 `dispatch_conflict`，才能进入局部隔离。
 仅看到通用 Conflict 分类不能证明属于此情形。
 
 隔离只影响这个 execution，不能因该拒绝退出中继任务、清除已握手 Node identity 或主动重建连接。
@@ -54,6 +58,13 @@ Node 协议、Cloud 业务阶段或释放授权，不新增本地持久化状态
 真实 transport 重连、Controller 重启后允许重新提交原 execution 的原有序事件。重新提交的是原事实，
 不是再次发送交付命令，也不生成新 execution 或再次执行交付。仍遭精确拒绝时再次保持局部 unresolved，
 不能由这个拒绝自身制造下一轮连接重建。
+
+真实 transport 重连保留进程内 observer 的拒绝标记。Controller 重启不恢复本地拒绝数据库，而依赖
+Cloud 仍把尚无 result、未 force-stop 的原 execution 列为 pending，再由 Node outbox 重放。
+[Cloud 固定查询](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/node_execution.go#L221-L230)
+按 `result IS NULL`、`terminated_by_force_stop_id IS NULL` 及 Node 过滤，不因 Run 已进入 releasing 而删除原交付；
+[`clone_pending`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/clone.go#L84-L85)
+使用该查询。若原 execution 不再列为 pending，不能仅凭本决策宣称重启后仍能重新发现它。
 
 只有本次原 execution/sequence/event 已持久接管的成功回执，才能完成确认、清除对应 unresolved，
 允许 Node 按协议移除原 outbox 事件。无论 Cloud 登记原 Revision，还是因后创建 Run 只接收声明和
@@ -89,7 +100,29 @@ message 不混写成另一个通用原因；同连接内重复状态不持续制
 
 ## 落地与验证
 
-新增行为由[终态拒绝核心用例](../../../test-cases/controller/session/refused-delivery-terminals.md)登记，
-当前证据全部为 `Missing`，由产品实现与落地运行补齐。真实释放至 done 和 container/volume 回收由
-[迟到交付与释放恢复](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)的跨仓用例承担，
-不以单仓 fake 的连接存续结果替代。
+新增行为由[终态拒绝核心用例](../../../test-cases/controller/session/refused-delivery-terminals.md)登记。
+固定 desktop head 的 fake Cloud/Node 测试直接覆盖局部隔离、重复提示、真实 transport 重连、重启重新发现、
+成功 receipt 后 ACK 及错误分流；Cloud 原子提交由固定 Cloud head 的真实 PostgreSQL/gRPC 测试证明。
+两者分别成立不能代替真实栈拒绝窗口的连续证据。
+
+[作者真实栈报告](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)使用 Cloud
+`818226b49b8a97779f41d6191e69f6fc8518b0fb` 与 desktop `13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d`，
+在迟到事实首次到达时已能成功接管，未进入本决策的拒绝隔离分支，也未重启 Controller。
+真实释放至 done 和 container/volume 回收由
+[迟到交付与释放恢复](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)记录；
+真实栈拒绝后保持连接、重连/重启恢复以及真实 Node 新 incarnation 的证据仍缺失。
+
+## 与批准文本的差异及原因
+
+外部行为继续采用批准的 D1–D4；最终实现把以下依赖写明，避免把局部恢复误解成新的 Cloud 协议：
+
+- 精确分类实际读取 gRPC status message，不是新的结构化 reason 或 disposition。
+  [Cloud 通用错误契约](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/proto/ora/cloud/internal/v1/errors.proto#L9-L12)
+  明确希望客户端避免按 message 分支；当前 `CONFLICT` 分类本身不能区分本拒绝与其他真实冲突，因此本次实现同时
+  匹配原 code、typed detail 和精确 message。这是固定两端实现的跨仓依赖，不能推广为所有 Conflict 均可忽略。
+  将来修改该 message 或结构化错误协议时，必须同步消费者，不能单端修改。
+- 本地 `TerminalTakeoverRefused` 与日志的 `disposition=unresolved/no_ack/no_redispatch` 只表达 Controller
+  的局部处理，不新增 wire 错误原因或 Cloud 接管结果。日志用 `cloud_message` 保留原 message，以免与日志正文混淆。
+- 重启恢复依赖 Cloud pending 与 Node outbox，进程内拒绝标记只跨 transport 重连保留；没有新增本地持久化。
+  直接测试覆盖“重启后重新发现并再次拒绝，随后重连成功”，尚无“重启后首次重放直接成功”的直接测试，
+  不能以测试名称或恢复代码共用推断该分支已验证。
