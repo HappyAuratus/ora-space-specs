@@ -7,8 +7,10 @@
 [cloud#95](https://github.com/ora-space/cloud/pull/95)（合并提交
 [`fda6e1d`](https://github.com/ora-space/cloud/commit/fda6e1d642f055ade47daf08da3cc76b96dbd8e2)）落在直接运行入口，
 manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://github.com/ora-space/cloud/pull/125)（合并提交
-[`308057ce`](https://github.com/ora-space/cloud/commit/308057cef156db319c1469a2841ba0acae4afb3a)）补齐。
-下面的状态是逐条核对这两份实现的测试后登记的：有直接证据的记 `Covered`，只覆盖了义务一部分的记 `Partial` 并写清
+[`308057ce`](https://github.com/ora-space/cloud/commit/308057cef156db319c1469a2841ba0acae4afb3a)）补齐，`@` Confirm 禁用
+`prompt` 与历史行既有键重新解释两条边界由 [cloud#129](https://github.com/ora-space/cloud/pull/129)（合并提交
+[`95df5889`](https://github.com/ora-space/cloud/commit/95df5889745fa6909eaaa324895e4f2f31d13f02)）补上直接用例。
+下面的状态是逐条核对这三份实现的测试后登记的：有直接证据的记 `Covered`，只覆盖了义务一部分的记 `Partial` 并写清
 缺哪一部分。
 
 ## The Start Input Kickoff Resolves From The Run Override Or The Authored Prompt
@@ -35,8 +37,8 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
 | 未设置与空字符串区分，`exists` / `not_exists` / `empty` / `not_empty` 据此回答 | 真实 PostgreSQL：两者都无时 `not_exists` 命中、`empty` 不把缺失当空串；空串覆盖值与空 authored 提示词是 present-empty | Covered |
 | 保留键 `input` 只接受字符串，非字符串在启动门禁被拒；作者声明同名变量被覆盖 | 真实 HTTP + 单元：非字符串覆盖值 400 `invalid_field_value`（`field=input`）；声明了 `input` 变量的图不因类型判断卡死 | Covered |
 | manual workflow IssueRun 把提交的 `input` 键映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：manual 运行的运行行 `input` 键是提交值、Start 输出读到它；非字符串同为 400 `invalid_field_value` | Covered |
-| `@` Confirm 入口把平台 `prompt` 映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：确认后的运行行 `input` 键是表单 `prompt`、Start 输出读到它；作者在所选版本里声明了同名变量时该键归变量；工作流的 `launchFields` 禁用 `prompt` 时回退 authored | Partial |
-| 历史行按其快照冻结时的文本求值，既有键按新语义重新解释 | 真实 PostgreSQL：无键历史行回退 authored；既有字符串 `input` 键被读作 kickoff；既有非字符串键回退 authored | Partial |
+| `@` Confirm 入口把平台 `prompt` 映射到同一条 kickoff 取值链 | 真实 HTTP + PostgreSQL：确认后的运行行 `input` 键是表单 `prompt`、Start 输出读到它；作者在所选版本里声明了同名变量时该键归变量；工作流的 `launchFields` 禁用 `prompt` 时回退 authored | Covered |
+| 历史行按其快照冻结时的文本求值，既有键按新语义重新解释 | 真实 PostgreSQL：无键历史行回退 authored；既有字符串 `input` 键被读作 kickoff；既有非字符串键回退 authored | Covered |
 
 - 决策依据：D2（Start `input` 根在运行时的取值来源）；范围拆分依据 [circus#287](https://github.com/ora-space/circus/issues/287)。
 - desktop 参考实现（`8909f07`）一侧：**Covered（取值链）** — `kickoff_input.or_else(|| graph.start_node().instruction)`
@@ -44,7 +46,7 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
   解析，`Some(text)` 写进 `workflow_runs.input` 并 mirror 到 `{start_id}.input`，`None` 时不写这个池值；`mirror_run_input_into_pool`
   在更新运行时按同一条规则维护，历史运行保留创建时写的文本。Cloud 的「直接运行／manual／`@` Confirm 三个入口共用门禁」
   与「历史行的保留键重新解释」是 Cloud 自己的边界，参考实现侧没有对应入口或迁移，按 `Missing` 记。
-- 本次直接证据：**前四行 Covered，第五、六行 Partial** — 取值链的共用解析函数是
+- 本次直接证据：**六行都 Covered** — 取值链的共用解析函数是
   [`internal/core/workflow_scheduler.go`](https://github.com/ora-space/cloud/blob/fda6e1d642f055ade47daf08da3cc76b96dbd8e2/internal/core/workflow_scheduler.go)
   的 `WorkflowStartKickoff`（先读 `input["input"]` 的非 `nil` 字符串，再回退 `data["input"]`，都没有返回未设置；导出给
   dev simulator 共用，避免模拟 trace 与真实 Start 输出漂移）。第一行的直接证据是
@@ -76,12 +78,14 @@ manual workflow IssueRun 与 `@` Confirm 两条入口由 [cloud#125](https://git
   变量池、运行行里没有 `input` 键、Start 输出回退 authored `"authored prompt"`；
   `TestWorkflowConfirmReadsTheKickoffFromTheChosenVersion` 在发布后把草稿改成相反的声明，两个方向都断言 `prompt` 的归属
   按所选版本的图判断，而不是当前草稿。
-- 仍缺：**第六行「既有字符串 `input` 键的历史行被重新解释为 kickoff」没有直接用例**——现有证据只覆盖「无键历史行回退
-  authored」（`TestWorkflowStartOutputMatchesDesktopVariableRoots` 的「未提交回退」与 `TestWorkflowAdvanceSucceedsLinearRun`），
-  而「旧行已经带着字符串 `input` 键时，该键被读作 kickoff」这个重新解释边界（[circus#289](https://github.com/ora-space/circus/issues/289)
-  检视里明确要求登记的）还没有一条用例钉住，因此按 `Partial` 记。
-- 仍缺：**第五行「工作流的 `launchFields` 禁用 `prompt` 时回退 authored」没有直接用例**——D2 为 `@` Confirm 列了两条回退
-  authored 的边界，现有证据只钉住「作者声明了同名 `prompt`」一条。禁用时 `injectPlatformFields` 不注入该字段，
-  `validateFormValues` 拒绝描述符外的键，`formKickoff` 因而取不到值，按实现应回退 authored；但
-  `integration/workflow_interaction_test.go` 里禁用平台字段的用例只禁用了 `repository` / `snapshotId` / `version`，没有一条禁用
-  `prompt` 后确认并断言 Start 输出回退 authored，因此按 `Partial` 记。
+  第五行的第三条边界与第六行的两个方向由 [cloud#129](https://github.com/ora-space/cloud/pull/129)（合并提交
+  [`95df5889`](https://github.com/ora-space/cloud/commit/95df5889745fa6909eaaa324895e4f2f31d13f02)）补上直接用例：
+  [`integration/workflow_invocation_test.go`](https://github.com/ora-space/cloud/blob/95df5889745fa6909eaaa324895e4f2f31d13f02/integration/workflow_invocation_test.go)
+  的 `TestWorkflowConfirmDisabledPromptFallsBackToTheAuthoredInstruction`（真实 HTTP + PostgreSQL）把作者的 `launchFields`
+  中 `prompt` 置为 `enabled: false` 后确认，断言表单描述符里没有该字段、运行行没有 `input` 键、Start 输出回退 authored
+  `"authored prompt"`——描述符断言同时证明回退不是「字段在但没提交」；
+  [`internal/core/workflow_scheduler_db_test.go`](https://github.com/ora-space/cloud/blob/95df5889745fa6909eaaa324895e4f2f31d13f02/internal/core/workflow_scheduler_db_test.go)
+  的 `TestWorkflowAdvanceReinterpretsTheHistoricalStringInputKey`（真实 PostgreSQL）直接落库一条本语义落地前形状的运行行，
+  表驱动钉住「字符串 `input` 键读作 `"historical kickoff"`」与「非字符串键（`7`）回退 authored `"authored prompt"`」两个方向。
+  字符串方向的种子形状和代码路径与既有 `TestWorkflowAdvanceStartInputUsesTheStoredKickoff` 相同，该既有用例此前已有直接断言；
+  本次补的是非字符串方向，并把两个方向并排放在同一用例里。
