@@ -68,13 +68,18 @@ provider 初始化材料不能进入控制账本、JSONL、用户 prompt、普�
 带冻结配置的插件进程使用空环境，只保留 `PATH`、`LANG`、`LC_ALL`、`TMPDIR`，不继承宿主的 provider
 凭据或登录变量。配置启动失败只按错误码分类，插件给出的消息一律丢弃：
 
-| 情形 | 公开类别 | 是否重试 |
+| 情形 | 分类码 | 是否重试 |
 | --- | --- | --- |
 | Node 在交给插件前发现配置缺失、非法或授权与冻结绑定不符 | `agent_model_configuration_required`、`agent_model_configuration_invalid`、`model_grant_mismatch` | 否 |
+| Node 在交给插件前发现已安装声明不提供冻结的协议 | `agent_model_protocol_mismatch` | 否 |
 | 插件报告未安装 | 沿用既有未安装类别 | 是 |
 | 插件报告 adapter 不可用 | `agent_model_adapter_failed` | 否 |
 | 插件返回其他错误或超时 | `agent_model_adapter_failed` | 是 |
 | 插件未确认已应用冻结配置 | `agent_model_adapter_not_applied` | 否 |
+
+是否重试由情形决定，不由分类码决定：同一个 `agent_model_adapter_failed` 对应两种重试类别。前两行
+的分类码就是会话公开的失败码；插件阶段的分类码只进 Node 私有错误上下文和日志，会话对外以既有的
+启动失败码结束（`agent_start_failed` 或 `agent_unavailable`，插件未确认冻结配置时为后者）。
 
 原始供应商/CLI 错误不直接公开。
 
@@ -156,9 +161,9 @@ Node 重启按既有 interrupted 规则处理，不能从旧临时配置恢复�
 Claude。没有冻结配置的旧路线只保留给 `official/ora-space.opencode`，不成为其他插件缺能力时的
 回退。
 
-发布顺序由插件包控制：不能解析 Agent 声明的宿主会安装带声明的包，但拒绝激活它。因此声明随
-各插件自己的发布开关放出，在能解析声明的宿主部署后才开启；新包不能只因安装成功就被标为模型
-可执行。
+发布顺序由插件包控制，声明只随发行绑定生效：发行绑定了声明时，不能编译该声明的宿主在安装阶段
+即拒绝这个包；没有绑定的包即使安装成功，也不能用于配置会话。因此安装成功不等于模型可执行，声明
+随各插件自己的发布开关放出，在能编译声明的宿主部署后才开启。
 
 Node 协议/Cloud 执行输入仅新增必要的冻结非秘密配置，原协议字段身份、JSONL 和历史运行保持原义。
 不是本期需要的 transport、动态权限或共享状态不借扩展点一起增加。
