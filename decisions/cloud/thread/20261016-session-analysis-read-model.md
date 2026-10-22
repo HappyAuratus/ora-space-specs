@@ -1,12 +1,13 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 会话分析从 Cloud 授权记录与已登记归档建立只读视图
 
 Cloud Dashboard 以 Agent IssueRun 为会话身份，提供跨任务列表、历史时间轴和原始事件查看。
 完整归档只由 Cloud 按已登记 Revision 读取，并在外部读取前后核验当前权限；浏览器不能选择对象键。
-本决策已获批准，状态为 `approved`；配套实现仍需审查合并与验收。
+本决策状态为 `implemented`，适用于 Cloud 的 Agent IssueRun 只读分析；
+实现不扩展既有输入、结束或归档写入权限。
 已有 Thread 写入、结束、序号和授权规则保持不变。
 
 ## 继承与修改
@@ -68,7 +69,7 @@ Cloud Dashboard 以 Agent IssueRun 为会话身份，提供跨任务列表、历
 验证需覆盖租户/Issue/Run 越权、撤销与登记更换竞态、摘要和大小校验、取消、未知查询、只读身份、
 原始记录保真以及 100000 条投影。真实 PostgreSQL 和 HTTP/对象存储边界测试不能由组件替身代替。
 
-先提交路由、对象读取、契约与测试，再交付列表、适配器和交互视图。新增读取不需要 schema 迁移。
+列表、归档读取、前端投影和交互视图遵循同一授权边界；这些读取不需要 schema 迁移。
 实时订阅、主动上传、跨会话类型、子 Agent 拓扑和大规模渲染基准不在本次范围。
 核心验证义务与直接证据见[会话分析读取](../../../test-cases/cloud/thread/session-analysis-read-model.md)。
 测试覆盖以各义务声明的边界为准，不据局部测试宣布完整部署验收完成。

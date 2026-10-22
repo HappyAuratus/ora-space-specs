@@ -1,9 +1,9 @@
 # 会话分析：授权读取与归档保真
 
-决策依据：[会话分析只读视图](../../../decisions/cloud/thread/20261016-session-analysis-read-model.md)（`approved`）。
-直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的
-[`feae6e39f6cd9647784e6ff923778e65fa8f7f92`](https://github.com/ora-space/cloud/tree/feae6e39f6cd9647784e6ff923778e65fa8f7f92)。
-`Covered` 仅表示该提交在所列测试边界内直接覆盖义务，不表示 PR 已合并或真实部署已验收。
+决策依据：[会话分析只读视图](../../../decisions/cloud/thread/20261016-session-analysis-read-model.md)（`implemented`）。
+直接代码证据固定在 [Cloud PR #69](https://github.com/ora-space/cloud/pull/69) 的合并提交
+[`7c9cd8551f6b39b752265d4ba60f8aba2a33701a`](https://github.com/ora-space/cloud/tree/7c9cd8551f6b39b752265d4ba60f8aba2a33701a)。
+`Covered` 仅表示该提交在所列自动化测试边界内直接覆盖义务；部署验收独立记录，不能替代证据缺口。
 真实 PostgreSQL、受控 HTTP 对象服务和前端组件分别证明各自边界；测试中的 Revision 为合成登记，
 不能证明 Node 上传、真实 S3 与浏览器贯通。
 
@@ -40,7 +40,7 @@
 | 私有端点签名、大小/摘要/超限、重定向与取消 | [对象读取测试][object-read]：`TestReadVerifiedPrivateEndpointAndByteVerification`、`TestReadVerifiedRejectsUnavailableInvalidAndOversizedObjects`、`TestReadVerifiedDoesNotFollowRedirectOrLeakTransportDetails`、`TestReadVerifiedCancellationStopsBodyRead` | Covered |
 | 合法 UTF-8 JSONL、原始顺序/数字和记录数边界 | [JSONL 测试][history-parse]：`TestSessionHistoryRecordsPreservesOriginalOrderAndNumbers`、`TestSessionHistoryRecordsRejectsInvalidJSONL`、`TestSessionHistoryRecordsBoundAndCancellation` | Covered |
 | 成功响应的 `private, no-store` 与 30 秒读取超时 | 实现已有设置；上述测试未直接断言缓存头或超时期限 | Missing |
-| 真实 Node 登记到 S3 读取、浏览器多身份撤权的全链路 | 上述合成登记、受控对象 HTTP 及组件撤权测试只覆盖局部；尚无本 Dashboard 的真实部署记录 | Partial |
+| 真实 Node 登记到 S3 读取、浏览器多身份撤权的全链路 | 上述自动化证据分别覆盖合成登记、受控对象 HTTP 及组件撤权，未贯通真实 Node、S3 与浏览器撤权 | Partial |
 
 ## Session projections must retain source boundaries and unknown observations
 
@@ -60,11 +60,11 @@
 | 完整事件可搜索、未知时间可达、原始 JSON 与缺失测量展示 | [时间轴组件测试][timeline]：`shows full payload, result, timing and JSON without treating absent measurements as zero`、`finds thoughts, lifecycle and unknown-time records while retaining raw replaced versions` | Covered |
 | 真实浏览器完整交互及大归档渲染性能 | 组件和投影测试不测真实浏览器全链路、帧率或内存峰值 | Missing |
 
-[list]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/core/session_list_test.go
-[http]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/integration/session_dashboard_test.go
-[history-db]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/core/session_history_db_test.go
-[object-read]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/objectstore/read_test.go
-[history-parse]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/internal/core/session_history_test.go
-[adapter]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/session-data/adapter.test.ts
-[sessions]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/sessions/sessions.test.tsx
-[timeline]: https://github.com/ora-space/cloud/blob/feae6e39f6cd9647784e6ff923778e65fa8f7f92/frontend/src/features/session-timeline/session-timeline.test.tsx
+[list]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/core/session_list_test.go
+[http]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/integration/session_dashboard_test.go
+[history-db]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/core/session_history_db_test.go
+[object-read]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/objectstore/read_test.go
+[history-parse]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/internal/core/session_history_test.go
+[adapter]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/frontend/src/features/session-data/adapter.test.ts
+[sessions]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/frontend/src/features/sessions/sessions.test.tsx
+[timeline]: https://github.com/ora-space/cloud/blob/7c9cd8551f6b39b752265d4ba60f8aba2a33701a/frontend/src/features/session-timeline/session-timeline.test.tsx

@@ -3,12 +3,12 @@
 本目录与 `specs/decisions/node/` 镜像。Node 各能力的根决策进入 `approved` 后，再在对应子目录
 登记需要长期维护的跨进程、外部副作用、ownership、重试和恢复用例。
 
-## 已批准的 Git 原生代码链路（内部线）
+## Git 原生代码链路（内部线）
 
-[Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)与
-[Node 交付推送与 Git 恢复决策](../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)经 owner 批准为
-`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；以外部 clone 与 bundle 交付为依据的既有用例在实现合入时
-改写或改挂。
+[Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)为
+`implemented`，repository 一行的用例按现有测试登记证据并保留缺口。
+[Node 交付推送与 Git 恢复决策](../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)为
+`implemented`，revision 一行的用例按现有测试登记证据并保留缺口。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -18,8 +18,8 @@
 ## 已批准的恢复截止、取消与停止确认
 
 [Node 恢复截止与停止确认决策](../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)经 owner 批准为
-`approved`。实现尚未合入 desktop 的 main，这些义务目前都是 Missing；已实现的 bundle 恢复证据仍在
-[前序恢复用例](revision/prior-revision-restore.md)，不推导本文的新义务。
+`approved`。恢复已改为从 Git Server 拉取前序交付 ref，bundle 恢复不再存在；完整截止、取消与停止确认的实现尚未合入 desktop 的 main，
+这些义务目前都是 Missing。内部线恢复的证据在[Git 交付与恢复](revision/git-delivery-push-and-restore.md)，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -34,3 +34,14 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | agent-runtime | [插件模型 adapter](agent-runtime/plugin-model-adapters.md) | 首轮前准备失败残留授权、上下文泄入账本/日志、CLI 高优先级配置改路由、共享 provider 状态、别名与发现越权、收尾与撤销不收敛 |
+
+## 子代理投影与运行诊断
+
+[子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)为
+`implemented`，核心用例按现有测试登记证据并保留缺口；
+[会话执行用例](agent-runtime/session-execution.md)与[静默策略用例](../desktop/core/workflow/prompt-inactivity.md)的
+证据保持原范围，不推导来源保真或终态缺口已实现。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |

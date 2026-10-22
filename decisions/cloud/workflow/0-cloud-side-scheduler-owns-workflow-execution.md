@@ -82,11 +82,17 @@ desktop 的 Rust 引擎核心为共享组件"。** 这是硬触发条件，不�
 - **节点结果提交是状态比较交换**：提交必须带 from→to 的当前状态，重复或迟到的回调是幂等的空操作（对应
   desktop 的 `transition_node_run_status` 与 `AdvanceWorkflowRunResult::NotRunning`，`ports.rs:193-196`）。
 - **回调带派发时的执行代（epoch）**：复用控制面既有的代机制（`node_executions.dispatched_epoch`、
-  `controller_leases.epoch`、`operations.controller_epoch`）；代过期的回调被拒绝，不得推进图。
+  `controller_leases.epoch`、`operations.controller_epoch`）；代过期的回调被拒绝，不得推进图。**Cloud 调度
+  器重启或换副本不改变已派发执行的代**：代在派发时写进执行行并保持不变，新的派发产生新的执行身份与代；
+  会话结果按执行身份（`operation_id` + `execution_id`）结算，因此重启前派发的会话，其结果在重启后仍会被
+  接受。
 - **多副本与租约**：多副本下同一个 run 只能有一个执行者，靠上面的排他事务权 + 代校验共同保证；副本崩溃时
-  锁随事务结束释放，下一个副本从已提交状态重算。**在途未提交结果的节点在恢复时按中断结算为失败，绝不记为
-  成功**（与条件④、D4 的崩溃恢复要求一致）。锁的键、租约时长、续租与失效窗口的具体数值由实现给出并在运行
-  issue 记录；本文只固定上面这些不变量。
+  锁随事务结束释放，下一个副本从已提交状态重算。**恢复接手不等于中断**：Cloud 是无状态调度器，分不清上一
+  个副本崩溃和另一个副本正在正常推进，所以已派发、还没有结果的节点在接手后继续持有，由这次执行自己的结果
+  结算；失败由执行侧给出——Node 失联按 `node_unavailable`，超过回合窗口仍无结果按
+  `session_turn_deadline_exceeded`。**没有已提交结果的节点绝不记为成功**（与条件④、D4 的崩溃恢复要求一
+  致）。锁的键、租约时长、续租与失效窗口的具体数值由实现给出并在运行 issue 记录；本文只固定上面这些不
+  变量。
 
 #### 条件③：对拍用例与批准同时就位
 
@@ -175,8 +181,11 @@ desktop 的 `condition.rs` 为准（D1）；发布门禁只负责**能从文档�
 Cloud 现在与 desktop 一致（[circus#288](https://github.com/ora-space/circus/issues/288) 选 2：支持取值，语义与 desktop 一致）：
 发布门禁与运行时变量池都从冻结快照的 `globalVariables` 声明全局根，`sys.workflow_id`（string）与 `sys.timestamp`
 （number）总是声明，指向它们或用户自定义全局变量的选择器不再报 `condition_selector_undeclared`。用户 globals 的值
-来自快照该项的 `value`，随快照冻结，运行时不可覆盖；发布期校验与 desktop 的 `into_global_variables` 相同——`sys.*`
-之外的 global 必须有初始值，类型不受支持、值与声明类型不符都拒绝（错误码沿用门禁的节点字段定位风格）。`sys.*`
+来自快照该项的 `value`，随快照冻结，运行时不可覆盖。其中 `file` / `array[file]` 声明在冻结前按 desktop 的
+`into_global_variables` 就地规范化：遗留路径字符串替换为 `{kind: "workspace_file", path}`，已经规范的引用保持不变，
+所以 condition 读取快照时拿到与 desktop 相同的形状；其余类型照旧保留作者原文。发布期校验与 desktop 的
+`into_global_variables` 相同——`sys.*` 之外的 global 必须有初始值，类型不受支持、值与声明类型不符都拒绝（错误码沿用
+门禁的节点字段定位风格）。`sys.*`
 在 WorkflowRun 创建时写入运行记录：`sys.workflow_id` 是 workflow id，`sys.timestamp` 是创建时刻（number，与 desktop
 同单位的 epoch 毫秒）；重试、恢复、重新派发读同一份冻结值，图里同名的用户声明由运行时覆盖。编辑器变量目录保持
 列出 globals 与 `sys.*`，不过滤。当前只有 Start 真正写入**节点**声明的根（`sys.*` 与 globals 由运行时变量池直接
@@ -300,7 +309,10 @@ Workspace 归属），在新契约下无法执行，也无法诚实补出来；�
 有界的收尾路径，**实际的终态在清理完成后才写入**；不因为收到请求就直接写终态。**首期必须有取消的写入者**（D6）。
 
 **崩溃恢复只依据已提交的节点结果**：恢复时从 `workflow_runs` 与已提交的节点结果重算就绪集合；已经提交结果的
-节点不重复派发；在途没有结果的节点按中断结算为失败。**绝不把未知当作成功。**
+节点不重复派发。**恢复接手不等于中断**：Cloud 分不清副本崩溃和另一个副本正在正常推进，所以已派发、没有结果
+的节点在接手后继续持有，由这次执行自己的结果结算；失败由执行侧给出——Node 失联以 `node_unavailable` 失败，
+超过回合窗口（ora-space/circus#299 方案 A）仍无结果以 `session_turn_deadline_exceeded` 失败，持有不会无限期。
+**绝不把未知当作成功**：没有已提交结果的节点绝不被记为成功。
 
 ### D5：仓库凭据首期只支持匿名公开 Git
 
