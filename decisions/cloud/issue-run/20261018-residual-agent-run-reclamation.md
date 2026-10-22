@@ -6,7 +6,7 @@ status: implemented
 
 D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周期收集真实证据——迟到的执行终态与交付结果、执行已终结、沙盒已物理终止——证据齐的条目取得本文新增的系统清理授权后，复用 `delete_workspace` owned delete 的执行步骤清理，成果能救则先救；清理完成前账本保护不解除。证据收不齐的条目只能由部署运维按租户与资源范围发起受控回收：显式确认放弃未交付成果，复用管理强停的终止与围栏语义（终止与数据删除分离、逐目标确认 `terminated` 与 `lateEnsureFenced`、不因超时判成功），经当前 Controller lease 与既有 Substrate effects 执行，不新增物理路径、不伪造 `impactConfirmed`、不由业务 `done` 隐式强停。账本条目在全部目标资源取得闭环证据或显式处置记录后清除；Substrate 永久不可用时保留未完成意图，由运维外部确认兜底。存量 D8 删除残留按原身份接入同一路径，不改写历史。
 
-本文处于 `implemented`：Cloud、Controller 与 Sandbox Server 的实现已合并；[owner 于 2026-10-21 的决定](https://github.com/ora-space/circus/issues/251#issuecomment-6315318982)采用下述更保守的首版规则，并接受本地 `cloudctl residual` 运维入口。联合演练按实际候选分别取证，工具 ora-space/cluster#36（ora-space/circus#388）仍在审，本 PR 由 owner 安排在其合并之后合并；`implemented` 不表示所有联合验收义务均为 `Covered`。详见[落地结果](#落地结果)与[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。
+本文处于 `implemented`：Cloud、Controller 与 Sandbox Server 的实现已合并；[owner 于 2026-10-21 的决定](https://github.com/ora-space/circus/issues/251#issuecomment-6315318982)采用下述更保守的首版规则，并接受本地 `cloudctl residual` 运维入口。联合演练按实际候选分别取证，工具 ora-space/cluster#36（ora-space/circus#388）已合并，合并提交 `7adcb6e`、合入 head `a11e025`；`implemented` 不表示所有联合验收义务均为 `Covered`。详见[落地结果](#落地结果)与[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。
 
 本文承接 [有界启动与未派发撤回决策](20261012-bounded-agent-startup-and-undispatched-withdrawal.md)（下称“启动决策”）D4 预留的“Agent Run 残留资源对账与回收”ADR。联合职责为 Cloud 控制面（账本、对账编排、受控回收意图）、Controller/Fleet（许可、对账与派发证据）与 Substrate（终止与围栏执行）。涉及 cloud 的 `internal/core`（残留账本、operation、受控回收意图）与部署运维命令 `cloudctl residual`；desktop Controller 与 cluster Sandbox Server 不新增机制，只按既有决策提供证据与执行。兼容性边界：不改启动决策 D4/D5 的结算语义、不改根 D8 残留的状态与记录、不开放隐藏运行 Workspace 的公开操作入口；`agent_run_residuals` 表只增列。本文不承担对象存储中 Revision 的过期清理、告警与通知机制、以及生产 Substrate 适配器的具体实现。
 
@@ -216,7 +216,7 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只�
 
 “双确认后送达的有效迟到 ensure 被墓碑拒绝”只在第一轮 S2b 尝试，原许可有效期内生产回收资格未成立，结论 inconclusive；目前只有 Sandbox Server 单仓测试。
 
-- 产品实现已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35；停止未确认证据及其运维展示已随关联改动合入。演练工具 ora-space/cluster#36 仍在审，本 PR 待其合并后再合并。代码合并不改变上述固定版本的演练结果或 `Partial` 证据缺口。
+- 产品实现及演练工具均已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35、ora-space/cluster#36（合并提交 `7adcb6e`、合入 head `a11e025`）；停止未确认证据及其运维展示已随关联改动合入。`a11e025` 包含 S2b 响应等待修复，但未重跑部署演练；上述历史演练工具 head 和 `Partial` 证据缺口保持不变。
 
 ## 核心测试用例
 

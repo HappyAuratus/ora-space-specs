@@ -107,7 +107,7 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 
 ## 跨仓库验证边界
 
-产品 PR（cloud#112/#116/#117/#127、desktop#710/#712、cluster#35）均已合并；cluster#36 演练工具仍在审，specs#163 在其合并后再合并。以下 `Partial` 是固定版本的联合验收证据缺口，不表示产品实现仍未合并；不因合并状态升级覆盖结论。
+产品实现及演练工具 PR（cloud#112/#116/#117/#127、desktop#710/#712、cluster#35/#36）均已合并；cluster#36 的合并提交为 `7adcb6e`、合入 head 为 `a11e025`，包含 S2b 响应等待修复但未重跑部署演练。上表保留实际运行的历史工具 head。以下 `Partial` 是固定版本的联合验收证据缺口，不表示产品实现仍未合并；不因合并状态升级覆盖结论。
 
 - 第 1、2 步的账本、授权、意图与事实接管义务在 cloud 内可直接验证；它们的 `Covered` 判定不依赖 desktop/cluster。
 - Node 侧停止证据未确认的命名原因、等待上限与到期转交由 [Node 恢复截止与停止确认用例](../../node/revision/restore-deadline-and-stop-confirmation.md)登记；本文承接其在残留账本上的命名证据（`stop_unconfirmed`）与后续回收义务，不重复登记。
