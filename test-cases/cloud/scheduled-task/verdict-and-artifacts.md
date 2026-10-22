@@ -1,6 +1,6 @@
 # Cloud Scheduled Task Verdict 与产物
 
-本文件登记 [Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)
+本文件登记 [Cloud Scheduled Run verdict 与产物 ADR](../../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)
 的核心验证义务。实现尚未合入 main，义务如实标为 `Missing`；每项落地完成时按直接证据更新状态。
 
 ## Verdict Must Come From The Executor Only For Scheduled Runs

@@ -13,7 +13,7 @@ Node 终态上报字段。
 
 本 ADR 处于 `approved`。它只冻结 Cloud 侧契约，不实现产品代码、真实栈端到端验收、验收开关、发布或
 迁移执行；获批后如需实现，另开 Cloud 实现事项与运行单。核心测试用例见
-[verdict 与产物用例](../../test-cases/cloud/scheduled-task/verdict-and-artifacts.md)，义务初始 `Missing`。
+[verdict 与产物用例](../../../test-cases/cloud/scheduled-task/verdict-and-artifacts.md)，义务初始 `Missing`。
 
 ## 继承与修改
 
