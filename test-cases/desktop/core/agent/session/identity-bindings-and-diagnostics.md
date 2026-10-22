@@ -1,9 +1,11 @@
 # 会话身份、绑定历史与统一诊断核心用例
 
 本文件依据[会话根决策](../../../../../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)维护验证义务。
-下列自动化证据固定到 desktop `d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116`，对应 [desktop#722](https://github.com/ora-space/desktop/pull/722)。
+基础自动化证据固定到 desktop `d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116`，对应 [desktop#722](https://github.com/ora-space/desktop/pull/722)。
+后端历史异常边界的补充证据固定到合并 commit `914bde1875a42e2368bf9be78018689f9e29659e`，对应 [desktop#725](https://github.com/ora-space/desktop/pull/725)：通过生产 bindings 接口读取真实 SQLite/JSONL 合成夹具；不证明真实 provider 运行、原生降级文案或全部插件入口无调用。
 `Partial` 表示仅部分义务有直接证据，不表示整项已验收。
 合并后原生交互证据依据 desktop main `f43f52fcef68a8ec6a1ea28ef7039188b7ec6f30`，见[直接验收证据](https://github.com/ora-space/circus/issues/482#issuecomment-6335994326)。通过 Windows Tauri/WebView2 生产查询消费隔离 SQLite/JSONL 合成夹具，覆盖代表性界面路径及冷启动；不证明真实 provider 运行产生这些记录，不代替下表剩余并发、权限及副作用观测义务。
+下表各项剩余缺口统一由 [circus#96](https://github.com/ora-space/circus/issues/96) 承接；本次后端异常证据补充不覆盖这些缺口。
 
 子代理来源、委托结果、终态缺口和活动观察由根决策“继承与职责”引用的运行诊断 ADR 定义。
 面板只定位父时间线的同一份只读详情树，保留其展开行为，不复制第二份内容或组件；本文件只验证组合边界。
@@ -19,7 +21,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 段数量、次序、当前标记和完整复制分别断言；查询前后核对身份及无写入、无插件调用。 | Partial | [真实 SQLite/JSONL 查询测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证三段顺序、当前唯一及忽略 handoff；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证完整复制。合并后原生交互确认普通对话/节点面板/索引三段呈现，并通过系统剪贴板精确核对完整 id。尚缺 at/seq 反序、前后无写入和全部插件入口的显式观测。 |
+| 段数量、次序、当前标记和完整复制分别断言；查询前后核对身份及无写入、无插件调用。 | Partial | [真实 SQLite/JSONL 查询测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证三段顺序、当前唯一及忽略 handoff；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证完整复制。合并后原生交互确认普通对话/节点面板/索引三段呈现，并通过系统剪贴板精确核对完整 id。[binding_order_follows_sequence_despite_reversed_timestamps_and_append_order](https://github.com/ora-space/desktop/blob/914bde1875a42e2368bf9be78018689f9e29659e/crates/backend/src/session/binding_anomaly_tests.rs#L108) 补充 at 及物理写入顺序均与 seq 反序时仍按 seq 返回三段、仅末段当前，并通过 assert_projection 深比较查询前后的会话行及 JSONL 字节不变。尚缺全部插件入口无调用的显式观测。 |
 
 ## Repeated plugin bindings remain distinct segments
 
@@ -45,7 +47,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 控制读取交错，分别验证稳定补段、有界重试、无当前绑定和未落盘旧段永久不可恢复；验证查询不写历史且不持调度事务等待 IO。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证活绑定补段、受控行变化最多两次读取和持续变化返回 Retry。尚缺“有历史但无当前绑定”、崩溃未落盘不可恢复及 IO 不阻塞 prompt 的直接行为证据。 |
+| 控制读取交错，分别验证稳定补段、有界重试、无当前绑定和未落盘旧段永久不可恢复；验证查询不写历史且不持调度事务等待 IO。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 验证活绑定补段、受控行变化最多两次读取和持续变化返回 Retry。[historical_bindings_survive_unbinding_but_never_resurrect_deleted_sessions](https://github.com/ora-space/desktop/blob/914bde1875a42e2368bf9be78018689f9e29659e/crates/backend/src/session/binding_anomaly_tests.rs#L152) 补充有历史但清空当前 agent_session_id 时保留历史段且全部非当前，并通过 assert_projection 深比较查询前后的会话行及 JSONL 字节不变。尚缺崩溃未落盘不可恢复、IO 不阻塞 prompt 及不持调度事务等待 IO 的直接行为证据。 |
 
 ## Unavailable histories remain distinguishable from absent sessions
 
@@ -58,7 +60,7 @@
 
 | 验证义务 | 状态 | 代表性证据 |
 | --- | --- | --- |
-| 逐状态断言结果及降级文案；验证有限读取、可验证部分保留和删除会话无恢复副作用。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 覆盖缺失、外来身份、损坏、不支持 schema、8 MiB 截断保留历史并补 live；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证不可用不误称未创建。合并后原生交互确认缺失历史提示不可用并保留 live/时间未知，删除会话保留 Ora id 并提示不存在。权限不可读、Gap、冲突 seq 与删除后残存历史矩阵及其他逐项原生文案待补。 |
+| 逐状态断言结果及降级文案；验证有限读取、可验证部分保留和删除会话无恢复副作用。 | Partial | [binding_tests.rs](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/crates/backend/src/session/binding_tests.rs) 覆盖缺失、外来身份、损坏、不支持 schema、8 MiB 截断保留历史并补 live；[面板测试](https://github.com/ora-space/desktop/blob/d5073d09cc0e58cd3f866f2fe9a5bb8010cb5116/packages/app-shell/src/features/chat/session-information.test.tsx) 验证不可用不误称未创建。合并后原生交互确认缺失历史提示不可用并保留 live/时间未知，删除会话保留 Ora id 并提示不存在。[gaps_and_conflicting_sequences_preserve_only_verified_prefixes](https://github.com/ora-space/desktop/blob/914bde1875a42e2368bf9be78018689f9e29659e/crates/backend/src/session/binding_anomaly_tests.rs#L39) 补充显式 Gap 和同 seq 不同绑定均为 Incomplete，仅保留可信前缀且不标为当前，另补未知记录时间的 live；查询前后会话行及 JSONL 字节不变。[软删除残留历史测试](https://github.com/ora-space/desktop/blob/914bde1875a42e2368bf9be78018689f9e29659e/crates/backend/src/session/binding_anomaly_tests.rs#L152) 验证残留 JSONL 仍返回 NotFound、会话未恢复且文件字节不变。尚缺权限不可读的直接查询证据，以及 Gap、冲突 seq、残留历史等状态的逐项原生降级文案。 |
 
 ## An uncreated agent session stays uncreated during inspection
 
