@@ -172,7 +172,7 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 - 同 key 同请求重放原响应；同 key 不同请求 `409 idempotency_conflict`；再次确认 `409 interaction_already_confirmed`。
 - 只按所选版本校验：选中字段与活稿不同的旧版本，提交符合该版本即通过；缺该版本必填字段返回 `400 required_field_missing`，提交该版本未声明的字段返回 `400 invalid_field_value`，都不建运行。
 - 有平台版本选择器时，客户端渲染的表单与校验依据同源：未手动切换版本时也按默认选中的发布版本读取，活稿里未发布的字段不出现在默认视图。
-  保留键 `snapshotId` 由平台持有，活稿里的同名声明不改变这一点：`@` 表单始终投影平台选择器，Confirm 的版本游标一律读这个键；用启动字段撤下选择器时界面没有选择器，不提交该键执行最新已发布版本，提交了仍按版本游标读取（见 D1）。
+  保留键 `snapshotId` 由平台持有，活稿里的同名声明不改变这一点：`@` 表单始终投影平台选择器，Confirm 的版本游标一律读这个键；用启动字段撤下选择器时界面没有选择器，不提交该键时按最新已发布版本解析（解析到的版本自己声明了该键时按 D3 返回 `409`），提交了仍按版本游标读取（见 D1）。
 - Confirm 解析到的已发布版本如果在自己的冻结图里声明了 `snapshotId`，确认返回 `409 workflow_version_reserved_field`（参数带被解析到的版本与字段名），不建运行、不认领交互；带不带版本游标都一样，也不改选别的版本。
 
 ### 禁止结果
@@ -188,7 +188,7 @@ Issue 上有未确认的 Form 交互；Workflow 已发布，可能已有新草�
 | 只按所选版本校验 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmValidatesAgainstTheChosenVersion` —— 旧版本按自身 schema 通过并记录该版本；缺该版本必填字段被 `required_field_missing` 拒绝、提交它未声明的字段被 `invalid_field_value` 拒绝，两条都断言不建运行且同一交互重新按该版本确认成功 | Covered |
 | 客户端默认视图也按所选发布版本渲染 | 前端组件用例：`opens on the default published version by reading that version, so rendering and validation match` 断言默认视图读取 `/snapshots/:id/form` 并按该版本的字段确认 | Covered |
 | 并发确认只成功一个 | 真实 HTTP + PostgreSQL：`TestWorkflowConfirmConcurrentInvocationCreatesExactlyOnePair` —— 两个并发确认只产生一个 WorkflowRun 和一个 IssueRun | Covered |
-| 声明了保留键的版本不被执行 | 真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`——不带游标解析到最新存量版本、带游标显式选中它，两条都返回 `409 workflow_version_reserved_field`，参数带版本与字段，且不建运行、交互仍未认领；`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`——活稿仍声明该键时同样拒绝，可选版本照常执行（cloud#123 未合入 main，按 `Missing` 记） | Missing |
+| 声明了保留键的版本不被执行 | 真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`——不带游标解析到最新存量版本、带游标显式选中它，两条都返回 `409 workflow_version_reserved_field`，参数带版本与字段，且不建运行、交互仍未认领；`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`——活稿仍声明该键时同样拒绝，可选版本照常执行；`TestWorkflowReservedFieldRefusalOutranksTheExecutorSlotGate`——即使版本还需要配置执行器槽位也先返回保留键拒绝；`TestWorkflowReservedFieldSelectorCoversEveryDeclarationShape`——全部已发布版本都被排除、界面没有选择器时，无游标的确认仍解析到该版本并返回 `409`（cloud#123，合并提交 `fc12dbe4`） | Covered |
 
 ### 决策依据
 
@@ -225,7 +225,7 @@ Workflow 的 Start 节点声明变量；可能有多个已发布版本。
 | 投影与 404 | `TestFormDescriptorProjection`；单元 `TestFormDescriptorProjection*` | Covered |
 | 提供方失败与非法描述 | `TestFormDescriptorUnavailableAndInvalid` | Covered |
 | 版本表单按版本投影 | `TestWorkflowSnapshotFormProjectsTheChosenVersion` | Covered |
-| 带 `issueId` 的版本表单不渲染作者的 `snapshotId` 声明，平台选择器照样注入 | 真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`——带 `issueId` 时 `snapshotId` 是平台选择器（`select`）、不带 `issueId` 时仍是作者的 `text`；单元 `TestLaunchKeysCollideLikeTheOlderOnes`（cloud#123 未合入 main，按 `Missing` 记） | Missing |
+| 带 `issueId` 的版本表单不渲染作者的 `snapshotId` 声明，平台选择器照样注入 | 真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem`——带 `issueId` 时 `snapshotId` 是平台选择器（`select`）、不带 `issueId` 时仍是作者的 `text`；单元 `TestLaunchKeysCollideLikeTheOlderOnes`（cloud#123，合并提交 `fc12dbe4`） | Covered |
 | 版本表单的作用域 | `TestWorkflowSnapshotFormScoping` | Covered |
 | 读取不是门禁 | `TestWorkflowSnapshotFormIsNotARunGate` | Covered |
 
@@ -266,8 +266,8 @@ Issue 有或没有 Project、父 Issue；Workflow 有或没有已发布快照、
 |---|---|---|
 | 注入条件、顺序与默认值 | `TestFormDescriptorPlatformFieldsForAnIssue`；单元 `TestPlatformFieldsLeadTheForm`、`TestVersionFieldOffersPublishedSnapshots`、`TestContextRefsFieldIsAdditiveOnly`、`TestGlobalsComeAfterTheAuthorsOwnFields` | Covered |
 | 作者声明优先 | `TestFormDescriptorPlatformFieldsCollideWithAuthorDeclarations`；单元 `TestAuthorDeclaredKeysWin` | Covered |
-| 保留键始终属于平台 | 单元 `TestLaunchKeysCollideLikeTheOlderOnes`（作者声明的 `snapshotId` 被丢弃，选择器照常注入）、`TestWorkflowVersionCursorIsThePlatformsForTheReservedKey`；真实 HTTP：`TestAuthorDeclaredSnapshotIDDoesNotTakeTheKeyBack`、`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`（cloud#123 未合入 main，按 `Missing` 记） | Missing |
-| 版本选择器排除声明保留键的存量版本并说明原因 | 单元 `TestVersionFieldExplainsWithheldVersions`；真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem` 断言选项里只有可选的版本、默认值是最新的可选版本、选择器 `description` 说明被排除的版本，以及不带 `issueId` 的版本表单仍按作者声明投影（cloud#123 未合入 main，按 `Missing` 记） | Missing |
+| 保留键始终属于平台 | 单元 `TestLaunchKeysCollideLikeTheOlderOnes`（作者声明的 `snapshotId` 被丢弃，选择器照常注入）、`TestWorkflowVersionCursorIsThePlatformsForTheReservedKey`；真实 HTTP：`TestAuthorDeclaredSnapshotIDDoesNotTakeTheKeyBack`、`TestWorkflowReservedFieldStaysThePlatformsWhenTheDraftDeclaresIt`（cloud#123，合并提交 `fc12dbe4`） | Covered |
+| 版本选择器排除声明保留键的存量版本并说明原因 | 单元 `TestVersionFieldExplainsWithheldVersions`；真实 HTTP + PostgreSQL：`TestWorkflowReservedFieldWithholdsStockVersionsAndRefusesThem` 断言选项里只有可选的版本、默认值是最新的可选版本、选择器 `description` 说明被排除的版本，以及不带 `issueId` 的版本表单仍按作者声明投影；`TestWorkflowReservedFieldSelectorCoversEveryDeclarationShape` 覆盖 `globalVariables` 声明与带空格的同名变体（cloud#123，合并提交 `fc12dbe4`） | Covered |
 | `launchFields` 覆盖与撤下 | `TestFormDescriptorAuthorDeclaredLaunchFields`；单元 `TestLaunchFields*` | Covered |
 | 平台字段进入运行 | `TestWorkflowConfirmCarriesPlatformFields` | Covered |
 | 旧名兼容 | `TestWorkflowConfirmReadsThePreRenameVersionKey`；单元 `TestFoldLegacyVersionAnswer`、`TestLaunchFieldsDeclarationAcceptsThePreRenameKey` | Covered |
