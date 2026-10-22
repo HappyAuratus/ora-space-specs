@@ -8,7 +8,7 @@
 
 ## 已批准的多人协作运行时控制
 
-使用权限、独占准入、停止/强停、控制交付及插件维护五份 ADR 的后端规则为 `implemented`；仓库凭据连续性仍为 `approved`。三处 UI 与完整联合故障矩阵由[后续验收 ADR](../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接，各用例继续按直接证据保留 Partial/Missing。Node 插件执行已经落地，但不能据数据库或模拟器宣布完整产品与故障验收完成。
+使用权限、独占准入、停止/强停、控制交付及插件维护五份 ADR 的后端规则为 `implemented`；仓库凭据连续性也已 `implemented`。三处 UI 与完整联合故障矩阵由[后续验收 ADR](../../decisions/cloud/execution-admission/20261013-runtime-control-ui-and-fault-acceptance.md)承接，各用例继续按直接证据保留 Partial/Missing。Node 插件执行已经落地，但不能据数据库或模拟器宣布完整产品与故障验收完成。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
