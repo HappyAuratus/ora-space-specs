@@ -2,7 +2,7 @@
 
 依据[已批准的实时预览决策](../../../decisions/node/protocol/20261018-live-thread-previews.md)。
 可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。固定 main 上的真实 OpenCode
-已产生 Node → Controller → Cloud → 浏览器预览；本地 Claude 候选四运行也观测到实时正文与工具过程，正式包、慢消费者与故障组合仍需直接证据。
+已产生 Node → Controller → Cloud → 浏览器预览；含 Claude 候选的本地四运行只验证了至少一处实时正文与工具过程，正式包、慢消费者与故障组合仍需直接证据。
 
 ## Stable Identity And Final Records Defeat Reordered Previews
 
@@ -28,7 +28,7 @@
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 覆盖可选协商、版本及位置约束；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)经 SSE 观察到最终正文的严格前缀和工具终态配对，证明本组合的转发已接通。旧 Node 降级与第二 Agent 仍缺 | Partial |
+| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 覆盖可选协商、版本及位置约束；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)经 SSE 观察到最终正文的严格前缀和工具终态配对，证明本组合的转发已接通。旧 Node 降级与正式第二 Agent 的独立预览仍缺 | Partial |
 | 定型优先和乱序 | Cloud `internal/core/thread_preview_test.go::TestThreadPreviewAuthorityAndFinalRecordDominance`、替换/隔离测试与 `frontend/src/features/thread-preview/preview.test.tsx` 覆盖采用/覆盖规则；[#312 生产者 RPC/SSE 注入](https://github.com/ora-space/circus/issues/312#issuecomment-6320732885)验证低版本、重复、冲突、定型覆盖和重放，但不代表 Node WebSocket 逐跳乱序或最新 main 的全部故障组合 | Partial |
 
 ### 决策依据
