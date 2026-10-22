@@ -14,8 +14,11 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 
 真实栈证据来自 `wanglongan587` 的[固定版本运行回执][real-stack]及[固定版本评审][review]。
 作者机器产物为 `ora-space/cluster/.acceptance/407/407-late-terminal-818226b4.json` 与
-`407-stop-818226b4.json`；本文件引用评论及产物名，不声称读取过这些本地文件。O4 真实拒绝隔离窗口及真实新 incarnation
-仍待外部运行，本次隔离前迟到接收成功不能覆盖它们。
+`407-stop-818226b4.json`；本文件引用评论及产物名，不声称读取过这些本地文件。O4 拒绝隔离窗口已由[后续真栈复测][o4-stack]补齐；真实新 incarnation 仍缺外部证据。
+
+[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)：desktop `13de5a3567d0` + 旧 Cloud main `7a48f3403ae3`，精确拒绝告警仅一次（`Aborted` / `ERROR_CODE_CONFLICT` / `dispatch_conflict`、`unresolved/no_ack/no_redispatch`）；60 秒无 receipt、result=null、仅一个 deliver_revision，Node 同 incarnation 保持 connected、无重新注册，仅 heartbeat 前进。换 Cloud `818226b49b8a` 并只重启 Cloud 后，Cloud 不可用触发 Controller↔Node 会话重建，原终态在 14.6 秒内接收（receipt seq=1，`push_rejected` / `revision_failed`）；同一 delete 经 TERMINATE→CLEANUP→DONE，Run done、deliveryState=failed、revisionId=null、0 revisions，Workspace deleted、container/volume 均回收。随后才重启 Controller，状态不变。
+
+作者机器的 `ora-space/cluster/.acceptance/407/407-o4-isolation.json` 未提交；作者给出的 SHA-256 为 `7cb8f80b44a489dc09a962359b42713b1c068e0aba417449dce8a1298387079e`，此处原样引用，未在本机读取文件或重算摘要。边界：echo agent（受控模型），90s give-up 为测试 override；上游仓库绑定/快照由 `git:preset snapshot --synthetic 3` 预置，该验收工具直接写仓库卷及数据库，只代替上游同步；交付接管与释放使用真实组件。失败终态不覆盖 O2 迟到成功 Revision 登记或后创建 Run receipt-only 的真栈分支，它们仍引用 Cloud 集成测试。
 
 ## Root D5 Takes Over An Original Late Success Without A Residual Ledger
 
@@ -82,7 +85,7 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 | 义务 | 直接证据与边界 | 状态 |
 | --- | --- | --- |
 | D5/D8 迟到失败不重试或重结算 | [integration/late_delivery_fact_test.go][cloud-fact] `TestLateDeliveryFactRootD5AndD8OverGRPC` 的 failed 分支：原 result/receipt/submission、完整业务及 work/execution 计数快照，原/新 submission 重放 | Covered |
-| 各合法失败原因首次接管均保真 | 上述测试覆盖 upload_failed；同文件 `TestLateDeliveryFactAcceptedConflictMatrixOverGRPC` 覆盖改为 push_failed 的冲突拒绝，但未直接覆盖每个合法原因首次接管 | Partial |
+| 各合法失败原因首次接管均保真 | [O4 真栈复测][o4-stack]补充 push_rejected/revision_failed 首次迟到接管；上述测试覆盖 upload_failed；同文件 `TestLateDeliveryFactAcceptedConflictMatrixOverGRPC` 覆盖改为 push_failed 的冲突拒绝，但未直接覆盖每个合法原因首次接管 | Partial |
 - 决策依据：迟到决策 D1、D3、不变量 2、5。
 
 ## Exact Replays Preserve The Original Decision And Conflicts Preserve Canonical Facts
@@ -118,7 +121,7 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 | --- | --- | --- |
 | Cloud 原子提交后才成功答复 | [integration/late_delivery_fact_test.go][cloud-fact] `TestLateDeliveryFactAtomicRollbackOverGRPC`：登记分支五表、receipt-only 三张实际写入表故障，全部无成功答复、无残留事实，恢复原事件重交成功且业务不变 | Covered |
 | Controller 等成功 receipt 后才 ACK，含 receipt-only、丢响应及重连恢复 | [apps/ora-controller/tests/workspaces/deliveries/refusals.rs][desktop-refusals] `deliveries::refusals::blocked_replay_keeps_refused_terminal_busy_until_receipt`、`reconnect_replays_refused_terminal_before_ack`、`restart_replays_refused_terminal_before_ack`：Controller/WebSocket 与 fake Cloud 提交边界直接断言；重启测试实际先再拒绝、后 transport 重连成功，不包括重启后首次直接成功分支，后者见[Controller 缺口](../../controller/session/refused-delivery-terminals.md#real-reconnect-replays-the-original-fact-and-only-its-success-receipt-clears-refusal) | Covered |
-| 真实 Cloud → Controller → Node 的逐事件提交/ACK/outbox 顺序 | [真实栈回执][real-stack]直接覆盖最终释放及物理资源，未直接展示逐事件提交/ACK/outbox；上述两仓测试分别覆盖两侧，不能拼成连续真栈证据 | Partial |
+| 真实 Cloud → Controller → Node 的逐事件提交/ACK/outbox 顺序 | [原真实栈回执][real-stack]及[O4 真栈复测][o4-stack]直接覆盖最终 receipt、释放及物理资源，但未逐事件展示 Controller ACK/Node outbox 清理顺序；两仓测试分别覆盖两侧，不能拼成该边界的连续真栈证据 | Partial |
 - 决策依据：迟到决策 D3、不变量 5、6；Controller 终态拒绝决策。
 
 ## Reconnecting With A Late Terminal Completes The Original Release And Frees Resources
@@ -129,7 +132,7 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
   以及 Git Server 阻塞交付、恢复后才形成迟到终态的变体。
   可将测试交付放弃窗口配置为 90 秒以稳定触发，生产默认和 D8 条件不因此改变。根 D5 后 Run releasing、
   Workspace 可在 deleted/deleting 与 running/ready 间变化，无 residual/运维意图；原 delete 尚未被 D8 终结失败。
-- 触发：恢复原依赖/Node 网络，重放原终态并继续生产释放；另设 execution 及后续 waiting 消息。
+- 触发：恢复原依赖/Node 网络，或 Cloud 不可用/重启引起 Controller↔Node 会话重建后，重放原终态并继续生产释放；不要求 Controller 重启；另设 execution 及后续 waiting 消息。
   #312 永久失败变体必须显式执行真实 transport 断线重连或 Controller 重启，再重交同一原 terminal，不能只等自然重试。
 - 必须成立：Node 完成握手并保持连接，原事件获得真实接管回执后 ACK、outbox 排空；旧终态不再制造
   整会话循环，另一 execution 正常。随后同一原释放路径取得真实 quiesce、sandbox 终止和数据删除证据，
@@ -143,7 +146,8 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 | --- | --- | --- |
 | Git Server 阻塞变体后的真实释放与物理资源 | [真实栈回执][real-stack]固定两份 head：Git Server 暂停 → 90 秒 give-up，Run releasing、Workspace deleted/deleting/running-ready 间变化且 1 container/1 volume → 240 秒恢复 → 约 256 秒 done，作者报告恢复后约 10 秒，Workspace deleted、0 container/0 volume，无 Controller 重启；stop 对照约 102 秒 done，产物名见文件开头 | Covered |
 | 先形成终态、接管前 transport 断线的真实栈完整时序 | [integration/late_delivery_fact_test.go][cloud-fact] `TestLateDeliveryFactRootD5AndD8OverGRPC` 与[Cloud 释放测试][cloud-release]覆盖对应 PG/gRPC 与 simulator 路径；作者真栈复跑使用 Git Server 阻塞，未直接证明该更窄故障注入时序 | Partial |
-| O4 真实精确拒绝后的隔离窗口与显式重连/重启重交 | **无直接真实栈证据，待外部运行。** [固定版本评审][review]明确缺失。[apps/ora-controller/tests/workspaces/deliveries/refusals.rs][desktop-refusals] `deliveries::refusals::refused_terminal_isolated_on_live_session`、`reconnect_replays_refused_terminal_before_ack`、`restart_replays_refused_terminal_before_ack` 仅覆盖 fake Cloud；本次真实成功在隔离窗口之前，不可替代 | Missing |
+| O4 真实精确拒绝后的隔离窗口与显式重连/重启重交 | [O4 真栈复测][o4-stack]：旧 Cloud 拒绝后 60 秒同 incarnation connected、无 ACK/receipt、无第二次 delivery start；换候选 Cloud 并重启 Cloud 引起会话重建，14.6 秒内原失败终态 seq 1 被接受，同一 delete 到 DONE、Run done、Workspace deleted、容器/卷均回收。Controller 未重启即可恢复；版本、作者摘要和边界见文件开头 | Covered |
+| 真实重连后原终态被接管并完成跨仓物理释放 | [O4 真栈复测][o4-stack]直接记录 Cloud 不可用导致会话重建、原失败终态 receipt seq 1、同一 delete TERMINATE→CLEANUP→DONE、Run done、Workspace deleted、0 container/0 volume；不要求 Controller 重启，不据此推断逐事件 ACK/outbox 顺序或 O2 成功分支 | Covered |
 | 同稳定 Node/资源的新 incarnation 真实恢复 | [integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC/new-incarnation`：生产 EndNode/RegisterNode/ReportNodeStatus 与 simulator 证明原事件接管及释放；[固定版本评审][review]明确真实新 incarnation 仍缺，待外部运行 | Partial |
 | 后续输入保留授权边界 | 无直接产品测试/运行证据；[integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC` 与[真实栈回执][real-stack]均未直接覆盖 waiting 输入及显式恢复 | Missing |
 
@@ -188,3 +192,5 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 [desktop-refusals]: https://github.com/ora-space/desktop/blob/13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d/apps/ora-controller/tests/workspaces/deliveries/refusals.rs
 [real-stack]: https://github.com/ora-space/circus/issues/407#issuecomment-6341728665
 [review]: https://github.com/ora-space/circus/issues/407#issuecomment-6342996936
+
+[o4-stack]: https://github.com/ora-space/circus/issues/516#issuecomment-6345535566

@@ -56,7 +56,7 @@
 
 - 风险：拒绝状态永久失去恢复机会，或重连时用新执行/Completed 查询绕过原事件回执。
 - 前置状态：原 delivery 因拒绝 unresolved，Node outbox 保留原 sequence/event；Cloud 后续具备真实接管能力。
-- 触发：真实 transport 重连或 Controller 重启；原事件再被拒绝或成功接管；回复丢失后重放。
+- 触发：真实 transport 重连（包括 Cloud 不可用/重启引起 Controller↔Node 会话重建，不要求 Controller 重启）或 Controller 重启；原事件再被拒绝或成功接管；回复丢失后重放。
 - 必须成立：重交同 execution/work/resource/sequence/event，不重派交付命令。仍被拒绝则隔离该
   execution 且不触发新一轮主动重连；成功响应只在原事件持久接管后产生，随后才清对应 unresolved、
   ACK 并排空原 outbox。登记 Revision 与 receipt-only 两种成功都成立，Run 的业务交付仍为 failed。
@@ -68,12 +68,12 @@
 | --- | --- | --- |
 | transport 重连重交原事实，仍拒绝则再次局部隔离 | `deliveries::refusals::reconnect_replays_refused_terminal_before_ack` 比较完整原请求（仅允许新 submission ID），重连前 Unknown 不重派，第二次拒绝仍无 ACK/receipt且连接存活 | Covered |
 | Controller 重启重新发现原执行，重放前仍 busy，再次拒绝保持隔离 | `deliveries::refusals::restart_replays_refused_terminal_before_ack`：暂停 terminal 后重启，pending 存在时 quiesce 为 busy，无新启动；重放同一原事实并再次拒绝 | Covered |
-| 重启后首次重放直接成功并清除拒绝 | 上一测试实际为“重启→再次拒绝→之后 transport 重连成功”，没有直接断言重启后的首次成功分支；共用 helper 不能填补该缺口 | Missing |
+| 重启后首次重放直接成功并清除拒绝 | 上一测试实际为“重启→再次拒绝→之后 transport 重连成功”，没有直接断言重启后的首次成功分支；O4 真栈在接管并 done 后才重启 Controller，也不能填补该缺口 | Missing |
 | 成功回执后才 ACK/清 outbox，含 receipt-only 与回复丢失 | 上述两个测试分别运行 result+receipt、receipt-only；成功发生于后续 transport 重连，断言同 submission 丢回复重试、receipt 精确匹配、RevisionTaken 先于 ACK、outbox 清空及随后 Idle(true) | Covered |
 | 接管等待期间不提前清除/ACK | `deliveries::refusals::blocked_replay_keeps_refused_terminal_busy_until_receipt` 隐去 pending 并阻塞 fake Cloud 提交，断言 busy、无 receipt/ACK、outbox 保留；解阻 receipt-only 成功后 ACK、清 outbox及 idle | Covered |
-| 真实 Cloud 提交到 Controller ACK/outbox 的连续边界 | [Cloud `integration/late_delivery_fact_test.go`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_test.go) 的 `TestLateDeliveryFactAtomicRollbackOverGRPC` 直接证明服务端 result+receipt 与 later-Run receipt-only 写入失败回滚、无成功响应及恢复后重放；真实 Cloud 提交到 Controller ACK/outbox 的跨仓连续关系仍缺直接证据 | Partial |
-| 重启所需原 pending 的跨仓条件 | desktop 重启测试使用 fake pending；[Cloud `pendingExecutions`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/node_execution.go#L221-L230) 仍查询无 result/未 force-stop 原执行，不按 Run phase 过滤。这是固定源码依据，不是真 Cloud 重启演练 | Partial |
-| 真实栈拒绝窗口及恢复 | 仍需真实 Cloud/Node 连续证明“精确拒绝后连接存活、无 ACK/重派→真实重连或 Controller 重启→原 receipt 成功后清除”。现有作者运行未进入拒绝隔离窗口，亦未重启 Controller | Missing |
+| 真实 Cloud 提交到 Controller ACK/outbox 的连续边界 | [Cloud `integration/late_delivery_fact_test.go`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_test.go) 的 `TestLateDeliveryFactAtomicRollbackOverGRPC` 直接证明服务端 result+receipt 与 later-Run receipt-only 写入失败回滚、无成功响应及恢复后重放；真实 Cloud 提交到 Controller ACK/outbox 的跨仓逐事件连续关系仍缺直接证据。[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)展示 receipt 与最终释放，未逐事件记录 Controller ACK 和 Node outbox 清理的时序，故不升级 | Partial |
+| 重启所需原 pending 的跨仓条件 | desktop 重启测试使用 fake pending；[Cloud `pendingExecutions`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/node_execution.go#L221-L230) 仍查询无 result/未 force-stop 原执行，不按 Run phase 过滤。这是固定源码依据；[O4 复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)在终态已接收、Run done 后才重启 Controller，不能证明 pending→Controller 重启→首次成功接管 | Partial |
+| 真实栈拒绝窗口及恢复 | [O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)：60 秒精确拒绝隔离、同 incarnation connected、无 receipt/ACK/第二次交付启动；仅重启候选 Cloud 导致真实会话重建，原失败终态接管后同一 delete 完成，Run done、物理容器和卷回收。版本、产物摘要和边界见下文 | Covered |
 | 真实 Node 新 incarnation 保持原事实恢复 | [reviewer 明确保留的缺口](https://github.com/ora-space/circus/issues/407#issuecomment-6342996936)；Cloud simulator 的新 incarnation 分支不能代替真实 Node/container 重启 | Missing |
 
 作者 [wanglongan587 的真实栈记录](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)
@@ -82,6 +82,10 @@ WorkspaceDeleted、container=0、volume=0，stop 对照约 102s done。证据 JS
 `ora-space/cluster/.acceptance/407/407-late-terminal-818226b4.json` 与 `ora-space/cluster/.acceptance/407/407-stop-818226b4.json`；
 此处引用作者评论及其产物位置，未在本机读取这些 JSON。该运行在首次迟到接管即成功，证明正常迟到恢复和释放，
 不能证明本用例拒绝窗口；释放证据详见[Cloud 用例](../../cloud/issue-run/late-delivery-fact-takeover.md)。
+
+[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)：desktop `13de5a3567d0` + 旧 Cloud main `7a48f3403ae3`，精确拒绝告警仅一次（`Aborted` / `ERROR_CODE_CONFLICT` / `dispatch_conflict`、`unresolved/no_ack/no_redispatch`）；60 秒无 receipt、result=null、仅一个 deliver_revision，Node 同 incarnation 保持 connected、无重新注册，仅 heartbeat 前进。换 Cloud `818226b49b8a` 并只重启 Cloud 后，Cloud 不可用触发 Controller↔Node 会话重建，原终态在 14.6 秒内接收（receipt seq=1，`push_rejected` / `revision_failed`）；同一 delete 经 TERMINATE→CLEANUP→DONE，Run done、deliveryState=failed、revisionId=null、0 revisions，Workspace deleted、container/volume 均回收。随后才重启 Controller，状态不变。
+
+作者机器的 `ora-space/cluster/.acceptance/407/407-o4-isolation.json` 未提交；作者给出的 SHA-256 为 `7cb8f80b44a489dc09a962359b42713b1c068e0aba417449dce8a1298387079e`，此处原样引用，未在本机读取文件或重算摘要。边界：echo agent（受控模型），90s give-up 为测试 override；上游仓库绑定/快照由 `git:preset snapshot --synthetic 3` 预置，该验收工具直接写仓库卷及数据库，只代替上游同步；交付接管与释放使用真实组件。失败终态不覆盖 O2 迟到成功 Revision 登记或后创建 Run receipt-only 的真栈分支，它们仍引用 Cloud 集成测试。
 
 - 决策依据：拒绝决策 D3，不变量 4、5；迟到事实接管 D3。
 

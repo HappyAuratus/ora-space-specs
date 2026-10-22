@@ -141,6 +141,5 @@ Run 的业务状态。只有能唯一定位原 Run 及同 Issue 其他 Run 的�
 直接测试与逐项状态见[迟到交付事实与续作保护](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)。
 [固定版本真实栈回执](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)证明 Git Server
 阻塞变体在恢复后完成迟到接管、正常释放到 `done` 和物理资源回收；未进入 O4 拒绝隔离窗口。
-[固定版本评审](https://github.com/ora-space/circus/issues/407#issuecomment-6342996936)明确保留该窗口和真实新 incarnation
-的证据缺口。workflow 后创建 Run、顺序竞争双向交错等未完整覆盖的义务也在核心用例中保留
+[后续 O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)补齐旧 Cloud 拒绝后的隔离窗口，以及换候选 Cloud 并重启 Cloud 引起 Controller↔Node 会话重建后重交、正常释放的连续证据；不要求 Controller 重启。真实新 incarnation 的证据缺口仍保留。workflow 后创建 Run、顺序竞争双向交错等未完整覆盖的义务也在核心用例中保留
 `Missing` / `Partial`，不由 ADR 状态自动提升。

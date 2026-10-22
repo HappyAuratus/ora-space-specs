@@ -3,7 +3,7 @@
 已登记原交付的精确终态拒绝、单 execution unresolved 及成功 receipt 后解除由
 [终态拒绝用例](refused-delivery-terminals.md)逐项登记。desktop 固定 head
 `13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的单仓直接证据已覆盖局部隔离及 receipt/ACK；
-真实栈拒绝窗口、Controller 重启后首次重放直接成功及真实 Node 新 incarnation 的缺口仍保留。
+[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)已覆盖拒绝窗口及 Cloud 不可用导致 Controller↔Node 会话重建后的恢复，不要求 Controller 重启；Controller 重启后首次重放直接成功及真实 Node 新 incarnation 的缺口仍保留。
 本文件的已有中继覆盖不自动证明这些新增义务，也不改变 Thread 批次冲突的既有规则。
 
 依据[已实现的 Controller session 根决策](../../../decisions/controller/session/0-controller-relays-agent-sessions.md)。
@@ -93,7 +93,7 @@ Cloud 放出了会话或交付工作项，或为某运行持久化了用户命�
 | 授权绑定校验和且不落日志 | `delivery_waits_for_its_permit_and_relays_checksum_bound_grants_unlogged`、`reconnect_refreshes_grants_for_an_unfinished_delivery`、`refused_grants_never_fail_the_delivery` | Covered |
 | 交付结算与重启 | `revision_result_is_acknowledged_only_after_cloud_commits`、`restart_resumes_a_registered_delivery_without_failing_it`；精确拒绝后的恢复另见[终态拒绝用例](refused-delivery-terminals.md#real-reconnect-replays-the-original-fact-and-only-its-success-receipt-clears-refusal)，不能由这两个旧测试推断已覆盖 | Covered |
 | idle 证据 | `quiesce_counts_unfinished_agent_sessions`、`quiesce_counts_unfinished_deliveries` | Covered |
-| 真实 Cloud 与 Node 链路 | cluster 的 Agent 会话与 Revision 验收为手工运行，未纳入 CI；[#407 作者记录](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)补充固定 Cloud `818226b4`/desktop `13de5a35` 的正常迟到恢复与释放，未进入拒绝隔离窗口，也未重启 Controller | Partial |
+| 真实 Cloud 与 Node 链路 | cluster 的 Agent 会话与 Revision 验收为手工运行，未纳入 CI；[原作者记录](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)及[O4 复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)直接证明迟到恢复、真实拒绝隔离、Cloud 重启导致会话重建后接管及物理释放；O4 子义务为 Covered，广义链路仍有逐事件 ACK/outbox、Controller 重启首个成功及真实新 incarnation 缺口，详见终态拒绝用例 | Partial |
 
 ### 决策依据
 

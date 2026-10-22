@@ -11,7 +11,7 @@ execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接�
 本文为 `implemented`，依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，
 对应 [desktop#726](https://github.com/ora-space/desktop/pull/726) 固定 head
 `13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的实现与直接测试。单仓证据覆盖局部拒绝隔离与回执恢复，
-真实栈拒绝窗口及 Controller 重启仍缺直接证据。本决策不改 Node 协议、Cloud 业务阶段或释放授权，
+真实栈已直接覆盖拒绝隔离窗口及 Cloud 重启触发会话重建后的恢复；Controller 重启后首次直接成功仍缺证据。本决策不改 Node 协议、Cloud 业务阶段或释放授权，
 不新增本地持久化状态机、超时成功或协议 disposition。
 
 ## 继承与修改
@@ -55,7 +55,7 @@ execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接�
 
 ### D3：真实重连或重启重交原事实，成功回执才解除
 
-真实 transport 重连、Controller 重启后允许重新提交原 execution 的原有序事件。重新提交的是原事实，
+真实 transport 重连（包括 Cloud 不可用或重启导致 Controller↔Node 会话重建）、Controller 重启后允许重新提交原 execution 的原有序事件；不要求 Controller 重启。重新提交的是原事实，
 不是再次发送交付命令，也不生成新 execution 或再次执行交付。仍遭精确拒绝时再次保持局部 unresolved，
 不能由这个拒绝自身制造下一轮连接重建。
 
@@ -110,7 +110,7 @@ message 不混写成另一个通用原因；同连接内重复状态不持续制
 在迟到事实首次到达时已能成功接管，未进入本决策的拒绝隔离分支，也未重启 Controller。
 真实释放至 done 和 container/volume 回收由
 [迟到交付与释放恢复](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)记录；
-真实栈拒绝后保持连接、重连/重启恢复以及真实 Node 新 incarnation 的证据仍缺失。
+[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)补齐拒绝后保持连接、Cloud 重启触发会话重建后重交成功及同一释放到 done 的连续证据；Controller 未重启即可恢复。真实 Node 新 incarnation、Controller 重启后的首次直接成功仍缺证据。产物、作者摘要及验收边界见上述核心用例。
 
 ## 与批准文本的差异及原因
 
