@@ -10,16 +10,17 @@ status: proposed
 落库，调度器在下一次重算中消费它、把该节点结算为 `succeeded`，运行回到 `running` 继续推进。
 等待必须有界（新配置 `workflow.hitl_wait_timeout`，默认 24 小时），取消或超时都进入终态，不允许运行
 永久停在 `awaiting_input`。`human` 节点不创建 agent 会话，也不经过 Controller，因此单回合会话不变量
-不变。interactive Agent 不在本期范围，等 specs#177 与 #351 收敛后另定。
+不变；首期 `human` 节点也不重试，同一（运行，节点）至多执行一次。interactive Agent 不在本期范围，
+等 specs#177 与 #351 收敛后另定。
 
 **状态与影响面**：本文当前为 `proposed`。owner 已在
 [ora-space/circus#449](https://github.com/ora-space/circus/issues/449) 拍板选 B：先定契约 ADR，暂不实现；
 九项默认值全部按建议。本文评审通过前不维护核心用例；变为 `approved` 后，在同一运行内按最终决策补
 `test-cases/cloud/workflow/`。**本期产品行为不变**：发布门禁继续拒绝 `human` 节点和
 `interactive: true`，`workflow_runs.status` 的 CHECK 里保留 `awaiting_input` 作为没有写入者的保留值；
-公开 OpenAPI 与前端按 #449 的结论移除该状态（运行 ora-space/circus#450），实现本文时再由引入写入者的
-同一变更把它加回公开枚举。**兼容边界**：新增输入接口、输入行与运行上的等待列；不改图 schema 的既有
-节点、不改 Controller 契约、不改取消接口已有的响应与错误码。**非目标**：不实现 HITL、不放开发布门禁、
+公开 OpenAPI 与前端按 #449 的结论移除该状态（运行 ora-space/circus#450）；**#450 合并后**，再由实现
+本文的同一变更把它加回公开枚举。**兼容边界**：新增输入接口、输入行与运行上的等待列；不改图 schema 的既有
+节点、不改 Controller 契约、不改变取消接口对既有状态的响应与错误码。**非目标**：不实现 HITL、不放开发布门禁、
 不改单回合 agent 会话、不定义指定处理人/通知渠道、不定义 interactive Agent 的后续回合。
 
 ## 继承与修改
@@ -34,6 +35,11 @@ status: proposed
 | 根决策 D8：不新增 Controller 契约 | 继承，不变：人工输入不经过 Node/Controller，不新增工作项、claim 或回执字段 |
 | 根决策 D3：WorkflowRun 是执行聚合，IssueRun 只是调用记录 | 继承：输入行归属 WorkflowRun；IssueRun 只获得一条 Issue 活动，不是线程回合 |
 | [会话结束后续决策](20261019-workflow-session-end-after-initial-turn.md) D1/D5：工作流 agent 会话是单回合的，节点终态仍只来自会话结果 | 继承，不变：`human` 节点不创建 agent 会话，因此不需要后续回合；interactive Agent 才会改变会话生命周期，不在本文 |
+| [重试与恢复后续决策](20261021-node-retry-and-resume-contract.md) D4：同一（运行，节点）可因重试有多条执行证据，尝试由 `workflow_node_attempt` 区分 | **继承并限定**：首期 `human` 节点不重试，同一（运行，节点）至多执行一次，D6 的输入唯一键仍是 `(workflow_run_id, node_id)`；将来支持 human 重试或恢复时，按该决策 D4 引入 attempt 键，输入行再增加尝试代次 |
+| 重试与恢复后续决策 D3/D8：等待中的 agent 重试提交节点 `retrying`，运行保持 `running`，不新增运行状态 | **修改**：HITL 等待是运行级事实，启用根决策已保留的 `awaiting_input`（不是新增状态）；等待中的人工节点在 `node_states` 里仍为 `running`，因此 pass 必须先处理运行级等待再进入会话证据路径（D2） |
+| 重试与恢复后续决策「为什么不是这些替代方案」：拒绝用 `running` 表示等待 | **有条件沿用**：该否决针对 agent 节点——`running` 会进入会话证据读取。`human` 节点没有会话与执行证据，D2 用运行状态加等待列承载等待，并要求所有会话证据读取只作用于 `agent` 节点；不满足该前提就不能复用 `running` |
+| 重试与恢复后续决策 D5：取消优先于等待中的重试 | 继承：已记录的取消请求优先于未消费的输入与等待超时 |
+| 重试与恢复后续决策 D8：历史快照不重新过门禁，实现上线后按新语义执行 | **修改**：`human` 节点的 schema 是输入校验的必要前提，缺失时没有安全缺省；历史快照在运行准入处以命名原因失败，需重新发布后才能运行（D5） |
 | 取消证据（运行 #347、cloud#120）与 S5 释放状态机（cloud#119） | 继承：取消路径继续按 `cancelled` 结算节点与运行，释放事实按既有 `workspace_release_*` 列登记 |
 
 ## 决策
@@ -45,6 +51,17 @@ status: proposed
 `Idempotency-Key` 头（1–200 字符）。接口只追加一条输入行并返回 202，响应体是
 `{"resource": {"id", "runId", "nodeId", "actorId", "input", "recordedAt"}}`。运行页用同一个接口提交，
 不另开写入路径。
+
+**接受条件**：接口在写入输入行的同一事务里用数据库时钟复核四项：运行 `status = 'awaiting_input'`；
+请求 `nodeId` 等于 `awaiting_input_node_id`；`cancel_requested_at IS NULL`；当前时刻早于
+`awaiting_input_at + workflow.hitl_wait_timeout`。任一不满足都不写输入行：
+
+- 状态不是等待、节点不匹配、或已记录取消请求：`409 run_not_awaiting_input`；
+- 等待窗口已过：`410 workflow_run_input_window_closed`。运行此时可能还没被调度器结算成终态，但窗口
+  已经关闭，晚到的输入不能再被消费，必须如实拒绝，而不是返回一个永远不会生效的 202。
+
+授权检查先于这四项状态检查（D4）。**202 的含义是「输入已在窗口内记录」**：消费它、结算节点和推进
+运行仍由调度器完成（D2）；若之后取消先被结算，输入行保留在历史里但不再产生节点成功（D4）。
 
 **为什么是运行级接口而不是 Issue 线程回复**：Issue 线程回复只覆盖 IssueRun，直接运行的 WorkflowRun
 没有 Issue 可回；它还会把运行输入混进讨论时间线，让「讨论」和「运行控制」共用一种写入。运行级接口
@@ -63,13 +80,35 @@ Thread、轮次与跨回合的会话生命周期，正是 interactive Agent 才�
 就绪节点时，调度器在同一个事务里：
 
 1. 把该节点在 `node_states` 里置为 `running`（节点状态词表不新增值，等待是运行级状态）；
-2. 写入 `awaiting_input_at = now()`（数据库时钟）与 `awaiting_input_node_id`；
+2. 写入 `awaiting_input_at = clock_timestamp()`（数据库时钟）与 `awaiting_input_node_id`；
 3. 把运行 `status` 置为 `awaiting_input`，版本 +1，并为关联的 IssueRun 记一条 Issue 活动（D8）。
 
 输入行提交后，下一次调度重算在同一事务里消费它：把该节点置为 `succeeded`、`output` 为通过校验的输入
 对象、写 `finished_at`，清空两个等待列，把运行放回 `running` 并继续按图推进；如果这是最后一个节点，
 同一次推进直接进入 `succeeded`。**HTTP 请求不写运行状态、不写 `node_states`、不推进图**；它只追加
 D6 的输入行。调度器崩溃后重启，下一轮重算读到的仍是同一条已提交输入，消费一次且只消费一次。
+两个等待列在离开等待的每条路径上都同时清空——消费、取消、超时以及任何其它失败结算——因此「两列非空」
+始终等价于「运行正在等待」，不会在终态留下半截等待事实。
+
+**调度器如何看到等待**：现有 `scanAdvancableWorkflowRuns` 只扫 `pending` / `running`，且注释明确
+「不重扫等待与终态」，pass 的第一条节点路径又是 `workflowRunningAgentNode`（只按
+`state.Status == "running"` 取节点，不看 kind）。只按本文的等待写入，输入、取消与超时都不会被消费，
+等待中的人工节点还会被当成「已派发但未回报的 agent 会话」，按启动超时判失败。因此实现本文时必须同时
+落实三条契约：
+
+1. **扫描覆盖等待**：`awaiting_input` 的运行由独立的有界扫描处理，不并入现有 `pending` / `running`
+   批次。长期等待的运行按 `created_at` 排在前面，并入后会在等待数超过批次上限时挤占在途运行；独立
+   扫描同样有界，超出的等待留到下一轮，保证在途运行与等待运行都前进。
+2. **等待分支先于节点证据**：每个等待运行的 pass 在读取任何节点执行证据之前，按固定顺序处理：
+   ① 已记录取消请求 → 按 D4 结算 `cancelled`；② 存在已接受的输入行 → 消费并结算节点（本 D2 上文）；
+   ③ 数据库时钟已过截止时间 → 按 D3 结算 `failed`；④ 否则原样返回。任何一步都不落到
+   `workflowRunningAgentNode` 的会话证据路径。
+3. **会话证据读取只作用于 `agent` 节点**：`workflowRunningAgentNode`、`workflowAgentSessionOutcome`
+   及其调用方（包括取消路径的同名判断）都必须结合图节点 kind，只有 `agent` 节点能进入会话证据读取。
+   `human` 节点没有 `node_executions` 证据，不能被解释为「已派发但未回报」。
+
+等待分支与 kind 限定是复用 `running` 表示等待的前提，不是性能优化；缺少任一条，D2 的状态选择就无法
+只靠本文实现。
 
 **状态转移**（实现本文后）：
 
@@ -79,9 +118,11 @@ D6 的输入行。调度器崩溃后重启，下一轮重算读到的仍是同�
 | `awaiting_input` | 输入行被消费 | `running`（或图结束时的 `succeeded`） |
 | `awaiting_input` | 取消请求 | `cancelled`（D4） |
 | `awaiting_input` | 没有输入且超过等待上限 | `failed`（D3） |
+| `awaiting_input` | 取消后或窗口外的输入请求 | 状态不变；`409` / `410`，不写输入行 |
 
 **禁止**：在输入请求事务里直接把节点记为成功；在 `awaiting_input` 下派发其他节点；同一运行同时有两个
-等待列指向不同节点；等待期间运行被投影成终态。
+等待列指向不同节点；等待期间运行被投影成终态；等待分支被节点会话证据路径抢先；会话证据读取把一个
+`human` 节点当成 agent 节点。
 
 ### D3：等待有界，默认 24 小时，到期按失败结算
 
@@ -93,9 +134,11 @@ D6 的输入行。调度器崩溃后重启，下一轮重算读到的仍是同�
 - 运行进入 `failed`，`error` 记录 `human input wait timed out`；
 - 运行 Workspace 按根决策 D7 的既有终态收尾声明删除，释放路径与失败运行相同。
 
-**已接受的输入优先于超时**：只要在窗口内提交了输入行，即使调度器在窗口之后才重算，也消费输入而不是
-判超时；超时只在该等待没有任何已接受输入时成立。**取消优先于超时**：已记录的取消请求按 D4 结算
-`cancelled`，不再写超时失败。
+**已接受的输入优先于超时**：「已接受」按 D1 的接受条件判定——在截止时间之前、没有取消请求时提交并
+落库的输入行。只要存在这样的输入行，即使调度器在窗口之后才重算，也消费输入而不是判超时；窗口之后
+提交的请求在接口处得到 `410 workflow_run_input_window_closed`，不产生输入行，因此不会出现「202 已接受
+但永远不会被消费」。超时只在该等待没有任何已接受输入时成立。**取消优先于超时**：已记录的取消请求按
+D4 结算 `cancelled`，不再写超时失败。
 
 **为什么必须有界**：等待不是终态，运行 Workspace（以及运行本身）会被保留；没有上限就会重演「永久
 `running`」的另一条形态。24 小时的依据：覆盖跨时区的一次人工审核（一个工作日加缓冲），同时把
@@ -111,7 +154,8 @@ Workspace 保留限制在一天量级；更长或更短的需求由部署配置�
 PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先于状态、节点匹配与输入校验，未授权的调用者
 不能从 409/400 的差异推断运行是否在等待。
 
-**取消请求也接受 `awaiting_input`**：实现本文后，`awaiting_input` 进入可取消状态集合。取消请求记录后，
+**取消请求也接受 `awaiting_input`**：实现本文前，取消接口把 `awaiting_input` 当作不可取消
+（`409 run_not_cancellable`）；实现本文后，它进入可取消状态集合。取消请求记录后，
 调度器在下一次重算把等待中的 `human` 节点结算为 `cancelled`（没有会话可停止），运行结算 `cancelled`，
 未消费的输入行保留为历史，但**不能把运行从终态复活**。取消请求与输入请求的竞争以数据库提交顺序为准：
 取消先提交则之后的输入得到 `409 run_not_awaiting_input`；输入先提交但尚未消费时取消到达，取消仍决定
@@ -136,14 +180,36 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
 
 出现其他关键字（例如 `oneOf`、`$ref`、`patternProperties`、`format`、`minLength`）时，发布门禁以
 `human_schema_unsupported` 拒绝并指出节点与字段；schema 本身不是对象、顶层不是 object、缺少
-`additionalProperties: false`、`required` 指向未声明属性时，以 `human_config_invalid` 拒绝。这样门禁
-不会接受一份「看起来有约束、实际被实现忽略」的 schema。
+`additionalProperties: false`、`required` 指向未声明属性时，以 `human_input_schema_invalid` 拒绝。
+这样门禁不会接受一份「看起来有约束、实际被实现忽略」的 schema。
+
+**`humanConfig.inputSchema` 必填**：发布 `human` 节点时缺失（字段缺失、`null` 或空对象）以
+`human_input_schema_missing` 拒绝。门禁不提供「缺失即接受任意 JSON」的缺省——那等于没有契约，也让
+输入期校验无从执行。保存草稿仍宽松，与既有 draft / published 分工一致。
+
+**历史快照**：已发布的冻结快照不重新过门禁，但运行准入读取同一份可执行子集。实现本文后，准入对快照
+中的每个 `human` 节点要求存在有效的 `humanConfig.inputSchema`；缺失或非法时以命名原因拒绝创建运行
+（`human_input_schema_missing` / `human_input_schema_invalid`），不回填、不猜测 schema。这样门禁之前
+冻结或由其他客户端导入的 `human` 快照不会带着「没有校验」进入等待；需要运行它们的作者必须重新发布。
+若某条执行路径绕过准入（防御分支），该节点首次进入等待时以同一原因失败整个运行，而不是接受无校验
+输入。
 
 **输入期校验**：请求体中的 `input` 必须是通过 schema 的 JSON 对象；未知字段、缺失必填、类型不符、
-`enum` 不匹配都拒绝，返回 `400 workflow_input_invalid`，响应体含
-`{"problems": [{"pointer": "<相对 input 的路径>", "reason": "<required|type|unknown_field|enum>"}]}`，
-按 pointer 升序排列。`input` 序列化后的 UTF-8 字节数上限为 **64 KiB**，超过时返回
-`400 content_too_large`，不进入 schema 求值；这与 agent Thread 单条内容的上限一致。
+`enum` 不匹配都拒绝，返回 `400 workflow_input_invalid`。错误形状沿用平台统一的
+`{"code","params","requestId"}`，problems 放在 **`params.problems`**，不引入新的顶层形状：
+
+```json
+{"code": "workflow_input_invalid",
+ "params": {"problems": [{"pointer": "<相对 input 的路径>", "reason": "<required|type|unknown_field|enum>"}]},
+ "requestId": "..."}
+```
+
+problems 按 pointer 升序排列。**请求体与大小上限**：该路由单独设置 HTTP body 上限 **256 KiB**（与
+Thread 消息路由相同，为语义上限留出 JSON 外壳余量）；超过上限由路由层在解码前截断并返回
+`400 invalid_json`。JSON 解码成功后，`input` 以紧凑 JSON（键排序）序列化的 UTF-8 字节数上限为
+**64 KiB**；超过时由输入接口在进入 schema 求值之前返回 `400 content_too_large`。空白不计入 64 KiB
+但计入路由上限，因此一个合法的 64 KiB 输入不会先被默认的 64 KiB 路由上限截成 `invalid_json`，
+`content_too_large` 对合法 JSON 可达。
 
 **为什么用 JSON Schema 而不是自由文本**：自由文本无法在写入时判断「输入是否满足节点承诺」，只能把
 校验推迟到下游节点运行时，错误会出现在离输入很远的地方。受支持子集覆盖首期需要的必填、类型、未知
@@ -153,11 +219,13 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
 
 **规则**：新增追加式表 `workflow_run_inputs`，每行至少包含：`id`、`tenant_id`、`workflow_id`、
 `workflow_run_id`、`node_id`、`actor_id`、`idempotency_key`、`input jsonb`、`recorded_at timestamptz`。
-表只插入、不更新、不删除；一个（运行，节点）的等待至多接受一行输入（首期 DAG 每个节点至多执行一次），
-唯一约束 `(workflow_run_id, node_id)` 固定这一点。每次等待最多只有一行，后续不同幂等键的提交返回
-`409 workflow_input_already_recorded`；同一个 `Idempotency-Key` 加同一请求由平台既有幂等记录返回原响应，
-不产生第二行。运行页与详情读取的是输入行与 `node_states` 的组合：历史与 actor 来自输入行，节点的最终
-输出只来自 `node_states[nodeId].output`。
+表只插入、不更新、不删除；一个（运行，节点）的等待至多接受一行输入（首期 `human` 节点至多执行一次、
+不重试），唯一约束 `(workflow_run_id, node_id)` 固定这一点。这与[重试决策](20261021-node-retry-and-resume-contract.md)
+D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次尝试，而首期 `human` 节点不进入重试；
+将来支持 human 重试或恢复时，输入行按 attempt 增加尝试代次键。每次等待最多只有一行，后续不同幂等键的
+提交返回 `409 workflow_input_already_recorded`；同一个 `Idempotency-Key` 加同一请求由平台既有幂等记录
+返回原响应，不产生第二行。运行页与详情读取的是输入行与 `node_states` 的组合：历史与 actor 来自输入行，
+节点的最终输出只来自 `node_states[nodeId].output`。
 
 **为什么追加而不是覆盖**：输入是「谁在什么时候给出了什么」的审计事实，覆盖会丢失 actor 与时刻，也让
 幂等重放无法判定。**为什么 `node_states` 不存历史**：`node_states` 是运行推进的状态投影，节点终态必须
@@ -185,29 +253,42 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
 在等。**为什么不算线程回合**：线程回合属于 agent 会话，`human` 节点没有会话；把输入记成回合会伪造一条
 不存在的人类对话，破坏 Thread 的语义与统计。
 
-### D9：公开契约现在不含 `awaiting_input`，实现写入者时再加回
+### D9：公开契约只在存在写入者时声明 `awaiting_input`
 
-**规则**：按 #449 的结论（由运行 #450 承接），首期公开 OpenAPI、前端状态类型与文案不包含
-`awaiting_input`；`workflow_runs.status` 的 CHECK 保留该值作为保留值，取消接口继续按不可取消处理。
-实现本文的那次变更在引入第一个写入者的同时，把 `awaiting_input` 加回公开枚举、前端状态类型与运行页
-文案，并按本 ADR D1/D2 的接口契约发布。存储 CHECK 不提前删除，避免实现前后需要第二次迁移。
+**规则**：公开契约是否声明 `awaiting_input` 只取决于是否存在写入者，按三个时间点维护：
 
-**为什么现在移除**：没有写入者的公开枚举会被使用者读成「已支持」；契约应只声明实现能兑现的状态。
+- **#450 合并后到实现本文前**：公开 OpenAPI、前端状态类型与文案都不含 `awaiting_input`；
+  `workflow_runs.status` 的 CHECK 保留该值，取消接口把它当作不可取消（`409 run_not_cancellable`），
+  输入接口不存在。若开始实现本文时 #450 尚未合并，实现变更不得在公开契约仍声明该状态时声称它
+  「等待写入者上线前不可用」；应先合入 #450，或在同一组公开契约改动里完成「先移除、写入者上线时
+  再加回」的时序。
+- **实现本文时**：引入第一个写入者的同一次变更把 `awaiting_input` 加回公开枚举、前端状态类型与运行页
+  文案，并按本 ADR D1/D2 发布输入接口；同时取消接口接受该状态（D4）。存储 CHECK 不删除，避免实现
+  前后需要第二次迁移。
+- **公开契约之外**：存储 CHECK 中的保留值不等于公开支持；只有在上述实现变更合并后，`awaiting_input`
+  才是可观察的运行状态。
+
+**为什么先移除**：没有写入者的公开枚举会被使用者读成「已支持」；契约应只声明实现能兑现的状态。
 **为什么实现时再加回**：状态枚举与写入者必须在同一次变更里出现，否则又回到「枚举存在但没人写」的
 误导状态。
 
 ## 不变量
 
-1. 输入只在运行处于 `awaiting_input`、且请求的 `nodeId` 等于 `awaiting_input_node_id` 时被接受；一个等待
-   至多接受一行输入。
+1. 输入只在同时满足四项条件时被接受：运行 `status = 'awaiting_input'`；请求 `nodeId` 等于
+   `awaiting_input_node_id`；`cancel_requested_at IS NULL`；数据库时钟早于
+   `awaiting_input_at + workflow.hitl_wait_timeout`。判定与输入行写入在同一事务内完成；一个等待至多
+   接受一行输入。
 2. 等待不能永久存在：每个等待要么被输入消费、要么被取消请求、要么被有界超时终结。
-3. 输入请求只追加输入行，不写运行状态、不写 `node_states`、不推进图；节点结算只由调度器提交。
-4. 已提交的输入不会被超时覆盖；已记录的取消请求不会被未消费的输入或节点结果复活。
-5. 输入行不可变；`node_states` 只存节点最终结果与终态时间，不存输入历史。
-6. `human` 节点不创建 AgentSession、不写 `thread_commands`、不占用执行器槽位与模型绑定，单回合会话
-   不变量不变。
-7. 输入权限与取消一致，从当前数据库状态判断；未授权调用者不能从错误差异推断运行状态。
-8. 公开契约只有在存在写入者时才声明 `awaiting_input`；存储保留值不算公开支持。
+3. 每个等待中的运行都被调度 pass 的独立有界扫描覆盖；等待分支先于任何节点执行证据路径执行，且会话
+   证据读取只作用于 `agent` 节点。
+4. 等待列成对非空当且仅当运行处于 `awaiting_input`；离开等待的每条路径都同时清空两列。
+5. 输入请求只追加输入行，不写运行状态、不写 `node_states`、不推进图；节点结算只由调度器提交。
+6. 已提交的输入不会被超时覆盖；已记录的取消请求不会被未消费的输入或节点结果复活。
+7. 输入行不可变；`node_states` 只存节点最终结果与终态时间，不存输入历史。
+8. `human` 节点不创建 AgentSession、不写 `thread_commands`、不占用执行器槽位与模型绑定，单回合会话
+   不变量不变；首期 `human` 节点不重试。
+9. 输入权限与取消一致，从当前数据库状态判断；未授权调用者不能从错误差异推断运行状态。
+10. 公开契约只有在存在写入者时才声明 `awaiting_input`；存储保留值不算公开支持。
 
 ## 为什么不是这些替代方案
 
@@ -222,6 +303,10 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
 | 只收自由文本，不声明 schema | 无法在写入时校验节点承诺，错误推迟到下游；调用方也无法从契约知道需要什么字段 |
 | 首期同时实现 `human` 与 interactive Agent | interactive Agent 依赖 specs#177、#351、#426、#427；在完成契约与缺陷未收敛前实现，必然返工，且会改动单回合会话不变量 |
 | 让 `human` 节点创建一条 agent 会话等待输入 | `human` 节点没有 agent 任务、模型调用与 Workspace 产出，创建会话只会引入无意义的执行与收尾路径，并把 HITL 与 agent 会话生命周期绑死 |
+| 等待中的运行保持 `running`，只用节点状态表达等待（沿用重试决策的 `retrying` 模式） | 运行级等待没有可扫描的入口：输入、取消、超时都要先找到运行；只用节点状态会让列表、筛选与运行页继续显示「执行中」，也无法在运行行上表达等待截止时间。`awaiting_input` 是根决策已保留的运行状态，启用它比新增节点状态更小的公开面 |
+| 为等待新增 `waiting` 节点状态 | 节点状态是公开契约（OpenAPI `nodeStates`），新增值要同步前端生成物与所有读取方；等待的权威事实在运行上，节点保持 `running` 已足以表示「已开始、未结束」。前提是 D2 的等待分支与 kind 限定成立 |
+| 接口不做窗口与取消检查，交给下一轮 pass 判定 | 调用方会拿到 202 却永远没有节点成功；D3/D4 的可观察行为要求接口在记录前用数据库时钟拒绝取消后或窗口外的输入 |
+| `human` 节点缺失 schema 时接受任意 JSON 对象 | 等于没有契约，无法在写入时校验节点承诺；历史快照应重新发布，而不是永久以无校验语义运行 |
 
 ## 本决策未解决的问题
 
@@ -234,8 +319,10 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
   字段。
 - **等待期间的 Workspace 复用策略**：本期保持运行 Workspace 存活到终态（D3 的上限约束保留时长）；
   是否在等待时挂起或重建 Workspace 属于资源优化，另行评估。
-- **重试/循环导致同一节点再次等待**：首期 DAG 每个节点至多执行一次，`(workflow_run_id, node_id)` 唯一；
-  将来支持重试/循环时，输入行需要引入 attempt/等待代次键，届时另开决策。
+- **重试/循环导致同一节点再次等待**：首期 `human` 节点至多执行一次，`(workflow_run_id, node_id)` 唯一。
+  [重试决策](20261021-node-retry-and-resume-contract.md) D4 已为 agent 节点引入
+  `workflow_node_attempt`，但 `human` 首期不重试；将来支持 human 重试/恢复或循环时，输入行按该决策
+  增加尝试键（或等待代次），届时另开决策。
 
 ## 落地顺序
 
@@ -243,9 +330,11 @@ PostgreSQL 状态读取，不信任请求里的 actor 字段。授权检查先�
   运行内补 `test-cases/cloud/workflow/hitl-run-input.md`，覆盖等待进入、输入校验、幂等、权限、取消竞争、
   超时、Issue 活动与恢复重算。完成条件：ADR 与核心用例合并；产品行为不变。
 - **阶段 1（实现，后续运行）**：新增迁移（`awaiting_input_at`、`awaiting_input_node_id`、
-  `workflow_run_inputs`）、输入接口与校验、调度器等待/消费/超时、取消对 `awaiting_input` 的扩展、Issue
-  活动、运行页表单与文案、发布门禁放行 `human`（仍拒绝 `interactive: true`）。完成条件：核心用例在
-  cloud 侧有直接测试证据；ADR 改为 `implemented` 并同步实际实现的偏离。
+  `workflow_run_inputs`）、输入接口（含路由 body 上限、窗口与取消的接受判定）、调度器的独立等待扫描
+  与等待分支（先于会话证据，会话读取限定 `agent` 节点）、消费/取消/超时的结算、取消接口对
+  `awaiting_input` 的扩展、Issue 活动、运行页表单与文案、发布门禁放行带合法 `humanConfig.inputSchema`
+  的 `human`（仍拒绝 `interactive: true`）、运行准入对历史 `human` 快照的 schema 校验。完成条件：核心
+  用例在 cloud 侧有直接测试证据；ADR 改为 `implemented` 并同步实际实现的偏离。
 - **阶段 2（interactive Agent，后续决策）**：在 specs#177 与 #351 收敛后，定义同一会话的后续人类回合、
   人工完成与完成声明；届时才需要修改单回合会话不变量。
 - **保持不变**：首期节点白名单（除新增 `human`）、agent 会话的单回合生命周期、Controller 线上契约、
