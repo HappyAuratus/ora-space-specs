@@ -4,6 +4,11 @@ status: implemented
 
 # Revision 的代码改动只经 Git Server 交付：交付输入固定仓库地址、交付 ref 与 Workspace 分支，Cloud 经 ref 查询核验后登记交付 ref；续作只从前序自己的交付 ref 恢复；删除 bundle 与下载授权
 
+> 历史决策：迟到原交付的登记资格由
+> [迟到交付事实接管决策](../issue-run/20261022-late-delivery-fact-takeover.md) D2 修改：同 Issue 已有后创建 Run
+> 时不登记迟到 Revision，只保存原声明与 receipt；残留救援也适用。D7 对已经登记 Revision 的候选条件与
+> 登记时间排序不变。本文保留 `implemented`，新增守卫为 `approved`，不能据本文视为已经实现。
+
 Agent 运行的交付只有一种形态：Node 把最终提交推送到 Project 仓库中本次交付尝试专属、只能新建的
 `refs/ora/deliveries/<deliveryWorkId>`，顺带把它快进到本 Workspace 的分支 `workspaceRef`，会话 JSONL 照旧上传对象存储。
 Cloud 在放出交付工作项时把仓库地址、交付 ref 与 `workspaceRef` 写进固定输入，Controller 原样转交。Node 报告结果后，Cloud

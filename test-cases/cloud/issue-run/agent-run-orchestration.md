@@ -1,5 +1,8 @@
 # Agent 运行编排
 
+根 D5 无账本迟到接收、接管与业务结论分离，以及接收前断线后恢复至 `done` 并真实释放 container/volume
+的新增义务见[迟到交付事实与释放恢复](late-delivery-fact-takeover.md)。下列已有编排证据不自动覆盖这些新义务。
+
 依据 [IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md)，
 事务边界见 [controller-integration D6](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
 本文件登记 Agent IssueRun 从评论触发到释放运行 Workspace 的阶段承诺。证据来自 `ora-space/cloud` 的 `integration` 包

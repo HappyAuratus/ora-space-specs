@@ -1,5 +1,9 @@
 # Controller 中继 Agent 会话与 Revision 交付
 
+已登记原交付的精确终态拒绝、单 execution unresolved 及成功 receipt 后解除由
+[终态拒绝用例](refused-delivery-terminals.md)登记，新增证据均为 `Missing`；本文件的已有中继覆盖不自动
+证明这项连接存续修复，也不改变 Thread 批次冲突的既有规则。
+
 依据[已实现的 Controller session 根决策](../../../decisions/controller/session/0-controller-relays-agent-sessions.md)。
 本文件登记云端 Controller 派发会话与交付、中继 Thread 事件与命令、转交上传授权的承诺；Node 侧消息见
 [Agent 运行的协议消息用例](../../node/protocol/agent-run-messages.md)，Cloud 侧契约见

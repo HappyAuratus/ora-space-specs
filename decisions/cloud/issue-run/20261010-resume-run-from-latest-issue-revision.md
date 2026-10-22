@@ -4,6 +4,11 @@ status: implemented
 
 # 同一 Issue 的新运行先续接最近一次 Revision，再启动 Agent；恢复不了就失败，远端改写导致的永久失败只跳过一次
 
+> 历史决策：D1 的候选条件已由 [Git 交付及续作](../revision/20261017-git-native-delivery-refs-and-resume.md) D7 修改。
+> [迟到交付事实接管](20261022-late-delivery-fact-takeover.md) D2 进一步限制迟到 Revision 的登记资格：
+> 同 Issue 已有后创建 Run 时仅收原声明与 receipt，不登记旧成果。创建顺序采用原子 `run.enqueued` 事件的
+> Issue 内 seq；已登记候选的登记时间排序和会话启动时固定不变。本文保留 `implemented`，新守卫为 `approved`。
+
 Issue 上再次 @Agent 时，新运行仍然得到一个全新的 isolated Workspace（根决策 D2），但在 Agent 启动前，
 Node 先把该 Issue 最近一个带 bundle 的 Revision 拉进 checkout，并把本地默认分支指向它的最终提交；Agent
 因此接着上一次的成果工作。会话结束后的交付不变，仍相对本次 clone 的基础提交打 bundle，所以每个 Revision
