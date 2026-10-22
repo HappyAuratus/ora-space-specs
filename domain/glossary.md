@@ -275,9 +275,11 @@ _Avoid_: execution status, failure reason
 
 ### Scheduled Run Artifact（定时运行产物）
 
-定时运行产出、经固定目录与类型白名单声明后持久化到本机独立存储的文件（报告、测试结果、日志）。
-产物生命周期独立于隔离 worktree，按 Run ID 索引，随运行历史裁剪，本地产物不离开本机。
-_Avoid_: worktree file, user file
+定时运行产出、经固定目录（`.ora-scheduled-artifacts/`，Ora 保留名）与类型白名单声明后持久化的文件
+（报告、测试结果、日志）。产物生命周期独立于隔离 worktree / 一次性运行 Workspace，按 Run ID 索引。
+本地产物只落本机、随历史裁剪、不离开本机；Cloud 产物由 Cloud 生成对象键、在 Revision 之外按运行登记，
+按运行级上限与每任务保留数约束，读取跟随 issue 可见性。产物目录不进入 Revision 的 Git 快照。
+_Avoid_: worktree file, user file, Revision snapshot
 
 ### Unattended Consent（无人值守同意）
 

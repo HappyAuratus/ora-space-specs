@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Cloud Scheduled Run 的 verdict 由执行端结构化上报，产物在 Revision 之外按运行登记并受独立上限约束
@@ -11,9 +11,9 @@ status: proposed
 本文不新增 IssueRun 阶段，也不改变 Thread 会话模型与 Revision 交付语义，只扩展 `delivering` 的收敛项与
 Node 终态上报字段。
 
-本 ADR 处于 `proposed`。它只冻结 Cloud 侧契约，不实现产品代码、真实栈端到端验收、验收开关、发布或
-迁移执行；获批后如需实现，另开 Cloud 实现事项与运行单。按 specs 规则，核心测试用例在 ADR 转为
-`approved` 后建立，本文暂不维护。
+本 ADR 处于 `approved`。它只冻结 Cloud 侧契约，不实现产品代码、真实栈端到端验收、验收开关、发布或
+迁移执行；获批后如需实现，另开 Cloud 实现事项与运行单。核心测试用例见
+[verdict 与产物用例](../../test-cases/cloud/scheduled-task/verdict-and-artifacts.md)，义务初始 `Missing`。
 
 ## 继承与修改
 
@@ -30,7 +30,8 @@ Node 终态上报字段。
 | [Controller 集成 D1](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)：`AgentSessionEnded{reason, detail}` 是 Agent 会话的终态结果；Cloud 执行输入 `AgentSessionSpec` 目前不含触发来源 | **修改**：`AgentSessionSpec` 新增 `trigger = 9`（Cloud 只在接纳定时 occurrence 时设为 `scheduled`，手工运行缺省），Controller 原样转交给 Node；`AgentSessionEnded` 增加可选 `scheduled_result` 与 `artifact_manifest`；手工运行与既有字段语义不变 |
 | [Node 协议会话执行](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md) D1：`StartAgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn}` 与 `AgentSessionEnded{reason, detail}` 是 Node 侧的会话执行输入与终态 | **修改**：`StartAgentSession` 新增 `trigger` 字段（由 Controller 原样转交，缺省即手工）；`AgentSessionEnded` 增加可选 `scheduled_result{verdict, verdict_detail}` 与 `artifact_manifest{items[], rejections[]}`，手工运行不设置 |
 | [Revision 根决策](../revision/0-cloud-owned-object-store-and-verified-revisions.md) D1–D4：对象键由 Cloud 生成、预签名 PUT、校验大小与 SHA-256 后登记 | 继承并复用对象存储与上传授权机制；产物使用独立的运行级前缀与登记表（bundle 已由下一行 Git 交付决策删除，本文只复用 session JSONL 一侧的上传授权规则） |
-| [Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) 与 [Node 交付决策](../../node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)：Node 快照以临时 index 执行 `git add -A`（Node 根决策 D2），最终提交经交付 ref / `workspaceRef` 推送，代码改动不经对象存储 | 继承，不变：本文不改 Node 快照规则；产物目录未被仓库忽略时，产物文件会作为普通工作树内容进入交付 ref 的最终提交，这是附带副本，不构成产物事实源（D3） |
+| [Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) 与 [Node 交付决策](../../node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)：Node 快照以临时 index 执行 `git add -A`（Node 根决策 D2），最终提交经交付 ref / `workspaceRef` 推送，代码改动不经对象存储 | 继承；配合下行 Node 根决策 D2 的修改：`.ora-scheduled-artifacts/` 被快照排除，不再进入交付 ref 的最终提交（D3） |
+| [Node Revision 根决策 D2](../../node/revision/0-internal-snapshot-and-incremental-bundle-upload.md)：内部快照以临时 index 执行 `git read-tree HEAD` + `git add -A` + `git write-tree`，不经过提交钩子、不改动工作区与分支 | **修改**：`git add -A` 排除 `.ora-scheduled-artifacts/`（Ora 保留目录名，所有运行一律排除，不按 `trigger` 区分）；仓库中已跟踪的同名目录此后不再随快照更新，历史提交不删除 |
 | [local 结果注解/产物 ADR](../../desktop/core/scheduled-task/20261021-run-result-annotation-and-artifacts.md) D5：local 与 Cloud 只共用 verdict 枚举，Cloud 存储/写入/保留另行定义 | 继承并落定：Cloud 只共用枚举；Node 执行端沿用同一哨兵文本约定作为上报来源，但不共享 Cloud 存储或解析契约；写入通道、产物存储、上限、保留和费用均在本文定义 |
 | [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md) 与发送者权限 | 继承，不变：定时运行仍 `canAppend = false`，产物与 verdict 不开放任何输入通道 |
 
@@ -84,13 +85,11 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
   白名单文件（`markdown/json/txt/log/xml/html`），执行与 local 一致的路径安全、符号链接/硬链接、
   大小、数量、总大小与大小写/NFC 检查；采集结果写入 `AgentSessionEnded` 的
   `artifact_manifest{items[], rejections[]}`。`failed / cancelled / timeout` 不采集。
-- **与 Revision Git 快照的边界**：采集只读工作树，不改写文件；本文不改 Node 快照规则（Node 根决策
-  D2 以临时 index 执行 `git add -A`）。因此 `.ora-scheduled-artifacts/` 未被仓库忽略时，产物文件会
-  作为普通工作树内容进入交付 ref 的最终提交，在 Git Server 上留下副本。那是既有 Revision 语义决定
-  的附带副本，不构成产物事实源：它不进入 `scheduled_run_artifacts` 索引、不参与产物下载/淘汰，产物
-  对象被淘汰后 Git 中的副本也不被本 ADR 触及。独立的保留承诺只覆盖对象存储中的已登记产物及其索引，
-  不承诺从 Git 交付中移除产物文件；已跟踪/已提交的产物目录与本次运行新生成的文件同样受此规则约束，
-  本文不新增 `.gitignore` 约定。
+- **与 Revision Git 快照的边界**：`.ora-scheduled-artifacts/` 是 Ora 的保留目录名，Node 快照（Node 根
+  决策 D2 以临时 index 执行 `git add -A`）对所有运行一律排除该目录，不按 `trigger` 区分，因此产物文件
+  不会进入交付 ref 的最终提交，也不会在 Git Server 上留下副本。采集只读工作树、不改写文件。仓库中
+  已跟踪的同名目录在排除后不再随快照更新，但历史提交中的既有副本不被本 ADR 删除、不回改；产物事实
+  源只有对象存储中已登记的 `scheduled_run_artifacts` 及其索引。
 - **对象键与上传**：Cloud 为每个被接受的条目生成不透明对象键，例如
   `scheduled-runs/{tenantId}/{issueRunId}/{artifactIndex}`，绝不使用用户文件名作为键；新增
   `GrantScheduledArtifactUpload{execution_id, artifacts[{index,size,sha256}]}`，只对处于 `delivering`、
@@ -143,8 +142,8 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
   当前有效租户成员对绑定 issue 的读取权限判定，不存在与无权限统一 `404`。读取权限、下载授权与每
   任务淘汰都经 `issue_run_id → issue` 定位，不依赖 `occurrence_id`。
 - 下载使用短期签名 URL，不暴露永久公开对象地址；对象存储凭据与桶配置只留在 Cloud，Controller/Node
-  不持有对象存储业务凭据。产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制（产物文件是否
-  进入 Revision 的 Git 快照见 D3）。
+  不持有对象存储业务凭据。产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制（产物文件不进入
+  Revision 的 Git 快照，见 D3）。
 - 手工 IssueRun 没有定时产物；同一 IssueRun 的产物只能由该次运行的执行端上报，不能由普通客户端
   直接创建。
 
@@ -192,7 +191,7 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 6. 产物上传/登记失败不改变 IssueRun、Revision、通知或回收语义；`delivering` 不因产物无限期占用。
 7. 任务历史 100 条裁剪只作用于视图；verdict 与 IssueRun/Thread/Revision 审计事实不被裁剪删除，产物按 D5 独立淘汰。
 8. 产物只随绑定 issue 的读取权限可见；Cloud 与 local 不互相同步或上传。
-9. 产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制；产物文件是否进入 Revision 的 Git 快照由既有 Node 快照规则决定，不构成产物事实源。
+9. `.ora-scheduled-artifacts/` 是 Ora 保留目录，Node 快照对所有运行一律排除，产物文件不进入 Revision 的 Git 快照；产物的对象存储登记也不随 Revision、Thread 或 Issue 评论复制。
 10. verdict 与产物的 `task_id`、`scheduled_at`、`issue_run_id` 是不可变持久事实，不随 occurrence 裁剪置空；读取权限、排序与每任务淘汰只依赖它们，`occurrence_id` 是可空的审计引用。
 11. 产物交付有以运行身份唯一、不可续期的持久截止；成功登记在同一事务内按数据库时间校验 `now < artifact_delivery_deadline`，到期（含恰好到期）的成功回执只确认、不登记、不改写事实；已上传未登记的孤对象按键前缀由 Cloud 兜底清理。
 12. 产物登记按条目逐项结算：重复 PUT（`412`）与重派不产生重复登记，登记前按 size/SHA-256 逐对象复核；成功项登记、失败项进入 `scheduled_run_artifact_rejections`，部分成功不把校验放权给 PUT 时点、也不阻断运行收敛与释放。
@@ -204,7 +203,7 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 | Cloud 直接解析 Thread 最后一条消息文本 | 违反 Thread D2「Cloud 不解析消息业务字段」，并把 `ora-history` 的 schema 猜测引入 Cloud |
 | 给 Agent 开放公开 verdict 写入端点 | 破坏「只有执行端能写」的可信边界，任何客户端都能伪造业务结论 |
 | 由 Agent 直接上传产物到对象存储 | Agent 运行在一次性 Workspace，没有 Cloud 对象存储凭据；开放凭据会扩大攻击面 |
-| 把产物登记进 Revision 的 Git 交付 / session JSONL | Revision 是 Git 成果与历史归档，产物与 Revision 生命周期和校验语义不同，混入会扩大交付失败面；产物文件被快照纳入是既有 Node 规则的附带结果（D3），不是登记通道 |
+| 把产物登记进 Revision 的 Git 交付 / session JSONL | Revision 是 Git 成果与历史归档，产物与 Revision 生命周期和校验语义不同，混入会扩大交付失败面；产物目录已在快照中排除（D3），产物只走对象存储登记通道 |
 | 产物跟随 Worktree/Workspace 生命周期 | Workspace 释放后丢失，无法按 Run ID 稳定访问 |
 | 复用 local 的每任务 10 个运行、随历史裁剪清文件 | Cloud 的 100 条历史视图与对象存储成本边界不同；本文显式定义 Cloud 自己的 10 个运行产物上限 |
 | 开放永久公开对象 URL | 绕过 issue 可见性；短期签名 URL 才能跟随读取权限 |
