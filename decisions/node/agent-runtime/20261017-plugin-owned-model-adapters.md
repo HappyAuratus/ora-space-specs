@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 插件 adapter 拥有 CLI 模型配置，Node 拥有运行授权和资源生命周期
@@ -8,9 +8,9 @@ Node 为一次会话提供固定版本的模型访问上下文，插件 adapter 
 协议；Node 保持授权领取/续期/撤销、目录和进程生命周期的所有权。新接入兼容协议的 Agent 不再
 要求 Cloud 页面或 Node 授权模块增加插件 ID 分支。新的模型协议仍需平台实现，不由插件声明授权。
 
-本决策为 `approved`，尚无新 adapter 路线的实现证据。首期交付 Claude 普通会话、OpenCode 回归和
-测试插件的扩展证明；不实现 Pi RPC/SDK 桥接、Codex Responses、其他 CLI 或多 CLI 工作流。
-不重写现有 ACP 运行时，也不声称修复根决策记录的孤儿后代/guardian 缺口。
+本决策为 `implemented`。首期交付 Claude 普通会话、OpenCode 配置迁入插件 adapter 和测试插件的
+扩展证明；不实现 Pi RPC/SDK 桥接、Codex Responses、其他 CLI 或多 CLI 工作流。不重写现有 ACP
+运行时，也不声称修复根决策记录的孤儿后代/guardian 缺口。D4 有一项已知偏离，见该节。
 
 ## 继承与修改
 
@@ -41,6 +41,13 @@ model-access 客户端私钥永远不提供给插件。上游地址不是 plugin
 `agent/start` 只有 cwd/hostVersion 的形态不构成已支持新能力。没有新上下文的历史执行保持原语义；
 要求个人模型的新版插件不能把缺上下文当作允许使用本地默认值。
 
+首期 adapter 契约版本为 1，协议为 `openai-completions` 与 `anthropic-messages`。Node 只在已具备
+模型代理能力、且宿主是 `x86_64-unknown-linux-gnu` 或 `aarch64-unknown-linux-gnu` 时，在会话握手
+中宣告 adapter 能力（契约版本、target、协议）；其他宿主只保留旧 OpenCode 路线。Controller 只把带
+冻结配置的会话派给能力完全匹配的 Node，没有匹配 Node 时工作留在 Cloud 队列。旧 Node 不宣告该能力，
+也不会收到这类会话；它若收到未知的配置字段，消息解码失败，按协议违规关闭整个控制会话，而不是
+忽略字段继续启动。
+
 ## D2：准备、握手与第一条 prompt 有严格顺序
 
 1. Node 核对执行指定的安装包及声明关联，取得安装使用租约，准备本次执行的私有工作负载目录。
@@ -56,8 +63,20 @@ model-access 客户端私钥永远不提供给插件。上游地址不是 plugin
 上下文的非秘密冻结身份、Settings 和版本属于 D1 的可持久控制输入，须与执行账本记录一致，以供
 重试校验和审计；这不允许在重试时重新读取个人默认值。第三组中的临时令牌、私钥内容及带认证头的
 provider 初始化材料不能进入控制账本、JSONL、用户 prompt、普通 Settings、错误链或用户日志。
-公开 CA 和固定代理地址不是秘密，但也不据此把整个 provider payload 原样记录。沿用平台有限安全
-错误类别区分配置不完整、不兼容、授权拒绝和准备失败；原始供应商/CLI 错误不直接公开。
+公开 CA 和固定代理地址不是秘密，但也不据此把整个 provider payload 原样记录。
+
+带冻结配置的插件进程使用空环境，只保留 `PATH`、`LANG`、`LC_ALL`、`TMPDIR`，不继承宿主的 provider
+凭据或登录变量。配置启动失败只按错误码分类，插件给出的消息一律丢弃：
+
+| 情形 | 公开类别 | 是否重试 |
+| --- | --- | --- |
+| Node 在交给插件前发现配置缺失、非法或授权与冻结绑定不符 | `agent_model_configuration_required`、`agent_model_configuration_invalid`、`model_grant_mismatch` | 否 |
+| 插件报告未安装 | 沿用既有未安装类别 | 是 |
+| 插件报告 adapter 不可用 | `agent_model_adapter_failed` | 否 |
+| 插件返回其他错误或超时 | `agent_model_adapter_failed` | 是 |
+| 插件未确认已应用冻结配置 | `agent_model_adapter_not_applied` | 否 |
+
+原始供应商/CLI 错误不直接公开。
 
 ## D3：CLI 差异在 adapter 内，授权和进程责任留在宿主
 
@@ -68,6 +87,18 @@ CLI 事件到既有 ACP 会话语义的转换。它通过已有 host-managed spa
 允许 adapter 内复用固定版本 ACP providers 或 CLI/SDK 的配置接口，但它们是插件内部依赖，不是
 Cloud 数据库或个人 settings 的公共结构。静态声明不包含任意模板程序；用户字符串按字面数据校验
 和序列化，不能借配置变成 shell 表达式、任意环境展开或原生 CLI 配置覆盖。
+
+首期两个 adapter 的最终做法：
+
+- **Claude**：不使用 ACP 的 provider 切换接口。临时令牌只放在 adapter 启动 CLI 的进程环境里；
+  不含令牌的路由（平台代理地址、清空的 Key helper、钉到冻结模型的全部别名）作为会话级设置，由
+  adapter 在每次新建、加载、恢复和派生会话时注入，并覆盖客户端传来的模型、环境、设置和可执行文件。
+  令牌因此不出现在任何进程的命令行参数里；固定版本 adapter 与 CLI 的命令行扫描测试防止回退。
+- **OpenCode**：令牌放在环境变量里，CLI 配置以内联内容传入，只引用该变量；额外配置文件和项目配置
+  都被关闭。
+
+平台路由下，adapter 不记录 CLI 的 stderr 原文，只记行数；非协议 stdout 只记长度；协议帧中出现的
+令牌和代理地址被擦除。
 
 宿主仍拥有启动/取消/结束的责任、工作负载身份、安装租约、公开 CA 发布与临时目录。声明和用户
 选项不能修改平台执行/文件/网络策略。CLI 的权限模式、敏感文件规则、hooks 或内部插件不是个人
@@ -87,6 +118,12 @@ CLI 的 HOME、配置/缓存/会话目录和生成的非秘密配置位于 check
 其他高优先级设置，确保它们不能将本次授权路由改向另一个上游、模型或登录态。保留用户项目文件；
 不能覆盖或删除仓库设置来假装隔离。不支持可靠覆盖控制的固定版本拒绝进入此能力，而不是容忍
 不确定路由。模型代理仍按当前绑定验证每次请求，插件声明不替代该验证。
+
+> 已知偏离：Node 自动批准会话中的权限请求时，优先选择“总是允许”。固定版本的 Claude adapter
+> 收到后，把对应的工具允许规则写进 checkout 内的 `.claude/settings.local.json`，该文件随
+> Revision 交付。这违反本节“生成的配置位于 checkout 外、保留用户项目文件”的承诺。文件只含工具
+> 允许规则，不含凭据，也不改变模型路由，所以未阻塞首期交付。修正方向是 Node 在 adapter 路线上
+> 改选“仅本次允许”；修复后同步本节并删去此条。
 
 ## D5：模型发现和别名不能扩大冻结输入
 
@@ -115,9 +152,13 @@ Node 重启按既有 interrupted 规则处理，不能从旧临时配置恢复�
 
 ## 兼容与落地
 
-先扩展版本化上下文、共享生成类型和准备门禁，再把 OpenCode 的专属转换迁入插件 adapter，随后
-交付 Claude。旧 OpenCode 数据/默认选择的兼容过渡只能留在明确的旧路线，不能成为新插件缺能力
-时的回退。发布新包与宿主支持顺序需匹配，新包不能只因安装成功就被标为模型可执行。
+落地顺序为：版本化上下文、共享生成类型和准备门禁，OpenCode 专属转换迁入插件 adapter，然后
+Claude。没有冻结配置的旧路线只保留给 `official/ora-space.opencode`，不成为其他插件缺能力时的
+回退。
+
+发布顺序由插件包控制：不能解析 Agent 声明的宿主会安装带声明的包，但拒绝激活它。因此声明随
+各插件自己的发布开关放出，在能解析声明的宿主部署后才开启；新包不能只因安装成功就被标为模型
+可执行。
 
 Node 协议/Cloud 执行输入仅新增必要的冻结非秘密配置，原协议字段身份、JSONL 和历史运行保持原义。
 不是本期需要的 transport、动态权限或共享状态不借扩展点一起增加。
