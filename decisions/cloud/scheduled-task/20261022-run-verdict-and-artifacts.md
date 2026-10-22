@@ -27,7 +27,8 @@ Node 终态上报字段。
 | [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D3：`provisioning → starting → running → delivering → releasing → done` 阶段机 | 继承；**修改**：`delivering` 同时收敛 Revision 交付与定时产物上传，但不新增 phase/status；产物失败不改变 Revision 或运行终态 |
 | [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D4/D5：执行结果与 Revision 分别记录，Revision 登记前不释放，交付失败有界重试 | 继承，不变：产物的登记与保留独立于 Revision 交付，产物登记失败不改变交付门禁；产物文件与 Revision 的 Git 快照的关系见 D3 |
 | [IssueRun 迟到交付接管](../issue-run/20261022-late-delivery-fact-takeover.md)：放弃交付后仍接管原执行事实，迟到 Revision 不得越过同 Issue 后创建的运行；修改了 IssueRun D5/D8 的迟到交付事实入口与 ACK 语义 | 继承，一致：本文「截止后只确认回执、不登记对象」与其「确认原事件、不改写已结算结果」方向一致；本文不改变它定义的迟到 Revision 规则，也不改变本文的产物交付截止语义 |
-| [Controller 集成 D1](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)：`AgentSessionEnded{reason, detail}` 是 Agent 会话的终态结果；会话执行输入（`StartAgentSession`）目前不含触发来源 | **修改**：会话执行输入新增 `trigger` 字段（Cloud 只在接纳定时 occurrence 时设为 `scheduled`，手工运行缺省）；`AgentSessionEnded` 增加可选 `scheduled_result` 与 `artifact_manifest`；手工运行与既有字段语义不变 |
+| [Controller 集成 D1](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)：`AgentSessionEnded{reason, detail}` 是 Agent 会话的终态结果；Cloud 执行输入 `AgentSessionSpec` 目前不含触发来源 | **修改**：`AgentSessionSpec` 新增 `trigger = 9`（Cloud 只在接纳定时 occurrence 时设为 `scheduled`，手工运行缺省），Controller 原样转交给 Node；`AgentSessionEnded` 增加可选 `scheduled_result` 与 `artifact_manifest`；手工运行与既有字段语义不变 |
+| [Node 协议会话执行](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md) D1：`StartAgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn}` 与 `AgentSessionEnded{reason, detail}` 是 Node 侧的会话执行输入与终态 | **修改**：`StartAgentSession` 新增 `trigger` 字段（由 Controller 原样转交，缺省即手工）；`AgentSessionEnded` 增加可选 `scheduled_result{verdict, verdict_detail}` 与 `artifact_manifest{items[], rejections[]}`，手工运行不设置 |
 | [Revision 根决策](../revision/0-cloud-owned-object-store-and-verified-revisions.md) D1–D4：对象键由 Cloud 生成、预签名 PUT、校验大小与 SHA-256 后登记 | 继承并复用对象存储与上传授权机制；产物使用独立的运行级前缀与登记表（bundle 已由下一行 Git 交付决策删除，本文只复用 session JSONL 一侧的上传授权规则） |
 | [Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) 与 [Node 交付决策](../../node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)：Node 快照以临时 index 执行 `git add -A`（Node 根决策 D2），最终提交经交付 ref / `workspaceRef` 推送，代码改动不经对象存储 | 继承，不变：本文不改 Node 快照规则；产物目录未被仓库忽略时，产物文件会作为普通工作树内容进入交付 ref 的最终提交，这是附带副本，不构成产物事实源（D3） |
 | [local 结果注解/产物 ADR](../../desktop/core/scheduled-task/20261021-run-result-annotation-and-artifacts.md) D5：local 与 Cloud 只共用 verdict 枚举，Cloud 存储/写入/保留另行定义 | 继承并落定：Cloud 只共用枚举；Node 执行端沿用同一哨兵文本约定作为上报来源，但不共享 Cloud 存储或解析契约；写入通道、产物存储、上限、保留和费用均在本文定义 |
@@ -61,10 +62,12 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 - **哨兵契约**：与 local 相同，最终 Assistant 轮按 LF 归一后匹配以行为界的
   `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>`（大小写不敏感、行尾空白忽略），可紧随
   一行 `QA_DETAIL: <自由文本>`；取第一个匹配，非法值/超长/无匹配均为「未报告」，不报错、不改写运行事实。
-- **Node 协议扩展**：会话执行输入（`StartAgentSession`）新增 `trigger` 字段，Cloud 只在接纳定时
-  occurrence 时设为 `scheduled`，手工 IssueRun 签发时不设置（缺省即手工）。`AgentSessionEnded{reason,
-  detail}` 增加可选的 `scheduled_result{verdict, verdict_detail}`：Node 只在 `trigger = scheduled` 且
-  该轮正常收尾时解析并上报，手工运行不设置。Node 不写 Thread 消息内容，只上报解析后的结构化值。
+- **Node 协议扩展**：Cloud 执行输入 `AgentSessionSpec` 新增 `trigger = 9` 字段（字段 6/7/8 已被
+  `prior_revision`、个人模型与 `workspace_directory` 占用，取 9），Cloud 只在接纳定时 occurrence 时设为
+  `scheduled`，手工 IssueRun 签发时不设置（缺省即手工），Controller 原样转交给 Node 的 `StartAgentSession`。
+  `AgentSessionEnded{reason, detail}` 增加可选的 `scheduled_result{verdict, verdict_detail}`：Node 只在
+  `trigger = scheduled` 且该轮正常收尾时解析并上报，手工运行不设置。Node 不写 Thread 消息内容，只上报
+  解析后的结构化值。
 - **Cloud 写入时机**：`sessionEnded` 钩子在接管会话终态的同一事务内校验并写入 `scheduled_run_results`，
   先于任务历史可见；无匹配、非法值或超长不写入结果行（读取时即「未报告」），不报错、不改写运行事实。
   重放同一终态事件必须幂等。
