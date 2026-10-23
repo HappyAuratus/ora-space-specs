@@ -151,7 +151,7 @@ O4 证据目前仅位于作者机器的 `ora-space/cluster/.acceptance/407/407-o
 | O4 真实精确拒绝后的隔离窗口与显式重连/重启重交 | [O4 真栈复测][o4-stack]：旧 Cloud 拒绝后 60 秒同 incarnation connected、无 ACK/receipt、无第二次 delivery start；换候选 Cloud 并重启 Cloud 引起会话重建，14.6 秒内原失败终态 seq 1 被接受，同一 delete 到 DONE、Run done、Workspace deleted、容器/卷均回收。Controller 未重启即可恢复；版本、作者摘要和边界见文件开头 | Covered |
 | 真实重连后原终态被接管并完成跨仓物理释放 | [O4 真栈复测][o4-stack]直接记录 Cloud 不可用导致会话重建、原失败终态 receipt seq 1、同一 delete TERMINATE→CLEANUP→DONE、Run done、Workspace deleted、0 container/0 volume；不要求 Controller 重启，不据此推断逐事件 ACK/outbox 顺序或 O2 成功分支 | Covered |
 | 同稳定 Node/资源的新 incarnation 真实恢复 | [integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC/new-incarnation`：生产 EndNode/RegisterNode/ReportNodeStatus 与 simulator 证明原事件接管及释放；[固定版本评审][review]明确真实新 incarnation 仍缺，待外部运行 | Partial |
-| 合并后 main 的永久失败与 O4 复跑（待补） | **待作者提供** desktop `2564b42` + Cloud `b777496` 的新运行评论及证据位置；本行只登记该次复跑，既有 PR-head 运行的 Covered/Partial 状态保持不变，不宣称 main 已复跑 | Missing |
+| 合并后 main 的永久失败与 O4 真栈复跑 | 未在 desktop `2564b42` + Cloud `b777496` 上复跑。[owner 合并说明](https://github.com/ora-space/circus/issues/407#issuecomment-6354830227)确认合并前后相关路径没有变化，复跑不作为本次落地条件；既有 PR-head 真栈证据的 Covered/Partial 评级不变，不宣称 main 已复跑 | Missing |
 | 后续输入保留授权边界 | 无直接产品测试/运行证据；[integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC` 与[真实栈回执][real-stack]均未直接覆盖 waiting 输入及显式恢复 | Missing |
 
 - 决策依据：迟到决策 D1、D3、不变量 1、2、5；IssueRun 根 D5/D8；串行交接 D1–D3。
