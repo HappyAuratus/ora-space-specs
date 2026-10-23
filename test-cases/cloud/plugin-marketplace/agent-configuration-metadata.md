@@ -1,7 +1,7 @@
 # Agent 配置元数据的分发、版本与安装证据
 
 决策依据：[静态元数据分发](../../../decisions/cloud/plugin-marketplace/20261017-agent-configuration-metadata.md)。
-新增义务均为 `Missing`；已有 catalog/安装/工作流资产测试不证明 Agent 配置分发已接通。
+证据固定到 cloud `abc7b31`、desktop `8e497d7`。只有 Node 侧安装核对达到 `Covered`，离线发布一致性仍是 `Missing`，其余为 `Partial` 并写明缺口；没有浏览器端到端证据，也没有 Cloud→Controller→Node 的联合验收。
 
 ## Configuration reads must not require agent execution or package downloads
 
@@ -14,9 +14,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 静态同步与安全文件读取 | 生产扫描器对真实 checkout 的摘要、大小、链接 escape、非法声明矩阵 | Missing |
-| 页面无执行副作用 | 无 Workspace 的 HTTP/浏览器配置流程，进程/网络观察证明确无相应调用 | Missing |
-| 源快照失败边界 | PostgreSQL 集成验证整源失败保留旧快照、单条失败不借用旧声明 | Missing |
+| 静态同步与安全文件读取 | [`catalog_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/internal/pluginmarket/catalog_test.go) 覆盖副本缺失、摘要不符、声明无效、目录冒充副本，[`agent_configuration_catalog_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/agent_configuration_catalog_test.go) 在真实 git 仓库与 PostgreSQL 上同步。缺超 256 KiB、非 UTF-8、schema 版本不一致和符号链接用例；中间目录符号链接在实现里也尚未拒绝（见 ADR D1） | Partial |
+| 页面无执行副作用 | 集成测试中包服务器在同步、目录读取、选择、派发全程收到 0 次请求；[`personal_agent_configurations_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/personal_agent_configurations_test.go) 无 Workspace 经生产 HTTP 读写配置。缺对配置读写的进程观察与浏览器流程 | Partial |
+| 源快照失败边界 | [`plugins_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/plugins_test.go) 验证整源失败保留旧目录并记录同步错误（既有，非声明专属）；上述集成测试验证含恶意副本的坏条目不拖垮同源其他条目。缺同一条目由有效变无效的连续同步断言 | Partial |
 
 ## Selected releases must retain their own declaration after catalog updates
 
@@ -29,8 +29,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 发行与声明持久绑定 | 真实 PG 源同步、Space 选择、配置保存/运行创建到 Workspace 安装的交错测试，覆盖原包可得/不可得 | Missing |
-| 旧编辑器的冲突反馈 | 生产客户端保留草稿、展示版本冲突和显式重新加载的浏览器证据 | Missing |
+| 发行与声明持久绑定 | 集成测试证明同步 2.0.0 后已选 1.0.0 的冻结行与摘要不变；[`personal_agent_configurations_db_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/internal/core/personal_agent_configurations_db_test.go) 证明排队后管理员升级，计划项仍是冻结的 1.0.0。缺“同步 → 选择 → 保存 → 创建运行 → 升级 → Workspace 安装”完整交错、原包不可得的准备失败分支，以及同名多来源或两空间不同版本的运行创建 | Partial |
+| 旧编辑器的冲突反馈 | [`editor.test.tsx`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/frontend/src/features/agent-configurations/editor.test.tsx)（jsdom）覆盖 revision 冲突保留草稿与显式重新核对。缺服务端发行冲突与声明冲突两个码的任何测试、管理员升级的交错和真实浏览器 | Partial |
 
 ## Installation evidence must bind the actual package declaration
 
@@ -43,9 +43,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 包内与派发关联一致 | 真实归档经 Node 生产安装入口，篡改项分别拒绝且租约保护旧包 | Missing |
-| 结果与计划一致 | Cloud 生产接管接口及 PG 约束验证，不仅序列化快照 | Missing |
-| 离线发布一致性 | 同组静态元数据和离线包的发布/安装验证 | Missing |
+| 包内与派发关联一致 | Node [`plugins.rs`](https://github.com/ora-space/desktop/blob/8e497d7382441babd19595bfc0c0f61a7511fc31/apps/ora-node/tests/plugins.rs) 用真实 zip 经生产安装器：摘要、重排版、复用已装版本逐项篡改均拒绝，暂存目录为空，租约下旧包磁盘内容不变；Controller 与协议层的关联转发测试。仍无 Cloud→Controller→Node 联合验收，改 target 或身份的篡改靠通用安装测试支撑 | Covered |
+| 结果与计划一致 | [`agent_run_boundary_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/agent_run_boundary_test.go) 经生产接管接口与 PostgreSQL 验证重复、混合、错版本结果被拒且不留部分变更。这些用例用的是未声明的计划，缺带声明计划的版本，也缺声明计划下的结果缺项与重试沿用原计划 | Partial |
+| 离线发布一致性 | 只有发布工具层的字节固定与回读测试（claude-code-agent、opencode-agent 的打包测试），不是离线产物的发布/安装验证；独立的离线产物机制尚未提供 | Missing |
 
 ## Space installation authority must not grant access to personal settings
 
@@ -54,4 +54,4 @@
 - 触发：读取“我的配置”、保存个人连接、跨用户请求、安装/移除。
 - 必须成立：共享安装和个人配置独立授权、独立展示；新建连接复用同一个人入口。
 - 禁止结果：跨用户读写、catalog 存个人值、配置成功改变安装状态或反之。
-- 验证义务与证据：HTTP+真实 PG 的跨角色矩阵及生产页面状态组合验证，当前 `Missing`。
+- 验证义务与证据：HTTP+真实 PG 的跨角色矩阵及生产页面状态组合验证，当前 `Partial`：DB 层 `TestPersonalAgentConfigurationRepairAndOwnership` 证明租户管理员读不到成员配置、写成员连接得 `not_found`，单用户 HTTP 证明请求体 `userId` 被拒，前端页面测试证明成员可打开“我的配置”但仍不能安装或移除。缺同空间两用户加管理员的 HTTP 矩阵，缺“保存个人配置前后插件选择不变”与“安装成功但未配置仍被拒绝”的直接断言，也缺生产页面的状态组合。
