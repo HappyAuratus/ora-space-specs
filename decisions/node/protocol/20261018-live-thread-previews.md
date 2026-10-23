@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Agent 实时预览独立传输，定型 Thread 记录仍是持久权威
@@ -7,7 +7,8 @@ status: approved
 在 Node → Controller → Cloud → 浏览器增加有界实时预览旁路，承载正文、公开思考和工具更新。
 现有定型记录、确认和重放通道不变；实时预览可丢弃并从快照恢复，不能成为执行成功或持久接管证据。
 
-本决策已获批准，尚未完成跨服务联合验收，涉及 Node 协议、Controller 会话中继与 Cloud 的新增订阅端点。
+本决策已实现，Node、Controller、Cloud 与浏览器的预览链路及真实成员撤权已有直接验证；
+兼容性和故障组合的证据边界见末节。
 新能力须协商，旧节点继续提供定型记录且界面明确展示能力差异，不能声称逐段实时输出已启用。
 
 ## 继承与修改
@@ -65,7 +66,23 @@ Node 以小批量、有界缓冲发送预览，Controller/Cloud 各层同样有�
 
 ## 风险与落地
 
-先定义并验证能力协商与稳定身份，再连接 Node/Controller/Cloud，最后启用浏览器预览。
-必须验证慢消费者、乱序、终态先到、重连快照、权限撤销与旧节点降级。协议更新、生成代码及联合测试
-随实现提交；仅在真实 Agent 完成前已观察到增量时，才可验收流式能力。子代理拓扑另行设计。
+预览通过协商后的 Node/Controller 通道进入 Cloud 的受权订阅端点，再由浏览器合并显示。
+仅在真实 Agent 完成前观察到未定型增量时，才构成流式能力证据；完整终态或全局至少一次的断言不能
+自动归因给每一种 Agent。慢消费者、乱序、终态先到、重连、权限撤销与旧节点兼容仍各有独立验证义务。
+子代理拓扑另行设计。
 核心验证义务见[实时 Thread 预览](../../../test-cases/node/protocol/live-thread-previews.md)。
+
+## 验证范围与延期边界
+
+真实 OpenCode 样本已观察到正文严格前缀和工具调用终态配对；正式发布包四运行证明主预览链路接通。
+[成员撤权直接验证](https://github.com/ora-space/circus/issues/553)中，真实供应商输出经过
+Node→Controller→Cloud→Gateway，普通成员已有非空预览时，经公开 API 禁用其真实租户成员资格；
+活跃 SSE 清空快照并关闭，两个 Cloud 实例均拒绝后续历史和预览，浏览器离开任务页。
+原发起者仍可读输出，运行随后正常完成并物理释放；模型 Key 撤销不作为成员撤权的替代。
+
+按[收尾范围决定](https://github.com/ora-space/circus/issues/532)，G3/G5/G9 的直接门槛补齐后允许当前实现
+收尾；G1（Run/Thread/预览组合）、G6（旧 Node 降级）、G7（逐跳乱序/迟到与定型优先）、
+G8（真实慢消费者/背压/取消组合）、G10（正式 Claude 独立预览归因）继续由
+[circus#531](https://github.com/ora-space/circus/issues/531)承接。
+[核心用例](../../../test-cases/node/protocol/live-thread-previews.md)如实保持其 Partial/Missing；
+本状态不声称所有故障组合均已实测，不改变 D1–D3 的身份、背压、授权和持久化承诺。
