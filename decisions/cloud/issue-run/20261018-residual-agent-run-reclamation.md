@@ -213,19 +213,22 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只�
 - ora-space/cloud#112（第 1 步）：账本增列迁移 `agent_run_residual_reclamation.sql`、追加证据与冲突审计、单一 owned delete 责任、独立周期扫描，以及清理前后经既有事实入口的接管。不新增 RPC；Controller 无法经既有入口回报的历史事实仍缺失，相应条目保持 `reconciling`。
 - ora-space/cloud#116（第 2 步）：意图、目标与回执迁移 `agent_run_controlled_reclamation.sql`，`cloudctl residual` 五条命令，两阶段处置、外部确认与存量 D8 按身份接管；终止目标复用既有强停 RPC 形状。
 - ora-space/desktop#710 与 ora-space/cluster#35（第 3 步）：Controller 在 PUT 前复核许可、终止前尝试 Shutdown 控制关闭、墓碑拒绝不重试、逐目标隔离失败；Sandbox Server 对命中墓碑的有效受管 ensure 返回 `503 sandbox_terminated`，并补齐 terminate 语义的直接测试。
-- 演练证据按实际候选分两轮，不以可变 PR head 代替运行版本：
+- 演练证据按实际候选分三轮，不以可变 PR head 代替运行版本：
 
 | 轮次 | 固定演练记录 | 候选与工具版本 | 场景及边界 |
 |---|---|---|---|
 | 第一轮 | [首轮结果](https://github.com/ora-space/circus/issues/388#issuecomment-6299342004)、[D8 身份接管补跑](https://github.com/ora-space/circus/issues/388#issuecomment-6300622765) | Cloud `59a2443`；desktop `7ea516b`；Sandbox Server 为 cluster#35 `590c444` 加 Node 内存选项（集成提交 `3d9f552`）。工具：S2/S3/S2b 为 `04e2bd8`，S1/原 S4 为 `da3903d`，D8 补跑为 `8640080`。 | S1 通过；S2 约 300 秒不可达后恢复通过，已有卷保留；S3 外部确认通过；S2b inconclusive；原 S4 因 Node 恢复失败未进入接管，D8 补跑仅身份接管通过，已有卷先保留再显式删除。 |
 | 第二轮（post-#183） | [S1 重跑](https://github.com/ora-space/circus/issues/388#issuecomment-6308500014) | Cloud `118b759`；desktop `fbe37e24`；cluster main `3e07a4c`；工具 `8209d6b`。 | 只运行 S1，恢复后沿同一意图与两个目标取得双确认，已确认目标不重发，显式 `delete-data` 到 `released`。终止前 Run Workspace 没有数据卷，不能证明已有卷被保留再物理删除。 |
+| 第三轮（#560） | [固定候选演练结果](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955) | Cloud `d73eca76`；desktop `e177e021`；cluster / Sandbox Server `ae1dd951`。工具 driver `b87d30b`，复用 proxy 镜像源码 `7e08dc6`。 | `p343-run01` 的 S2b inconclusive、S2 中断不计证据；`p343-run02` 复用同一批镜像，仅 S2/S3/D8，均通过。D5/D8 均使用真实默认 30m；D8 最后活动到事务 1807.9 秒，原身份接管、双确认 retained、显式 delete-data 到 released、零账本及历史不变。 |
 
-两轮都是单机 Docker 上的真实服务与 Node。S1 的第二个历史 sandbox 身份仅作为输入布置，后续计划、派发、终止与确认来自真实系统，不代表真实多代历史。第一轮 D8 补跑先确认交付已被 Cloud 接收，再经 `ReportNodeIdle` 屏障断线，避开未接收终态重连冲突（ora-space/circus#392）；约 9.5 秒即形成 D8，未遵守默认 30 分钟窗口（ora-space/circus#391，现已由 ora-space/cloud#118 修复，但两轮均未验证修复后的窗口）。它不证明窗口条件或旧版本滚动升级。第二轮没有重跑 S2、S3、S4、S2b 或 D8 接管，第一轮结果只适用于第一轮候选，不能作为最终 PR head 的部署证据。
+前两轮都是单机 Docker 上的真实服务与 Node。S1 的第二个历史 sandbox 身份仅作为输入布置，后续计划、派发、终止与确认来自真实系统，不代表真实多代历史。第一轮 D8 补跑先确认交付已被 Cloud 接收，再经 `ReportNodeIdle` 屏障断线，避开未接收终态重连冲突（ora-space/circus#392）；约 9.5 秒即形成 D8，未遵守默认 30 分钟窗口（ora-space/circus#391，现已由 ora-space/cloud#118 修复，但前两轮均未验证修复后的窗口）。它不证明窗口条件或旧版本滚动升级。第二轮没有重跑 S2、S3、S4、S2b 或 D8 接管，第一轮结果只适用于第一轮候选，不能作为最终 PR head 的部署证据。
 
-“双确认后送达的有效迟到 ensure 被墓碑拒绝”只在第一轮 S2b 尝试，原许可有效期内生产回收资格未成立，结论 inconclusive；目前只有 Sandbox Server 单仓测试。
+第三轮采用同一 pinned candidate 的真实默认窗口，[S2/S3/D8 均通过](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955)；`last_seen_at` 是 Node 最后记录的活动，Run `updated_at` 是 D8 事务时间戳，1807.9 秒不是精确心跳发送到提交的耗时。它补齐重试与显式升级、D8 身份接管两项跨仓联合路径，不证明旧版本滚动升级或未测试的故障交错。
 
-- 产品实现及演练工具均已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35、ora-space/cluster#36（合并提交 `7adcb6e`、合入 head `a11e025`）；停止未确认证据及其运维展示已随关联改动合入。`a11e025` 包含 S2b 响应等待修复，但未重跑部署演练；上述历史演练工具 head 和 `Partial` 证据缺口保持不变。
+逐目标终止与围栏仍为 `Partial`：[结构性分析](https://github.com/ora-space/circus/issues/560#issuecomment-6359872191)指出 10 秒原许可与至少 30 分钟回收资格不重叠，且提升 control epoch 后旧 ensure 先被 403 拒绝，不能到达墓碑分支。[第三轮](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955)在资格成立前释放原 ensure 得到 HTTP 200、未发生 terminate，不是终止后的反例；完整理由与证据边界见核心用例。
+
+- 产品实现及演练工具均已合并：ora-space/cloud#112、ora-space/cloud#116、ora-space/cloud#117、ora-space/cloud#127、ora-space/desktop#710、ora-space/desktop#712、ora-space/cluster#35、ora-space/cluster#36（合并提交 `7adcb6e`、合入 head `a11e025`）；停止未确认证据及其运维展示已随关联改动合入。`a11e025` 包含 S2b 响应等待修复，但未重跑部署演练；上述历史演练工具 head 保持不变；第三轮补证及仍为 `Partial` 的结构性边界见上表与核心用例。
 
 ## 核心测试用例
 
-本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中六项的 Cloud 范围为 `Covered`；逐目标终止与围栏因生产路径缺少迟到 ensure 被拒的实测，重试与显式升级、D8 身份接管因新版候选缺少相应联合路径的部署证据，三项完整跨仓义务为 `Partial`。旧候选的通过结果按上述版本保留。新增迟到登记守卫见[迟到交付用例](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，该决策已为 `implemented`：Cloud #142 merge `b777496` 的直接测试覆盖各接收路径的后创建 Run 守卫；缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`。逐项证据见该用例，不由上述历史演练证据自动覆盖。
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中 **8 项 `Covered`、1 项 `Partial`**：前六项的 Cloud 范围保持 `Covered`，第三轮 [#560 固定候选演练](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955)补齐重试与显式升级、D8 身份接管的联合路径；逐目标终止与围栏因上述许可时间与 epoch 检查顺序的结构性边界保持 `Partial`。ADR 状态仍为 `implemented`，未改变决策语义。旧候选的通过结果按上述版本保留。新增迟到登记守卫见[迟到交付用例](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，该决策已为 `implemented`：Cloud #142 merge `b777496` 的直接测试覆盖各接收路径的后创建 Run 守卫；缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`。逐项证据见该用例，不由上述历史演练证据自动覆盖。
