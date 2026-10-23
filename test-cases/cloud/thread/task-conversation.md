@@ -1,7 +1,8 @@
 # 任务持续对话与跨运行上下文
 
 依据[已批准的任务持续对话决策](../../../decisions/cloud/thread/20261018-task-conversation-across-runs.md)。
-下列证据引用 Cloud、Desktop 与 cluster 的候选实现和测试；它们不等于产品已合并或真实 Agent 联合验收完成。
+下列证据包括已合并代码的测试、固定 main 上的真实 OpenCode 分项，以及[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)：Claude v0.4.0 + OpenCode 0.6.11，cluster `6eecd5c1f7ce52afd19376ca417e4198eb27c1ba`、cloud `c5bcd147bf3abbe87823f9a4e155cc14b6c30cf8`、desktop `d271fb3b94234ab0f5d7f5ae3dcf94c738f104af`，结果 `passed-api`。
+该记录的 `task-conversation.json` SHA-256 为 `1cb2f9d250ff59c97c1d0896cf466a811c552f8a608bde95d1c2ef4db5c0771e`；Claude 来自 [v0.4.0 GitHub Release](https://github.com/ora-space/claude-code-agent/releases/tag/v0.4.0) 的 x86_64-linux 包（SHA-256 `2feb3eba6edfbd66c3b4eea64584b76bdb0bf9acaeed61325f4168f2e7d86682`），不是 marketplace 条目或本地候选。四个不同 Workspace 均完成并释放；API 通过不替代浏览器组合、真实截断和跨发起者验证。
 跨运行成果恢复继续受[Revision 续接用例](../issue-run/resume-from-latest-revision.md)约束，不能以对话存在替代成果证据。
 
 ## Task Messages Have Stable Order And One Execution Intent
@@ -29,7 +30,7 @@
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 并发顺序与幂等 | Cloud `internal/core/task_conversation_db_test.go::TestTaskConversationConcurrentWindowsPreserveOrderAndIdempotency`、`::TestTaskConversationMessageOrderIdempotencyAndCancellation`，真实 PostgreSQL 与生产 Public 入口 | Covered |
-| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；仍需真实浏览器验证历史重开、引用、结论来源去重与跨服务记录的一致性 | Partial |
+| 多来源展示与刷新 | Cloud 对话、Thread、session-data 组件测试覆盖消息呈现；[#312 最新 main 正常历史](https://github.com/ora-space/circus/issues/312#issuecomment-6334326387)、[失败历史](https://github.com/ora-space/circus/issues/312#issuecomment-6334859661)与[取消历史](https://github.com/ora-space/circus/issues/312#issuecomment-6334750487)均经浏览器按 Run URL 重读、刷新并看到执行状态；长回复 UI 还覆盖表格/代码块、375px、键盘、危险链接及普通评论不触发 Run；[本地候选四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6333843436)逐一重开四份历史。正式包下的引用、结论来源去重和跨服务记录一致性仍缺 | Partial |
 | 工具轮次关联 | Cloud `integration/agent_run_thread_read_test.go::TestThreadReadReturnsNodeTurnIdentityOverHTTP` 经真实 HTTP/PG 验证排队用户消息之间 Node 条目的真实 turnId；`frontend/src/features/issues/thread/thread-entries.test.ts` 覆盖同调用 ID 跨轮隔离、稀疏更新及旧公开响应缺少 Node turnId 时的用户边界。此项仅证明公开读取与显示归并，不替代真实 Agent 输出验证 | Covered |
 
 ### 决策依据
@@ -61,9 +62,9 @@ D1、D4，不变量 2、4。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 空闲、释放与新执行 | Cloud `task_conversation_lifecycle_db_test.go` 两项真实 PostgreSQL 测试覆盖窗口内复用、空闲期满结束、未释放阻塞、新执行与既有正文；物理删除在该测试中使用阶段证据 fixture，不是 Docker 联合证据 | Partial |
-| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 的测试验证正文提取和 UTF-8 截断。CloudStore 转发与真实跨 Agent 上下文恢复尚待贯通 | Partial |
-| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义 OpenCode、第二 Agent、切回与主动结束后新运行续聊的四次运行检查；尚无实际模型运行结果 | Missing |
+| 空闲、释放与新执行 | Cloud `task_conversation_lifecycle_db_test.go` 两项真实 PostgreSQL 测试覆盖窗口内复用、空闲期满结束、未释放阻塞、新执行与既有正文；[#312 默认窗口真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332636097)经历默认 15 分钟窗口，以新的 Run/Workspace 续接，核对两次 Revision、Git 结果和容器/卷物理释放；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)验证存活 OpenCode 会话续聊、Claude 交接、切回和主动结束后新 Run，四个不同 Workspace 各自释放。默认窗口与正式包分属两批固定版本证据，不声称本轮正式包重复了 15 分钟等待 | Covered |
+| 正文投影与预算 | Cloud `task_conversation_context_db_test.go` 验证 Node 正文投影、缺失标记、预算、稳定排序和收据重放；`task_conversation_budget_db_test.go::TestTaskConversationRetainsOversizeRecentTurn` 以真实 PG 验证单条 64 KiB、跨块聚合和 JSON 转义膨胀仍保留最近一轮、UTF-8 前缀及截断标记，并按实际渲染结果检查预算。Desktop `apps/ora-node/src/session/thread.rs` 验证正文提取与截断；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)核对 Claude 读取前一运行文件、复述仅在对话中出现的代码，切回 OpenCode 后恢复两份文件和代码。真实超预算截断与可见范围展示仍缺 | Partial |
+| 真实连续协作 | cluster `scripts/task-conversation-acceptance.py` 定义四运行检查；[#312 默认 idle 单 Agent 验收](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)与[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)分别覆盖默认窗口后续接和 OpenCode→Claude→OpenCode→新 Run，Revision 链与四次物理释放均核实。正式双 Agent 故障联合矩阵仍缺；独立永久失败释放样本不替代该组合 | Partial |
 
 ### 决策依据
 
@@ -88,8 +89,15 @@ D2、D3，不变量 1、5、6。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration`，及旧入口跨发起者交接拒绝测试；实际授权撤销与浏览器/模型进程联合演练尚缺 | Partial |
+| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run；[#312 非成员隔离](https://github.com/ora-space/circus/issues/312#issuecomment-6334438380)四读两写均 403；[#312 同租户成员受控模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334568694)证明可读原 Run 但旧追加/结束均 403，自身模型消息 waiting、取消后未建新 Run。[G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)在两个不同成员、两份独立真实供应商 Key 下完成各自 OpenCode 调用；B 可读 A，但旧追加/结束均 403；B 消息等待 A 合法结束并物理释放后才派发。两个 Run 的冻结 userId/connectionId 分别属于各自发起者；撤销 B 凭据后任务/旧追加均 409 且消息、Run、Thread、评论、interaction、activity 数不变，此时 A 凭据仍有效。两次 Run completed/done 且容器/卷释放 | Covered |
 
 ### 决策依据
 
 D2，不变量 3。
+
+## 证据边界
+
+上表 Partial 的缺口由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：多来源显示、历史引用与组合一致性对应 G1；真实截断范围对应 G2；双 Agent 故障联合矩阵对应 G4。G5 已有上面的真实双发起者直接证据；数据库级/受控模型证据仍不替代其他未测组合。
+[circus#532](https://github.com/ora-space/circus/issues/532) 已明确：永久失败的恢复是显式步骤；G3/G5/G9 是收尾门槛，G1/G2/G4/G6/G7/G8/G10 允许延期，由 #531 继续承接。上表仍有缺口的义务保持 Partial；本证据 PR 不修改 ADR 状态。
+
+本批 [G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)固定 cluster `45130795863037b365176ec51af611d46eb7f3da`、cloud `54bedcc95a5595ed23d87e2b841b55abd3dee71b`、desktop `8e497d7382441babd19595bfc0c0f61a7511fc31`；隔离普通成员通过公开邀请流程建立，真实模型调用返回 HTTP 200/succeeded。记录、产物摘要、失败样本和清理结果在运行中独立保存，不将凭据或会话正文复制到规格仓库。

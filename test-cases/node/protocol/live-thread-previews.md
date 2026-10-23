@@ -1,8 +1,8 @@
 # 实时 Thread 预览旁路
 
 依据[已批准的实时预览决策](../../../decisions/node/protocol/20261018-live-thread-previews.md)。
-可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。以下局部证据不代表
-Node → Controller → Cloud → 浏览器已全部接通；尤其 CloudStore 适配和真实 Agent 联合验收仍需直接证据。
+可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。固定 main 上的真实 OpenCode
+已产生 Node → Controller → Cloud → 浏览器预览；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)使用 Claude v0.4.0 + OpenCode 0.6.11（cluster `6eecd5c1`、cloud `c5bcd147`、desktop `d271fb3b`），证明至少一处正文严格前缀与工具终态配对。该全局断言没有独立归因给 Claude，慢消费者与故障组合也仍缺。
 
 ## Stable Identity And Final Records Defeat Reordered Previews
 
@@ -28,8 +28,8 @@ Node → Controller → Cloud → 浏览器已全部接通；尤其 CloudStore �
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 的握手、往返和拒绝测试覆盖可选协商、版本及位置约束；不证明 CloudStore 转发 | Partial |
-| 定型优先和乱序 | Cloud `internal/core/thread_preview_test.go::TestThreadPreviewAuthorityAndFinalRecordDominance`、替换/隔离测试与 `frontend/src/features/thread-preview/preview.test.tsx` 证明缓存与浏览器的采用/覆盖规则；真实跨服务乱序仍缺 | Partial |
+| 线上协商、身份和边界 | Desktop `crates/node-protocol/tests/protocol/thread_preview.rs` 覆盖可选协商、版本及位置约束；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)经 SSE 观察到最终正文的严格前缀和工具终态配对，证明本组合的转发已接通。旧 Node 降级与正式第二 Agent 的独立预览仍缺 | Partial |
+| 定型优先和乱序 | Cloud `internal/core/thread_preview_test.go::TestThreadPreviewAuthorityAndFinalRecordDominance`、替换/隔离测试与 `frontend/src/features/thread-preview/preview.test.tsx` 覆盖采用/覆盖规则；[#312 生产者 RPC/SSE 注入](https://github.com/ora-space/circus/issues/312#issuecomment-6320732885)验证低版本、重复、冲突、定型覆盖和重放，但不代表 Node WebSocket 逐跳乱序或最新 main 的全部故障组合 | Partial |
 
 ### 决策依据
 
@@ -58,8 +58,8 @@ Agent，也不改变 Run/Thread/Revision 的权威状态；原持久写失败仍
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| Node 真实发送与有界缓冲 | Desktop Node 单元与 `apps/ora-node/tests/standalone/agent_sessions/previews.rs::negotiated_preview_streams_before_the_agent_turn_finishes` 使用真实 IPC 和 Echo Agent，证明轮次完成前出现正文预览；不是实际模型证据 | Partial |
-| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；`::completed_executions_do_not_exhaust_preview_capacity` 验证同一中继连续 128 次完成后仍可发布；`::terminal_takeover_cancels_only_its_in_flight_publisher` 验证终态取消阻塞发布、重复回收及其他活跃执行隔离。Cloud 的并发 hub、订阅容量和取消测试验证有界通知。仍需实际 CloudStore 与跨服务终态/迟到预览故障测试 | Partial |
+| Node 真实发送与有界缓冲 | Desktop Node 单元与 `apps/ora-node/tests/standalone/agent_sessions/previews.rs::negotiated_preview_streams_before_the_agent_turn_finishes` 使用真实 IPC 和 Echo Agent；[#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)又在轮次定型前观测到正文严格前缀和 5 个工具配对。有界缓冲承诺仍以定向测试为证据，真实慢消费者尚缺 | Partial |
+| 慢发布与取消 | Desktop `apps/ora-controller/src/session/previews.rs::slow_publisher_coalesces_and_connection_drop_cancels_workers` 验证替换和连接归属；`::completed_executions_do_not_exhaust_preview_capacity` 验证同一中继连续 128 次完成后仍可发布；`::terminal_takeover_cancels_only_its_in_flight_publisher` 验证终态取消阻塞发布、重复回收及其他活跃执行隔离。Cloud 的并发 hub、订阅容量和取消测试验证有界通知。[#312 真实模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接后仍完成交付；实际慢消费者与迟到预览组合仍缺 | Partial |
 
 ### 决策依据
 
@@ -88,9 +88,16 @@ D2，不变量 1、2、4。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；尚缺真实三服务共同重启/撤权的验证 | Partial |
-| 实际供应商流式与工具过程 | cluster 候选验收要求观测到同一历史位置最终正文的严格前缀，以及进行中工具到终态的配对；OpenCode 与第二种真实 Agent 尚未实际运行 | Missing |
+| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测执行中离线重连后消息/回复不丢。[G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)通过真实 OpenCode/供应商流式输出贯通 Node→Controller→Cloud→Gateway→浏览器；可读普通成员已有非空预览时，管理员经公开成员 API 禁用其实际租户成员资格。0.145s 后该 SSE 收到空快照并关闭；两个 Cloud 实例上的任务、持久对话/Thread、预览 GET 和新 SSE 均 403；原发起者仍可见非空预览，成员浏览器自动离开任务页、预览消失，最终原 Run completed/done 且容器/卷释放。此项使用成员撤权，未把模型 Key 撤销当作替代 | Covered |
+| 实际供应商流式与工具过程 | [#312 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接中取得 103 次可用快照，严格正文前缀、5 个进行中工具与终态配对均通过；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)进一步验证至少一处正文前缀和工具状态配对，但未把这项全局断言单独归因于 Claude。正式 Claude 的独立预览归因及慢消费者故障仍缺 | Partial |
 
 ### 决策依据
 
 D3，不变量 3、5。
+
+## 证据边界
+
+上表 Partial 的剩余验证由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：旧 Node 降级对应 G6；Node WebSocket 等逐跳乱序、迟到预览和定型优先对应 G7；真实慢消费者、缓冲上界和取消组合对应 G8；正式 Claude 的独立预览归因对应 G10；Run/Thread/预览对齐对应 G1。
+G9 已有上面的成员撤权直接证据。永久失败恢复后的物理释放样本不提供其他预览故障证据。[circus#532](https://github.com/ora-space/circus/issues/532) 已允许 G1/G6/G7/G8/G10 等七项延期、不阻塞收尾；仍缺的义务保持 Partial，不整体提升状态。
+
+本批 [G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)固定 cluster `45130795863037b365176ec51af611d46eb7f3da`、cloud `54bedcc95a5595ed23d87e2b841b55abd3dee71b`、desktop `8e497d7382441babd19595bfc0c0f61a7511fc31`。原始 SSE 仅记录版本、执行身份、块数量与时间；撤权前后浏览器截图、摘要及失败观察样本保存在运行记录中，不将模型正文、Cookie 或凭据写进规格仓库。
