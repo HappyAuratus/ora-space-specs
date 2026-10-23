@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 同一任务的 Agent 执行串行，成果保存与释放确认后才交接
@@ -7,8 +7,9 @@ status: approved
 Cloud 在任务层持久化 Agent 输入顺序与交接屏障，保证同一 Issue 至多一个 Agent 执行占用。
 切换 Agent 后的消息先等待，前一轮及先前已接收消息完成、成果交付和释放确认后才启动下一位。
 
-本决策已获批准，尚未完整实现及联合验收。Run、Revision 和 Workspace 的身份及终态不改写；新增调度约束覆盖所有
-Agent 启动入口。Workflow、Team 内部调度和多 Agent 并行成果合并不在本提案范围。
+本决策已实现，全部启动入口的双实例竞争及发起者交接已有直接验证；具体证据和延期范围见末节。
+Run、Revision 和 Workspace 的身份及终态不改写，调度约束覆盖所有 Agent 启动入口。
+Workflow、Team 内部调度和多 Agent 并行成果合并不在本决策范围。
 
 ## 继承与修改
 
@@ -51,6 +52,11 @@ thread_state=ended 或会话进程退出作为释放证据。队列和屏障持�
 手动停止保留既有取消语义，尝试交付当前成果，后续队列暂停。Agent 失败、启动失败、交付失败和释放
 未确认也阻止自动交接。消息保持可查，用户可取消未执行消息，或在问题解决后显式恢复队列。
 
+永久交付失败放弃后保持隔离，待真实恢复、Node 重连或重启后重新提交原事件，再按正常路径确认释放。
+恢复是显式步骤；故障持续且没有外部恢复时停在 `releasing` 是明确的设计边界，不承诺仅等待即可有界自释放。
+这继承[迟到交付接管](20261022-late-delivery-fact-takeover.md)与
+[被拒交付终态隔离](../../controller/session/20261022-isolate-refused-delivery-terminals.md)的约束；资源释放不等同于交付成功或解除失败暂停。
+
 恢复操作必须重新校验权限、配置、前一执行的资源状态与可用成果；无法确认最新成果时不得自动退回
 更早 Revision。明确选择放弃未保存成果属于另一个显式动作，必须说明丢失范围，不能作为重试默认值。
 
@@ -80,7 +86,21 @@ thread_state=ended 或会话进程退出作为释放证据。队列和屏障持�
 
 ## 风险与落地
 
-先实现队列、占用与所有入口的准入，再接入界面；功能启用前验证双窗口、多实例、重启、
-保存失败和权限变化。需要真实 PostgreSQL 的竞争测试与真实 Agent 的交接验收，单纯按钮测试不足。
+队列、占用与所有入口的准入由同一数据库权威控制。验证需要真实 PostgreSQL 竞争和真实进程的交接、
+释放证据；界面按钮状态不能代替服务端约束。重启与保存失败继续受 D3 的持久暂停约束。
 本决策不改变原生 Agent 执行环境的资源所有权，也不负责并行分支合并。核心验证义务见
 [任务串行交接](../../../test-cases/cloud/issue-run/task-agent-handoffs.md)。
+
+## 验证范围与延期边界
+
+[直接验证](https://github.com/ora-space/circus/issues/553)在两个 Cloud/Gateway 进程上交错调用手动建 Run、
+评论 targets、任务消息和旧 Thread 追加，验证同键重试、已接受前缀、后到发起者及不同 Agent 切换。
+隔离数据库逐次观测业务 Run 的状态变化，执行占用最大为 1、无超占，被拒请求没有持久副作用；
+新的执行在旧 Workspace 物理释放后启动。G3 的调度组合使用官方 OpenCode/受控模型及实际安装的 Echo
+协议 fixture；G5 另以两个真实模型授权的普通成员证明跨发起者等待与连接隔离，二者不混为同一证据。
+
+[收尾范围决定](https://github.com/ora-space/circus/issues/532)接受永久失败恢复后的释放，
+并在 G3/G5/G9 直接门槛补齐后允许当前实现收尾。G4 的显式放弃未保存成果、永久失败后继续派发第二 Agent
+和正式双 Agent 故障联合矩阵仍由 [circus#531](https://github.com/ora-space/circus/issues/531)承接；
+[核心用例](../../../test-cases/cloud/issue-run/task-agent-handoffs.md)保持相应 Partial/Missing，
+正常交接或恢复释放样本不替代这些组合，也不弱化失败暂停、成果与释放确认的义务。
