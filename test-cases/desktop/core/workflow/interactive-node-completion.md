@@ -1,6 +1,12 @@
 # 交互式节点完成与停靠
 
-本文件是[交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md)的核心用例。契约改变 `completeWorkflowNode` 的公开语义、park 快照与交互式节点的停靠范围；实现尚未落地，以下证据状态按当前代码如实标记为 `Missing`，实现运行补齐后逐项更新。
+本文件是[交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md)的核心用例。契约改变 `completeWorkflowNode` 的公开语义、park 快照与交互式节点的停靠范围；实现随 `ora-space/desktop` PR #729（`Refs ora-space/circus#500`）落地，以下证据按该实现与 CI 结果标注。
+
+e2e 覆盖的是「重启 → 停止 → 完成」路径，与记录 2 的「停止 → 重启」顺序不同，但落到同一判定（`turn_stopped` 不调度下一节点、继续后可正常完成），证据表按等价路径记录。
+
+证据表里仍标 `Partial` / `Missing` 的项是已知缺口：真实 agent 的重启恢复证据与人类回合步骤边界注入证据由 #567 承接，其余非阻断改进（e2e 停止时机、act card 截断展示、文档措辞、格式）由 #565 承接。
+
+另一条已知限制：完成按已存快照的 blockers 判定，`prepare` 复算新出现而快照未记录的 blocker 不会阻断本次完成（ADR 风险段已登记）。
 
 ## Only An EndTurn Turn May Complete A Parked Node
 
@@ -30,9 +36,9 @@
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 五种非 `EndTurn` 终态各自阻塞完成 | 待实现运行补单测；`ora_backend::workflow::run::interactive` | `Missing` |
-| force 只覆盖 blockers，并记录审计 | 待实现运行补单测 | `Missing` |
-| `EndTurn` 正常路径不回归 | 现有 `prepare_completion` 测试仅覆盖部分路径 | `Partial` |
+| 五种非 `EndTurn` 终态各自阻塞完成 | `ora_backend::workflow::run::completion_snapshot::tests::non_end_turns_are_blocked_by_kind`；`workflow::run::interactive::completion_tests::blocked_turn_returns_every_blocker_with_its_detail` | `Covered` |
+| force 只覆盖 blockers，并记录审计 | `workflow::run::interactive::completion_tests::forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`；`workflow::run::operations::tests::a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
+| `EndTurn` 正常路径不回归 | `workflow::run::completion_snapshot::tests::completed_turn_is_ready`；`workflow::run::interactive::completion_tests::an_existing_ready_snapshot_is_not_rewritten` | `Covered` |
 
 ### 决策依据
 
@@ -69,9 +75,9 @@ park 计算快照；完成。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| `None` 空输出仍可完成，只显示 warning | 待实现运行补单测 | `Missing` |
-| `Text` / `Structured` 失败产生对应 blocker | 待实现运行补单测 | `Missing` |
-| 完整性缺口判 `turn_unknown` 且字段形状正确 | 待实现运行补单测 | `Missing` |
+| `None` 空输出仍可完成，只显示 warning | `workflow::run::completion_snapshot::tests::none_contract_empty_output_is_a_warning` | `Covered` |
+| `Text` / `Structured` 失败产生对应 blocker | `workflow::run::completion_snapshot::tests::structured_failure_is_a_blocker`；`Text` 的 `output_missing` 仅由快照映射代码路径覆盖，无单独用例 | `Partial` |
+| 完整性缺口判 `turn_unknown` 且字段形状正确 | `workflow::run::completion_snapshot::tests::damaged_history_stays_unknown` | `Covered` |
 
 ### 决策依据
 
@@ -108,9 +114,9 @@ park 事务提交。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 首轮与人类回合 park 都走同一个单事务 | 待实现运行补集成测试 | `Missing` |
-| guard 拒绝不产生孤儿快照 | 待实现运行补 repository 测试 | `Missing` |
-| 投影不读历史 | 待实现运行补读取路径测试 | `Missing` |
+| 首轮与人类回合 park 都走同一个单事务 | `workflow::run::transitions::tests::park_node_run_commits_snapshot_and_status`；e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart` 断言首轮 `payload.completion` | `Covered` |
+| guard 拒绝不产生孤儿快照 | `workflow::run::transitions::tests::rejected_park_writes_nothing` | `Covered` |
+| 投影不读历史 | 代码走查：读取投影只解析 `payload.completion`；无专门回归测试 | `Partial` |
 
 ### 决策依据
 
@@ -145,9 +151,9 @@ park 与 `prepare` 读取历史。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| turn key 从历史推导并在 complete 比对 | 待实现运行补单测/集成测试 | `Missing` |
-| 空收尾消息不被旧文本掩盖 | 待实现运行补单测 | `Missing` |
-| 重试已知限制有直接测试与说明 | 待实现运行补测试 | `Missing` |
+| turn key 从历史推导并在 complete 比对 | `workflow::run::interactive::completion_tests::a_changed_turn_wins_over_the_blockers_gate`、`forcing_a_changed_turn_still_reports_the_conflict`、`changed_output_text_reports_the_two_digests` | `Covered` |
+| 空收尾消息不被旧文本掩盖 | `workflow::run::completion_snapshot::tests::final_text_is_the_last_assistant_message_even_when_empty`、`an_unsettled_turn_does_not_report_output_contract_problems` | `Covered` |
+| 重试已知限制有直接测试与说明 | 无直接用例；按 ADR D2 登记为已知限制 | `Missing` |
 
 ### 决策依据
 
@@ -182,8 +188,8 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| cleanup 的有界等待与 provisional 写入 | 待实现运行补集成测试 | `Missing` |
-| `prepare` 按 `userSeq` 修复且 `get` 不读历史 | 待实现运行补读取/完成路径测试 | `Missing` |
+| cleanup 的有界等待与 provisional 写入 | `workflow::run::interactive::cleanup_tests::cleanup_polls_until_the_turn_ended_is_durable`、`cleanup_parks_provisionally_when_the_turn_never_ends` | `Covered` |
+| `prepare` 按 `userSeq` 修复且 `get` 不读历史 | `workflow::run::interactive::completion_tests::a_provisional_snapshot_is_repaired_for_the_same_user_message`、`a_provisional_snapshot_of_another_turn_is_left_alone`；`get` 路径无专门测试 | `Partial` |
 
 ### 决策依据
 
@@ -219,8 +225,8 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 人类回合 prompt 带步骤边界，`record_prompt` 保持原文 | 待实现运行补集成测试 | `Missing` |
-| 多后继 / 末节点文案正确 | 待实现运行补前端测试 | `Missing` |
+| 人类回合 prompt 带步骤边界，`record_prompt` 保持原文 | `workflow::run::prompt::tests::step_boundary_names_successors_and_claims_no_runtime_block`、`step_boundary_uses_the_run_language` 只覆盖渲染与文案；注入与 `record_prompt` 原文没有直接断言，由 #567 承接 | `Partial` |
+| 多后继 / 末节点文案正确 | prompt 测试覆盖多后继与不承诺运行时阻止；末节点空「下一步」由步骤卡片前端测试覆盖 | `Partial` |
 
 ### 决策依据
 
@@ -255,8 +261,8 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 四级错误优先级 | 待实现运行补单测 | `Missing` |
-| force 审计与结构化失败行为 | 待实现运行补单测 | `Missing` |
+| 四级错误优先级 | `workflow::run::interactive::completion_tests::a_node_that_left_the_awaiting_state_is_rejected_before_its_snapshot`、`a_changed_turn_wins_over_the_blockers_gate`、`changed_output_text_reports_the_two_digests`、`blocked_turn_returns_every_blocker_with_its_detail` | `Covered` |
+| force 审计与结构化失败行为 | `workflow::run::interactive::completion_tests::forcing_a_structured_failure_keeps_raw_output_without_structured_output`、`forcing_a_changed_turn_still_reports_the_conflict`、`forcing_a_rewritten_output_still_reports_the_conflict`；`workflow::run::operations::tests::a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
 
 ### 决策依据
 
@@ -293,9 +299,9 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| `Pending` 跨重启保留 | 待实现运行补集成测试 | `Missing` |
-| `session/load` 成功与 rebuild 两条路径都能继续 | 待实现运行补真实 agent 集成测试 | `Missing` |
-| continue 失败保持 `Pending` 且仍可完成 | 待实现运行补集成测试 | `Missing` |
+| `Pending` 跨重启保留 | e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart`；`workflow::run::operations::tests::recovery_preserves_awaiting_nodes_and_prunes_orphaned_baselines` | `Covered` |
+| `session/load` 成功与 rebuild 两条路径都能继续 | 同一 e2e 用例的 `restart_scenario(refuse_load)` 两个分支使用 fake plugin；真实 agent 集成证据缺失，由 #567 承接 | `Partial` |
+| continue 失败保持 `Pending` 且仍可完成 | `workflow::run::interactive::cleanup_tests::a_failed_human_turn_restores_the_previous_snapshot_and_still_forces`；`workflow::run::operations::tests::failed_prompt_start_restores_the_awaiting_node_before_returning` | `Covered` |
 | `Running` 仍按既有失败边界处理 | 现有 boot sweep 测试部分覆盖 | `Partial` |
 
 ### 决策依据
@@ -330,9 +336,9 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 交互式 Refusal/未知停靠 | 待实现运行补单测 | `Missing` |
-| 非交互节点行为不变 | 待实现运行补回归测试 | `Missing` |
-| 首轮缺失 stop reason 仍失败 | 待实现运行补回归测试 | `Missing` |
+| 交互式 Refusal/未知停靠 | 快照层由 `workflow::run::completion_snapshot::tests::non_end_turns_are_blocked_by_kind` 覆盖；首轮 executor 的停靠路径无直接用例 | `Partial` |
+| 非交互节点行为不变 | 现有 workflow run 回归测试部分覆盖 | `Partial` |
+| 首轮缺失 stop reason 仍失败 | 现有 `SessionEndedWithoutStopReason` 路径无新增用例 | `Partial` |
 
 ### 决策依据
 
