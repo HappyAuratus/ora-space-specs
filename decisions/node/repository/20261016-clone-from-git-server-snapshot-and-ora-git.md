@@ -180,8 +180,11 @@ Node 镜像在工作负载的 `PATH` 上提供 `ora-git` 命令。它不执行 G
 - 推送的目标永远在自己的 Workspace 前缀下：命令无法表达写别的 Workspace 的分支。
 
 **启用条件**：Node 配置了 `agent.ora_git_directory`（绝对路径，父目录只由可信属主控制，不与 Node home、host 目录、clone 根目录
-或 workload 目录重叠，否则拒绝启动），并同时配置了 `clone` 与 `git_access` 时才提供 socket 服务；否则会话没有 socket，
-`ora-git` 得到 `no_session`。部署把它设为 `/run/ora-git`。
+或 workload 目录重叠，否则拒绝启动），同时配置了 `clone` 与 `git_access`，且 `process.workload_uid` 已配置并不同于 Node 的有效
+UID 时才提供 socket 服务；否则会话没有 socket，`ora-git` 得到 `no_session`（退出码 3）。部署把目录设为 `/run/ora-git`。
+Node 强制检查工作负载身份：`workload_uid` 缺失或等于 Node 有效 UID 时不启用 `ora-git`，启动日志写明配置字段与原因，普通
+Agent 会话继续运行。Node 通过 `ORA_GIT_DISABLED_REASON` 把原因交给 Agent，CLI 在尝试连接 socket 前以 `no_session` 显示该
+原因；不回退到 Node UID。配置独立 UID 时，原有 socket、对端 UID 检查与 Git 请求路径不变。
 
 **socket 与身份判定**：
 
@@ -208,7 +211,7 @@ Node 镜像在工作负载的 `PATH` 上提供 `ora-git` 命令。它不执行 G
 | 代码 | 退出码 | 含义 |
 | --- | --- | --- |
 | `usage` | 2 | 参数或请求格式不合法 |
-| `no_session` | 3 | 没有 `ORA_GIT_SOCKET`、socket 不存在，或会话不在运行 |
+| `no_session` | 3 | 没有 `ORA_GIT_SOCKET`、socket 不存在、会话不在运行，或 Node 因工作负载身份未独立而禁用服务 |
 | `forbidden` | 4 | 对端不是工作负载用户 |
 | `busy` | 5 | 本会话已有请求在进行 |
 | `not_found` | 6 | 推送时本地分支不存在；fetch 时远端没有匹配的 ref |
@@ -219,7 +222,8 @@ Node 镜像在工作负载的 `PATH` 上提供 `ora-git` 命令。它不执行 G
 | `internal` | 11 | Node 本地失败，原因只记在 Node 日志中 |
 
 `conflict` 与 `not_fast_forward` 的提示写明下一步：先 `ora-git fetch workspace <自己的 workspaceId>`，在本地合并或变基，再推送。
-提示只含 ref 名与提交 ID，不含 Git 的原始输出。
+提示通常只含 ref 名与提交 ID，不含 Git 的原始输出。工作负载身份未独立而禁用服务时，`no_session` 的提示例外地包含配置
+字段与原因，便于定位和修正部署；该实现偏离及其依据见“与批准版本的偏离”。
 
 为什么用固定动词的命令加 socket，而不是给 Agent 一个能用的 remote：任何能让 `git push` 直接成功的方式，都要让工作负载拿到
 证书私钥，或在沙盒里开一个不经 Node 的代理；前者违背 Git Server 根决策 D5，后者让 Node 无法按会话收口。固定动词让 Node 只
@@ -227,8 +231,10 @@ Node 镜像在工作负载的 `PATH` 上提供 `ora-git` 命令。它不执行 G
 
 为什么身份绑在 socket 上：同一沙盒中工作负载的进程都以同一个 UID 运行，请求内容可以任意伪造；socket 由 Node 为某个会话
 创建，连接从哪个 socket 进来是 Node 自己知道的事实。对端 UID 检查挡住 Node 身份以外、工作负载以外的进程（例如以其他 UID
-运行的插件）。这一隔离以部署为工作负载配置独立 UID 为前提；工作负载与 Node 共用 UID 的部署中，对端检查以 Node 自身的
-UID 为准，不提供本文的身份隔离。
+运行的插件）。Node 强制要求独立工作负载 UID 才启用 `ora-git`，缺失或共用 UID 时不创建服务，避免对端检查把工作负载与
+Node 当成同一身份。此拒绝仅保证不提供不成立的 `ora-git` 隔离：共用 UID 时 Agent 仍以 Node 身份运行，能读取该身份可读的
+git-access 私钥并直接访问 Git Server，停用 `ora-git` 不使这类部署变得安全。私钥不可读仍是[既有安全缺口](#本决策未解决的问题)，
+不由本次启用条件检查补齐。
 
 为什么 socket 是 `0666`、只靠对端 UID 判定，而不是用 `0660` 加工作负载组在文件系统层挡住：用组控制要在镜像里多维护一个组，
 并让拒绝分散在两层，非工作负载 UID 在文件系统层得到 `EACCES`，`forbidden` 永远不可达，验收也就无法证明 Node 的检查生效。
@@ -361,14 +367,17 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 
 ## 与批准版本的偏离
 
-对照 desktop `ff9de8f`、cloud `a9c5f20` 与 cluster `b0186a6`，最终实现与本文批准时相比有以下偏离，正文已按最终实现表述：
+对照 desktop `ff9de8f`、cloud `a9c5f20` 与 cluster `b0186a6`，并补入 [desktop#732](https://github.com/ora-space/desktop/pull/732)
+（`ae02179`）的 Node 强制 UID 检查，最终实现与本文批准时相比有以下偏离，正文已按最终实现表述：
 
 | 批准时的决策 | 最终实现 | 原因 |
 | --- | --- | --- |
 | socket 固定在 `/run/ora-git/`，每个 Agent 会话都有 socket | 目录由 `agent.ora_git_directory` 配置（部署设为 `/run/ora-git`），且只在同时配置 `clone` 与 `git_access` 时启用；未启用时会话没有 socket，`ora-git` 为 `no_session`；socket 无法创建时会话以 `agent_failed{ora_git_unavailable}` 结束 | 目录是部署事实，需与 Node 的其他目录分开校验；没有 Git Server 访问的 Node 没有可代理的远端 |
 | Node 启动时清空 `/run/ora-git/` | 只删除按 Node 命名规则留下的 socket，目录其余内容不动；目录在启动时恢复为 `0711` | 目录可配置后，Node 只删除能确认是自己创建的文件 |
 | socket 随机名含 128 位随机数 | 随机名是一个 v4 UUID（122 位随机数） | 随机名只让别的进程找不到 socket，不承担授权（D5）；授权只由对端 UID 检查决定 |
-| 对端 UID 必须是工作负载 UID；批准文本未区分部署是否配置独立 UID | 未配置独立 `workload_uid` 时，对端检查比对的是 Node 自身的 UID，工作负载与 Node 无法区分，D5 的身份隔离不成立；Node 不会因此拒绝启用 `ora-git` | 当前由部署保证工作负载使用独立 UID（cluster 的 Node 配置模板都满足），代码没有强制；Node 在共用 UID 时拒绝启用 `ora-git` 由 circus#410 承接，落地后再把 D5 的“前提”改为“Node 强制” |
+| 对端 UID 必须是工作负载 UID；独立 UID 曾仅由部署保证 | [desktop#732](https://github.com/ora-space/desktop/pull/732)（`ae02179`）实现 Node 强制检查：缺失 `workload_uid` 或等于 Node 有效 UID 时禁用 `ora-git`，日志说明原因，普通 Agent 会话继续；CLI 得到 `no_session` / 3 | 补齐 circus#410 的要求，不再静默回退到 Node UID；独立 UID 路径保持原样 |
+| 会话环境仅约定 `ORA_GIT_SOCKET`，未约定禁用原因变量 | 新增 `ORA_GIT_DISABLED_REASON`，禁用会话导出原因而非 socket；CLI 优先读取原因并返回 `no_session` | 保留普通会话的可用性，同时让 Agent 直接获知服务未启用的原因 |
+| 错误 hint 只含 ref 名与提交 ID | 身份配置导致禁用时，`no_session` hint 包含 `process.workload_uid` 配置字段与原因；其他提示约束不变 | circus#410 的 owner 要求禁用状态可诊断，不能只报不透明的 socket 失败；不包含 Git 原始输出或私钥 |
 | 会话“没有进入结束、没有被取消、交付尚未开始”时请求可执行；会话离开运行时即关闭并删除 socket | 已接受 `EndSession` 也视为不在运行；每次重试前复查；关闭时先拒绝新请求、等待在途请求完成，再删除 socket | 保证会话记为结束、交付开始之后，`ora-git` 不再写 checkout、Git Server 或账本（D5 第 5 条） |
 | 应答是若干行进度与一行结果 | Node 只返回一行结果；客户端仍把结果之前的行作为进度转到 stderr | 当前动词没有需要逐步报告的长过程；协议保留进度行的位置 |
 | 非快进在推送前判定：`O` 存在且 `C` 不包含 `O` | 仅当 `O` 的对象在 checkout 中可读时才在本地判定；对象缺失时照常带旧值推送，由 Git Server 决定，结果为 `denied` 或 `conflict` | 祖先判定需要 `O` 的对象；Node 不为判定另行拉取对象，Git Server 的快进规则仍保证不丢提交 |
