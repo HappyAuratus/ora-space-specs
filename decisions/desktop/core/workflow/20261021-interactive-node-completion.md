@@ -118,7 +118,7 @@ cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只�
 
 只有第 4 步的 blockers 可以被 `force` 覆盖。`force` 必须由用户二次确认，并在 payload 记录 `completion_forced { blockers, without_turn, output_source }`；`blockers` 只记 blocker 快照，不混入用户自由文本。
 
-`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。锁内只复核 run `Running`、node `Pending` 与 completion claim，不比对 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照：已有 turn key 且非 provisional 的快照仍是 blockers 的权威，按其返回 `WorkflowNodeIncomplete`；只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
+`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim，不复核 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照，按已存快照的 blockers 判定：已存 blockers 非空时返回 `WorkflowNodeIncomplete`；已存为空时这次完成仍然放行，复算新出现而快照未记录的 blocker 是已知限制（见风险段）。只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
 
 没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：最后一条用户消息之后的最后一条 assistant 消息文本（可能为空）；不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
 
@@ -136,7 +136,7 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 文案由后端从冻结图渲染，`record_prompt` 保持用户原文，未来 CLI 或其他客户端自动生效。边界块写「本步骤的范围与完成标准」，不写「系统会阻止你执行后续节点」这类运行时无法兑现的承诺，也不写死 Desktop 的按钮名。首轮自动回合已有完整 handoff，保持不变。
 
-### D7：UI 用卡片与右下角按钮两个显式入口推进，卡片只展示状态
+### D7：UI 用卡片与右下角按钮两个显式入口推进
 
 会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 拒答 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。provisional（本轮仍在收尾）时同时提供普通完成、继续当前步骤与「仍然完成」：普通完成由后端按同一 `userSeq` 修复后再判定，修复不了时用户仍有强制路径。
 
@@ -220,20 +220,21 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
    - 安全依据：写回带 `status = 'pending'` guard，已离开 `Pending` 的节点不会被旧快照覆盖；投影在下一次轮询或后续事件时看到新快照，代价只是显示延迟，不影响完成判定。
 
 3. **turn key 比对在锁外**
-   - 行为：`prepare` 在门外读历史并比对 turn key 与 `outputDigest`；锁内只复核 run `Running`、node `Pending` 与 completion claim。
+   - 行为：`prepare` 在门外读历史并比对 turn key 与 `outputDigest`；提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim。
    - 采用原因：历史读取是 O(会话) 的重活，根决策 D2 要求等待与重活不跨越 per-run 门。
-   - 安全依据：completion claim 在 prepare 到提交之间阻止新的完成，`Pending` guard 拒绝已离开该状态的提交；prepare 之后如果回合或状态变化，提交会被复核拒绝，不会用旧回合完成。
+   - 安全依据：claim 在 `prepare` 之前登记，新的 prompt admission 与并发 completion 会被拒绝，所以 `prepare` 到提交之间不会出现新回合、turn key 不会变；提交阶段复核 run `Running` 与 node `Pending`，取消或并发完成会让这次提交被拒绝。因此 turn key 不需要在提交阶段二次比对。
 
 4. **blockers 不一致不刷新快照**
    - 行为：已有 turn key 且非 provisional 的已存快照保持原样，即使 `prepare` 复算与它不同；只有缺 turn key 的 provisional 或旧节点在同一 `userSeq` 下写回修复。
-   - 采用原因：快照记录的是用户停靠时看到的状态，在完成路径里静默改写会让审计与已完成节点前后不一致；同样文本与契约下复算通常一致，差异更可能意味着历史或冻结契约已变化，应显式暴露。
-   - 安全依据：不一致时按已存 blockers 返回 `WorkflowNodeIncomplete`（fail-closed），用户仍可 `force`；修复只发生在缺少回合身份、且 `userSeq` 相同的窗口内，不会把后来的一轮替换成完成对象。
+   - 采用原因：快照记录的是用户停靠时看到的状态；复算差异不能证明该快照已错，静默改写反而会篡改用户操作时的审计。
+   - 安全依据：判定完全按已存 blockers——已存非空时拒绝并要求 `force`，已存为空时放行。这里**不是** fail-closed：已存为空、turn key/digest 未变而 `prepare` 复算出新 blocker 时，本次完成仍会通过，这是已登记的限制（见风险段）。修复只发生在缺少回合身份、且 `userSeq` 相同的窗口内，不会把后来的一轮替换成完成对象。
 
 ## 风险、未解决问题与验收
 
 - **每次交互回合读一次整文件历史**：turn key 依赖 `HistoryLine.seq`，事件流不提供，park 必须读历史；这是本决策接受的成本，长会话是 O(会话) 的读取。读取投影不读历史，修复只在 `prepare` 做一次。
 - **重试边界（已知限制）**：`settle_cancelled_prompt` 不写 `TurnEnded`，重试没有可用的 attempt 边界，`attemptStart` 只能等于 `userSeq`；被放弃尝试的文本可能进入最终窗口。后续增加独立 attempt boundary record 后修复。
 - **provisional 快照修复**：流 drop 且等待超时会先写 `turn_unknown`；只有 `prepare` 在同一个 `userSeq` 之后看到 `TurnEnded` 时替换。修复窗口内界面显示未完成，用户仍可 `force`。
+- **已存快照的 blockers 是权威（已知限制）**：完成按已存快照的 blockers 判定。若已存 blockers 为空、turn key 与 `outputDigest` 未变，`prepare` 复算出新 blocker（例如冻结契约或历史细节在 park 之后变化）不会阻断这次完成；补偿是下一次 park 刷新快照，完成路径不自动改写快照。
 - **旧节点只在完成时物化**：升级前的 `Pending` 节点在 `prepare` 前显示「回合未知」；用户点击完成后由 `prepare` 一次性回填，不在 1.5 秒轮询里读历史。
 - **`turn_unknown` 的 force**：没有 turn key/digest，只能显式 force；文本取最后一条用户消息之后的最后一条 assistant 消息，可能为空，不写 `structured_output`，审计 `without_turn`。
 - **交互式 Refusal/未知停靠**：修改 `pauses_interactive_node` 的集合，使交互式节点在拒答/未知时也停在 `Pending`；非交互节点保持现有失败语义。这是有意的行为变化，首轮 Refusal/未知停靠的直接证据在核心用例中仍为 `Partial`。
