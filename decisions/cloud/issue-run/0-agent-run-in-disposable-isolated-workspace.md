@@ -5,7 +5,7 @@ status: implemented
 # Issue 上 @Agent 的 IssueRun 由 Cloud 编排：每次运行一个一次性 isolated Workspace，成果保存为 Revision 后释放
 
 > 历史决策：D5/D8 放弃后的原交付事实入口与 ACK 含义由
-> [迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md) D1、D3 补充；无账本、无运维意图也接收，
+> 已落地的[迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md)（`implemented`）D1、D3 修改；无账本、无运维意图也接收，
 > 接管不重写已结算 Run，ACK 不表示业务再次成功。迟到 Revision 另受其 D2 的后创建运行守卫约束。
 > 本文保留 `implemented`，未改变本文的放弃窗口和正常释放条件。
 

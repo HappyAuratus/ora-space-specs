@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 放弃交付后仍接管原执行事实；迟到 Revision 不得越过同 Issue 后创建的运行
@@ -8,9 +8,12 @@ Cloud 已按交付上限放弃一个 Run 后，仍按原 execution、work 和资
 不要求先有残留账本或运维接管意图。接管成功允许确认原事件，不改变已结算的业务结果。只有同一 Issue
 尚无后创建的 Run，且原交付证据验证成立，才登记迟到的原 Revision；否则仅保存声明与事件收据。
 
-本文为 `approved`：依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，Cloud 与 Controller 的相应修复和联合验收尚待实现运行、落地运行
-提供直接证据。本次不宣称这些新承诺已经实现，不新增协议状态码或数据库结构，不改变 D5/D8 窗口、
-残留回收授权、普通交付资格或同任务交接的暂停与恢复授权。
+本文为 `implemented`：最终规则依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，
+实现及证据固定于 [Cloud #142 merge `b777496`](https://github.com/ora-space/cloud/tree/b777496)
+与 [Desktop #726 merge `2564b42`](https://github.com/ora-space/desktop/tree/2564b42)。
+不新增协议状态码或数据库结构，不改变 D5/D8 窗口、残留回收授权、普通交付资格或同任务交接的暂停与恢复授权。
+
+源码与测试引用使用已合并的 Cloud `b777496` / Desktop `2564b42`。此前真栈复跑仍实际使用 PR head `818226b4` / `13de5a35`；[owner 合并说明](https://github.com/ora-space/circus/issues/407#issuecomment-6354830227)确认落后 main 期间的新增提交未触及相关交付、释放及 Controller 会话路径，无语义漂移。该说明不代替合并后 main 的复跑证据。
 
 ## 继承与修改
 
@@ -39,10 +42,17 @@ Node 已形成交付终态但 Cloud 尚未接管时连接中断，Cloud 可能�
 - 原 Agent IssueRun 已因根 D5 以 `deliveryState=failed`、`revisionId=null` 进入 `releasing`，或随后
   因根 D8 进入 `done`，都允许接管原 `deliver_revision` 的迟到终态；Run 的 `status` 不要求是 failed。
   没有 `agent_run_residuals` 行、没有运维接管意图，不构成拒收理由。
+- 原 Run 软删除只影响业务可见性，不撤销仍可核验的原事实身份；其迟到事实仍按 D1 接收，有效证据且
+  同 Issue 没有后创建 Run 时仍可按 D2 登记原 Revision，不因软删除额外降为 receipt-only。软删除不删除原执行的可核验归属；额外拒收会使原未确认终态失去取得回执的机会。
 - 必须核验已登记 execution → 原 work → 原 Run/Workspace，以及原租户、Project、Node、sandbox 与资源
   generation 的关联；声明仍符合原冻结输入，事件序号及原内容满足既有收据规则。只关闭 admission、
   任意取消、换 Node、未登记执行或身份不符，不能借此取得接管资格。普通 `liveDelivery` 资格仍保护
   存活交付与新派发，不能被整体删除或放宽。
+- 接收资格取决于上述 Run 与完整原身份，不要求 Workspace `desiredState=deleted`，也不依赖当下
+  observed state、admission 或某一次 delete attempt。失败 quiesce 会恢复 `running/ready` 并重开 admission；
+  原 Run 仍已放弃交付，原终态必须能接管，随后由独立释放重试到达 `done`，避免“拒绝接管 → quiesce busy
+  → 恢复 Workspace → 再拒绝接管”的循环。同稳定 Node、sandbox 与资源 generation 下的新 incarnation
+  不等于换资源；推进 Workspace 资源 generation 则仍受原身份围栏拒绝。
 - 接收原声明、精确事件收据和必要的后续责任在同一权威事务提交。迟到失败结果同样接管，不因它是
   `revision_failed` 再放出交付重试。成功声明的证据和 Revision 登记按 D2 分别处理。
 - 接管事务不改变 Run 的 phase、status、result、failure_reason 或业务版本，不重写结算活动，不重新
@@ -62,13 +72,14 @@ Node 已形成交付终态但 Cloud 尚未接管时连接中断，Cloud 可能�
 中的严格递增序号。创建事件的 seq 不必连续，评论与其他活动可以占据中间序号。对原 Run `R`，
 如果存在同租户同 Issue 的另一个 Run `N`，且 `N` 的创建事件 `seq > R` 的创建事件 `seq`，
 则禁止为 R 首次登记迟到 Revision。N 的执行者、状态、阶段、是否已软删除、是否已有 Revision
-均不改变这个判断；不能只检查后续成功运行、同 Agent 或同 Project 的运行。
+均不改变这个判断；后创建的 workflow executor 同样阻止登记，不能只检查后续成功运行、Agent Run 或同 Project 的运行。
 
 这使用已有创建事件的提交顺序，不用 `revisions.created_at` 判断 Run 的创建先后，也不用
 `issue_runs.created_at` 与随机 UUID 推测真实先后。创建事件只作为顺序证据，不从 Timeline 重建
 Run 的业务状态。只有能唯一定位原 Run 及同 Issue 其他 Run 的创建记录、并确认不存在后创建运行，
 才满足登记资格；顺序证据缺失或有歧义时按 receipt-only 处理：保存原声明与收据，不登记 Revision。
-当前代码每个 Run 都在同一事务写入 `run.enqueued`，该分支仅作防御性处理。不需要为此新增序号列或迁移。
+新创建的 Run 在同一事务写入 `run.enqueued`。长期存量数据可能缺少这些创建证据；此时 receipt-only
+是持续适用的保守结果，不推断或补造顺序，不用时间戳/UUID 猜测，也不通过重放升级登记。不需要新增序号列或迁移。
 
 判断在最终登记事务中进行，与同 Issue 的 Run 创建互斥：若新 Run 先提交，迟到接收只能保存声明和
 收据；若迟到 Revision 先提交，新 Run 后创建，则按既有续作规则选取已提交候选。事务外证据读取前
@@ -117,9 +128,21 @@ Run 的业务状态。只有能唯一定位原 Run 及同 Issue 其他 Run 的�
 | 改成选择所有 Run 中创建最晚的 Revision | 改变整个续作候选语义；本次只限制迟到登记，不重排已有历史。 |
 | 新建终态 disposition，或收到 Conflict 就 ACK | 前者扩大协议，后者伪造接收；现有成功回执已经能明确表达事实接管。 |
 
-## 落地与验证
+## 与 approved 文本的差异与澄清
 
-先以本文及 Controller 后续决策完成规格评审，再实施 Cloud 与 Desktop 修复；产品代码和直接证据齐全后，
-由落地运行同步最终实现与状态。本篇保持 `approved`，核心用例见
-[迟到交付事实与续作保护](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，新增义务均为
-`Missing`。既有测试不能替代无账本根 D5、后创建运行守卫或真实重连后完成释放的直接证据。
+| 项目 | 最终规则与原因 |
+| --- | --- |
+| Workspace 删除形态 | D1 明确没有 `desiredState=deleted` 前提。真实 quiesce 失败会恢复 running/ready；把动态删除形态当接管资格会使未确认终态与释放互相阻塞。完整原身份和 generation 围栏保留。 |
+| 原 Run 软删除 | D1/D2 不增加可见性过滤。软删除不改变历史事实的归属，既不能拒收，也不能独立剥夺无后创建 Run 时的 Revision 登记资格。 |
+| 旧数据缺创建事件 | 删除“仅作防御性处理”的假设。顺序证据缺失/歧义的历史数据长期保持 receipt-only；当前写入惯例不能证明旧数据齐全。 |
+| 后创建运行的执行者 | D2 的“任一 Run”包括 workflow executor；创建顺序属于 Issue，不能只枚举 Agent Run。该分支的直接产品测试仍缺失，见核心用例。 |
+
+以上说明最终规则及其原因，不扩大普通交付或回收授权；协议和数据结构保持既有契约。
+
+## 验证与保留边界
+
+直接测试与逐项状态见[迟到交付事实与续作保护](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)。
+[固定版本真实栈回执](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)证明 Git Server
+阻塞变体在恢复后完成迟到接管、正常释放到 `done` 和物理资源回收；未进入 O4 拒绝隔离窗口。
+[后续 O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)补齐旧 Cloud 拒绝后的隔离窗口，以及换候选 Cloud 并重启 Cloud 引起 Controller↔Node 会话重建后重交、正常释放的连续证据；不要求 Controller 重启。真实新 incarnation 的证据缺口仍保留。workflow 后创建 Run、顺序竞争双向交错等未完整覆盖的义务也在核心用例中保留
+`Missing` / `Partial`，不由 ADR 状态自动提升。

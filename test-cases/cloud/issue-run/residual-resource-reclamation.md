@@ -15,7 +15,7 @@
 
 Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `6257136bfc164fc39a6c0a0a87e73bd173425e23`，已合入 cloud#112 及后续 main；下文 Cloud 测试见该提交的 [core](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/internal/core)、[integration](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/integration) 与 [cloudctl](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/cmd/cloudctl)。它们在第二轮 Cloud `118b759` 已存在，向前合并后保留相关断言；前六项的 Cloud 范围由这些直接测试支撑，不把第一轮物理结果升级为新版结果。物理成功在这些测试中由提交证据驱动，不是实际容器或卷的证明；跨进程与跨仓库的完整义务不能由 Cloud 单仓测试单独记为 `Covered`。沿用该提交[已有 CI 记录](https://github.com/ora-space/cloud/actions/runs/39556403820)中相关测试的通过结果；该 CI 整体因 integration 包超时失败，本次没有重跑测试。迁移编号按该基线为 residual `0057`、controlled `0058`。单机演练不覆盖网络与崩溃的全部交错、断电、多 Controller 并发或非 Docker 的生产 Substrate。
 
-迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建 Run 守卫约束：创建先后依同 Issue 原子 `run.enqueued` 活动 `seq` 判断，已有后创建 Run 时仅保存声明与 receipt，不登记迟到 Revision；没有后创建 Run 时救援行为不变。receipt-only 不算已验证 Revision 或额外清理授权。下列既有 `Covered`/`Partial` 不覆盖该新增规则；其独立用例仍为 `Missing`。
+迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建 Run 守卫约束：创建先后依同 Issue 原子 `run.enqueued` 活动 `seq` 判断，已有后创建 Run 时仅保存声明与 receipt，不登记迟到 Revision；没有后创建 Run 时救援行为不变。receipt-only 不算已验证 Revision 或额外清理授权。下列既有 `Covered`/`Partial` 不自动覆盖该新增规则；Cloud #142 merge `b777496` 的直接测试已覆盖各接收路径的后创建 Run 守卫，缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`，逐项见该独立用例。
 
 ## Residual Ledger Reclaim State Advances Only With Per-Target Disposal Evidence
 
@@ -65,6 +65,12 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 - 必须成立：创建侧事实入口与原执行接管覆盖 `reconciling`、`reclaiming` 与 `cleared`；仍校验原租户、资源、effect/execution 身份及当前服务资格；先持久接管再 ACK，相同事实幂等重放只追加证据；不重开 admission、不再次结算、不重建已删除资源；后提交者看到先提交者的证据与责任，新发现的未闭环目标阻止清除。
 - 禁止结果：因账本已清除或 Run `done` 拒收事实；迟到事实把 Run 改回运行态或复活 Workspace/ensure；事实与处置结论冲突时静默丢弃事实或伪造新的完成证明。
 - 验证义务与证据：**Covered** — cloud#112 的 `TestResidualProvisioningFactsAcrossReclaimStatesOverGRPC`、`TestResidualSessionTerminalTakeoverOverGRPC`、`TestResidualVerifiedDeliveryTakeoverOverGRPC`、`TestResidualRaceCompletionVersusLateDeliveryBothCommitOrders`、`TestResidualRaceCompletionVersusNewUnclosedExecutionTargets`、`TestResidualRaceClearedReplayVersusLateFactBothCommitOrders`；cloud#116 的 `TestControlledResidualTerminalFactsAcrossRealStatesOverGRPC`、`TestControlledResidualProvisioningFactConflictCommitsBeforeGRPCResponse`、`TestControlledResidualRaceCompletionAndLateFactsBothCommitOrders`。冲突事实先提交审计与阻挡，再返回 `residual_fact_conflict`。
+  新增迟到登记守卫的直接证据为 Cloud #142 merge `b777496` 的
+  [integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_order_test.go)
+  `TestLateDeliveryFactRunCreationOrderOverGRPC`：reconciling/reclaiming/cleared/controlled 的交付终态接管、
+  有/无后创建 Run 两侧、业务及责任不变、原事件幂等、receipt-only 不升级、冲突持久审计。
+  该测试只覆盖交付事实子路径，不单独证明全部创建侧/effect 事实、清理完成事务的双向并发或冲突后后续处置被阻断；
+  原有 `Covered` 仍由上列 residual/controlled 专项测试支撑，新增守卫的保留缺口见[独立用例](late-delivery-fact-takeover.md)。
 - 决策依据：D2（事实接管贯穿清理前后），不变量 10。
 
 ## Controlled Reclamation Is An Explicit Deployment Intent With Confirmation And Audit

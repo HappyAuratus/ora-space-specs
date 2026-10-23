@@ -228,4 +228,4 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只�
 
 ## 核心测试用例
 
-本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中六项的 Cloud 范围为 `Covered`；逐目标终止与围栏因生产路径缺少迟到 ensure 被拒的实测，重试与显式升级、D8 身份接管因新版候选缺少相应联合路径的部署证据，三项完整跨仓义务为 `Partial`。旧候选的通过结果按上述版本保留。新增迟到登记守卫见[迟到交付用例](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，其义务仍为 `Missing`，不由上述历史证据自动覆盖。
+本 ADR 的核心测试用例见[残留资源回收用例](../../../test-cases/cloud/issue-run/residual-resource-reclamation.md)。九项义务中六项的 Cloud 范围为 `Covered`；逐目标终止与围栏因生产路径缺少迟到 ensure 被拒的实测，重试与显式升级、D8 身份接管因新版候选缺少相应联合路径的部署证据，三项完整跨仓义务为 `Partial`。旧候选的通过结果按上述版本保留。新增迟到登记守卫见[迟到交付用例](../../../test-cases/cloud/issue-run/late-delivery-fact-takeover.md)，该决策已为 `implemented`：Cloud #142 merge `b777496` 的直接测试覆盖各接收路径的后创建 Run 守卫；缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`。逐项证据见该用例，不由上述历史演练证据自动覆盖。
