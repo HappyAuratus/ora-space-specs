@@ -5,7 +5,7 @@ status: approved
 # Scheduled Run 携带独立业务结论，运行产物脱离 worktree 生命周期持久化
 
 本 ADR 处于 `approved`：verdict（desktop#718）与运行产物（desktop#719）已合入 main；运行级接线、终态拒绝与读取侧链接安全的
-直接证据由 desktop#728 / #731 补齐，核心用例证据随实现同步。依 circus#502 的 owner 结论，仍须完成一次真实 local Nightly QA 并将
+直接证据由 desktop#728（`0ff3baf2`）/ #731（`0ae6849a`）补齐，核心用例证据随实现同步。依 circus#502 的 owner 结论，仍须完成一次真实 local Nightly QA 并将
 运行证据写入核心用例，之后才能转为 `implemented`。它在根决策 D7 与紧邻的后续 ADR
 `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行除执行层状态外还能携带
 机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，按 Run ID 索引、随运行历史访问。
