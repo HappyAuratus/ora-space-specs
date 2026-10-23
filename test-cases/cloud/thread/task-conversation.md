@@ -2,7 +2,7 @@
 
 依据[已批准的任务持续对话决策](../../../decisions/cloud/thread/20261018-task-conversation-across-runs.md)。
 下列证据包括已合并代码的测试、固定 main 上的真实 OpenCode 分项，以及[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)：Claude v0.4.0 + OpenCode 0.6.11，cluster `6eecd5c1f7ce52afd19376ca417e4198eb27c1ba`、cloud `c5bcd147bf3abbe87823f9a4e155cc14b6c30cf8`、desktop `d271fb3b94234ab0f5d7f5ae3dcf94c738f104af`，结果 `passed-api`。
-该记录的 `task-conversation.json` SHA-256 为 `1cb2f9d250ff59c97c1d0896cf466a811c552f8a608bde95d1c2ef4db5c0771e`，四个不同 Workspace 均完成并释放；API 通过不替代浏览器组合、真实截断和跨发起者验证。
+该记录的 `task-conversation.json` SHA-256 为 `1cb2f9d250ff59c97c1d0896cf466a811c552f8a608bde95d1c2ef4db5c0771e`；Claude 来自 [v0.4.0 GitHub Release](https://github.com/ora-space/claude-code-agent/releases/tag/v0.4.0) 的 x86_64-linux 包（SHA-256 `2feb3eba6edfbd66c3b4eea64584b76bdb0bf9acaeed61325f4168f2e7d86682`），不是 marketplace 条目或本地候选。四个不同 Workspace 均完成并释放；API 通过不替代浏览器组合、真实截断和跨发起者验证。
 跨运行成果恢复继续受[Revision 续接用例](../issue-run/resume-from-latest-revision.md)约束，不能以对话存在替代成果证据。
 
 ## Task Messages Have Stable Order And One Execution Intent
@@ -94,3 +94,8 @@ D2、D3，不变量 1、5、6。
 ### 决策依据
 
 D2，不变量 3。
+
+## 证据边界
+
+上表 Partial 的缺口由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：多来源显示、历史引用与组合一致性对应 G1；真实截断范围对应 G2；双 Agent 故障联合矩阵对应 G4；真实双发起者模型权限与交接对应 G5。已有数据库级/受控模型证据不替代这些直接验证。
+永久失败释放的验收口径和这些剩余验证对 ADR 收尾的影响，见 [circus#532](https://github.com/ora-space/circus/issues/532)；本用例不据此预先弱化义务或修改 ADR 状态。

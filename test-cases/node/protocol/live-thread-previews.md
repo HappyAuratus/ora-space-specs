@@ -94,3 +94,8 @@ D2，不变量 1、2、4。
 ### 决策依据
 
 D3，不变量 3、5。
+
+## 证据边界
+
+上表 Partial 的剩余验证由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：旧 Node 降级对应 G6；Node WebSocket 等逐跳乱序、迟到预览和定型优先对应 G7；真实慢消费者、缓冲上界和取消组合对应 G8；真实成员撤权的跨服务组合对应 G9；正式 Claude 的独立预览归因对应 G10；Run/Thread/预览对齐对应 G1。
+永久失败恢复后的物理释放样本不提供这些预览故障证据。剩余验证对 ADR 收尾的影响见 [circus#532](https://github.com/ora-space/circus/issues/532)，没有用两批新结果整体提升预览义务的状态。
