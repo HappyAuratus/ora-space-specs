@@ -1,0 +1,229 @@
+---
+status: approved
+---
+
+# Cloud Scheduled Run 的 verdict 由执行端结构化上报，产物在 Revision 之外按运行登记并受独立上限约束
+
+本文承接 [Cloud Scheduled Task 根决策](0-cloud-owned-scheduled-prompt-runs.md) 与
+[local 结果注解/产物 ADR](../../desktop/core/scheduled-task/20261021-run-result-annotation-and-artifacts.md)
+留给 Cloud 的契约：定时运行如何携带机器可读的业务 verdict，以及运行产物在一次性运行 Workspace
+释放后如何存储、索引、访问、保留和计费。Cloud 运行由 IssueRun / Thread 承载，`IssueRun ≠ ScheduledRun`；
+本文不新增 IssueRun 阶段，也不改变 Thread 会话模型与 Revision 交付语义，只扩展 `delivering` 的收敛项与
+Node 终态上报字段。
+
+本 ADR 处于 `approved`。它只冻结 Cloud 侧契约，不实现产品代码、真实栈端到端验收、验收开关、发布或
+迁移执行；获批后如需实现，另开 Cloud 实现事项与运行单。核心测试用例见
+[verdict 与产物用例](../../../test-cases/cloud/scheduled-task/verdict-and-artifacts.md)，义务初始 `Missing`。
+
+## 继承与修改
+
+| 前序约定 | 本文处理 |
+|---|---|
+| [Cloud Scheduled Task 根决策](0-cloud-owned-scheduled-prompt-runs.md) D1/D3：每次触发在绑定 issue 下新建 agent IssueRun，复用既有编排；任务历史投影 IssueRun 事实 | 继承，不变：verdict 与产物只附着于定时触发的 IssueRun，不新增第二套运行入口 |
+| 同上 D4/D6/D7：60 分钟截止、失败/超时语义、任务历史每任务 100 条且只裁剪历史视图、IssueRun/Thread/Revision 审计事实不被历史裁剪删除 | 继承，不变：100 条裁剪仍只作用于任务历史视图；verdict 是运行事实，产物按本文 D5 单独清理 |
+| 同上 D8：Cloud 执行位置在验收前保持禁用 | 继承，不变：本文不解除 Desktop `cloud` 选项 |
+| [Thread 根决策](../thread/0-durable-agent-thread-with-user-turns.md) D2：Cloud 不解析消息和工具的业务字段，只校验 JSON/`kind`/大小与 `TurnEnded.stopReason` | 继承：Cloud 仍不解析 Thread 内容；verdict 哨兵由 Node 执行端在最终 Assistant 轮解析后，以结构化字段上报 |
+| [Thread 根决策](../thread/0-durable-agent-thread-with-user-turns.md) D1/D4 与 Headless 决策：会话记录先持久化、会话终态由 TurnEnded 推导、定时运行空闲窗口为 0 | 继承，不变：verdict 与产物在会话结束后、工作区释放前处理 |
+| [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D3：`provisioning → starting → running → delivering → releasing → done` 阶段机 | 继承；**修改**：`delivering` 同时收敛 Revision 交付与定时产物上传，但不新增 phase/status；产物失败不改变 Revision 或运行终态 |
+| [IssueRun 根决策](../issue-run/0-agent-run-in-disposable-isolated-workspace.md) D4/D5：执行结果与 Revision 分别记录，Revision 登记前不释放，交付失败有界重试 | 继承，不变：产物的登记与保留独立于 Revision 交付，产物登记失败不改变交付门禁；产物文件与 Revision 的 Git 快照的关系见 D3 |
+| [IssueRun 迟到交付接管](../issue-run/20261022-late-delivery-fact-takeover.md)：放弃交付后仍接管原执行事实，迟到 Revision 不得越过同 Issue 后创建的运行；修改了 IssueRun D5/D8 的迟到交付事实入口与 ACK 语义 | 继承，一致：本文「截止后只确认回执、不登记对象」与其「确认原事件、不改写已结算结果」方向一致；本文不改变它定义的迟到 Revision 规则，也不改变本文的产物交付截止语义 |
+| [Controller 集成 D1](../controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)：`AgentSessionEnded{reason, detail}` 是 Agent 会话的终态结果；Cloud 执行输入 `AgentSessionSpec` 目前不含触发来源 | **修改**：`AgentSessionSpec` 新增 `trigger = 9`（Cloud 只在接纳定时 occurrence 时设为 `scheduled`，手工运行缺省），Controller 原样转交给 Node；`AgentSessionEnded` 增加可选 `scheduled_result` 与 `artifact_manifest`；手工运行与既有字段语义不变 |
+| [Node 协议会话执行](../../node/protocol/20260928-streamed-thread-events-and-session-commands.md) D1：`StartAgentSession{agent_plugin_id, agent_plugin_version, checkout_execution_id, git_identity, initial_turn}` 与 `AgentSessionEnded{reason, detail}` 是 Node 侧的会话执行输入与终态 | **修改**：`StartAgentSession` 新增 `trigger` 字段（由 Controller 原样转交，缺省即手工）；`AgentSessionEnded` 增加可选 `scheduled_result{verdict, verdict_detail}` 与 `artifact_manifest{items[], rejections[]}`，手工运行不设置 |
+| [Revision 根决策](../revision/0-cloud-owned-object-store-and-verified-revisions.md) D1–D4：对象键由 Cloud 生成、预签名 PUT、校验大小与 SHA-256 后登记 | 继承并复用对象存储与上传授权机制；产物使用独立的运行级前缀与登记表（bundle 已由下一行 Git 交付决策删除，本文只复用 session JSONL 一侧的上传授权规则） |
+| [Revision Git 交付决策](../revision/20261017-git-native-delivery-refs-and-resume.md) 与 [Node 交付决策](../../node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)：Node 快照以临时 index 执行 `git add -A`（Node 根决策 D2），最终提交经交付 ref / `workspaceRef` 推送，代码改动不经对象存储 | 继承；配合下行 Node 根决策 D2 的修改：`.ora-scheduled-artifacts/` 被快照排除，不再进入交付 ref 的最终提交（D3） |
+| [Node Revision 根决策 D2](../../node/revision/0-internal-snapshot-and-incremental-bundle-upload.md)：内部快照以临时 index 执行 `git read-tree HEAD` + `git add -A` + `git write-tree`，不经过提交钩子、不改动工作区与分支 | **修改**：`git add -A` 排除 `.ora-scheduled-artifacts/`（Ora 保留目录名，所有运行一律排除，不按 `trigger` 区分）；仓库中已跟踪的同名目录此后不再随快照更新，历史提交不删除 |
+| [local 结果注解/产物 ADR](../../desktop/core/scheduled-task/20261021-run-result-annotation-and-artifacts.md) D5：local 与 Cloud 只共用 verdict 枚举，Cloud 存储/写入/保留另行定义 | 继承并落定：Cloud 只共用枚举；Node 执行端沿用同一哨兵文本约定作为上报来源，但不共享 Cloud 存储或解析契约；写入通道、产物存储、上限、保留和费用均在本文定义 |
+| [个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md) 与发送者权限 | 继承，不变：定时运行仍 `canAppend = false`，产物与 verdict 不开放任何输入通道 |
+
+## 决策
+
+### D1：verdict 词汇与 local 共用，Cloud 的落点是运行级只写结果
+
+Cloud 与 local 共用同一 `pass / warn / fail / blocked / idle / range_unresolved` 枚举，且：
+
+- 新增 `scheduled_run_results`（字段至少：`tenant_id`、`task_id`、`occurrence_id`、
+  `issue_run_id`、`verdict`、`verdict_detail`、`verdict_at`、`scheduled_at`）。记录以 `issue_run_id` 为
+  唯一身份；`task_id` 与 `scheduled_at` 是不可变的任务归属与计划时间事实，在写入时从 occurrence
+  冻结，随后不随 occurrence 的裁剪改变；`occurrence_id` 是仅作审计的可空引用——100 条历史视图裁剪
+  删除 occurrence 时只把它置空，不级联删除运行级 verdict。结果与 `issue_runs.status` 分开，不从执行
+  层状态推导。
+- 只有定时触发且会话正常结束（Thread 按 Headless 决策进入空闲并以正常 `TurnEnded` 收尾、IssueRun
+  推导为 `completed`）的运行可携带 verdict；`failed`、`cancelled`、`timeout`、`missed`、`skipped_*`
+  以及手工 IssueRun 一律没有 verdict。
+- detail 为受限自由文本，上限 2000 字符；首版不提供 `custom` 枚举，非标准结论写入 detail。
+- `status = completed` 且 `verdict = fail` 合法并存；读取历史时缺少记录显示「未报告」。
+- 一个运行最多写入一次 verdict；后续事件、重放或任何外部调用都不能覆盖或清空已写入的事实。
+
+### D2：可信写入者是执行端，Cloud 不解析 Thread 内容
+
+verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析，经既有 Node→Cloud 终态事件
+结构化上报。Cloud 只校验枚举、detail 长度和运行身份，不读取或解析 Thread / 消息 / 工具业务字段，
+从而保持 Thread D2 不变。
+
+- **哨兵契约**：与 local 相同，最终 Assistant 轮按 LF 归一后匹配以行为界的
+  `QA_VERDICT: <pass|warn|fail|blocked|idle|range_unresolved>`（大小写不敏感、行尾空白忽略），可紧随
+  一行 `QA_DETAIL: <自由文本>`；取第一个匹配，非法值/超长/无匹配均为「未报告」，不报错、不改写运行事实。
+- **Node 协议扩展**：Cloud 执行输入 `AgentSessionSpec` 新增 `trigger = 9` 字段（字段 6/7/8 已被
+  `prior_revision`、个人模型与 `workspace_directory` 占用，取 9），Cloud 只在接纳定时 occurrence 时设为
+  `scheduled`，手工 IssueRun 签发时不设置（缺省即手工），Controller 原样转交给 Node 的 `StartAgentSession`。
+  `AgentSessionEnded{reason, detail}` 增加可选的 `scheduled_result{verdict, verdict_detail}`：Node 只在
+  `trigger = scheduled` 且该轮正常收尾时解析并上报，手工运行不设置。Node 不写 Thread 消息内容，只上报
+  解析后的结构化值。
+- **Cloud 写入时机**：`sessionEnded` 钩子在接管会话终态的同一事务内校验并写入 `scheduled_run_results`，
+  先于任务历史可见；无匹配、非法值或超长不写入结果行（读取时即「未报告」），不报错、不改写运行事实。
+  重放同一终态事件必须幂等。
+- **为什么不在 Cloud 解析文本**：Thread D2 已冻结「Cloud 不解析消息业务字段」；把解析放在 Node 执行端
+  既复用 local 的哨兵约定，又避免 Cloud 猜测 `ora-history` 的业务 schema。为什么不是 Agent 直写：
+  Agent 是 Node 上的子进程，没有可信 Cloud 写入通道；开放公开端点会破坏「只有执行端能写」的边界。
+
+### D3：产物在会话结束后由 Node 声明并上传，Cloud 生成对象键
+
+运行 Workspace 是一次性隔离环境，产物必须在 `releasing` 前离开 Workspace。首版沿用 local 的
+`.ora-scheduled-artifacts/` 固定目录与类型白名单，但 Cloud 不扫描 Workspace：
+
+- **声明与采集**：仅在输入 `trigger = scheduled` 且正常 `TurnEnded` 收尾时，Node 执行端在 Workspace 释放前收集固定目录下的
+  白名单文件（`markdown/json/txt/log/xml/html`），执行与 local 一致的路径安全、符号链接/硬链接、
+  大小、数量、总大小与大小写/NFC 检查；采集结果写入 `AgentSessionEnded` 的
+  `artifact_manifest{items[], rejections[]}`。`failed / cancelled / timeout` 不采集。
+- **与 Revision Git 快照的边界**：`.ora-scheduled-artifacts/` 是 Ora 的保留目录名，Node 快照（Node 根
+  决策 D2 以临时 index 执行 `git add -A`）对所有运行一律排除该目录，不按 `trigger` 区分，因此产物文件
+  不会进入交付 ref 的最终提交，也不会在 Git Server 上留下副本。采集只读工作树、不改写文件。仓库中
+  已跟踪的同名目录在排除后不再随快照更新，但历史提交中的既有副本不被本 ADR 删除、不回改；产物事实
+  源只有对象存储中已登记的 `scheduled_run_artifacts` 及其索引。
+- **对象键与上传**：Cloud 为每个被接受的条目生成不透明对象键，例如
+  `scheduled-runs/{tenantId}/{issueRunId}/{artifactIndex}`，绝不使用用户文件名作为键；新增
+  `GrantScheduledArtifactUpload{execution_id, artifacts[{index,size,sha256}]}`，只对处于 `delivering`、
+  已登记且目标 Node/epoch 匹配的定时运行签发单对象 PUT 授权，规则复用 Revision 上传授权（`If-None-Match: *`、
+  有效期、校验大小与 SHA-256）。Node 不能选择对象位置或覆盖既有对象。
+- **重派与重复 PUT 的幂等**：产物对象键以运行身份固定，重派新执行会对同一键重复 PUT，在
+  `If-None-Match: *` 下得到 `412`，Node 不将其视为失败。Cloud 在登记前对每个声明对象做与 PUT 一致的
+  校验（大小与 SHA-256），不依赖 PUT 时的一次性校验：对已存在对象用 `HEAD` 读取并核对声明大小与
+  摘要，一致则按「已存在」幂等登记，不一致则该项进入被拒清单。
+- **收敛与失败**：Cloud 在 `sessionEnded` 钩子为含产物的定时运行登记独立的
+  `DeliverScheduledArtifacts` 工作项（不新增 phase），Node 上传后上报
+  `ScheduledArtifactsDelivered / Failed`。`delivering` 在 **Revision 与产物上传都收敛**后进入
+  `releasing`：登记按条目逐项结算，成功项逐条登记 `scheduled_run_artifacts`，失败项进入被拒清单；
+  全部成功记为 `artifact_delivery_state = delivered`，部分成功记为 `partial`，全部失败/超时记为
+  `failed`，失败项在 `scheduled_run_artifact_rejections` 中可见，并经过固定 10 分钟上限后放行。运行
+  Workspace 在产物收敛或窗口到期前保持不释放。产物失败不改变 IssueRun 状态、Revision、通知或交付
+  重试；没有产物时该工作项直接完成。对象存储未配置时产物以 `skipped(object_store_unconfigured)`
+  收敛，不阻断运行与释放。
+- **截止的持久起点与不续期**：10 分钟窗口的起点是 Cloud 在 `sessionEnded` 钩子登记
+  `DeliverScheduledArtifacts` 工作项的同一事务——该事务把 `artifact_delivery_deadline = 登记时刻 + 10
+  分钟` 与产物声明一起持久化。截止以运行身份唯一、不可续期：重启、重放或重派同一执行都不重算、
+  不延长；重派新执行沿用同一运行级截止。签发给 Node 的上传授权有效期取
+  `min(upload_grant_ttl, 剩余截止)`，使截止之后不再存在仍可写入的有效授权。
+- **截止与成功登记的竞争**：截止结算与 `ScheduledArtifactsDelivered` 登记分属不同事务，是否接受成功
+  回执以持久截止为绝对判据，而非超时扫描与回执到达的先后。登记事务在锁定 `artifact_delivery_state`
+  的同一事务内按数据库当前时间检查 `artifact_delivery_deadline`：只有 `artifact_delivery_state =
+  delivering` 且 `now < artifact_delivery_deadline` 同时成立，才登记 `scheduled_run_artifacts` 并把
+  状态推进到终态；`now >= artifact_delivery_deadline`（含恰好到期）时，无论超时扫描是否已执行、回执
+  是否先到，一律按超时结算——只确认回执、不登记对象、不改写交付事实，对象交给 D3 的前缀 GC 兜底
+  清理。这样固定 10 分钟窗口取决于绝对截止，截止前发起、截止后完成的 PUT 产生的迟到回执同样先过
+  截止判据。回执按执行身份幂等（与 Revision 相同规则），同一事件重放得到同一结果。
+- **迟到与孤对象的最终清理**：对象已上传但回执未被接管（或 PUT 在截止后完成）的对象是「已上传未
+  登记」对象，不进入索引、不受每任务 10 个运行淘汰约束，但都落在
+  `scheduled-runs/{tenantId}/{issueRunId}/` 前缀内。Cloud 的清理任务按已结算/被淘汰运行的键前缀扫描
+  对象存储，删除当前索引中不存在的对象；这是对象生命周期的兜底责任，不依赖回执，也不受签发授权
+  停止影响（预签名 PUT 一旦签出即独立有效，只能靠前缀 GC 兜底）。
+- **上限**：单产物 10 MiB、单运行 64 个、单运行总计 64 MiB；超限/非法类型/非法路径进入被拒清单，
+  不静默丢弃，也不阻断运行收尾。上限在 Node 与 Cloud 两侧校验，Cloud 以服务端上限为准。
+
+### D4：产物按运行索引，读取跟随 issue 可见性
+
+- `scheduled_run_artifacts` 至少保存：`tenant_id`、`task_id`、`occurrence_id`、`issue_run_id`、
+  `object_key`、`display_name`（相对路径，仅用于展示）、`kind`、`size_bytes`、`sha256`、
+  `scheduled_at`、`created_at`。`task_id` 与 `scheduled_at` 是不可变的任务归属与计划时间事实（与
+  `scheduled_run_results` 同源），在写入时从 occurrence 冻结；`occurrence_id` 是仅作审计的可空引用，
+  occurrence 被裁剪时置空、不级联删除。被拒候选单独存 `scheduled_run_artifact_rejections`（至少 `tenant_id`、`issue_run_id`、名称 +
+  原因），同样冻结 `task_id` 与 `scheduled_at`；`occurrence_id`（如有）在 occurrence 裁剪时置空，
+  与 `scheduled_run_artifacts` 一致，使被拒数量始终可按运行归属与鉴权投影。
+- 任务历史读取时一并返回 verdict、产物数量和被拒数量；产物读取/下载只在 Cloud 公开 API 上提供，按
+  当前有效租户成员对绑定 issue 的读取权限判定，不存在与无权限统一 `404`。读取权限、下载授权与每
+  任务淘汰都经 `issue_run_id → issue` 定位，不依赖 `occurrence_id`。
+- 下载使用短期签名 URL，不暴露永久公开对象地址；对象存储凭据与桶配置只留在 Cloud，Controller/Node
+  不持有对象存储业务凭据。产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制（产物文件不进入
+  Revision 的 Git 快照，见 D3）。
+- 手工 IssueRun 没有定时产物；同一 IssueRun 的产物只能由该次运行的执行端上报，不能由普通客户端
+  直接创建。
+
+### D5：保留、清理与费用按 Cloud 自己的边界定义
+
+- **每任务产物保留**：每任务只保留最近 **10 个含产物的运行**（按产物行冻结的 `scheduled_at` 从新到
+  旧，不用 occurrence 行——它可能已被 100 条历史裁剪删除）。第 11 个含产物运行登记后，异步删除最旧
+  运行的产物对象与索引；淘汰与排序只依赖 `scheduled_run_artifacts` 行自带的 `task_id` /
+  `scheduled_at`，不依赖 occurrence。历史视图中被淘汰的运行仍保留运行事实，产物显示为「已过期」。
+  「10 个运行」是本文冻结的 Cloud 成本边界，不复用 local 的 worktree 链接例外，也不改变根决策 D6 的
+  100 条历史视图。
+- **历史视图裁剪**：100 条裁剪只删除任务侧 occurrence/展示关联；verdict 与 IssueRun/Thread/Revision
+  事实保留，artifact 对象与索引按上一段的 10 个运行边界清理。裁剪 occurrence 时把
+  `scheduled_run_results` / `scheduled_run_artifacts` / `scheduled_run_artifact_rejections` 上的
+  `occurrence_id` 置空，不级联删除；
+  `task_id` / `scheduled_at` / `issue_run_id` 这些持久事实保持不变。任务软删除保留既有运行事实与产物，
+  产物仍受 10 个运行上限约束，直到空间/租户删除或保留策略淘汰；不做即时级联删除。已上传未登记的
+  孤对象按 D3 的前缀 GC 兜底清理，不依赖 occurrence 或索引。
+- **空间删除**：Space/租户删除沿用既有数据生命周期，对象与索引随空间所有权删除；本文不新增
+  跨租户搬迁或恢复语义。
+- **费用归属**：产物对象存储与流量费用归任务创建者所在的 Space/租户，与模型费用归属一致；首版
+  只设每运行上限和每任务 10 个运行上限来约束成本，不新增独立计费项或全局配额。费用明细与配额属于
+  后续决策。
+- **敏感信息**：不做内容密钥扫描（沿用 local ADR D4 的 owner 结论）。Ora 自身不向产物存储写入模型
+  Key、token 或环境变量；产物是 Agent 输出，暴露面由类型白名单、大小上限、运行可见性和短期下载
+  授权约束。
+
+### D6：历史投影、事件与 Cloud/local 边界
+
+- 任务历史条目增加 `verdict`（可空）、`verdict_detail`（可空）、`artifact_count` 与
+  `rejected_artifact_count`；verdict 只来自 `scheduled_run_results`，缺失即「未报告」；产物数量只统计
+  已登记对象，不读取对象内容。
+- 产物登记/清理后通过既有 Space 事件流发失效提示；事件只带任务/运行标识，不作为产物事实源。
+- Cloud 与 local 只共享 verdict 枚举；哨兵文本格式是用户 prompt 约定，Node 执行端采用它作为上报
+  来源，但不构成 Cloud 存储或解析契约的共享。两端不共享存储、ID、索引或同步协议；local 产物不上传
+  Cloud，Cloud 产物不同步 local；需要跨端查看时，用户仍需在对应执行端查看。
+
+## 不变量
+
+1. `issue_runs.status` / `failure_reason` 的语义、阶段机、通知与历史保留不回退。
+2. verdict 独立、可空、只由执行端结构化上报；只有输入 `trigger = scheduled` 且正常完成的定时运行可携带，单次写入，非法输入不改写运行事实。
+3. Cloud 不解析 Thread / 消息 / 工具业务字段；verdict 哨兵解析发生在 Node 执行端。
+4. 产物必须在运行 Workspace 释放前完成声明与上传；worktree/Workspace 回收后，已登记产物仍可按 Run ID 读取。
+5. 产物对象键由 Cloud 生成；路径穿越、符号链接/硬链接越界、非法类型与超限进入被拒清单且可见。
+6. 产物上传/登记失败不改变 IssueRun、Revision、通知或回收语义；`delivering` 不因产物无限期占用。
+7. 任务历史 100 条裁剪只作用于视图；verdict 与 IssueRun/Thread/Revision 审计事实不被裁剪删除，产物按 D5 独立淘汰。
+8. 产物只随绑定 issue 的读取权限可见；Cloud 与 local 不互相同步或上传。
+9. `.ora-scheduled-artifacts/` 是 Ora 保留目录，Node 快照对所有运行一律排除，产物文件不进入 Revision 的 Git 快照；产物的对象存储登记也不随 Revision、Thread 或 Issue 评论复制。
+10. verdict 与产物的 `task_id`、`scheduled_at`、`issue_run_id` 是不可变持久事实，不随 occurrence 裁剪置空；读取权限、排序与每任务淘汰只依赖它们，`occurrence_id` 是可空的审计引用。
+11. 产物交付有以运行身份唯一、不可续期的持久截止；成功登记在同一事务内按数据库时间校验 `now < artifact_delivery_deadline`，到期（含恰好到期）的成功回执只确认、不登记、不改写事实；已上传未登记的孤对象按键前缀由 Cloud 兜底清理。
+12. 产物登记按条目逐项结算：重复 PUT（`412`）与重派不产生重复登记，登记前按 size/SHA-256 逐对象复核；成功项登记、失败项进入 `scheduled_run_artifact_rejections`，部分成功不把校验放权给 PUT 时点、也不阻断运行收敛与释放。
+
+## 为什么不是这些替代方案
+
+| 方案 | 取舍 |
+|---|---|
+| Cloud 直接解析 Thread 最后一条消息文本 | 违反 Thread D2「Cloud 不解析消息业务字段」，并把 `ora-history` 的 schema 猜测引入 Cloud |
+| 给 Agent 开放公开 verdict 写入端点 | 破坏「只有执行端能写」的可信边界，任何客户端都能伪造业务结论 |
+| 由 Agent 直接上传产物到对象存储 | Agent 运行在一次性 Workspace，没有 Cloud 对象存储凭据；开放凭据会扩大攻击面 |
+| 把产物登记进 Revision 的 Git 交付 / session JSONL | Revision 是 Git 成果与历史归档，产物与 Revision 生命周期和校验语义不同，混入会扩大交付失败面；产物目录已在快照中排除（D3），产物只走对象存储登记通道 |
+| 产物跟随 Worktree/Workspace 生命周期 | Workspace 释放后丢失，无法按 Run ID 稳定访问 |
+| 复用 local 的每任务 10 个运行、随历史裁剪清文件 | Cloud 的 100 条历史视图与对象存储成本边界不同；本文显式定义 Cloud 自己的 10 个运行产物上限 |
+| 开放永久公开对象 URL | 绕过 issue 可见性；短期签名 URL 才能跟随读取权限 |
+| 对产物做内容密钥扫描 | 漏报率高且只带来虚假安全感；沿用 local owner 结论，靠白名单、上限、可见性与不写凭据约束 |
+| 只拒绝截止后签发新授权，不做前缀 GC | 更省事；但预签名 PUT 一旦签出就独立有效，截止前签出的授权在截止后仍可能完成写入，只能靠前缀 GC 兜底 |
+
+## 本决策未解决的问题
+
+- 产物对象存储成本明细、租户配额与超额计费；首版只用每运行/每任务上限约束。
+- 历史按 verdict 过滤/排序、聚合看板，以及 verdict 驱动的自动重试或告警。
+- Cloud 产物是否需要与 Space 导出/备份/迁移联动。
+- 哨兵在实践中漂移时是否升级为专用结构化工具（与 local ADR 同一升级路径）。
+
+## 落地顺序
+
+1. **specs**：本 ADR 评审通过并合并，核心用例建立（义务初始 `Missing`）；`domain/glossary.md` 的
+   「Scheduled Run Artifact」扩展到 Cloud 稳定存储语义。
+2. **Cloud 契约实现**：迁移（结果/产物/被拒表）、会话执行输入 `trigger` 字段、Node→Cloud
+   `scheduled_result` 与 artifact manifest 协议、上传授权与登记、历史读取/下载 API、保留清理任务与
+   孤对象前缀 GC。
+3. **真实栈验收**：用一个真实定时运行验证 verdict + 产物上传 + Workspace 释放 + 历史读取 + 重启/重放；
+   验证 10 个运行淘汰、权限与失败降级。
+4. **收尾**：核心用例证据补齐，ADR 转 `implemented`，关闭承接事项。

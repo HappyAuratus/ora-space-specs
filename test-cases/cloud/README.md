@@ -51,11 +51,12 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 
 ## 已批准的定时任务决策
 
-[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
+[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | scheduled-task | [接纳、会话边界与历史保留](scheduled-task/admission-and-session-bounds.md) | 重复接纳、停机补记与超时误判、无人值守会话空等、资格失效仍接纳、历史无界增长 |
+| scheduled-task | [verdict 与产物](scheduled-task/verdict-and-artifacts.md) | verdict 伪造、产物目录进快照绕过可见性、迟到回执绕过保留、产物排行与鉴权缺运行身份 |
 
 ## 已批准的会话分析与模型请求统计
 
@@ -102,14 +103,14 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | controller-integration | [快照 clone 输入与执行授权](controller-integration/snapshot-clone-input-and-execution-grants.md) | Controller 拼输入、基线提交写错、残留外部 clone 入口、执行越权写 ref、WorkflowRun 会话误获授权、bundle 契约残留 |
 | revision | [Git 交付与续作](revision/git-native-delivery-refs-and-resume.md) | 未核验就登记、短暂不可用被判失败、`unchanged` 没有自己的 ref、续作拨回旧提交、一次取消永久不可续 |
 
-## 已批准的多 Agent 个人配置与静态声明分发
+## 多 Agent 个人配置与静态声明分发
 
 [Agent 配置声明](../../decisions/desktop/plugin/manifest/20261017-agent-configuration-declarations.md)、
 [Cloud 静态元数据分发](../../decisions/cloud/plugin-marketplace/20261017-agent-configuration-metadata.md)、
 [个人 Agent 配置](../../decisions/cloud/model-access/20261017-personal-agent-configurations.md)与
 [插件模型 adapter](../../decisions/node/agent-runtime/20261017-plugin-owned-model-adapters.md)四份 ADR 于 2026-10-17 经 owner
-批准为 `approved`。实现尚未交付，这些义务目前都是 Missing；OpenCode 与个人连接的既有 Covered/Partial 证据保持
-原范围。Node 一侧的 adapter 用例见 [Node 核心测试用例](../node/README.md)，Desktop 一侧的声明用例见其领域目录。
+批准；后两份已实现，状态为 `implemented`。个人配置义务的证据多为 store 层或单用户 HTTP 的 Partial，缺口逐项写在
+用例里；OpenCode 与个人连接的既有 Covered/Partial 证据保持原范围。Node 一侧的 adapter 用例见 [Node 核心测试用例](../node/README.md)，Desktop 一侧的声明用例见其领域目录。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

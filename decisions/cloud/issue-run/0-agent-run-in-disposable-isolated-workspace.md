@@ -4,6 +4,11 @@ status: implemented
 
 # Issue 上 @Agent 的 IssueRun 由 Cloud 编排：每次运行一个一次性 isolated Workspace，成果保存为 Revision 后释放
 
+> 历史决策：D5/D8 放弃后的原交付事实入口与 ACK 含义由
+> 已落地的[迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md)（`implemented`）D1、D3 修改；无账本、无运维意图也接收，
+> 接管不重写已结算 Run，ACK 不表示业务再次成功。迟到 Revision 另受其 D2 的后创建运行守卫约束。
+> 本文保留 `implemented`，未改变本文的放弃窗口和正常释放条件。
+
 用户在 Issue 评论中 @ 一个 Agent 并给出任务时，Cloud 已有的 Task Mode 路径创建 `queued` 的 IssueRun。
 本决策把它接到真实执行：Cloud 为这次运行创建一个专属的 isolated Workspace（沙盒 → Node → clone →
 插件），Workspace 就绪后下发 Agent 会话；会话称为 **Thread**，其记录实时回到 Issue 页，用户可以在
