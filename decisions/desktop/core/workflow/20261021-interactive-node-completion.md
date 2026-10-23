@@ -18,7 +18,7 @@ status: implemented
 | 根 D5 末段：foreach v1 禁止区域内 interactive，停靠与续算机制保留 | 继承，不变 | 区域行为不变；证据边界见[区域 HITL 用例](../../../../test-cases/desktop/core/workflow/stateless-recovery-and-hitl.md#interactive-nodes-inside-a-region-park-and-resume-through-existing-paths) |
 | 迭代决策的 D5 继承行与 D7：foreach 结构校验拒绝 interactive 成员，while 未作同样拒绝 | 继承，并澄清 | foreach 仍拒绝；while 的解析接受不构成本契约的整链保证 |
 | while D1：Loop body 接受 interactive 配置 | 继承，并澄清 | 本契约只覆盖外层平图，不补齐区域内的完成/恢复证据 |
-| 根 D7：失效事件只标识 run，观察者重查持久状态 | 继承，不变 | park 或修复提交后由 transition sink 发布一次 run invalidation；前端重查 |
+| 根 D7：失效事件只标识 run，观察者重查持久状态 | 继承，并澄清 | 只有 park 提交由 transition sink 发布一次 run invalidation；修复是 payload-only 更新，不发布；投影在下一次轮询或后续事件时重查 |
 | 静默策略 D2：每个 Agent turn 使用冻结策略 | 继承，不变 | 人类回合继续沿用节点冻结的 `promptInactivity` |
 | while D6：重启时 Running 轮按 `interrupted_by_restart` 失败 | 继承，不变 | `Pending` 保留；在途 `Running` 仍失败，不自动续算 |
 | 完成只由人工按钮触发，且不检查回合终态 | 修改 | 完成由本轮终态与声明契约共同决定；`force` 需确认并审计 |
@@ -136,7 +136,7 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 文案由后端从冻结图渲染，`record_prompt` 保持用户原文，未来 CLI 或其他客户端自动生效。边界块写「本步骤的范围与完成标准」，不写「系统会阻止你执行后续节点」这类运行时无法兑现的承诺，也不写死 Desktop 的按钮名。首轮自动回合已有完整 handoff，保持不变。
 
-### D7：UI 只暴露一个推进动作，卡片只展示状态
+### D7：UI 用卡片与右下角按钮两个显式入口推进，卡片只展示状态
 
 会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 拒答 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。provisional（本轮仍在收尾）时同时提供普通完成、继续当前步骤与「仍然完成」：普通完成由后端按同一 `userSeq` 修复后再判定，修复不了时用户仍有强制路径。
 
@@ -207,14 +207,27 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 ## 实现与 `approved` 方案的差异
 
-最终实现与批准方案有四处偏差，正文已按实际行为更正：
+最终实现与批准方案有四处偏差。正文已按实际行为更正，这里记录每处偏差的行为、采用原因与安全依据。
 
-1. **`completion_forced` 的审计内容**：批准稿写 `reason`，实现记录 `{ blockers, without_turn, output_source }`，`blockers` 是快照里的 blocker 列表。
-2. **修复写回不发 invalidation**：`prepare` 的 provisional 修复与旧节点物化只做 payload-only 更新，不发布 run invalidation；只有 park 提交发布一次。
-3. **turn key 比对在锁外**：turn key 与 `outputDigest` 在 `prepare` 比对；锁内只复核 run/node 状态与 completion claim。
-4. **blockers 不一致不刷新快照**：`prepare` 复算与已存快照不一致时，已有 turn key 且非 provisional 的快照仍是权威；只有缺 turn key 的 provisional 或旧节点在同一 `userSeq` 下写回修复。
+1. **`completion_forced` 的审计内容**
+   - 行为：记录 `{ blockers, without_turn, output_source }`，不写批准稿里的 `reason`。
+   - 采用原因：阻断原因已经结构化为 blocker 列表，再复制成自由文本既重复、又容易和 `completion.blockers` 脱节；`reason` 这个名字还会诱导把用户输入写进 payload。
+   - 安全依据：审计与完成在同一事务提交；`blockers` 只来自快照，不含用户文本；字段形状有 `a_forced_completion_records_its_audit_in_the_completed_payload` 固定。
 
-这些偏差不改变对外承诺，只是删去批准稿中对实现方式的错误描述。
+2. **修复写回不发 invalidation**
+   - 行为：`prepare` 的 provisional 修复与旧节点物化只做 payload-only UPDATE，不发布 run invalidation。
+   - 采用原因：修复不改变 `Pending` 状态，也不经过 transition sink；让完成路径自己发布会和随后的 park/complete 失效语义重复。
+   - 安全依据：写回带 `status = 'pending'` guard，已离开 `Pending` 的节点不会被旧快照覆盖；投影在下一次轮询或后续事件时看到新快照，代价只是显示延迟，不影响完成判定。
+
+3. **turn key 比对在锁外**
+   - 行为：`prepare` 在门外读历史并比对 turn key 与 `outputDigest`；锁内只复核 run `Running`、node `Pending` 与 completion claim。
+   - 采用原因：历史读取是 O(会话) 的重活，根决策 D2 要求等待与重活不跨越 per-run 门。
+   - 安全依据：completion claim 在 prepare 到提交之间阻止新的完成，`Pending` guard 拒绝已离开该状态的提交；prepare 之后如果回合或状态变化，提交会被复核拒绝，不会用旧回合完成。
+
+4. **blockers 不一致不刷新快照**
+   - 行为：已有 turn key 且非 provisional 的已存快照保持原样，即使 `prepare` 复算与它不同；只有缺 turn key 的 provisional 或旧节点在同一 `userSeq` 下写回修复。
+   - 采用原因：快照记录的是用户停靠时看到的状态，在完成路径里静默改写会让审计与已完成节点前后不一致；同样文本与契约下复算通常一致，差异更可能意味着历史或冻结契约已变化，应显式暴露。
+   - 安全依据：不一致时按已存 blockers 返回 `WorkflowNodeIncomplete`（fail-closed），用户仍可 `force`；修复只发生在缺少回合身份、且 `userSeq` 相同的窗口内，不会把后来的一轮替换成完成对象。
 
 ## 风险、未解决问题与验收
 
@@ -242,5 +255,5 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 - 无快照旧节点与 provisional 只在 `prepare` 修复一次；`get` 不读历史；
 - `Structured` / `Text` 校验在 park 完成，blockers 与 complete 同源；`structuredOutput` 不落 payload；
 - cleanup 在流 drop 后先有界等待；超时写 provisional `turn_unknown`，`prepare` 能修复；
-- park/修复提交后发布一次 run invalidation；
+- park 提交后发布一次 run invalidation；修复写回是 payload-only 更新，不发布；
 - 区域 interactive 行为不变；核心用例见 `test-cases/desktop/core/workflow/interactive-node-completion.md`。
