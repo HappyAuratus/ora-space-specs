@@ -1,8 +1,8 @@
 # Controller 中继 Agent 会话与 Revision 交付
 
 已登记原交付的精确终态拒绝、单 execution unresolved 及成功 receipt 后解除由
-[终态拒绝用例](refused-delivery-terminals.md)逐项登记。desktop 固定 head
-`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的单仓直接证据已覆盖局部隔离及 receipt/ACK；
+[终态拒绝用例](refused-delivery-terminals.md)逐项登记。desktop 合并提交
+`2564b42` 的单仓直接证据已覆盖局部隔离及 receipt/ACK；
 [O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)已覆盖拒绝窗口及 Cloud 不可用导致 Controller↔Node 会话重建后的恢复，不要求 Controller 重启；Controller 重启后首次重放直接成功及真实 Node 新 incarnation 的缺口仍保留。
 本文件的已有中继覆盖不自动证明这些新增义务，也不改变 Thread 批次冲突的既有规则。
 

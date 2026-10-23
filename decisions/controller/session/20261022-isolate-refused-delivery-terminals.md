@@ -9,8 +9,8 @@ execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接�
 真实重连或重启可以重新提交原事实，只有成功的原事件接管回执才能解除。其他 Conflict 的处理不变。
 
 本文为 `implemented`，依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，
-对应 [desktop#726](https://github.com/ora-space/desktop/pull/726) 固定 head
-`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 的实现与直接测试。单仓证据覆盖局部拒绝隔离与回执恢复，
+对应 [desktop#726](https://github.com/ora-space/desktop/pull/726) 合并提交
+`2564b42` 的实现与直接测试。单仓证据覆盖局部拒绝隔离与回执恢复，
 真实栈已直接覆盖拒绝隔离窗口及 Cloud 重启触发会话重建后的恢复；Controller 重启后首次直接成功仍缺证据。本决策不改 Node 协议、Cloud 业务阶段或释放授权，
 不新增本地持久化状态机、超时成功或协议 disposition。
 
@@ -61,9 +61,9 @@ execution 标为 unresolved：不 ACK、不重派，保留已握手 Node 连接�
 
 真实 transport 重连保留进程内 observer 的拒绝标记。Controller 重启不恢复本地拒绝数据库，而依赖
 Cloud 仍把尚无 result、未 force-stop 的原 execution 列为 pending，再由 Node outbox 重放。
-[Cloud 固定查询](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/node_execution.go#L221-L230)
+[Cloud 固定查询](https://github.com/ora-space/cloud/blob/b777496/internal/core/node_execution.go#L221-L230)
 按 `result IS NULL`、`terminated_by_force_stop_id IS NULL` 及 Node 过滤，不因 Run 已进入 releasing 而删除原交付；
-[`clone_pending`](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/internal/core/clone.go#L84-L85)
+[`clone_pending`](https://github.com/ora-space/cloud/blob/b777496/internal/core/clone.go#L84-L85)
 使用该查询。若原 execution 不再列为 pending，不能仅凭本决策宣称重启后仍能重新发现它。
 
 只有本次原 execution/sequence/event 已持久接管的成功回执，才能完成确认、清除对应 unresolved，
@@ -117,7 +117,7 @@ message 不混写成另一个通用原因；同连接内重复状态不持续制
 外部行为继续采用批准的 D1–D4；最终实现把以下依赖写明，避免把局部恢复误解成新的 Cloud 协议：
 
 - 精确分类实际读取 gRPC status message，不是新的结构化 reason 或 disposition。
-  [Cloud 通用错误契约](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/proto/ora/cloud/internal/v1/errors.proto#L9-L12)
+  [Cloud 通用错误契约](https://github.com/ora-space/cloud/blob/b777496/proto/ora/cloud/internal/v1/errors.proto#L9-L12)
   明确希望客户端避免按 message 分支；当前 `CONFLICT` 分类本身不能区分本拒绝与其他真实冲突，因此本次实现同时
   匹配原 code、typed detail 和精确 message。这是固定两端实现的跨仓依赖，不能推广为所有 Conflict 均可忽略。
   将来修改该 message 或结构化错误协议时，必须同步消费者，不能单端修改。

@@ -9,9 +9,11 @@ Cloud 已按交付上限放弃一个 Run 后，仍按原 execution、work 和资
 尚无后创建的 Run，且原交付证据验证成立，才登记迟到的原 Revision；否则仅保存声明与事件收据。
 
 本文为 `implemented`：最终规则依据 [owner 决定](https://github.com/ora-space/circus/issues/407#issuecomment-6335015004)，
-实现及证据固定于 [Cloud #142 head `818226b4`](https://github.com/ora-space/cloud/tree/818226b49b8a97779f41d6191e69f6fc8518b0fb)
-与 [Desktop #726 head `13de5a35`](https://github.com/ora-space/desktop/tree/13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d)。
+实现及证据固定于 [Cloud #142 merge `b777496`](https://github.com/ora-space/cloud/tree/b777496)
+与 [Desktop #726 merge `2564b42`](https://github.com/ora-space/desktop/tree/2564b42)。
 不新增协议状态码或数据库结构，不改变 D5/D8 窗口、残留回收授权、普通交付资格或同任务交接的暂停与恢复授权。
+
+源码与测试引用使用已合并的 Cloud `b777496` / Desktop `2564b42`。此前真栈复跑仍实际使用 PR head `818226b4` / `13de5a35`；[owner 合并说明](https://github.com/ora-space/circus/issues/407#issuecomment-6354830227)确认落后 main 期间的新增提交未触及相关交付、释放及 Controller 会话路径，无语义漂移。该说明不代替合并后 main 的复跑证据。
 
 ## 继承与修改
 
@@ -41,7 +43,7 @@ Node 已形成交付终态但 Cloud 尚未接管时连接中断，Cloud 可能�
   因根 D8 进入 `done`，都允许接管原 `deliver_revision` 的迟到终态；Run 的 `status` 不要求是 failed。
   没有 `agent_run_residuals` 行、没有运维接管意图，不构成拒收理由。
 - 原 Run 软删除只影响业务可见性，不撤销仍可核验的原事实身份；其迟到事实仍按 D1 接收，有效证据且
-  同 Issue 没有后创建 Run 时仍可按 D2 登记原 Revision，不因软删除额外降为 receipt-only。
+  同 Issue 没有后创建 Run 时仍可按 D2 登记原 Revision，不因软删除额外降为 receipt-only。软删除不删除原执行的可核验归属；额外拒收会使原未确认终态失去取得回执的机会。
 - 必须核验已登记 execution → 原 work → 原 Run/Workspace，以及原租户、Project、Node、sandbox 与资源
   generation 的关联；声明仍符合原冻结输入，事件序号及原内容满足既有收据规则。只关闭 admission、
   任意取消、换 Node、未登记执行或身份不符，不能借此取得接管资格。普通 `liveDelivery` 资格仍保护

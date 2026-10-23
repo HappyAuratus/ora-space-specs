@@ -2,8 +2,8 @@
 
 迟到原 Revision 不得越过同 Issue 后创建 Run 的新增登记限制见
 [迟到交付事实与续作顺序](late-delivery-fact-takeover.md)。顺序守卫覆盖根 D5/D8、residual 及 controlled 入口，
-直接证据固定在 Cloud #142 head `818226b49b8a97779f41d6191e69f6fc8518b0fb` 的
-[integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_order_test.go)：
+直接证据固定在 Cloud #142 merge `b777496` 的
+[integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_order_test.go)：
 `TestLateDeliveryFactRunCreationOrderOverGRPC`、`TestLateDeliveryFactResumeKeepsLaterRevisionOverGRPC` 与
 `TestLateDeliveryFactNoLaterRunResumesRescuedRevisionOverGRPC` 分别直接覆盖后创建守卫、下一会话不回到旧成果、
 无后创建时可选已救援 Revision。原 Run 软删除仍服从相同 D1/D2；缺失/歧义创建记录长期 receipt-only，

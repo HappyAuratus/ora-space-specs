@@ -2,10 +2,10 @@
 
 根 D5 无账本迟到接收、接管与业务结论分离，以及接收前断线后恢复至 `done` 并真实释放 container/volume
 的新增义务见[迟到交付事实与释放恢复](late-delivery-fact-takeover.md)。下列已有编排证据不自动覆盖这些新义务。
-该文件按 Cloud #142 head `818226b49b8a97779f41d6191e69f6fc8518b0fb` 与 Desktop #726 head
-`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d` 登记证据。
+该文件按 Cloud #142 merge `b777496` 与 Desktop #726 merge
+`2564b42` 登记证据。
 无账本 D5/D8、失败 quiesce 恢复 running/ready 后接收及业务不改写有直接 PG/gRPC 测试；
-[integration/late_delivery_release_retry_test.go](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_release_retry_test.go)
+[integration/late_delivery_release_retry_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_release_retry_test.go)
 的 `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC` 覆盖正常释放 retry 到 done。
 Workspace desired=deleted 不是迟到事实资格，完整原身份与 generation 围栏仍适用。
 

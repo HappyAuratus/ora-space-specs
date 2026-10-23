@@ -57,8 +57,8 @@ Run 守卫约束，不能把 receipt-only 当作已验证 Revision 或清理授�
 - 触发：Controller 以原身份提交迟到终态、交付结果或 effect 事实；同一事实重复提交；清理完成先提交、迟到事实后提交（以及相反顺序）。
 - 必须成立：创建侧事实入口与原执行接管覆盖 `reconciling`、`reclaiming` 与 `cleared`；仍校验原租户、资源、effect/execution 身份及当前服务资格；先持久接管再 ACK，相同事实幂等重放只追加证据；不重开 admission、不再次结算、不重建已删除资源；后提交者看到先提交者的证据与责任，新发现的未闭环目标阻止清除。
 - 禁止结果：因账本已清除或 Run `done` 拒收事实；迟到事实把 Run 改回运行态或复活 Workspace/ensure；事实与处置结论冲突时静默丢弃事实或伪造新的完成证明。
-- 验证义务与证据：**Partial** — Cloud #142 head `818226b49b8a97779f41d6191e69f6fc8518b0fb`
-  的 [integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_order_test.go)
+- 验证义务与证据：**Partial** — Cloud #142 merge `b777496`
+  的 [integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_order_test.go)
   `TestLateDeliveryFactRunCreationOrderOverGRPC` 直接覆盖 reconciling/reclaiming/cleared/controlled 的交付终态接管、
   有/无后创建 Run 两侧、业务及责任不变、原事件幂等、receipt-only 不升级、冲突持久审计。
   这是交付事实子路径的证据，不覆盖全部创建侧/effect 事实、清理完成事务的双向并发，以及冲突后后续处置被阻断。

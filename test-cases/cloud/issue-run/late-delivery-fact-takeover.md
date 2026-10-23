@@ -6,11 +6,13 @@
 [运行编排](agent-run-orchestration.md)、[续作](resume-from-latest-revision.md)和
 [残留回收](residual-resource-reclamation.md)的证据不自动覆盖它们。
 
-证据固定为 Cloud PR #142 head `818226b49b8a97779f41d6191e69f6fc8518b0fb` 与 Desktop PR #726 head
-`13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d`。下表链接固定 head 的测试文件，并列出真实函数名。
+证据固定为 Cloud PR #142 merge `b777496` 与 Desktop PR #726 merge
+`2564b42`。下表链接固定合并提交的测试文件，并列出真实函数名。
 Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹具，部分 Controller/Node/Substrate 由 simulator
 扮演；Desktop 测试使用实际 Controller、WebSocket fake Node 与 fake Cloud。单仓 `Covered` 只覆盖对应直接断言，
 不表示跨仓真实链路完整覆盖。
+
+源码与测试引用使用已合并的 Cloud `b777496` / Desktop `2564b42`。此前真栈复跑仍实际使用 PR head `818226b4` / `13de5a35`；[owner 合并说明](https://github.com/ora-space/circus/issues/407#issuecomment-6354830227)确认落后 main 期间的新增提交未触及相关交付、释放及 Controller 会话路径，无语义漂移。该说明不代替合并后 main 的复跑证据。
 
 真实栈证据来自 `wanglongan587` 的[固定版本运行回执][real-stack]及[固定版本评审][review]。
 作者机器产物为 `ora-space/cluster/.acceptance/407/407-late-terminal-818226b4.json` 与
@@ -18,7 +20,7 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 
 [O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)：desktop `13de5a3567d0` + 旧 Cloud main `7a48f3403ae3`，精确拒绝告警仅一次（`Aborted` / `ERROR_CODE_CONFLICT` / `dispatch_conflict`、`unresolved/no_ack/no_redispatch`）；60 秒无 receipt、result=null、仅一个 deliver_revision，Node 同 incarnation 保持 connected、无重新注册，仅 heartbeat 前进。换 Cloud `818226b49b8a` 并只重启 Cloud 后，Cloud 不可用触发 Controller↔Node 会话重建，原终态在 14.6 秒内接收（receipt seq=1，`push_rejected` / `revision_failed`）；同一 delete 经 TERMINATE→CLEANUP→DONE，Run done、deliveryState=failed、revisionId=null、0 revisions，Workspace deleted、container/volume 均回收。随后才重启 Controller，状态不变。
 
-作者机器的 `ora-space/cluster/.acceptance/407/407-o4-isolation.json` 未提交；作者给出的 SHA-256 为 `7cb8f80b44a489dc09a962359b42713b1c068e0aba417449dce8a1298387079e`，此处原样引用，未在本机读取文件或重算摘要。边界：echo agent（受控模型），90s give-up 为测试 override；上游仓库绑定/快照由 `git:preset snapshot --synthetic 3` 预置，该验收工具直接写仓库卷及数据库，只代替上游同步；交付接管与释放使用真实组件。失败终态不覆盖 O2 迟到成功 Revision 登记或后创建 Run receipt-only 的真栈分支，它们仍引用 Cloud 集成测试。
+O4 证据目前仅位于作者机器的 `ora-space/cluster/.acceptance/407/407-o4-isolation.json`，未提交，尚无已提供的长期访问位置；作者给出的 SHA-256 为 `7cb8f80b44a489dc09a962359b42713b1c068e0aba417449dce8a1298387079e`，此处原样引用，未在本机读取文件或重算摘要。边界：echo agent（受控模型），90s give-up 为测试 override；上游仓库绑定/快照由 `git:preset snapshot --synthetic 3` 预置，该验收工具直接写仓库卷及数据库，只代替上游同步；交付接管与释放使用真实组件。失败终态不覆盖 O2 迟到成功 Revision 登记或后创建 Run receipt-only 的真栈分支，它们仍引用 Cloud 集成测试。
 
 ## Root D5 Takes Over An Original Late Success Without A Residual Ledger
 
@@ -149,6 +151,7 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 | O4 真实精确拒绝后的隔离窗口与显式重连/重启重交 | [O4 真栈复测][o4-stack]：旧 Cloud 拒绝后 60 秒同 incarnation connected、无 ACK/receipt、无第二次 delivery start；换候选 Cloud 并重启 Cloud 引起会话重建，14.6 秒内原失败终态 seq 1 被接受，同一 delete 到 DONE、Run done、Workspace deleted、容器/卷均回收。Controller 未重启即可恢复；版本、作者摘要和边界见文件开头 | Covered |
 | 真实重连后原终态被接管并完成跨仓物理释放 | [O4 真栈复测][o4-stack]直接记录 Cloud 不可用导致会话重建、原失败终态 receipt seq 1、同一 delete TERMINATE→CLEANUP→DONE、Run done、Workspace deleted、0 container/0 volume；不要求 Controller 重启，不据此推断逐事件 ACK/outbox 顺序或 O2 成功分支 | Covered |
 | 同稳定 Node/资源的新 incarnation 真实恢复 | [integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC/new-incarnation`：生产 EndNode/RegisterNode/ReportNodeStatus 与 simulator 证明原事件接管及释放；[固定版本评审][review]明确真实新 incarnation 仍缺，待外部运行 | Partial |
+| 合并后 main 的永久失败与 O4 复跑（待补） | **待作者提供** desktop `2564b42` + Cloud `b777496` 的新运行评论及证据位置；本行只登记该次复跑，既有 PR-head 运行的 Covered/Partial 状态保持不变，不宣称 main 已复跑 | Missing |
 | 后续输入保留授权边界 | 无直接产品测试/运行证据；[integration/late_delivery_release_retry_test.go][cloud-release] `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC` 与[真实栈回执][real-stack]均未直接覆盖 waiting 输入及显式恢复 | Missing |
 
 - 决策依据：迟到决策 D1、D3、不变量 1、2、5；IssueRun 根 D5/D8；串行交接 D1–D3。
@@ -163,7 +166,8 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
 - 禁止结果：把历史 done 改回 releasing、原 failed delete 改成功，或因为 ACK 就声称资源释放。
 - 验证义务与证据：**Covered** — [integration/late_delivery_fact_test.go][cloud-fact]
   `TestLateDeliveryFactRootD5AndD8OverGRPC` 的 done=true 三终态分支：生产 D8 后接管、重放，再运行
-  RedeclareRunWorkspaceDeletesOnce/GiveUpStaleWorkspaceReleasesOnce，完整业务/operation/资源/责任快照不变，
+  RedeclareRunWorkspaceDeletesOnce/GiveUpStaleWorkspaceReleasesOnce，行级快照（run / workspace / operations / runtime / sandbox / activities）及计数级快照
+  （work / executions / effects / residuals / intents）不变，
   无账本/意图；[integration/late_delivery_fact_order_test.go][cloud-order]
   `TestLateDeliveryFactRunCreationOrderOverGRPC/root-D8` 覆盖有/无后创建 Run 的登记资格。
 - 决策依据：迟到决策 D1–D3；残留回收 D6。
@@ -182,14 +186,14 @@ Cloud 测试使用 PostgreSQL 与 HTTP/gRPC，起始 Run/Workspace 为存储夹�
   `TestLateDeliveryFactLaterRunStatesAndMissingOrderOverGRPC` 的后创建者都由 Agent 创建 helper 产生，只能补充共同守卫证据。
 - 决策依据：迟到决策 D2 对同 Issue 任意 Run 的范围。
 
-[cloud-fact]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_test.go
-[cloud-order]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_order_test.go
-[cloud-race]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_race_test.go
-[cloud-fence]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_fence_test.go
-[cloud-deleted]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_fact_deleted_test.go
-[cloud-release]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/late_delivery_release_retry_test.go
-[cloud-delivery]: https://github.com/ora-space/cloud/blob/818226b49b8a97779f41d6191e69f6fc8518b0fb/integration/agent_run_delivery_test.go
-[desktop-refusals]: https://github.com/ora-space/desktop/blob/13de5a3567d0f2166a4ab27d0f5c7fa05626bc9d/apps/ora-controller/tests/workspaces/deliveries/refusals.rs
+[cloud-fact]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_test.go
+[cloud-order]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_order_test.go
+[cloud-race]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_race_test.go
+[cloud-fence]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_fence_test.go
+[cloud-deleted]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_deleted_test.go
+[cloud-release]: https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_release_retry_test.go
+[cloud-delivery]: https://github.com/ora-space/cloud/blob/b777496/integration/agent_run_delivery_test.go
+[desktop-refusals]: https://github.com/ora-space/desktop/blob/2564b42/apps/ora-controller/tests/workspaces/deliveries/refusals.rs
 [real-stack]: https://github.com/ora-space/circus/issues/407#issuecomment-6341728665
 [review]: https://github.com/ora-space/circus/issues/407#issuecomment-6342996936
 
