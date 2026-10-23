@@ -6,12 +6,13 @@ status: implemented
 
 本 ADR 处于 `implemented`：verdict（desktop#718）与运行产物（desktop#719）已合入 main；运行级接线、终态拒绝与读取侧链接安全的
 直接证据由 desktop#728（merge `fa572d6`）/ #731（merge `d0031ce`）补齐；V1.1 prompt 哨兵由 desktop#733（merge `e3e429c`）修正。
-真实 local Nightly QA 已在含 #733 的 main（desktop main `f4a19e40`、agent `local/ora-space.claude`、模型 `deepseek-v4-flash`、
-run `ecfaa452-dce3-4e49-933b-e834d5300d58`）上跑通：`verdict=pass`、产物 `report.md` 85 字节、重启后 verdict 与产物仍可读，据此转 `implemented`。它在根决策
-D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行除执行
-层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，按 Run ID 索引、
-随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在本地轮实现。涉及模块：
-desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
+真实 local Nightly QA 已在含 #733 的 main（desktop `8d8596ec`、agent `local/ora-space.claude`、run `c2d34f73-e238-472e-8fcd-34db7f699770`）
+上以 `nightly-code-quality-review-v1.1.md` 全文 prompt 跑通：模型完成增量审查与门禁并输出 `verdict=warn`（含 `QA_DETAIL`，哨兵与 detail
+均被解析），重启后 verdict 仍可读；产物采集由更早 run `ecfaa452`（`report.md` 85 字节）与 desktop#731 executor 测试覆盖，据此转
+`implemented`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA
+补齐两件能力：①运行除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期
+持久化，按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在本地
+轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
 
 ## 继承与修改
 
@@ -149,4 +150,4 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 2. **#439 实现**：verdict 已合入 main（desktop#718）。
 3. **#440 实现**：产物持久化已合入 main（desktop#719）。
 4. **证据补齐**：运行级接线与终态拒绝（desktop#731）、读取侧链接安全（desktop#728）已合入 main，对应义务标 `Covered`。
-5. **收尾**：真实 local Nightly QA 已在 desktop#733 合入后的 main（`f4a19e40`）上重跑（run `ecfaa452-dce3-4e49-933b-e834d5300d58`，`verdict=pass`、产物 `report.md` 85 字节、重启后可读），据此更新核心用例证据并转 `implemented`。
+5. **收尾**：真实 local Nightly QA 已在 desktop#733 合入后的 main（`8d8596ec`）上以 `nightly-code-quality-review-v1.1.md` 全文 prompt 重跑（run `c2d34f73-e238-472e-8fcd-34db7f699770`，`verdict=warn`、重启后可读），据此更新核心用例证据并转 `implemented`；产物采集由更早 run `ecfaa452` 与 desktop#731 executor 测试覆盖。
