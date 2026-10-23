@@ -1,12 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 交互式节点完成契约：以本轮终态门禁推进，暂停可继续，强制完成可审计
 
-交互式 Agent 节点每轮结束后停在 `Pending`。本决策把「完成」从一个人工动作改为由本轮终态支撑的门禁：只有本轮以 `EndTurn` 结束、且声明的输出契约通过时才允许完成；`Cancelled`、截断、拒答、缺失或未知都视为未完成，必须继续对话或显式强制完成。完成判定在 per-run 锁内以持久状态和 turn key 复核，park 快照进入读取投影；会话消息不被拦截，由后端在每个回合前注入步骤边界。
+交互式 Agent 节点每轮结束后停在 `Pending`。本决策把「完成」从一个人工动作改为由本轮终态支撑的门禁：只有本轮以 `EndTurn` 结束、且声明的输出契约通过时才允许完成；`Cancelled`、截断、拒答、缺失或未知都视为未完成，必须继续对话或显式强制完成。完成判定先由 `prepare` 按持久状态与 turn key 复核（turn key 比对在 per-run 锁外），锁内只复核 run/node 状态与 completion claim；park 快照进入读取投影，会话消息不被拦截，由后端在每个回合前注入步骤边界。
 
-本决策为 `approved`。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged`、`WorkflowNodeOutputChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点只在 `prepare` 做一次性物化。核心用例见[交互式节点完成用例](../../../../test-cases/desktop/core/workflow/interactive-node-completion.md)。
+本决策为 `implemented`。实现随 `ora-space/desktop` PR #729 落地（`Refs ora-space/circus#500`，reviewer 已 Approve、CI 全绿；本 ADR 在该 PR 合并后同步为 `implemented`），验收证据与偏差记录见[核心用例](../../../../test-cases/desktop/core/workflow/interactive-node-completion.md)与下文「实现与 `approved` 方案的差异」。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged`、`WorkflowNodeOutputChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点只在 `prepare` 做一次性物化。
 
 ## 继承与修改
 
@@ -91,7 +91,7 @@ status: approved
 
 读取投影（`GetWorkflowRun` 的节点状态）只解析 `payload.completion`，**不读会话历史、不跑 schema、也不做修复**。原因有两条：`map_node_run` 是纯字段映射，拿不到 `sessions_root` 与历史；run detail 以 1.5 秒轮询，实时读历史或跑校验的成本与缓存都无法接受。不新增 `check` 接口，`completeWorkflowNode` 仍是唯一提交权威，投影只是同一份快照的只读视图。
 
-**修复/物化事务（Pending → Pending）**：升级前的 `Pending` 旧节点或 `provisional` 快照只在 `prepare` 修复一次。`prepare` 读一次历史，能推导出 turn key 就用同一函数重算；随后用 payload-only guarded UPDATE（只允许 `status = 'pending'`）写回 `payload.completion`，不改状态，提交后发布 invalidation。推不出来就保持 `turn_unknown`，由用户决定 `force`。投影对无快照的 `Pending` 节点显示「回合未知」，不显示 ready，也不触发任何历史读取。
+**修复/物化事务（Pending → Pending）**：升级前的 `Pending` 旧节点或 `provisional` 快照只在 `prepare` 修复一次。`prepare` 读一次历史，能推导出 turn key 就用同一函数重算；随后用 payload-only guarded UPDATE（只允许 `status = 'pending'`）写回 `payload.completion`，不改状态；这次修复写回**不**发布 run invalidation。推不出来就保持 `turn_unknown`，由用户决定 `force`。投影对无快照的 `Pending` 节点显示「回合未知」，不显示 ready，也不触发任何历史读取。
 
 这与上面的 park 事务是两种形状：park 是 `Running → Pending` 并写 payload；修复只写 payload、不改状态。两者共用同一个快照计算函数。
 
@@ -116,9 +116,9 @@ cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只�
 3. `outputDigest` 不一致 → `WorkflowNodeOutputChanged { node_id, expected, actual }`，前端刷新运行后再试；
 4. 快照 blockers 非空且没有 `force` → `WorkflowNodeIncomplete { node_id, blockers[] }`。
 
-只有第 4 步的 blockers 可以被 `force` 覆盖。`force` 必须由用户二次确认，并在 payload 记录 `completion_forced` 与 blockers 快照；`completion_forced.reason` 只记 blockers 快照，不混入用户自由文本。
+只有第 4 步的 blockers 可以被 `force` 覆盖。`force` 必须由用户二次确认，并在 payload 记录 `completion_forced { blockers, without_turn, output_source }`；`blockers` 只记 blocker 快照，不混入用户自由文本。
 
-`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对快照的 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）；同一文本与同一纯函数的结果确定，若与 park blockers 不一致，以 prepare 结果为准并刷新快照，再按刷新后的 blockers 返回 `WorkflowNodeIncomplete`（防御性路径）。锁内只比对 turn key、状态与 claim。
+`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。锁内只复核 run `Running`、node `Pending` 与 completion claim，不比对 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照：已有 turn key 且非 provisional 的快照仍是 blockers 的权威，按其返回 `WorkflowNodeIncomplete`；只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
 
 没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：最后一条用户消息之后的最后一条 assistant 消息文本（可能为空）；不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
 
@@ -138,9 +138,9 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 ### D7：UI 只暴露一个推进动作，卡片只展示状态
 
-会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 拒答 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。
+会话消息列表末尾保留一张当前步骤卡片（本决策不做每轮一张）：ready 时显示「完成并进入下一步：<直接后续节点；末节点不显示下一步>」和「继续对话」；未完成时写明原因（已停止 / 被截断 / 拒答 / 结构化输出不符合 / 回合未知），主操作「继续当前步骤」，次操作「仍然完成（采用当前产出）」，后者二次确认。provisional（本轮仍在收尾）时同时提供普通完成、继续当前步骤与「仍然完成」：普通完成由后端按同一 `userSeq` 修复后再判定，修复不了时用户仍有强制路径。
 
-右下角按钮与卡片共用同一套 `ready` / `blockers`，是唯一推进入口；卡片不提供第二个主操作。「继续当前步骤」是用户明确点击的动作，直接发送一条带边界与未完成原因的作用域指令，不需要额外确认；只有强制完成需要确认并留痕。徽标区分「等待参与」和「已暂停（上一轮未正常结束）」，原因覆盖停止、截断、中断/超时；act card 不再直接渲染原始 `cancelled`。运行列表不派生 paused，只保留 Theater 节点徽标。
+右下角按钮与卡片共用同一套 `ready` / `blockers`，两者都是显式推进入口，卡片不提供第二个主操作；挂起状态的推进只由这两个显式动作触发。「继续当前步骤」是用户明确点击的动作，直接发送一条带边界与未完成原因的作用域指令，不需要额外确认；只有强制完成需要确认并留痕。徽标区分「等待参与」和「已暂停（上一轮未正常结束）」，原因覆盖停止、截断、中断/超时；act card 与步骤卡片对 provisional 都显示「等待参与」，不再直接渲染原始 `cancelled`。运行列表不派生 paused，只保留 Theater 节点徽标。
 
 ### D8：重启由 runtime 处理 provider 恢复，工作流层不预设降级
 
@@ -205,6 +205,17 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 3. **验证与文档**：单测矩阵、重启 restore/rebuild 集成测试、e2e 两条复现路径、前端测试；同步 `docs/workflows/workflow-runs.md` 与 `.zh.md` 的 Interactive nodes / Recovery after restart。
 4. **后续能力**：`completion.files` / `criteria`、运行时验收清单、LLM judge 与 agent 自报完成另开 issue；真正无法继续时的「重新运行本步骤」也另开 issue，不阻塞本决策。
 
+## 实现与 `approved` 方案的差异
+
+最终实现与批准方案有四处偏差，正文已按实际行为更正：
+
+1. **`completion_forced` 的审计内容**：批准稿写 `reason`，实现记录 `{ blockers, without_turn, output_source }`，`blockers` 是快照里的 blocker 列表。
+2. **修复写回不发 invalidation**：`prepare` 的 provisional 修复与旧节点物化只做 payload-only 更新，不发布 run invalidation；只有 park 提交发布一次。
+3. **turn key 比对在锁外**：turn key 与 `outputDigest` 在 `prepare` 比对；锁内只复核 run/node 状态与 completion claim。
+4. **blockers 不一致不刷新快照**：`prepare` 复算与已存快照不一致时，已有 turn key 且非 provisional 的快照仍是权威；只有缺 turn key 的 provisional 或旧节点在同一 `userSeq` 下写回修复。
+
+这些偏差不改变对外承诺，只是删去批准稿中对实现方式的错误描述。
+
 ## 风险、未解决问题与验收
 
 - **每次交互回合读一次整文件历史**：turn key 依赖 `HistoryLine.seq`，事件流不提供，park 必须读历史；这是本决策接受的成本，长会话是 O(会话) 的读取。读取投影不读历史，修复只在 `prepare` 做一次。
@@ -212,7 +223,7 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 - **provisional 快照修复**：流 drop 且等待超时会先写 `turn_unknown`；只有 `prepare` 在同一个 `userSeq` 之后看到 `TurnEnded` 时替换。修复窗口内界面显示未完成，用户仍可 `force`。
 - **旧节点只在完成时物化**：升级前的 `Pending` 节点在 `prepare` 前显示「回合未知」；用户点击完成后由 `prepare` 一次性回填，不在 1.5 秒轮询里读历史。
 - **`turn_unknown` 的 force**：没有 turn key/digest，只能显式 force；文本取最后一条用户消息之后的最后一条 assistant 消息，可能为空，不写 `structured_output`，审计 `without_turn`。
-- **交互式 Refusal/未知停靠**：修改 `pauses_interactive_node` 的集合，使交互式节点在拒答/未知时也停在 `Pending`；非交互节点保持现有失败语义。这是有意的行为变化，需在实现运行里验证。
+- **交互式 Refusal/未知停靠**：修改 `pauses_interactive_node` 的集合，使交互式节点在拒答/未知时也停在 `Pending`；非交互节点保持现有失败语义。这是有意的行为变化，首轮 Refusal/未知停靠的直接证据在核心用例中仍为 `Partial`。
 - **`structuredOutput` 不落 payload**：避免体积和暴露面；`prepare` 用 digest 校验过的文本重跑 schema（纯 CPU）。
 - **per-run 门不可重入**：park 函数自己获取门；executor 与 cleanup 调用点都不得持有门。
 - **UI 卡片挂载**：`ChatView` 目前只有 `contextBar` 和 `composerActions`，需要新增可选 trailing slot；这是共享组件改动，实现时要保证普通聊天不受影响。
