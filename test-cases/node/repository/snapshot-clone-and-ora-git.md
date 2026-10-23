@@ -12,7 +12,7 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 的义务已被本文取代并从那几份用例中移除，目录独占、受管执行、中断判定与恢复的义务仍按那几份用例维护。
 
 本次 D5 身份检查的证据固定为 [desktop#732](https://github.com/ora-space/desktop/pull/732) 的
-[`ae02179`](https://github.com/ora-space/desktop/tree/ae02179902f4c5b4ac385b3568ba500799545116)，尚未以产品合并提交替换。
+合并提交 [`bea390e`](https://github.com/ora-space/desktop/tree/bea390eb2d7022566529548ebaeadc2d6f3ad457)（PR head `ae02179`；两者在 `apps/ora-node`、`apps/ora-git` 下没有差异，作者与 reviewer 的测试均在 `ae02179` 上运行）。
 作者的测试结果见产品 PR；reviewer HappyAuratus 的独立 WSL 验证见
 [#508 批准评论](https://github.com/ora-space/circus/issues/508#issuecomment-6354898659)。
 该 head 的[三平台 crates CI 与汇总门禁](https://github.com/ora-space/desktop/actions/runs/39781839068)通过，但普通 CI 不执行需 root
@@ -132,19 +132,19 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 - 禁止结果：回退到 Node UID；以 `unavailable` / 10 表示身份配置禁用；把服务拒绝误称为共享 UID 部署已经安全。
 - 决策依据：D5；共享 UID 的私钥风险仍见 ADR 的“本决策未解决的问题”。
 
-以下函数路径均固定在上文 `ae02179`。`Covered` 仅对应本行的直接断言，不将单测扩大为完整生产配置或 cluster 证据。
+以下函数路径均固定在上文 `bea390e`。`Covered` 仅对应本行的直接断言，不将单测扩大为完整生产配置或 cluster 证据。
 
 | 验证义务 | 证据 | 状态 |
 | --- | --- | --- |
 | 允许缺失 `workload_uid` 的本地模式通过其余启动校验后，不构建 ora-git 服务、不创建 socket，普通 Agent 会话继续且 push 报 `no_session`，远端分支未创建 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_is_disabled_without_workload_uid`；`desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_reports_no_session_with_shared_uid` 直接断言 marker、日志、无 socket 与无远端分支；均在普通 CI 运行 | Covered |
 | 相同 UID 的 ora-git 身份判定拒绝启用，给出 `SharesNodeUid` 原因 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_identity_decision_is_disabled_for_the_node_uid` 直接注入 UID 比较判定；在普通 CI 运行，不经过生产 `ora_git()` | Covered |
-| 显式相同 UID 在创建会话前以配置错误拒绝启动 | `ae02179` 的 `desktop/apps/ora-node/src/lib.rs:189-190` 将 `ManagedGitRunner::new` 的失败映射为配置错误，`desktop/apps/ora-node/src/managed.rs:146-152` 的 root / 非零 UID 校验使相同 UID 必定被拒；这是代码依据，上行单测只直接验证组件判定，没有该完整启动拒绝路径的直接测试 | Missing |
+| 显式相同 UID 在创建会话前以配置错误拒绝启动 | `bea390e` 的 `desktop/apps/ora-node/src/lib.rs:189-190` 将 `ManagedGitRunner::new` 的失败映射为配置错误，`desktop/apps/ora-node/src/managed.rs:146-152` 的 root / 非零 UID 校验使相同 UID 必定被拒；这是代码依据，上行单测只直接验证组件判定，没有该完整启动拒绝路径的直接测试 | Missing |
 | 组件判定的两种拒绝均输出完整 reason 字段；不表示显式相同 UID 的生产启动会到达该日志 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_startup_logs_the_disabled_reason` 比较完整 reason 列表；相同 UID 通过直接判定注入，缺失 UID 经生产组合；在普通 CI 运行 | Covered |
 | 直接调用禁用组件时只向环境导出 `ORA_GIT_DISABLED_REASON`，无 socket；不表示显式相同 UID 的生产 Node 能创建会话 | `desktop/apps/ora-node/src/ora_git/tests.rs::disabled_service_exports_reason_without_a_socket` 从空环境映射开始，比较 socket 与完整映射，覆盖缺失和相同 UID；在普通 CI 运行 | Covered |
 | CLI 返回 3、stdout 为空，stderr 为 `ora-git: no_session: <原因>`，即使继承了 socket 变量也优先说明禁用 | `desktop/apps/ora-git/tests/disabled.rs::disabled_reason_is_an_explicit_cli_error` 对两种配置原因比较完整输出与退出码；在普通 CI 运行 | Covered |
 | 独立 UID 原样传给服务构造；Enabled open 仅导出 `ORA_GIT_SOCKET = socket.path()` 且 socket 存在 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_keeps_separate_workload_uid`；`desktop/apps/ora-node/src/ora_git/tests.rs::enabled_service_exports_only_the_live_socket` 经 Fixture 以 euid 为 peer UID 直接测试 Enabled open 的整个环境映射与文件存在性；均在普通 CI 运行，后者不测试生产启用条件 | Covered |
 | 独立 UID 的真实 Agent CLI → socket → Git Server 推送，远端内容与作者正确 | `desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_markers_push_through_the_session_socket` 保留原名，`#[ignore = "requires root …"]`；作者在本地 WSL root 运行通过，HappyAuratus 在上文 #508 评论确认独立 root 验证通过；不在 CI 运行 | Covered |
-| `ae02179` 的完整 cluster Compose workspace-git 验收 | `cluster/scripts/workspace-git-acceptance.py` 本次作者与 reviewer 均未运行；需完整 Cloud / Controller / Sandbox Server / Git Server / PostgreSQL 栈，不能用本地 socket 推送替代 | Missing |
+| desktop `bea390e` 的完整 cluster Compose workspace-git 验收 | `cluster/scripts/workspace-git-acceptance.py` 本次作者与 reviewer 均未运行，按 [owner 合并说明](https://github.com/ora-space/circus/issues/508#issuecomment-6355148336)如实登记为未覆盖；需完整 Cloud / Controller / Sandbox Server / Git Server / PostgreSQL 栈，不能用本地 socket 推送替代 | Missing |
 
 ## ora-git Requests Belong To The Session That Owns The Socket
 

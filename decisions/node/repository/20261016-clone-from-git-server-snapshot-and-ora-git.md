@@ -376,14 +376,14 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 ## 与批准版本的偏离
 
 对照 desktop `ff9de8f`、cloud `a9c5f20` 与 cluster `b0186a6`，并补入 [desktop#732](https://github.com/ora-space/desktop/pull/732)
-（`ae02179`）的 Node 强制 UID 检查，最终实现与本文批准时相比有以下偏离，正文已按最终实现表述：
+（合并提交 `bea390e`）的 Node 强制 UID 检查，最终实现与本文批准时相比有以下偏离，正文已按最终实现表述：
 
 | 批准时的决策 | 最终实现 | 原因 |
 | --- | --- | --- |
 | socket 固定在 `/run/ora-git/`，每个 Agent 会话都有 socket | 目录由 `agent.ora_git_directory` 配置（部署设为 `/run/ora-git`），且只在同时配置 `clone` 与 `git_access` 时启用；未启用时会话没有 socket，`ora-git` 为 `no_session`；socket 无法创建时会话以 `agent_failed{ora_git_unavailable}` 结束 | 目录是部署事实，需与 Node 的其他目录分开校验；没有 Git Server 访问的 Node 没有可代理的远端 |
 | Node 启动时清空 `/run/ora-git/` | 只删除按 Node 命名规则留下的 socket，目录其余内容不动；目录在启动时恢复为 `0711` | 目录可配置后，Node 只删除能确认是自己创建的文件 |
 | socket 随机名含 128 位随机数 | 随机名是一个 v4 UUID（122 位随机数） | 随机名只让别的进程找不到 socket，不承担授权（D5）；授权只由对端 UID 检查决定 |
-| 对端 UID 必须是工作负载 UID；独立 UID 曾仅由部署保证 | [desktop#732](https://github.com/ora-space/desktop/pull/732)（`ae02179`）的 ora-git 组件对缺失或相同 UID 均拒绝启用；允许缺失 UID 的本地模式通过其余启动约束后，日志说明原因、普通会话继续、CLI 得到 `no_session` / 3；显式相同 UID 被既有 `ManagedGitRunner::new` 提前以配置错误拒绝，Node 不启动；网络 mTLS 模式也拒绝缺失 UID | 补齐 circus#410 的组件检查，不再静默回退到 Node UID；不放宽既有启动校验，独立 UID 通过校验后路径保持原样 |
+| 对端 UID 必须是工作负载 UID；独立 UID 曾仅由部署保证 | [desktop#732](https://github.com/ora-space/desktop/pull/732)（合并提交 `bea390e`）的 ora-git 组件对缺失或相同 UID 均拒绝启用；允许缺失 UID 的本地模式通过其余启动约束后，日志说明原因、普通会话继续、CLI 得到 `no_session` / 3；显式相同 UID 被既有 `ManagedGitRunner::new` 提前以配置错误拒绝，Node 不启动；网络 mTLS 模式也拒绝缺失 UID | 补齐 circus#410 的组件检查，不再静默回退到 Node UID；不放宽既有启动校验，独立 UID 通过校验后路径保持原样 |
 | 会话环境仅约定 `ORA_GIT_SOCKET`，未约定禁用原因变量 | 新增 `ORA_GIT_DISABLED_REASON`，禁用会话导出原因而非 socket；CLI 优先读取原因并返回 `no_session` | 保留普通会话的可用性，同时让 Agent 直接获知服务未启用的原因 |
 | 错误 hint 只含 ref 名与提交 ID | 身份配置导致禁用时，`no_session` hint 包含 `process.workload_uid` 配置字段与原因；其他提示约束不变 | circus#410 的 owner 要求禁用状态可诊断，不能只报不透明的 socket 失败；不包含 Git 原始输出或私钥 |
 | 会话“没有进入结束、没有被取消、交付尚未开始”时请求可执行；会话离开运行时即关闭并删除 socket | 已接受 `EndSession` 也视为不在运行；每次重试前复查；关闭时先拒绝新请求、等待在途请求完成，再删除 socket | 保证会话记为结束、交付开始之后，`ora-git` 不再写 checkout、Git Server 或账本（D5 第 5 条） |
