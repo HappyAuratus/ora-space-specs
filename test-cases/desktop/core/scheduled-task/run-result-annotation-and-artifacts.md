@@ -80,5 +80,5 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 产物/verdict 存储不调用 Cloud 上传/同步；重启后历史与产物可读 | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop main `bea390eb`、run `72d91c84`，`verdict=pass`、产物 `report.md`，重启后可读；注意该 commit 早于 desktop#733 合入，需在 #733 合入后的 main 重跑采信）；Cloud 边界无直接测试、由 D5 的架构性说明覆盖 | `Partial` |
+| 产物/verdict 存储不调用 Cloud 上传/同步；重启后历史与产物可读 | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop main `f4a19e40`、agent `local/ora-space.claude`、模型 `deepseek-v4-flash`、run `ecfaa452`，`verdict=pass`、产物 `report.md` 85 字节、重启后 verdict 与产物仍可读）；Cloud 边界无直接测试、由 D5 的架构性说明覆盖 | `Covered` |
 | 本地产物随运行历史驻留本机，与 D1 数据驻留一致 | 尚无直接证据 | `Missing` |
