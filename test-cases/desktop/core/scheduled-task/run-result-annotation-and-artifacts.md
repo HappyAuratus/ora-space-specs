@@ -57,7 +57,7 @@
 | 产物目录下未跟踪、已暂存、已修改或已提交的路径都不计入改动判定；目录外的改动仍使 worktree 保留 | `ora_backend::scheduled_task::worktree::tests::untracked_artifacts_do_not_mark_a_worktree_modified`、`committed_artifacts_do_not_mark_a_worktree_modified`、`a_change_outside_the_artifact_directory_still_marks_the_worktree_modified` | `Covered` |
 | 登记后 worktree 被回收，产物仍可从运行历史访问；copy 不改变保留判定 | `ora_application::scheduled_task::artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；worktree 判定由上面的 artifact-only 测试覆盖 | `Covered` |
 | 采集候选文件的超限 / 路径穿越 / 符号链接越界 / Windows ADS、大小写、NFC、硬链接越界记入被拒清单且可见 | `artifact_store::tests::rejects_files_over_the_single_artifact_bound`、`reports_windows_alternate_data_stream_names_as_unsafe`、`rejects_symlinks_and_case_only_duplicates`、`rejects_a_file_that_shares_its_inode_with_an_outside_name`、`artifact_store::collection::tests::accepts_the_sixty_fourth_artifact_and_rejects_the_sixty_fifth`、`accepts_the_exact_total_bound_and_rejects_one_byte_more` | `Covered` |
-| 从产物存储列出或读取时，存储根及祖先链接不会把请求带到根外 | `ora_application::scheduled_task::artifact_store::tests::read_artifact_refuses_a_linked_storage_root`（desktop#728 `0ff3baf2`，已合入） | `Covered` |
+| 从产物存储列出或读取时，存储根及祖先链接不会把请求带到根外 | `ora_application::scheduled_task::artifact_store::tests::read_artifact_refuses_a_linked_storage_root`（desktop#728 merge `fa572d6`，已合入） | `Covered` |
 | `delete_run` 与孤目录 sweep 在枚举或删除前校验存储根及祖先链接，不得沿 Windows junction / 符号链接删除根外文件 | `artifact_store::tests::delete_run_refuses_a_linked_storage_root`、`orphan_sweep_refuses_a_linked_storage_root` | `Covered` |
 | 落盘顺序（临时文件 + 大小校验 + 原子 rename + 清单后置）崩溃对账幂等（含 rename 后写清单前崩溃的取舍） | `artifact_store::tests::reconcile_removes_unregistered_files_and_reports_missing_or_resized_rows`、`reconcile_removes_a_file_with_no_registered_row`、`artifact_handlers::tests::sweep_deletes_rows_whose_file_vanished_and_files_without_rows` | `Covered` |
 | 每任务 ≤10 个运行的产物按最旧运行淘汰，独立于 worktree 全局 10；链接例外优先于 10 上限 | `ora_application::scheduled_task::artifact_handlers::tests::sweep_keeps_the_newest_ten_unlinked_runs_and_exempts_linked_runs` | `Covered` |
@@ -80,5 +80,5 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 产物/verdict 存储不调用 Cloud 上传/同步；重启后历史与产物可读 | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop main `bea390eb`、run `72d91c84`，重启后 `verdict=pass` 与产物 `report.md` 仍可读）；Cloud 边界无直接测试、由 D5 的架构性说明覆盖 | `Partial` |
+| 产物/verdict 存储不调用 Cloud 上传/同步；重启后历史与产物可读 | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop main `bea390eb`、run `72d91c84`，`verdict=pass`、产物 `report.md`，重启后可读；注意该 commit 早于 desktop#733 合入，需在 #733 合入后的 main 重跑采信）；Cloud 边界无直接测试、由 D5 的架构性说明覆盖 | `Partial` |
 | 本地产物随运行历史驻留本机，与 D1 数据驻留一致 | 尚无直接证据 | `Missing` |

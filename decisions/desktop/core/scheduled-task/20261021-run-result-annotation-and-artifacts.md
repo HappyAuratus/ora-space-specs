@@ -1,13 +1,14 @@
 ---
-status: implemented
+status: approved
 ---
 
 # Scheduled Run 携带独立业务结论，运行产物脱离 worktree 生命周期持久化
 
-本 ADR 处于 `implemented`：verdict（desktop#718）与运行产物（desktop#719）已合入 main；运行级接线、终态拒绝与读取侧链接安全的
-直接证据由 desktop#728（`0ff3baf2`）/ #731（`0ae6849a`）补齐。按 circus#502 的 owner 结论完成的真实 local Nightly QA 已通过：
-desktop main `bea390eb`、agent `local/ora-space.claude`、run `72d91c84`，哨兵解析为 `verdict=pass`、产物 `report.md`（46 字节）
-采集成功、重启 Desktop 后 verdict 与产物仍可读。它在根决策 D7 与紧邻的后续 ADR
+本 ADR 处于 `approved`：verdict（desktop#718）与运行产物（desktop#719）已合入 main；运行级接线、终态拒绝与读取侧链接安全的
+直接证据由 desktop#728（merge `fa572d6`）/ #731（merge `d0031ce`）补齐。真实 local Nightly QA 已跑通一次（desktop main
+`bea390eb`、agent `local/ora-space.claude`、run `72d91c84`，`verdict=pass`、产物 `report.md` 46 字节、重启后可读），但该次验收
+跑在 desktop#733 合入之前、其 main 的 V1.1 prompt 哨兵仍为旧写法；依 reviewer 意见，须在 #733 合入后的 main 上重跑一次并以新
+commit / run ID 更新本文，届时才转 `implemented`。它在根决策 D7 与紧邻的后续 ADR
 `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行除执行层状态外还能携带
 机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，按 Run ID 索引、随运行历史访问。
 它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在本地轮实现。涉及模块：desktop 的
@@ -149,4 +150,4 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 2. **#439 实现**：verdict 已合入 main（desktop#718）。
 3. **#440 实现**：产物持久化已合入 main（desktop#719）。
 4. **证据补齐**：运行级接线与终态拒绝（desktop#731）、读取侧链接安全（desktop#728）已合入 main，对应义务标 `Covered`。
-5. **收尾**：真实 local Nightly QA 已完成并写入核心用例证据（desktop main `bea390eb`、agent `local/ora-space.claude`、run `72d91c84`、`verdict=pass`、产物 `report.md` 46 字节、重启后可读），本 ADR 转 `implemented`。
+5. **收尾**：真实 local Nightly QA 需在 desktop#733 合入后的 main 上重跑（首次 `bea390eb` 的 V1.1 prompt 哨兵仍为旧写法、不采信），以新 commit / run ID 更新核心用例证据后，本 ADR 才转 `implemented`。
