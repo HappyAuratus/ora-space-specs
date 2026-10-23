@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 人工节点以运行级结构化输入继续：有界等待、追加式输入行，与 agent 会话解耦
@@ -11,12 +11,14 @@ status: proposed
 等待必须有界（新配置 `workflow.hitl_wait_timeout`，默认 24 小时），取消或超时都进入终态，不允许运行
 永久停在 `awaiting_input`。`human` 节点不创建 agent 会话，也不经过 Controller，因此单回合会话不变量
 不变；首期 `human` 节点也不重试，同一（运行，节点）至多执行一次。interactive Agent 不在本期范围，
-等 specs#177 与 #351 收敛后另定。
+等 desktop 的[交互式节点完成契约](../../desktop/core/workflow/20261021-interactive-node-completion.md)
+与 #351 收敛后另定。
 
-**状态与影响面**：本文当前为 `proposed`。owner 已在
-[ora-space/circus#449](https://github.com/ora-space/circus/issues/449) 拍板选 B：先定契约 ADR，暂不实现；
-九项默认值全部按建议。本文评审通过前不维护核心用例；变为 `approved` 后，在同一运行内按最终决策补
-`test-cases/cloud/workflow/`。**本期产品行为不变**：发布门禁继续拒绝 `human` 节点和
+**状态与影响面**：本文为 `approved`，2026-10-22 经 owner 评审批准（九项默认值按建议、等待中控制统一为
+发起人或当前租户管理员均经 owner 确认），核心用例见
+[人工节点的运行级输入与有界等待](../../../test-cases/cloud/workflow/hitl-run-input.md)。owner 已在
+[ora-space/circus#449](https://github.com/ora-space/circus/issues/449) 拍板选 B：先定契约 ADR，暂不实现。
+**本期产品行为不变**：发布门禁继续拒绝 `human` 节点和
 `interactive: true`，`workflow_runs.status` 的 CHECK 里保留 `awaiting_input` 作为没有写入者的保留值；
 公开 OpenAPI 与前端按 #449 的结论移除该状态（运行 ora-space/circus#450）；**#450 合并后**，再由实现
 本文的同一变更把它加回公开枚举。**兼容边界**：新增输入接口、输入行、运行上的等待列与运行详情的两个
@@ -279,7 +281,8 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
 改变单回合会话不变量，也不需要 Controller 契约。实现本文时，发布门禁只放行 `human`，`interactive: true`
 的 agent 节点继续拒绝。
 
-**interactive Agent 不在本期**：它需要同一会话的后续人类回合、desktop 的完成契约（specs#177）与
+**interactive Agent 不在本期**：它需要同一会话的后续人类回合、desktop 的
+[交互式节点完成契约](../../desktop/core/workflow/20261021-interactive-node-completion.md)与
 #351/#426/#427 的收敛；这些依赖未定时实现会返工。interactive Agent 将来若需要改变「单回合、Cloud
 主动结束」的生命周期，必须另开决策，本文不预设其形状。
 
@@ -287,8 +290,10 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
 
 **规则**：WorkflowRun 关联了 workflow IssueRun 时，进入等待的同一次事务里追加一条 Issue 系统活动，
 动作名 `run.awaiting_input`，正文包含节点 id、节点显示名与等待截止时间（`awaiting_input_at` 加配置
-窗口）。输入被消费、运行回到 `running` 时，不新开线程回合、不写 `thread_commands`、不改变 IssueRun 的
-`status`；IssueRun 继续按既有投影保持 `running`。直接运行（没有 IssueRun）只在运行页展示等待与截止时间
+窗口）。Issue 活动里的截止时间是**进入等待时按当时配置算出的快照**，写入后不再随配置变化；部署调整
+`workflow.hitl_wait_timeout` 后，以运行详情的 `awaitingInput.deadline` 为准（D1 按当前配置实时计算），
+Issue 活动只作为当时的通知记录。输入被消费、运行回到 `running` 时，不新开线程回合、不写
+`thread_commands`、不改变 IssueRun 的 `status`；IssueRun 继续按既有投影保持 `running`。直接运行（没有 IssueRun）只在运行页展示等待与截止时间
 （D1 的 `awaitingInput.startedAt` / `awaitingInput.deadline`）。
 
 **为什么发活动**：Issue 是参与者实际查看的地方；等待输入时没有活动，参与者只能靠轮询运行页才知道有人
@@ -344,7 +349,7 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
 | 超时后跳过该节点继续执行 | 把「没有人处理」伪装成「已批准」，下游分支可能基于不存在的输入执行；失败是可解释的终态，跳过不是 |
 | 直接覆盖 `node_states` 保存最新输入 | 丢失 actor、时刻与幂等证据，无法审计也无法判断重复提交；恢复重算时同一事实有两个来源 |
 | 只收自由文本，不声明 schema | 无法在写入时校验节点承诺，错误推迟到下游；调用方也无法从契约知道需要什么字段 |
-| 首期同时实现 `human` 与 interactive Agent | interactive Agent 依赖 specs#177、#351、#426、#427；在完成契约与缺陷未收敛前实现，必然返工，且会改动单回合会话不变量 |
+| 首期同时实现 `human` 与 interactive Agent | interactive Agent 依赖 desktop 的[交互式节点完成契约](../../desktop/core/workflow/20261021-interactive-node-completion.md)与 #351、#426、#427；在完成契约与缺陷未收敛前实现，必然返工，且会改动单回合会话不变量 |
 | 让 `human` 节点创建一条 agent 会话等待输入 | `human` 节点没有 agent 任务、模型调用与 Workspace 产出，创建会话只会引入无意义的执行与收尾路径，并把 HITL 与 agent 会话生命周期绑死 |
 | 等待中的运行保持 `running`，只用节点状态表达等待（沿用重试决策的 `retrying` 模式） | 运行级等待没有可扫描的入口：输入、取消、超时都要先找到运行；只用节点状态会让列表、筛选与运行页继续显示「执行中」，也无法在运行行上表达等待截止时间。`awaiting_input` 是根决策已保留的运行状态，启用它比新增节点状态更小的公开面 |
 | 为等待新增 `waiting` 节点状态 | 节点状态是公开契约（OpenAPI `nodeStates`），新增值要同步前端生成物与所有读取方；等待的权威事实在运行上，节点保持 `running` 已足以表示「已开始、未结束」。前提是 D2 的等待分支与 kind 限定成立 |
@@ -360,8 +365,9 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
 - **无冻结绑定运行的运行期取消谓词**：本文只把等待中的控制收窄为发起人或当前租户管理员；`pending` /
   `running` 的取消仍按[个人模型发起者决策](../thread/20261010-personal-model-initiator-controls-input.md)
   的成员回退。是否把所有无绑定工作流运行的控制统一到发起人或管理员，留待单独决策。
-- **interactive Agent 的后续回合与完成契约**：依赖 specs#177、#351、#426、#427，另开决策；本文不定义
-  同一会话多回合的传输与结束语义。
+- **interactive Agent 的后续回合与完成契约**：依赖 desktop 的
+  [交互式节点完成契约](../../desktop/core/workflow/20261021-interactive-node-completion.md)与
+  #351、#426、#427，另开决策；本文不定义同一会话多回合的传输与结束语义。
 - **逐运行覆盖等待上限**：本期只有部署级配置；如果将来需要按工作流或节点覆盖，另开决策，不在本文预设
   字段。
 - **等待期间的 Workspace 复用策略**：本期保持运行 Workspace 存活到终态（D3 的上限约束保留时长）；
@@ -373,10 +379,10 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
 
 ## 落地顺序
 
-- **阶段 0（本文）**：以 `proposed` 提交 specs PR，经 reviewer 评审、owner 批准后改为 `approved`，并在同一
-  运行内补 `test-cases/cloud/workflow/hitl-run-input.md`，覆盖等待进入、输入校验、幂等、无绑定运行的
-  权限、409/410 顺序、取消竞争、超时、运行详情读取、Issue 活动与恢复重算。完成条件：ADR 与核心用例
-  合并；产品行为不变。
+- **阶段 0（本文）**：本 ADR 以 `approved` 合并，同批核心用例见
+  [人工节点的运行级输入与有界等待](../../../test-cases/cloud/workflow/hitl-run-input.md)，覆盖等待进入、输入校验、
+  幂等、无绑定运行的权限、409/410 顺序、取消竞争、超时、运行详情读取、Issue 活动与恢复重算；义务当前
+  全部为 `Missing`。完成条件：ADR 与核心用例合并；产品行为不变。
 - **阶段 1（实现，后续运行）**：新增迁移（`awaiting_input_at`、`awaiting_input_node_id`、
   `workflow_run_inputs`）、输入接口（含路由 body 上限、窗口与取消的接受判定）、调度器的独立等待扫描
   与等待分支（先于会话证据，会话读取限定 `agent` 节点）、消费/取消/超时的结算、取消接口对
@@ -384,7 +390,8 @@ D4 不冲突：该决策让 agent 节点按 `workflow_node_attempt` 区分多次
   运行页表单与文案、发布门禁放行带合法 `humanConfig.inputSchema` 的 `human`（仍拒绝
   `interactive: true`）、运行准入对历史 `human` 快照的 schema 校验。完成条件：核心用例在 cloud 侧有
   直接测试证据；ADR 改为 `implemented` 并同步实际实现的偏离。
-- **阶段 2（interactive Agent，后续决策）**：在 specs#177 与 #351 收敛后，定义同一会话的后续人类回合、
-  人工完成与完成声明；届时才需要修改单回合会话不变量。
+- **阶段 2（interactive Agent，后续决策）**：在 desktop 的
+  [交互式节点完成契约](../../desktop/core/workflow/20261021-interactive-node-completion.md)与 #351 收敛后，
+  定义同一会话的后续人类回合、人工完成与完成声明；届时才需要修改单回合会话不变量。
 - **保持不变**：首期节点白名单（除新增 `human`）、agent 会话的单回合生命周期、Controller 线上契约、
   取消与释放的既有结算、IssueRun 与 WorkflowRun 的投影关系。
