@@ -2,7 +2,7 @@
 
 依据[已批准的实时预览决策](../../../decisions/node/protocol/20261018-live-thread-previews.md)。
 可靠记录、命令与终态继续受[既有 Agent 协议用例](agent-run-messages.md)约束。固定 main 上的真实 OpenCode
-已产生 Node → Controller → Cloud → 浏览器预览；含 Claude 候选的本地四运行只验证了至少一处实时正文与工具过程，正式包、慢消费者与故障组合仍需直接证据。
+已产生 Node → Controller → Cloud → 浏览器预览；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)使用 Claude v0.4.0 + OpenCode 0.6.11（cluster `6eecd5c1`、cloud `c5bcd147`、desktop `d271fb3b`），证明至少一处正文严格前缀与工具终态配对。该全局断言没有独立归因给 Claude，慢消费者与故障组合也仍缺。
 
 ## Stable Identity And Final Records Defeat Reordered Previews
 
@@ -89,7 +89,7 @@ D2，不变量 1、2、4。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测执行中离线重连后消息/回复不丢。真实成员撤权与多服务组合仍缺 | Partial |
-| 实际供应商流式与工具过程 | [#312 最新 main 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接中取得 103 次可用快照，严格正文前缀、5 个进行中工具与终态配对均通过；[#312 A 标准四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6337641836)进一步验证至少一处正文前缀和工具状态配对，但未把这项全局断言单独归因于 Claude。正式 release 产物的第二 Agent 预览归因及慢消费者故障仍缺 | Partial |
+| 实际供应商流式与工具过程 | [#312 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接中取得 103 次可用快照，严格正文前缀、5 个进行中工具与终态配对均通过；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)进一步验证至少一处正文前缀和工具状态配对，但未把这项全局断言单独归因于 Claude。正式 Claude 的独立预览归因及慢消费者故障仍缺 | Partial |
 
 ### 决策依据
 
