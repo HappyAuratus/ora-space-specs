@@ -93,7 +93,7 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 - 触发：回收意图经当前 Controller lease 逐目标执行 `sandbox_terminate`；旧 ensure 迟到，或 Controller 许可失效 / Substrate 不可达；终止双确认后读回目标状态。
 - 必须成立：Controller 只尝试有界的既有 Shutdown 控制关闭，不新增 EndSession 或 Cloud 直连 Substrate 路径，不以控制关闭响应替代双确认；仍以当前 lease epoch 和许可执行，许可失效不发起新动作，Cloud 只规划既有 `sandbox_terminate` / `workspace_data_delete` effects。生产 Substrate 适配器保持先墓碑后破坏、幂等、目标不存在也双确认的语义；目标包括从未执行过的 ensure 计划，逐 ID 取得 `terminated` 与 `lateEnsureFenced`。Cloud 只有在与创建计划 / 派发互斥的事务中证明从未形成计划、许可或在途责任并封闭后续入口时，才可记录“无目标待终止”。受控回收关闭 admission、提升 control epoch 后，旧 ensure 不得让已回收 sandbox 复活；墓碑对当前 epoch 的有效 ensure 保留纵深防御。
 - 禁止结果：以 `404`、Node 不可达、许可过期或一条拒绝响应替代完整终止证据；遗漏未到达的计划 ID；终止确认前删卷；删除原 effect、假报 sandbox 缺失或换 generation 挂载同一可写卷；已回收 sandbox 被迟到 ensure 重建。
-- 验证义务与证据：**Partial** — 按 [#573 owner 决定](https://github.com/ora-space/circus/issues/573#issuecomment-6365603852)，义务保护“迟到 ensure 不能让已回收 sandbox 复活”；下面三部分均有直接证据才为 `Covered`，不再要求生产路径必须出现墓碑 503。
+- 验证义务与证据：**Covered** — 按 [#573 owner 决定](https://github.com/ora-space/circus/issues/573#issuecomment-6365603852)，义务保护“迟到 ensure 不能让已回收 sandbox 复活”；下面三部分均有直接证据（第 2 部分的新增测试在 cluster#45，本用例须在它合并后合并），不再要求生产路径必须出现墓碑 503。
 
 **第 1 部分：固定候选的结构性论证。** Cloud `d73eca76`、desktop `e177e021`、cluster `ae1dd951`：
 
@@ -121,7 +121,7 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 - `physicalReadbacks` 两次读取为 `15:13:25.279250Z—15:13:26.139830Z` 与 `15:17:28.039751Z—15:17:28.975221Z`，均为 container absent、Sandbox terminated、tombstone=true；目标双确认 `confirmed_at=15:13:24.958966Z`，根意图 `completed_at=15:13:24.965278Z`、`succeeded / terminated_data_retained`。`observations` 的 `postWindowStart` / `postWindowEnd` DB 时间为 `15:13:27.066977Z` / `15:17:29.664082Z`，相隔 242.597105 秒；结束时 control epoch 2、admission 关闭、ensure effect 无新增。lifecycle proxy 仅有回收前一次 ensure PUT 成功，终止响应之后没有新事件；完整 permit 通道及末尾读回支持这段有限窗口内未复活，不能用 lifecycle 最后一条事件单独证明窗口覆盖。
 - `reconcileCycleObservation` 在 240 秒内取得 4795 个采样，最大采样间隔 0.053947 秒，但 `matchedSampleCount=0`、`uniqueScanMarkers=[]`、`complete=false`，原因 `cycle-observation-deadline`。短查询可能未被采样捕获；不能据此断言 Cloud 未运行扫描，也不能把已流逝 242.6 秒当成一次实际默认 reconcile 周期。`executionOutcome` 为 inconclusive / `cycle-observation-deadline`，`observationOutcome` 为 inconclusive / `real-post-confirmation-reconcile-cycle-not-proven`；原 S2 最后历史比较未执行，不将本次整体标为 S2 passed。
 
-**结论与剩余缺口：** 回收前许可正对照、边界后的完整许可 trace、注册前后与双确认后 DB / 物理读回已有直接结果；仍缺双确认后至少一个实际默认 reconcile 周期的直接标记，第 3 部分为 inconclusive。本义务保持 `Partial`，总数仍为 **8 Covered / 1 Partial**；第 2 部分 cluster#45 固定 head 的测试仍待合并。原 held ensure 的响应仅作为运行记录（#560 实际为资格前 HTTP200）；包括过期许可 403 在内，均不作为本义务的围栏证据。
+**结论与边界：** 三部分均有直接证据。第 3 部分满足 #573 的两点要求：(i) 受控回收开始后，Cloud 没有为该目标签发新的 ensure 许可——`p575-run02` 的许可通道从开始到结束完整、无缺口，边界前 1 次 ensure 许可，边界后 32 次全部是受控终止许可、0 次 ensure；(ii) terminate 双确认后 sandbox 没有被重建——双确认后 242.6 秒窗口两端的容器不存在、Sandbox `terminated`、墓碑存在，DB 读回无新 ensure effect。边界：工具自身的执行结果为 inconclusive，原因是窗口内未直接捕获默认对账扫描的标记（4795 次采样、0 个匹配）；窗口约为默认对账间隔 1 分钟的 4 倍，但本证据不证明窗口之外或任意后续周期的长期行为。本义务为 `Covered`，总数 **9 Covered**；第 2 部分 cluster#45 固定 head 的测试须先合并。原 held ensure 的响应仅作为运行记录（#560 实际为资格前 HTTP200）；包括过期许可 403 在内，均不作为本义务的围栏证据。
 - 决策依据：D4，不变量 8；[#573 证据组成决定](https://github.com/ora-space/circus/issues/573#issuecomment-6365603852)。
 
 ## Reclamation Intents Retry And Escalate Only On Explicit Operator Decision
@@ -146,9 +146,9 @@ Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `62571
 
 ## 跨仓库验证边界
 
-产品实现及演练工具 PR（cloud#112/#116/#117/#127、desktop#710/#712、cluster#35/#36）均已合并；cluster#36 的合并提交为 `7adcb6e`、合入 head 为 `a11e025`，包含 S2b 响应等待修复但未重跑部署演练。上表保留实际运行的历史工具 head。以下 `Partial` 是固定版本的联合验收证据缺口，不表示产品实现仍未合并；不因合并状态升级覆盖结论。
+产品实现及演练工具 PR（cloud#112/#116/#117/#127、desktop#710/#712、cluster#35/#36）均已合并；cluster#36 的合并提交为 `7adcb6e`、合入 head 为 `a11e025`，包含 S2b 响应等待修复但未重跑部署演练。上表保留实际运行的历史工具 head。用例中的 `Partial` 表示固定版本的联合验收证据缺口，不表示产品实现仍未合并；不因合并状态升级覆盖结论。
 
 - 第 1、2 步的账本、授权、意图与事实接管义务在 cloud 内可直接验证；它们的 `Covered` 判定不依赖 desktop/cluster。
 - Node 侧停止证据未确认的命名原因、等待上限与到期转交由 [Node 恢复截止与停止确认用例](../../node/revision/restore-deadline-and-stop-confirmation.md)登记；本文承接其在残留账本上的命名证据（`stop_unconfirmed`）与后续回收义务，不重复登记。
 - 第 3 步的终止完成条件跨 cloud、desktop、cluster：按 #573 的结构性论证、有效旧 epoch / 当前 epoch 单仓测试、真实栈受控回收后许可 trace 与未复活读回三部分取证；不要求生产路径必须命中墓碑 503。三部分任一缺直接证据即 `Partial`。
-- 第 4 步的联合故障演练按上表固定评论与候选取证：第一轮包含 S1/S2/S3/原 S4/S2b 及 D8 补跑，第二轮仅 S1，第三轮在单一 pinned candidate 上补齐 S2/S3/D8（[证据](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955)）。九项中 **8 项 `Covered`、1 项 `Partial`**：前六项的 Cloud 范围保持 `Covered`，重试与显式升级、D8 身份接管新增完整联合路径证据；逐目标终止与围栏按 #573 改为未复活义务，第 3 部分经 #575 的 `p575-run02` 补齐许可 trace 与带时间的读回，但仍缺双确认后的实际默认 reconcile 周期标记，因此为 `Partial`；cluster#45 的旧 epoch 补测待合并。不把旧候选部署结果自动带到其他版本。
+- 第 4 步的联合故障演练按上表固定评论与候选取证：第一轮包含 S1/S2/S3/原 S4/S2b 及 D8 补跑，第二轮仅 S1，第三轮在单一 pinned candidate 上补齐 S2/S3/D8（[证据](https://github.com/ora-space/circus/issues/560#issuecomment-6363072955)）。九项全部 `Covered`：前六项的 Cloud 范围保持 `Covered`，重试与显式升级、D8 身份接管新增完整联合路径证据；逐目标终止与围栏按 #573 改为未复活义务，第 3 部分经 #575 的 `p575-run02` 取得完整许可 trace 与双确认后带时间的读回，改为 `Covered`（未直接捕获对账扫描标记，边界见该义务）；依赖 cluster#45 的旧 epoch 补测先合并。不把旧候选部署结果自动带到其他版本。
