@@ -11,6 +11,14 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 [准入与 Git 执行](admission-and-git-execution.md) 以外部 clone 的前序决策为依据；其中关于外部地址、SSH、部署凭据与 `origin`
 的义务已被本文取代并从那几份用例中移除，目录独占、受管执行、中断判定与恢复的义务仍按那几份用例维护。
 
+本次 D5 身份检查的证据固定为 [desktop#732](https://github.com/ora-space/desktop/pull/732) 的
+合并提交 [`bea390e`](https://github.com/ora-space/desktop/tree/bea390eb2d7022566529548ebaeadc2d6f3ad457)（PR head `ae02179`；两者在 `apps/ora-node`、`apps/ora-git` 下没有差异，作者与 reviewer 的测试均在 `ae02179` 上运行）。
+作者的测试结果见产品 PR；reviewer HappyAuratus 的独立 WSL 验证见
+[#508 批准评论](https://github.com/ora-space/circus/issues/508#issuecomment-6354898659)。
+该 head 的[三平台 crates CI 与汇总门禁](https://github.com/ora-space/desktop/actions/runs/39781839068)通过，但普通 CI 不执行需 root
+的 ignored 推送测试。本文已有的 cluster 检查项引用保留原证据范围；本次没有运行完整 cluster workspace-git 验收，不将其列为
+该 head 新增的通过证据。
+
 ## Clone Accepts Only A Git Server Snapshot Input
 
 - 风险：旧形状或外部地址的 clone 命令仍被执行，Node 以部署凭据访问外部仓库；`snapshot_ref` 与 `base_commit` 不对应；没有
@@ -112,6 +120,32 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 | 工作负载读不到 git-access 证书、私钥与 CA，Agent 环境中没有证书路径 | cluster 验收“5g” | Covered |
 | 私钥不出现在仓库配置、日志与结果中 | checkout 配置见 cluster 验收“场景 1”与 `desktop/apps/ora-node/tests/standalone/repository.rs::managed_snapshot_clone_checks_out_the_base_commit_without_a_remote`；日志与结果没有直接测试 | Partial |
 
+## ora-git Requires A Workload UID Separate From The Node
+
+- 风险：缺失或共用 UID 时回退到 Node UID，socket 对端检查把 Agent 与 Node 当成同一身份；静默禁用让 Agent 得到不透明的失败。
+- 前置状态：已配置 ora-git 目录、clone 与 git_access；工作负载 UID 分别为缺失、等于 Node 有效 UID、独立 UID。
+- 触发：Node 校验启动配置；通过后组合 ora-git 服务、创建 Agent 会话并调用 `ora-git`；独立 UID 会话进行真实推送。
+- 必须成立：ora-git 组件对缺失或相同 UID 均不构建服务、不创建 socket。只有在其余约束允许 Node 启动时才承诺会话行为：允许
+  缺失 UID 的本地模式下，日志写明禁用原因、普通会话继续、ora-git 环境项只含禁用原因，CLI 显示 `no_session` / 3 和该原因。
+  网络 mTLS 模式缺失 UID 在入口被拒；显式相同 UID 被既有 `ManagedGitRunner::new` 以配置错误提前拒绝，Node 不启动，没有
+  Agent 会话或禁用原因环境变量。独立 UID 通过其余启动校验后原路径不变，启用时 ora-git 只导出真实 socket。
+- 禁止结果：回退到 Node UID；以 `unavailable` / 10 表示身份配置禁用；把服务拒绝误称为共享 UID 部署已经安全。
+- 决策依据：D5；共享 UID 的私钥风险仍见 ADR 的“本决策未解决的问题”。
+
+以下函数路径均固定在上文 `bea390e`。`Covered` 仅对应本行的直接断言，不将单测扩大为完整生产配置或 cluster 证据。
+
+| 验证义务 | 证据 | 状态 |
+| --- | --- | --- |
+| 允许缺失 `workload_uid` 的本地模式通过其余启动校验后，不构建 ora-git 服务、不创建 socket，普通 Agent 会话继续且 push 报 `no_session`，远端分支未创建 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_is_disabled_without_workload_uid`；`desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_reports_no_session_with_shared_uid` 直接断言 marker、日志、无 socket 与无远端分支；均在普通 CI 运行 | Covered |
+| 相同 UID 的 ora-git 身份判定拒绝启用，给出 `SharesNodeUid` 原因 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_identity_decision_is_disabled_for_the_node_uid` 直接注入 UID 比较判定；在普通 CI 运行，不经过生产 `ora_git()` | Covered |
+| 显式相同 UID 在创建会话前以配置错误拒绝启动 | `bea390e` 的 `desktop/apps/ora-node/src/lib.rs:189-190` 将 `ManagedGitRunner::new` 的失败映射为配置错误，`desktop/apps/ora-node/src/managed.rs:146-152` 的 root / 非零 UID 校验使相同 UID 必定被拒；这是代码依据，上行单测只直接验证组件判定，没有该完整启动拒绝路径的直接测试 | Missing |
+| 组件判定的两种拒绝均输出完整 reason 字段；不表示显式相同 UID 的生产启动会到达该日志 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_startup_logs_the_disabled_reason` 比较完整 reason 列表；相同 UID 通过直接判定注入，缺失 UID 经生产组合；在普通 CI 运行 | Covered |
+| 直接调用禁用组件时只向环境导出 `ORA_GIT_DISABLED_REASON`，无 socket；不表示显式相同 UID 的生产 Node 能创建会话 | `desktop/apps/ora-node/src/ora_git/tests.rs::disabled_service_exports_reason_without_a_socket` 从空环境映射开始，比较 socket 与完整映射，覆盖缺失和相同 UID；在普通 CI 运行 | Covered |
+| CLI 返回 3、stdout 为空，stderr 为 `ora-git: no_session: <原因>`，即使继承了 socket 变量也优先说明禁用 | `desktop/apps/ora-git/tests/disabled.rs::disabled_reason_is_an_explicit_cli_error` 对两种配置原因比较完整输出与退出码；在普通 CI 运行 | Covered |
+| 独立 UID 原样传给服务构造；Enabled open 仅导出 `ORA_GIT_SOCKET = socket.path()` 且 socket 存在 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_keeps_separate_workload_uid`；`desktop/apps/ora-node/src/ora_git/tests.rs::enabled_service_exports_only_the_live_socket` 经 Fixture 以 euid 为 peer UID 直接测试 Enabled open 的整个环境映射与文件存在性；均在普通 CI 运行，后者不测试生产启用条件 | Covered |
+| 独立 UID 的真实 Agent CLI → socket → Git Server 推送，远端内容与作者正确 | `desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_markers_push_through_the_session_socket` 保留原名，`#[ignore = "requires root …"]`；作者在本地 WSL root 运行通过，HappyAuratus 在上文 #508 评论确认独立 root 验证通过；不在 CI 运行 | Covered |
+| desktop `bea390e` 的完整 cluster Compose workspace-git 验收 | `cluster/scripts/workspace-git-acceptance.py` 本次作者与 reviewer 均未运行，按 [owner 合并说明](https://github.com/ora-space/circus/issues/508#issuecomment-6355148336)如实登记为未覆盖；需完整 Cloud / Controller / Sandbox Server / Git Server / PostgreSQL 栈，不能用本地 socket 推送替代 | Missing |
+
 ## ora-git Requests Belong To The Session That Owns The Socket
 
 - 风险：任意进程伪造请求冒充别的会话；结束的会话仍能推送；非工作负载 UID 借 socket 访问 Git Server；文件系统权限挡住连接，
@@ -130,7 +164,7 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 | 请求不携带身份，夹带的执行 ID 等字段为 `usage` | `desktop/apps/ora-node/src/ora_git/tests.rs::socket_validates_requests_and_closes_with_the_session`；`desktop/apps/ora-git/src/lib.rs::wire_and_exit_codes_are_stable` | Covered |
 | 对端 UID 不是工作负载 UID 时为 `forbidden`，且不访问 Git Server；文件系统层不挡连接 | `desktop/apps/ora-node/src/ora_git/tests.rs::socket_refuses_a_peer_other_than_the_workload_user`；cluster 验收“5g” | Covered |
 | socket 目录为 `0711`、不能列出；启动只删除 Node 命名的 socket | `desktop/apps/ora-node/src/ora_git/tests.rs::the_socket_directory_loses_only_the_sockets_an_earlier_node_left`；cluster 验收“5g” | Covered |
-| socket 路径经 `ORA_GIT_SOCKET` 交给 Agent 插件及其子进程 | `desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_markers_push_through_the_session_socket`；cluster 验收“5g” | Covered |
+| socket 路径经 `ORA_GIT_SOCKET` 交给 Agent 插件及其子进程 | `desktop/apps/ora-node/src/ora_git/tests.rs::enabled_service_exports_only_the_live_socket` 直接核对环境映射；`desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_markers_push_through_the_session_socket` 验证真实推送，需 root 显式运行，作者及 HappyAuratus 已本地通过（见上文 #508 评论），不在 CI 运行；cluster“5g”本次未运行 | Covered |
 | `EndSession` 被接受后或会话结束后为 `no_session`，socket 被删除 | `desktop/apps/ora-node/src/ora_git/tests.rs::requests_fail_once_an_end_is_requested`、`::socket_validates_requests_and_closes_with_the_session`；cluster 验收“5f / 执行结束后再推” | Covered |
 | 关闭时拒绝新请求、等待在途请求完成；并发请求为 `busy` | `desktop/apps/ora-node/src/ora_git/tests.rs::closing_waits_for_the_request_in_flight` | Covered |
 | 未知动词、选项、多余参数为 `usage`（退出码 2） | `desktop/apps/ora-git/src/lib.rs::fixed_verbs_parse`、`::anything_else_is_a_usage_error`、`::wire_and_exit_codes_are_stable`；cluster 验收“5b / 写别人的分支” | Covered |
