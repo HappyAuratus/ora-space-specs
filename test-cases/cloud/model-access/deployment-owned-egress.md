@@ -6,9 +6,10 @@
 [个人模型访问](personal-model-access.md)；这些证据不能替代企业策略的组合验证。
 
 Cloud 实现与验证入口：[cloud#80](https://github.com/ora-space/cloud/pull/80)。本次证据来自
-`internal/egress/{policy,dns,health}_test.go`、`internal/modelgateway/egress_test.go` 和
-`integration/deployment_egress_test.go`，后者使用真实 HTTP/PostgreSQL/TCP DNS；模型转发的上游为
-受控 TLS 服务，不是现场供应商。部署相关义务仍由 cluster 承接，ADR 保持 `approved`。
+`internal/egress/{policy,dns,health}_test.go`、`internal/modelgateway/{egress,transport,diagnostics}_test.go`、
+`internal/workflowasset/fetch_test.go` 和 `integration/deployment_egress_test.go`，后者使用真实
+HTTP/PostgreSQL/TCP DNS；模型转发的上游为受控 TLS 服务，不是现场供应商。部署相关义务仍由 cluster
+承接，ADR 保持 `approved`。
 
 
 ## Public deployments must retain the existing HTTPS and trusted DNS policy
@@ -92,11 +93,13 @@ Cloud 实现与验证入口：[cloud#80](https://github.com/ora-space/cloud/pull
 - 风险：新拨号未验证全部地址，或连接无限复用、HTTP/2 合并、代理与重定向绕过目标边界。
 - 前置状态：真实受控双栈 DNS/TLS 上游，有效授权，已建立 HTTP/1 或 HTTP/2 连接。
 - 触发：新请求、新拨号、达到连接最大存活时间或空闲超时、后续解析地址变化、证书错误、3xx 和环境代理配置。
-- 必须成立：每请求按启动快照检查目标；新拨号完整验证后只拨数字地址；仅企业模式连接以 30 分钟硬上限回收，公网不设硬上限；两种模式均以 60 秒空闲超时回收，新拨号重新检查；原 hostname TLS 不变。
-- 禁止结果：验证后系统再次解析、企业连接无限复用、给公网连接增加企业硬上限、企业跨 host HTTP/2 合并、TLS 降级、跟随跳转、向环境代理发送认证头或回收后自动重发生成。
+- 必须成立：每请求按启动快照检查目标；新拨号完整验证后只拨数字地址；总拨号预算不变，按「剩余预算 ÷ 剩余地址数」逐地址分配并设下限，首条不响应地址不能耗尽整体预算；仅企业模式连接以 30 分钟硬上限回收，公网不设硬上限；两种模式均以 60 秒空闲超时回收，新拨号重新检查；原 hostname TLS 不变。
+- 禁止结果：验证后系统再次解析、企业连接无限复用、给公网连接增加企业硬上限、企业跨 host HTTP/2 合并、TLS 降级、跟随跳转、向环境代理发送认证头或回收后自动重发生成；单个不响应地址吞噬整个总预算，或把 URL/query、认证头、凭据写入逐地址归因。
 - 决策依据：D3、D5。
 - 验证义务与证据：`Partial`；`TestConnectionLifetimeClosesActiveAndIdleSockets` 通过真实到期回调关闭活跃/空闲连接，`TestPolicyPreventsReusedConnectionToUnlistedAuthority` 验证复用后的逐请求门禁，受控 TLS 测试覆盖代理/重定向/证书。仍需计数真实 DNS/dial/HTTP 边界，覆盖新 dial、企业 keep-alive 的最大存活与两种模式空闲回收、回收后混合坏地址拒绝、错误证书、3xx、HTTP/SOCKS 代理与有限脱敏错误；纯匹配函数单测不够。
 - 连接寿命的直接证据：`Partial`。Cloud `internal/modelgateway/egress_test.go::TestPublicConnectionsHaveNoHardLifetime` 验证真实公网拨号路径不添加硬上限；`TestEnterpriseDialHasBoundedLifetime` 验证真实企业拨号装配上限，`TestConnectionLifetimeClosesActiveAndIdleSockets` 固定 30 分钟并触发真实计时器回调关闭活跃/空闲 socket。尚未单独覆盖 60 秒空闲回收及回收后地址变化的完整 HTTP 组合，不能据此标为全部 Covered。
+- 逐地址预算的直接证据：`Covered`（受检拨号边界）。`TestAddressDialBudgetSharesTheRemainingBudgetWithFloor` 表驱动固定单地址占用全部剩余预算、均分、2 秒下限以及零/负剩余；`TestDialReachesLaterAddressAfterAnUnresponsiveFirstAddress` 用不响应的首个地址与可达的第二个地址证明前者按份额被切断后仍能成功，总耗时仍在总预算内；`TestDialListsEveryAddressWhenTheWholeBudgetExpires` 用 100 毫秒总预算与三个黑洞地址证明下限不会突破总 deadline。真实多地址 DNS 到 HTTP 的端到端组合仍待部署验收。
+- 全地址失败归因的直接证据：`Covered`（受检拨号边界）。`TestDialKeepsEachAddressReasonWhenEveryAddressFails` 固定逐地址原因文本与 `model_upstream_unavailable` 分类，`TestDialListsEveryAddressWhenTheWholeBudgetExpires` 断言错误列出每个地址并保留 `model_upstream_timeout`；`TestProxyLogsOnlyBoundedCheckedDialAttribution` 证明模型转发只把该摘要作为结构化 `detail` 写入日志、公开响应不含地址；`TestFetchKeepsCheckedAddressAttributionWithoutTheSignedURL` 证明资产失败 detail 不含签名 query 或 URL。现场边缘地址与供应商组合仍待部署验收。
 
 ## Policy configuration must take effect through restarting both services
 
@@ -140,7 +143,7 @@ Cloud 实现与验证入口：[cloud#80](https://github.com/ora-space/cloud/pull
 | --- | --- | --- |
 | 两者使用同一集合与解析来源 | 同一部署快照的真实 Cloud Fetch/Gateway HTTP 贯通：许可内私网成功，未许可公网（含 7.x）/私网/错误端口拒绝；更换一个 resolver/静态映射同时影响两者，记录 DNS 目标而非只测共享函数。直接证据：`TestEnterpriseModelAndAssetShareTransportPolicy` 从模型 handler 与实际 Fetch 访问同一许可内私网 TLS 服务；`TestDeploymentEgressAssetDNSRejectionLeavesNoDocuments` 用同一策略和 TCP DNS 拒绝两条调用链；现场整体重配验收尚缺 | Partial |
 | 全答案与不可覆盖拒绝 | 两入口分别覆盖 A/AAAA 混合禁区、cluster/宿主/loopback/link-local；新拨号完整校验，连接存活/空闲回收后重新解析，不建立禁止地址连接。直接证据：共享准入的全答案/拒绝优先测试及真实 Fetch/模型 DNS 拒绝已有直接证据；两入口全部地址类别和连接回收后的 DNS 变化矩阵尚缺 | Partial |
-| URL 与凭据边界不同但准入一致 | 合法签名 query 下载成功、模型 query 拒绝；服务端断言原路径/query 且资产 GET 无模型认证头，日志/失败信息不含签名 URL；别名/重定向/错误证书均拒绝。直接证据：`TestEnterpriseModelAndAssetShareTransportPolicy` 检查合法签名 query 原字节、资产无模型认证头、模型 SSE/工具调用、未许可目标、3xx、TLS 不可信与摘要失败；错误 hostname 和完整日志矩阵待补齐 | Partial |
+| URL 与凭据边界不同但准入一致 | 合法签名 query 下载成功、模型 query 拒绝；服务端断言原路径/query 且资产 GET 无模型认证头，日志/失败信息不含签名 URL；别名/重定向/错误证书均拒绝。直接证据：`TestEnterpriseModelAndAssetShareTransportPolicy` 检查合法签名 query 原字节、资产无模型认证头、模型 SSE/工具调用、未许可目标、3xx、TLS 不可信与摘要失败；`TestFetchKeepsCheckedAddressAttributionWithoutTheSignedURL` 与 `TestProxyLogsOnlyBoundedCheckedDialAttribution` 固定失败归因只含数字地址和有限原因、不含签名 query；错误 hostname 和完整日志矩阵待补齐 | Partial |
 | 资产原完整性与失败边界 | 真实 Fetch+PostgreSQL 验证 16 MiB/10–30–60 秒、摘要失败先于解析、包级失败零文档结果及下次触发重试；导入 revision 围栏不被策略切换绕过。直接证据：`TestDeploymentEgressAssetDNSRejectionLeavesNoDocuments` 实际 Fetch+PG 证明 DNS 拒绝为包级失败且零文档结果；受控 TLS Fetch 校验摘要。原大小/超时和导入 revision 证据仍见资产用例，不扩大为新策略全矩阵 | Partial |
 | 内部对象存储不是 HTTPS 旁路 | object key 只走固定私有客户端且不能携带 host；同一 cluster 服务若作为 HTTPS URL 则被拒，无自动降级 | Missing |
 | 共同配置重启生效 | 同时停止两服务、替换文件并重启，移除任一 target 后两调用方按新快照拒绝且旧池已销毁；停止取消未完整取包任务无部分导入，摘要不一致时 verify 报错 | Missing |
