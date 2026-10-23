@@ -4,9 +4,9 @@
 
 本文覆盖 D4/D5 业务收尾之后残留责任的收尾：账本清理状态机、自动对账层的证据与系统清理授权、部署运维的受控回收意图、逐目标终止与 late ensure fencing 的完成条件、三级显式升级，以及存量 D8 删除残留的按身份接管。业务结算、启动与创建截止、迟到事实接管本身的义务仍由[有界启动用例](bounded-agent-startup.md)拥有，本文不重复登记。
 
-本文件尚未由落地运行补齐直接证据，下列义务保持 **Missing**，不因部分产品 PR 已合并自动提升状态。
-每条给出必须产生的直接证据类型；落地运行按最终实现补上具体测试名与 commit，再按证据完整度改为
-`Covered` 或 `Partial`。迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建
+本文件未补齐的原有回收义务仍保持 **Missing**；本次只补迟到成果救援守卫的直接证据，不提升无关回收义务。
+每条给出必须产生的直接证据类型，只有直接覆盖对应义务的测试/运行才改变其状态。
+迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建
 Run 守卫约束，不能把 receipt-only 当作已验证 Revision 或清理授权。跨进程与跨仓库的义务（Controller
 许可、Substrate 墓碑、联合故障演练）不能由 Cloud 侧单仓测试单独记为 `Covered`。
 
@@ -57,7 +57,12 @@ Run 守卫约束，不能把 receipt-only 当作已验证 Revision 或清理授�
 - 触发：Controller 以原身份提交迟到终态、交付结果或 effect 事实；同一事实重复提交；清理完成先提交、迟到事实后提交（以及相反顺序）。
 - 必须成立：创建侧事实入口与原执行接管覆盖 `reconciling`、`reclaiming` 与 `cleared`；仍校验原租户、资源、effect/execution 身份及当前服务资格；先持久接管再 ACK，相同事实幂等重放只追加证据；不重开 admission、不再次结算、不重建已删除资源；后提交者看到先提交者的证据与责任，新发现的未闭环目标阻止清除。
 - 禁止结果：因账本已清除或 Run `done` 拒收事实；迟到事实把 Run 改回运行态或复活 Workspace/ensure；事实与处置结论冲突时静默丢弃事实或伪造新的完成证明。
-- 验证义务与证据：**Missing** — 需 gRPC 与数据库测试：清理中与清除后两条路径都能接管迟到事实且 Run 终态/版本不变；重复事实幂等；冲突事实保留原结论与审计并阻断后续处置。落地顺序第 1 步（cloud）。
+- 验证义务与证据：**Partial** — Cloud #142 merge `b777496`
+  的 [integration/late_delivery_fact_order_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_fact_order_test.go)
+  `TestLateDeliveryFactRunCreationOrderOverGRPC` 直接覆盖 reconciling/reclaiming/cleared/controlled 的交付终态接管、
+  有/无后创建 Run 两侧、业务及责任不变、原事件幂等、receipt-only 不升级、冲突持久审计。
+  这是交付事实子路径的证据，不覆盖全部创建侧/effect 事实、清理完成事务的双向并发，以及冲突后后续处置被阻断。
+  这些义务仍需直接证据；不据共同依赖测试提升为 Covered。
 - 决策依据：D2（事实接管贯穿清理前后），不变量 10。
 
 ## Controlled Reclamation Is An Explicit Deployment Intent With Confirmation And Audit

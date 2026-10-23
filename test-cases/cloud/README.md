@@ -51,11 +51,12 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 
 ## 已批准的定时任务决策
 
-[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
+[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | scheduled-task | [接纳、会话边界与历史保留](scheduled-task/admission-and-session-bounds.md) | 重复接纳、停机补记与超时误判、无人值守会话空等、资格失效仍接纳、历史无界增长 |
+| scheduled-task | [verdict 与产物](scheduled-task/verdict-and-artifacts.md) | verdict 伪造、产物目录进快照绕过可见性、迟到回执绕过保留、产物排行与鉴权缺运行身份 |
 
 ## 已批准的会话分析与模型请求统计
 
