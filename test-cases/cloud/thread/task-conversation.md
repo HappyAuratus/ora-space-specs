@@ -89,7 +89,7 @@ D2、D3，不变量 1、5、6。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run；[#312 非成员隔离](https://github.com/ora-space/circus/issues/312#issuecomment-6334438380)四读两写均 403；[#312 同租户成员受控模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334568694)证明可读原 Run 但旧追加/结束均 403，自身模型消息 waiting、取消后未建新 Run。真实供应商 Key 的跨用户联合演练仍缺 | Partial |
+| 发起者隔离与就绪缺口 | Cloud `TestTaskConversationMemberCannotAppendOrEndAnotherInitiatorsRun`、`TestTaskConversationReadinessUsesTheCurrentUsersConfiguration` 及旧入口跨发起者拒绝测试；[#312 最新 main 凭据撤销分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测任务/旧 Thread 追加均 409 且无新消息或 Run；[#312 非成员隔离](https://github.com/ora-space/circus/issues/312#issuecomment-6334438380)四读两写均 403；[#312 同租户成员受控模型分项](https://github.com/ora-space/circus/issues/312#issuecomment-6334568694)证明可读原 Run 但旧追加/结束均 403，自身模型消息 waiting、取消后未建新 Run。[G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)在两个不同成员、两份独立真实供应商 Key 下完成各自 OpenCode 调用；B 可读 A，但旧追加/结束均 403；B 消息等待 A 合法结束并物理释放后才派发。两个 Run 的冻结 userId/connectionId 分别属于各自发起者；撤销 B 凭据后任务/旧追加均 409 且消息、Run、Thread、评论、interaction、activity 数不变，此时 A 凭据仍有效。两次 Run completed/done 且容器/卷释放 | Covered |
 
 ### 决策依据
 
@@ -97,5 +97,7 @@ D2，不变量 3。
 
 ## 证据边界
 
-上表 Partial 的缺口由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：多来源显示、历史引用与组合一致性对应 G1；真实截断范围对应 G2；双 Agent 故障联合矩阵对应 G4；真实双发起者模型权限与交接对应 G5。已有数据库级/受控模型证据不替代这些直接验证。
-永久失败释放的验收口径和这些剩余验证对 ADR 收尾的影响，见 [circus#532](https://github.com/ora-space/circus/issues/532)；本用例不据此预先弱化义务或修改 ADR 状态。
+上表 Partial 的缺口由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：多来源显示、历史引用与组合一致性对应 G1；真实截断范围对应 G2；双 Agent 故障联合矩阵对应 G4。G5 已有上面的真实双发起者直接证据；数据库级/受控模型证据仍不替代其他未测组合。
+[circus#532](https://github.com/ora-space/circus/issues/532) 已明确：永久失败的恢复是显式步骤；G3/G5/G9 是收尾门槛，G1/G2/G4/G6/G7/G8/G10 允许延期，由 #531 继续承接。上表仍有缺口的义务保持 Partial；本证据 PR 不修改 ADR 状态。
+
+本批 [G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)固定 cluster `45130795863037b365176ec51af611d46eb7f3da`、cloud `54bedcc95a5595ed23d87e2b841b55abd3dee71b`、desktop `8e497d7382441babd19595bfc0c0f61a7511fc31`；隔离普通成员通过公开邀请流程建立，真实模型调用返回 HTTP 200/succeeded。记录、产物摘要、失败样本和清理结果在运行中独立保存，不将凭据或会话正文复制到规格仓库。

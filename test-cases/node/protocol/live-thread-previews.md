@@ -88,7 +88,7 @@ D2，不变量 1、2、4。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测执行中离线重连后消息/回复不丢。真实成员撤权与多服务组合仍缺 | Partial |
+| 服务器权限与执行围栏 | Cloud `TestThreadPreviewAuthorityAndFinalRecordDominance` 覆盖旧租约/外执行拒绝；`integration/thread_preview_test.go::TestThreadPreviewSSEStopsAndClearsAfterMembershipRevocation`、`::TestThreadPreviewRPCDoesNotCreateReceipt` 覆盖撤权清空与无回执；`frontend/src/features/thread-preview/preview.test.tsx` 覆盖恢复与取消订阅；[#312 最新 main 浏览器分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)实测执行中离线重连后消息/回复不丢。[G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)通过真实 OpenCode/供应商流式输出贯通 Node→Controller→Cloud→Gateway→浏览器；可读普通成员已有非空预览时，管理员经公开成员 API 禁用其实际租户成员资格。0.145s 后该 SSE 收到空快照并关闭；两个 Cloud 实例上的任务、持久对话/Thread、预览 GET 和新 SSE 均 403；原发起者仍可见非空预览，成员浏览器自动离开任务页、预览消失，最终原 Run completed/done 且容器/卷释放。此项使用成员撤权，未把模型 Key 撤销当作替代 | Covered |
 | 实际供应商流式与工具过程 | [#312 真实 OpenCode 分项](https://github.com/ora-space/circus/issues/312#issuecomment-6332993328)在 277 次新 SSE 连接中取得 103 次可用快照，严格正文前缀、5 个进行中工具与终态配对均通过；[正式发布包四运行](https://github.com/ora-space/circus/issues/312#issuecomment-6347169056)进一步验证至少一处正文前缀和工具状态配对，但未把这项全局断言单独归因于 Claude。正式 Claude 的独立预览归因及慢消费者故障仍缺 | Partial |
 
 ### 决策依据
@@ -97,5 +97,7 @@ D3，不变量 3、5。
 
 ## 证据边界
 
-上表 Partial 的剩余验证由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：旧 Node 降级对应 G6；Node WebSocket 等逐跳乱序、迟到预览和定型优先对应 G7；真实慢消费者、缓冲上界和取消组合对应 G8；真实成员撤权的跨服务组合对应 G9；正式 Claude 的独立预览归因对应 G10；Run/Thread/预览对齐对应 G1。
-永久失败恢复后的物理释放样本不提供这些预览故障证据。剩余验证对 ADR 收尾的影响见 [circus#532](https://github.com/ora-space/circus/issues/532)，没有用两批新结果整体提升预览义务的状态。
+上表 Partial 的剩余验证由 [circus#531](https://github.com/ora-space/circus/issues/531) 承接：旧 Node 降级对应 G6；Node WebSocket 等逐跳乱序、迟到预览和定型优先对应 G7；真实慢消费者、缓冲上界和取消组合对应 G8；正式 Claude 的独立预览归因对应 G10；Run/Thread/预览对齐对应 G1。
+G9 已有上面的成员撤权直接证据。永久失败恢复后的物理释放样本不提供其他预览故障证据。[circus#532](https://github.com/ora-space/circus/issues/532) 已允许 G1/G6/G7/G8/G10 等七项延期、不阻塞收尾；仍缺的义务保持 Partial，不整体提升状态。
+
+本批 [G3/G5/G9 直接验证](https://github.com/ora-space/circus/issues/553)固定 cluster `45130795863037b365176ec51af611d46eb7f3da`、cloud `54bedcc95a5595ed23d87e2b841b55abd3dee71b`、desktop `8e497d7382441babd19595bfc0c0f61a7511fc31`。原始 SSE 仅记录版本、执行身份、块数量与时间；撤权前后浏览器截图、摘要及失败观察样本保存在运行记录中，不将模型正文、Cookie 或凭据写进规格仓库。
