@@ -4,7 +4,7 @@ status: implemented
 
 # MCP 插件：以静态配置包声明可解析的 Server 配置
 
-> 后续决策：[Agent 配置声明](../../manifest/20261017-agent-configuration-declarations.md)已批准在
+> 后续决策：[Agent 配置声明](../../manifest/20261017-agent-configuration-declarations.md)已实现并在
 > `assets/config.json` 的封闭集合中新增第四种 Agent shape（专有顶层成员、独立声明版本、仅
 > `kind = "agent"` 可携带），其规则由该决策拥有；本文对 MCP 的识别、互斥与封闭要求不变。
 
