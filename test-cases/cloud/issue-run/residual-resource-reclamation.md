@@ -15,7 +15,7 @@
 
 Cloud 直接测试与部署证据分开判断：复核基线为 cloud#116 `6257136bfc164fc39a6c0a0a87e73bd173425e23`，已合入 cloud#112 及后续 main；下文 Cloud 测试见该提交的 [core](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/internal/core)、[integration](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/integration) 与 [cloudctl](https://github.com/ora-space/cloud/tree/6257136bfc164fc39a6c0a0a87e73bd173425e23/cmd/cloudctl)。它们在第二轮 Cloud `118b759` 已存在，向前合并后保留相关断言；前六项的 Cloud 范围由这些直接测试支撑，不把第一轮物理结果升级为新版结果。物理成功在这些测试中由提交证据驱动，不是实际容器或卷的证明；跨进程与跨仓库的完整义务不能由 Cloud 单仓测试单独记为 `Covered`。沿用该提交[已有 CI 记录](https://github.com/ora-space/cloud/actions/runs/39556403820)中相关测试的通过结果；该 CI 整体因 integration 包超时失败，本次没有重跑测试。迁移编号按该基线为 residual `0057`、controlled `0058`。单机演练不覆盖网络与崩溃的全部交错、断电、多 Controller 并发或非 Docker 的生产 Substrate。
 
-迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建 Run 守卫约束：创建先后依同 Issue 原子 `run.enqueued` 活动 `seq` 判断，已有后创建 Run 时仅保存声明与 receipt，不登记迟到 Revision；没有后创建 Run 时救援行为不变。receipt-only 不算已验证 Revision 或额外清理授权。下列既有 `Covered`/`Partial` 不自动覆盖该新增规则；Cloud #142 merge `b777496` 的直接测试已覆盖各接收路径的后创建 Run 守卫，缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`，逐项见该独立用例。
+迟到成果救援也受[迟到交付事实与续作顺序](late-delivery-fact-takeover.md)的后创建 Run 守卫约束：创建先后依同 Issue 原子 `run.enqueued` 活动 `seq` 判断，已有后创建 Run，或原 Run 与同 Issue 其他 Run 的创建顺序证据缺失、有歧义时，仅保存声明与 receipt，不登记迟到 Revision；只有顺序证据唯一且没有后创建 Run 时救援行为才不变。receipt-only 不算已验证 Revision 或额外清理授权。下列既有 `Covered`/`Partial` 不自动覆盖该新增规则；Cloud #142 merge `b777496` 的直接测试已覆盖各接收路径的后创建 Run 守卫，缺创建记录后的重放、双向并发交错仍为 `Partial`，workflow 后创建路径仍为 `Missing`，逐项见该独立用例。
 
 ## Residual Ledger Reclaim State Advances Only With Per-Target Disposal Evidence
 

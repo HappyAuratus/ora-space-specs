@@ -7,7 +7,7 @@ status: implemented
 > 历史决策：D2 的迟到成果救援由
 > [迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md) D2、D3 补充：同 Issue 已有后创建 Run 时，
 > 所有清理阶段与 D8 受控接管都只收原声明与 receipt，不登记迟到 Revision，不把 receipt-only 当作已验证
-> 交付或额外清理授权。创建先后按同 Issue 的原子 `run.enqueued` 活动 `seq` 判断；没有后创建 Run 时，成果救援行为不变。
+> 交付或额外清理授权。创建先后按同 Issue 的原子 `run.enqueued` 活动 `seq` 判断，原 Run 与同 Issue 其他 Run 的创建顺序证据缺失或有歧义时同样只收回执；只有顺序证据唯一且没有后创建 Run 时，成果救援行为才不变。
 > 无账本、无意图的根 D5/D8 事实接收不创建本 ADR 的回收责任。本文保持 `implemented`；新增规则的实现与证据状态以后续 ADR 为准。
 
 D4/D5 业务收尾留下的残留账本驱动持续对账。自动对账层周期收集真实证据——迟到的执行终态与交付结果、执行已终结、沙盒已物理终止——证据齐的条目取得本文新增的系统清理授权后，复用 `delete_workspace` owned delete 的执行步骤清理，成果能救则先救；清理完成前账本保护不解除。证据收不齐的条目只能由部署运维按租户与资源范围发起受控回收：显式确认放弃未交付成果，复用管理强停的终止与围栏语义（终止与数据删除分离、逐目标确认 `terminated` 与 `lateEnsureFenced`、不因超时判成功），经当前 Controller lease 与既有 Substrate effects 执行，不新增物理路径、不伪造 `impactConfirmed`、不由业务 `done` 隐式强停。账本条目在全部目标资源取得闭环证据或显式处置记录后清除；Substrate 永久不可用时保留未完成意图，由运维外部确认兜底。存量 D8 删除残留按原身份接入同一路径，不改写历史。
@@ -85,7 +85,7 @@ ORDER BY tenant_id, run_id;
 
 ### D2：自动对账层只收集真实证据并沿 owned delete 清理，永不强停
 
-本节的迟到成果救援受[迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md) D2、D3 修改：同 Issue 已有按 `run.enqueued` 活动 `seq` 后创建的 Run 时，各账本阶段及 D8 受控路径只保存原声明与 receipt，不登记迟到 Revision；receipt-only 不是已验证交付或额外清理授权。没有后创建 Run 时，本节成果救援行为不变。该新增守卫的直接验证义务由后续用例单独登记，不由本文既有证据覆盖。
+本节的迟到成果救援受[迟到交付事实接管决策](20261022-late-delivery-fact-takeover.md) D2、D3 修改：同 Issue 已有按 `run.enqueued` 活动 `seq` 后创建的 Run 时，各账本阶段及 D8 受控路径只保存原声明与 receipt，不登记迟到 Revision；receipt-only 不是已验证交付或额外清理授权。原 Run 与同 Issue 其他 Run 的创建顺序证据缺失或有歧义时同样只收回执；只有顺序证据唯一且没有后创建 Run 时，本节成果救援行为才不变。该新增守卫的直接验证义务由后续用例单独登记，不由本文既有证据覆盖。
 
 Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只读取经既有事实入口持久接管的证据，不新增取证查询 RPC，也不要求 Controller 新增历史发现能力。必须覆盖原责任集合、已封闭新派发，且所有执行已终结或其全部可写实例已取得终止与围栏双确认，交付资格由原 `deliver_revision` 执行登记且按原身份核验完成的 Revision 提供，其他交付执行也须各自核验完成，才可申请系统清理授权。首版没有“明确放弃交付”作为自动清理资格的路径；失败、跳过、超时或没有结果都不算放弃。Controller 无法回报的历史事实使条目保持 `reconciling`，等待运维依 D3 接管。单个终态或单个沙盒确认不能代替完整证明。
 
