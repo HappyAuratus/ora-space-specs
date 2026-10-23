@@ -181,10 +181,18 @@ Node 镜像在工作负载的 `PATH` 上提供 `ora-git` 命令。它不执行 G
 
 **启用条件**：Node 配置了 `agent.ora_git_directory`（绝对路径，父目录只由可信属主控制，不与 Node home、host 目录、clone 根目录
 或 workload 目录重叠，否则拒绝启动），同时配置了 `clone` 与 `git_access`，且 `process.workload_uid` 已配置并不同于 Node 的有效
-UID 时才提供 socket 服务；否则会话没有 socket，`ora-git` 得到 `no_session`（退出码 3）。部署把目录设为 `/run/ora-git`。
-Node 强制检查工作负载身份：`workload_uid` 缺失或等于 Node 有效 UID 时不启用 `ora-git`，启动日志写明配置字段与原因，普通
-Agent 会话继续运行。Node 通过 `ORA_GIT_DISABLED_REASON` 把原因交给 Agent，CLI 在尝试连接 socket 前以 `no_session` 显示该
-原因；不回退到 Node UID。配置独立 UID 时，原有 socket、对端 UID 检查与 Git 请求路径不变。
+UID 时才提供 socket 服务。ora-git 组件对缺失或相同 UID 均拒绝启用，不回退到 Node UID；以下会话与 CLI 行为以 Node
+通过其余启动约束为前提。已启动的 Node 未启用 socket 服务时，会话没有 socket，`ora-git` 得到 `no_session`（退出码 3）。
+部署把目录设为 `/run/ora-git`。
+
+在允许省略 `workload_uid` 的本地启动模式中，若其余启动约束满足且已配置上述 ora-git 服务输入，缺失 UID 只禁用 ora-git：
+启动日志写明配置字段与原因，普通 Agent 会话继续运行。Node 通过 `ORA_GIT_DISABLED_REASON` 把原因交给 Agent，CLI 在尝试
+连接 socket 前以 `no_session` / 3 显示原因。网络 mTLS 管理监听另有入口约束：缺失 `workload_uid` 即拒绝启动，不进入此路径。
+
+显式配置 `workload_uid` 时，`Node::open` 先调用 `ManagedGitRunner::new`，要求 Node 有效 UID 为 0、工作负载 UID 非 0，且基础
+环境为空。因此显式 UID 等于 Node 有效 UID 时，无论 root 还是非 root，都在到达 `ora_git()` 前以配置错误退出，Node 不启动，
+没有 Agent 会话或 `ORA_GIT_DISABLED_REASON`。配置独立 UID 且通过其余启动校验时，原有 socket、对端 UID 检查与 Git 请求路径
+不变。
 
 **socket 与身份判定**：
 
@@ -375,7 +383,7 @@ Node 协议的消息拒绝未知字段，新旧 Node 与 Controller 不能混用
 | socket 固定在 `/run/ora-git/`，每个 Agent 会话都有 socket | 目录由 `agent.ora_git_directory` 配置（部署设为 `/run/ora-git`），且只在同时配置 `clone` 与 `git_access` 时启用；未启用时会话没有 socket，`ora-git` 为 `no_session`；socket 无法创建时会话以 `agent_failed{ora_git_unavailable}` 结束 | 目录是部署事实，需与 Node 的其他目录分开校验；没有 Git Server 访问的 Node 没有可代理的远端 |
 | Node 启动时清空 `/run/ora-git/` | 只删除按 Node 命名规则留下的 socket，目录其余内容不动；目录在启动时恢复为 `0711` | 目录可配置后，Node 只删除能确认是自己创建的文件 |
 | socket 随机名含 128 位随机数 | 随机名是一个 v4 UUID（122 位随机数） | 随机名只让别的进程找不到 socket，不承担授权（D5）；授权只由对端 UID 检查决定 |
-| 对端 UID 必须是工作负载 UID；独立 UID 曾仅由部署保证 | [desktop#732](https://github.com/ora-space/desktop/pull/732)（`ae02179`）实现 Node 强制检查：缺失 `workload_uid` 或等于 Node 有效 UID 时禁用 `ora-git`，日志说明原因，普通 Agent 会话继续；CLI 得到 `no_session` / 3 | 补齐 circus#410 的要求，不再静默回退到 Node UID；独立 UID 路径保持原样 |
+| 对端 UID 必须是工作负载 UID；独立 UID 曾仅由部署保证 | [desktop#732](https://github.com/ora-space/desktop/pull/732)（`ae02179`）的 ora-git 组件对缺失或相同 UID 均拒绝启用；允许缺失 UID 的本地模式通过其余启动约束后，日志说明原因、普通会话继续、CLI 得到 `no_session` / 3；显式相同 UID 被既有 `ManagedGitRunner::new` 提前以配置错误拒绝，Node 不启动；网络 mTLS 模式也拒绝缺失 UID | 补齐 circus#410 的组件检查，不再静默回退到 Node UID；不放宽既有启动校验，独立 UID 通过校验后路径保持原样 |
 | 会话环境仅约定 `ORA_GIT_SOCKET`，未约定禁用原因变量 | 新增 `ORA_GIT_DISABLED_REASON`，禁用会话导出原因而非 socket；CLI 优先读取原因并返回 `no_session` | 保留普通会话的可用性，同时让 Agent 直接获知服务未启用的原因 |
 | 错误 hint 只含 ref 名与提交 ID | 身份配置导致禁用时，`no_session` hint 包含 `process.workload_uid` 配置字段与原因；其他提示约束不变 | circus#410 的 owner 要求禁用状态可诊断，不能只报不透明的 socket 失败；不包含 Git 原始输出或私钥 |
 | 会话“没有进入结束、没有被取消、交付尚未开始”时请求可执行；会话离开运行时即关闭并删除 socket | 已接受 `EndSession` 也视为不在运行；每次重试前复查；关闭时先拒绝新请求、等待在途请求完成，再删除 socket | 保证会话记为结束、交付开始之后，`ora-git` 不再写 checkout、Git Server 或账本（D5 第 5 条） |

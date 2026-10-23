@@ -124,9 +124,11 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 
 - 风险：缺失或共用 UID 时回退到 Node UID，socket 对端检查把 Agent 与 Node 当成同一身份；静默禁用让 Agent 得到不透明的失败。
 - 前置状态：已配置 ora-git 目录、clone 与 git_access；工作负载 UID 分别为缺失、等于 Node 有效 UID、独立 UID。
-- 触发：Node 组合 ora-git 服务，创建 Agent 会话，并调用 `ora-git`；独立 UID 的会话进行真实推送。
-- 必须成立：缺失或相同 UID 均不构建服务、不创建 socket，启动日志写明配置原因；普通会话继续，ora-git 环境项只含禁用原因，CLI 显示
-  `no_session` / 3 和该原因。独立 UID 原路径不变，启用时环境只导出真实 socket。
+- 触发：Node 校验启动配置；通过后组合 ora-git 服务、创建 Agent 会话并调用 `ora-git`；独立 UID 会话进行真实推送。
+- 必须成立：ora-git 组件对缺失或相同 UID 均不构建服务、不创建 socket。只有在其余约束允许 Node 启动时才承诺会话行为：允许
+  缺失 UID 的本地模式下，日志写明禁用原因、普通会话继续、ora-git 环境项只含禁用原因，CLI 显示 `no_session` / 3 和该原因。
+  网络 mTLS 模式缺失 UID 在入口被拒；显式相同 UID 被既有 `ManagedGitRunner::new` 以配置错误提前拒绝，Node 不启动，没有
+  Agent 会话或禁用原因环境变量。独立 UID 通过其余启动校验后原路径不变，启用时 ora-git 只导出真实 socket。
 - 禁止结果：回退到 Node UID；以 `unavailable` / 10 表示身份配置禁用；把服务拒绝误称为共享 UID 部署已经安全。
 - 决策依据：D5；共享 UID 的私钥风险仍见 ADR 的“本决策未解决的问题”。
 
@@ -134,11 +136,11 @@ cluster 验收脚本 `cluster/scripts/workspace-git-acceptance.py` 的证据写�
 
 | 验证义务 | 证据 | 状态 |
 | --- | --- | --- |
-| 缺失 `workload_uid` 时不构建服务、不创建 socket，普通 Agent 会话继续且 push 报 `no_session`，远端分支未创建 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_is_disabled_without_workload_uid`；`desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_reports_no_session_with_shared_uid` 直接断言 marker、日志、无 socket 与无远端分支；均在普通 CI 运行 | Covered |
+| 允许缺失 `workload_uid` 的本地模式通过其余启动校验后，不构建 ora-git 服务、不创建 socket，普通 Agent 会话继续且 push 报 `no_session`，远端分支未创建 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_is_disabled_without_workload_uid`；`desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_reports_no_session_with_shared_uid` 直接断言 marker、日志、无 socket 与无远端分支；均在普通 CI 运行 | Covered |
 | 相同 UID 的 ora-git 身份判定拒绝启用，给出 `SharesNodeUid` 原因 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_identity_decision_is_disabled_for_the_node_uid` 直接注入 UID 比较判定；在普通 CI 运行，不经过生产 `ora_git()` | Covered |
-| 显式相同 UID 的完整 Node 启动 → Agent 错误路径 | 上行只证明判定；既有 process runtime 校验可能先拒绝该配置，没有该完整路径的直接测试 | Partial |
-| 两种拒绝均输出完整启动日志 reason 字段 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_startup_logs_the_disabled_reason` 比较完整 reason 列表；相同 UID 通过直接判定注入，缺失 UID 经生产组合；在普通 CI 运行 | Covered |
-| 禁用时 ora-git 只向环境导出 `ORA_GIT_DISABLED_REASON`，无 socket | `desktop/apps/ora-node/src/ora_git/tests.rs::disabled_service_exports_reason_without_a_socket` 从空环境映射开始，比较 socket 与完整映射，覆盖缺失和相同 UID；在普通 CI 运行 | Covered |
+| 显式相同 UID 在创建会话前以配置错误拒绝启动 | `ae02179` 的 `desktop/apps/ora-node/src/lib.rs:189-190` 将 `ManagedGitRunner::new` 的失败映射为配置错误，`desktop/apps/ora-node/src/managed.rs:146-152` 的 root / 非零 UID 校验使相同 UID 必定被拒；这是代码依据，上行单测只直接验证组件判定，没有该完整启动拒绝路径的直接测试 | Missing |
+| 组件判定的两种拒绝均输出完整 reason 字段；不表示显式相同 UID 的生产启动会到达该日志 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_startup_logs_the_disabled_reason` 比较完整 reason 列表；相同 UID 通过直接判定注入，缺失 UID 经生产组合；在普通 CI 运行 | Covered |
+| 直接调用禁用组件时只向环境导出 `ORA_GIT_DISABLED_REASON`，无 socket；不表示显式相同 UID 的生产 Node 能创建会话 | `desktop/apps/ora-node/src/ora_git/tests.rs::disabled_service_exports_reason_without_a_socket` 从空环境映射开始，比较 socket 与完整映射，覆盖缺失和相同 UID；在普通 CI 运行 | Covered |
 | CLI 返回 3、stdout 为空，stderr 为 `ora-git: no_session: <原因>`，即使继承了 socket 变量也优先说明禁用 | `desktop/apps/ora-git/tests/disabled.rs::disabled_reason_is_an_explicit_cli_error` 对两种配置原因比较完整输出与退出码；在普通 CI 运行 | Covered |
 | 独立 UID 原样传给服务构造；Enabled open 仅导出 `ORA_GIT_SOCKET = socket.path()` 且 socket 存在 | `desktop/apps/ora-node/src/service/agents/tests/ora_git.rs::ora_git_keeps_separate_workload_uid`；`desktop/apps/ora-node/src/ora_git/tests.rs::enabled_service_exports_only_the_live_socket` 经 Fixture 以 euid 为 peer UID 直接测试 Enabled open 的整个环境映射与文件存在性；均在普通 CI 运行，后者不测试生产启用条件 | Covered |
 | 独立 UID 的真实 Agent CLI → socket → Git Server 推送，远端内容与作者正确 | `desktop/apps/ora-node/tests/standalone/agent_sessions.rs::echo_collaboration_markers_push_through_the_session_socket` 保留原名，`#[ignore = "requires root …"]`；作者在本地 WSL root 运行通过，HappyAuratus 在上文 #508 评论确认独立 root 验证通过；不在 CI 运行 | Covered |
