@@ -2,6 +2,18 @@
 
 根 D5 无账本迟到接收、接管与业务结论分离，以及接收前断线后恢复至 `done` 并真实释放 container/volume
 的新增义务见[迟到交付事实与释放恢复](late-delivery-fact-takeover.md)。下列已有编排证据不自动覆盖这些新义务。
+该文件按 Cloud #142 merge `b777496` 与 Desktop #726 merge
+`2564b42` 登记证据。
+无账本 D5/D8、失败 quiesce 恢复 running/ready 后接收及业务不改写有直接 PG/gRPC 测试；
+[integration/late_delivery_release_retry_test.go](https://github.com/ora-space/cloud/blob/b777496/integration/late_delivery_release_retry_test.go)
+的 `TestLateDeliveryAfterRefusedQuiesceConvergesThroughReleaseRetryOverGRPC` 覆盖正常释放 retry 到 done。
+Workspace desired=deleted 不是迟到事实资格，完整原身份与 generation 围栏仍适用。
+
+[固定版本真实栈回执](https://github.com/ora-space/circus/issues/407#issuecomment-6341728665)证明 Git Server 恢复后
+原释放到 done、Workspace deleted、原 container/volume 均为 0，主路径没有重启 Controller；作者机器产物为
+`ora-space/cluster/.acceptance/407/407-late-terminal-818226b4.json` 与 `407-stop-818226b4.json`，此处只引用评论和产物名。
+#312 永久失败的 O4 隔离变体须先真实触发精确拒绝，再显式 transport 重连或 Controller 重启并重交同一 terminal；
+[O4 真栈复测](https://github.com/ora-space/circus/issues/516#issuecomment-6345535566)已直接覆盖该隔离窗口：旧 Cloud `7a48f3403ae3` + desktop `13de5a3567d0` 保持隔离 60 秒，换 Cloud `818226b49b8a` 并只重启 Cloud 后，Controller↔Node 会话重建、原失败终态被接管，同一释放到 done、容器和卷回收，评级 Covered。真实重连包括这种 Cloud 不可用触发的会话重建，不要求 Controller 重启。真实新 incarnation 与后续 waiting 输入授权仍为 Partial/Missing。产物、作者摘要、fixture 边界及逐项状态见上述核心用例。
 
 依据 [IssueRun 根决策](../../../decisions/cloud/issue-run/0-agent-run-in-disposable-isolated-workspace.md)，
 事务边界见 [controller-integration D6](../../../decisions/cloud/controller-integration/20260928-agent-run-executions-thread-and-upload-grants.md)。
