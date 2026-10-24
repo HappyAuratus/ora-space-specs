@@ -1,7 +1,7 @@
 # 个人 Agent 配置、冻结与授权
 
 决策依据：[个人 Agent 配置](../../../decisions/cloud/model-access/20261017-personal-agent-configurations.md)。
-证据固定到 cloud `7a48f34`。多数义务目前只有 store 层证据（真实 PostgreSQL、直接调用核心分发，
+除各节另列提交外，证据固定到 cloud `7a48f34`。多数义务目前只有 store 层证据（真实 PostgreSQL、直接调用核心分发，
 未经 HTTP）或单用户 HTTP 证据，按 `Partial` 标记并写明缺口；没有浏览器端到端测试。下文 DB 指
 [`personal_agent_configurations_db_test.go`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/internal/core/personal_agent_configurations_db_test.go)。既有 OpenCode/个人连接的证据保持原范围；供应商确认不是 Ora 实测证据。
 
@@ -43,6 +43,22 @@
 - 必须成立：OpenCode 插件页和全局默认读写同一选择；Claude 独立解析；缺配置明确拒绝。
 - 禁止结果：复制 default、切换全局 CLI、缺配置回退其他人/槽位/宿主凭据。
 - 验证义务与证据：DB `TestPersonalAgentOpenCodeUsesGlobalDefaultAndRepairsRemovedSettings` 证明 OpenCode 读取全局默认而不复制；`TestPersonalAgentAdmissionRollback`、`TestPersonalAgentInvalidDeclarationCannotUseLegacyFallback` 证明声明缺失或非法时不回退旧路线。缺“已有 OpenCode 默认值但 Claude 无配置时拒绝（`agent_configuration_required`）”的直接测试、工作流 default 槽位入口，以及 HTTP 和浏览器验证。当前 `Partial`。
+
+## Personal model gaps must stay actionable across readiness and admission
+
+- 风险：已保存的 Claude 配置因连接停用、Key 清除或模型撤下而不可用，却显示临时故障或失去修复入口。
+- 前置：当前用户拥有有效的 Claude 插件配置、个人连接和模型，部署具备对应运行能力。
+- 触发：停用或删除连接、清除 Key、撤下所选模型后读取任务就绪状态或再次尝试绑定运行；另检查未配置插件模型选择的提示。
+- 必须成立：就绪投影和最终配置绑定准入给出同一公开原因；连接、凭据和模型问题保留个人连接入口，未配置插件模型选择保留插件设置入口。拒绝绑定不留下部分模型绑定或 Agent 配置快照。
+- 禁止结果：直接暴露领域内部缺口码、把永久配置缺口统一显示为“稍后重试”、引导用户修改无关默认值或静默回退。
+- 本节证据固定到 cloud `c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6`。
+
+| 义务 | 所需直接证据 | 状态 |
+| --- | --- | --- |
+| 当前用户的配置缺口在读取与绑定准入中一致 | [`TestPersonalAgentReadinessAndAdmissionUsePublicModelGaps`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/internal/core/personal_agent_readiness_db_test.go) 使用真实 PostgreSQL：有效配置先可用，再分别停用/删除连接、移除凭据或撤下模型；经 `Store.Public` 读取 readiness，并经绑定准入核对同一公开错误及无残留绑定/快照。未经过 HTTP 适配层 | Covered |
+| 提示与处理入口匹配 | [`agent-readiness.test.tsx`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/frontend/src/features/issues/conversation/agent-readiness.test.tsx) 组件测试直接检查连接、凭据、模型及默认模型缺口的文案与个人连接链接；插件缺配置、声明缺失或需修复时链接到插件设置 | Covered |
+| 未配置插件选择的完整准入链 | [`TestSafeAgentModelGap`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/internal/core/personal_agent_run_test.go) 只直接证明未配置原因转换为插件配置公开码；缺该状态的持久化场景与完整准入入口验证 | Partial |
+| 生产 HTTP 与浏览器联合修复 | 尚无覆盖上述故障 → 页面提示 → 按正确入口修复 → 再次准入的联合测试 | Missing |
 
 ## Claude thread permissions must protect the initiator's model access
 
