@@ -72,9 +72,9 @@
 - 前置状态：产物已登记并建立按 Run ID 的索引；成员资格可能变化。
 - 触发：任务历史读取、产物下载、`404` 判定。
 - 必须成立：产物读取/下载只在 Cloud 公开 API 上提供，按当前有效租户成员对绑定 issue 的读取权限判定，不存在与无权限统一
-  `404`；下载用短期签名 URL；`scheduled_run_artifact_rejections` 携带 `tenant_id`/`issue_run_id`，被拒数量按运行归属投影；
+  `404`；Cloud 鉴权后通过私有端点读取对象，按登记大小/SHA-256 校验，上限 10 MiB，返回前再次核验权限与登记；浏览器不取得对象存储地址或凭据；`scheduled_run_artifact_rejections` 携带 `tenant_id`/`issue_run_id`，被拒数量按运行归属投影；
   读取权限、下载授权与每任务淘汰都经 `issue_run_id → issue` 定位，不依赖 `occurrence_id`。
-- 禁止结果：暴露永久对象 URL、把产物权限放宽到任务创建者之外、被拒清单缺运行身份导致无法鉴权投影。
+- 禁止结果：暴露对象存储地址/凭据、未校验字节或内联渲染 HTML、把产物权限放宽到任务创建者之外、被拒清单缺运行身份导致无法鉴权投影。
 - 决策依据：本 ADR D4、D6 与不变量 8、10。
 
 ### 验证义务与证据
@@ -82,7 +82,10 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 读取/下载跟随 issue 可见性，不存在与无权限统一 `404` | 尚未实现 | `Missing` |
-| 下载使用短期签名 URL，不暴露永久对象地址 | 尚未实现 | `Missing` |
+| 私有端点读取与登记大小/SHA-256 校验（10 MiB 上限），缺失/不符返回 `404 artifact_unavailable`、未配置存储返回 `503` | 尚无已合并的直接证据 | `Missing` |
+| 读取期间权限撤销、登记变更/淘汰后不返回字节，外部 I/O 不占数据库事务 | 尚无已合并的直接证据 | `Missing` |
+| 原始字节响应使用安全 basename 的 attachment、octet-stream、nosniff 与 private no-store，HTML 也不内联执行 | 尚无已合并的直接证据 | `Missing` |
+| 前端仅提供同源下载路径，浏览器与契约不取得对象地址/凭据或 `url` / `expiresAt` | 尚无已合并的直接证据 | `Missing` |
 | 被拒清单按 `issue_run_id` 归属投影，不依赖 `occurrence_id` | 尚未实现 | `Missing` |
 
 ## Retention Must Stay Bounded Per Task And Independent Of Occurrence Trim
@@ -107,12 +110,12 @@
 
 ## Artifact Directory Must Stay Out Of The Revision Snapshot
 
-- 风险：产物目录随 `git add -A` 进入交付 ref，跳过 issue 可见性与短期签名下载，破坏 10 个运行保留边界。
+- 风险：产物目录随 `git add -A` 进入交付 ref，跳过 issue 可见性与 Cloud 代理附件下载，破坏 10 个运行保留边界。
 - 前置状态：仓库包含 `.ora-scheduled-artifacts/`（含已跟踪/已提交的同名目录）；定时运行产出产物。
 - 触发：Node 交付快照以临时 index 执行 `git add -A`，随后推送交付 ref。
 - 必须成立：`.ora-scheduled-artifacts/` 是 Ora 保留目录名，Node 快照对所有运行一律排除（不按 `trigger` 区分），产物文件
   不进入交付 ref 的最终提交；已跟踪/已提交的同名目录此后不再随快照更新，历史提交中的既有副本不删除、不回改。
-- 禁止结果：产物随快照进入 Git 交付、绕过 issue 可见性与签名下载、指定仅定时运行排除。
+- 禁止结果：产物随快照进入 Git 交付、绕过 issue 可见性与 Cloud 代理附件下载、指定仅定时运行排除。
 - 决策依据：本 ADR D3 与不变量 9；对 Node Revision 根决策 D2 的修改。
 
 ### 验证义务与证据
