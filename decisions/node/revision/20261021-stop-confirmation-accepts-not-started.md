@@ -1,12 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 恢复停止确认接受 host 权威的 NotStarted：原 Scope 已 Closed 且该 Run 从未启动即视为已停止，UnknownIdentity 仍按未知并等 host 能证明记录完整后重估
 
 恢复的停止确认在[完整恢复截止与停止确认决策](20261018-complete-restore-deadline-and-cancel-confirmation.md)（下称“截止决策”）D6 中定义为「受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出」。本文扩展这条证据：原 Scope 已 `Closed`，且 host 权威报告该 Run 为 `NotStarted`（平台在 spawn 时明确报告未启动，或 guardian 在接受到启动请求之前已取消；cleanup 为 `CleanupState::Complete`，证据按实际取得的结果分级报告）同样构成停止确认，与「直接进程已退出」并列。host 返回 `UnknownIdentity`（从未记录该 Run）仍不构成停止确认，继续走 `stop_unconfirmed`，交给残留回收或运维显式确认；以后 host 协议能证明记录完整时再另开决策重估。预算到期、关闭请求、清理预算耗尽与等待上限仍然都不是停止确认。
 
-本文为 `approved`，只改截止决策 D6 的停止确认证据，D1–D5 以及正常路径、未知路径、上限与回收规则全部继承。涉及 desktop 恢复编排与受管执行查询（`apps/ora-node/src/revision/`）；不涉及 Cloud 的 2/6/5 窗口、`stop_evidence` 写入与残留账本状态，也不新增会话状态或协议字段。兼容性边界：不改变正常路径的清理顺序与终态形状，不改变 `stop_unconfirmed` 的登记与转交；`UnknownIdentity` 一侧保持现状。实现尚未合入 desktop main，核心用例已按最终同意的方案补在[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)，义务如实标为 `Missing`。
+本文为 `implemented`：Node 在原 Scope 已 `Closed` 后，核对返回的 Scope、Run 与快照身份，接受 launch/direct/cleanup 三项一致的 host 权威 `NotStarted`；host 保留已确认启动的事实，矛盾快照单独拒绝并公开错误，其他观测与 Scope 继续协调。本文只改截止决策 D6 的停止确认证据，D1–D5 以及正常路径、未知路径、上限与回收规则全部继承。涉及 desktop 恢复编排与受管执行查询；不涉及 Cloud 的 2/6/5 窗口、`stop_evidence` 写入与残留账本状态，也不新增会话状态或协议字段。兼容性边界：不改变正常路径的清理顺序与终态形状，不改变 `stop_unconfirmed` 的登记与转交；`UnknownIdentity` 一侧保持现状。直接行为证据及其覆盖边界见[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)。截止决策继续为 `approved`，本文的实现不代表其联合 Cloud/Node 故障验收完成。
 
 ## 继承与修改
 
@@ -63,7 +63,7 @@ cleanup 证据按实际取得的结果报告：平台 spawn 路径取 `cleanup_e
 
 取得后走与直接进程退出完全相同的正常路径：在有界清理预算内清理临时目录与传输仓库（失败只记录），报告 `prior_revision_unavailable`（取消先生效时按取消原因），会话以 `agent_failed` 结束；不进入 `stop_unconfirmed`，原 Scope/Run 的冲突责任随正常路径解除，交付仍按 D4 的隔离规则处理。
 
-矛盾检测：host 对已确认启动的 Run 报 `NotStarted` 必须作为错误拒绝，不能当作停止确认。这条规则保证第二种证据只在“host 明确知道它没有启动”时成立，不会因为状态不完整被扩展成“任何异常都算没跑过”。
+矛盾检测：host 对已确认启动的 Run 报 `NotStarted` 必须作为错误拒绝，保留该 Run 的原观测；已确认启动事实在之后的未知观测和 host 重启后继续保留。协调器在该 Scope 的 coordination 公开 `Rejected(ConflictingRun)`，继续提交同批其他 Run、Scope 观测与重试进度，不因单条矛盾停止整个 host，也不把该快照当作停止确认。存储与文件系统错误仍按原有失败边界报告。这条规则保证第二种证据只在“host 明确知道它没有启动”时成立，不会因为状态不完整被扩展成“任何异常都算没跑过”。
 
 其余前提不变：不能用预算到期、关闭请求、清理预算耗尽或等待上限推导 `NotStarted`，必须以 host 的观察为准；“取得停止确认后才发终态”的顺序、清理预算、上限与交付隔离也都不变。
 
@@ -82,7 +82,7 @@ cleanup 证据按实际取得的结果报告：平台 spawn 路径取 `cleanup_e
 
 1. 停止确认 = 原 Scope 已 `Closed` 且（该 Run 的直接进程已退出 **或** host 权威报告该 Run 为 `NotStarted`）。
 2. `NotStarted` 只来自 host 对已登记 Run 的观察；预算到期、关闭请求、清理预算耗尽与上限到期都不能推导它。
-3. 对已确认启动的 Run 报 `NotStarted` 是矛盾，必须拒绝，不能作为停止确认。
+3. 对已确认启动的 Run 报 `NotStarted` 是矛盾，只拒绝该快照并保留原事实、公开协调错误；其他 Run 与 Scope 继续协调，矛盾不能作为停止确认。
 4. `NotStarted` 与 `UnknownIdentity` 的区分靠 fencing：只有“已决定停止、旧请求已被挡住、收到 `UnknownRun`、且之后不会再有 `Start` 到达”的路径才能合成为 `NotStarted`；`UnknownIdentity` 没有这项保证，不能当作停止确认。
 5. `NotStarted` 的 cleanup 证据按实际取得的结果分级报告：guardian 取消路径固定 `BestEffortComplete`，平台 spawn 路径按 `cleanup_evidence(guarantee)`，`BestEffortComplete` 不等于已确认静止。
 6. `UnknownIdentity` 不是停止确认；未知路径的禁令（不发终态、不交付、不复用、保留原责任）不因本文改变。
@@ -107,16 +107,15 @@ cleanup 证据按实际取得的结果报告：平台 spawn 路径取 `cleanup_e
 ## 本决策未解决的问题
 
 - **host 记录完整性的协议形状**：`UnknownIdentity` 的重估依赖 host 能证明记录完整（epoch 与 journal 连续）。本文只写重估条件，不定义字段，届时另开决策。
-- **窗口内的实际分布**：`NotStarted` 与 `UnknownIdentity` 在 host 重启窗口里各占多少，目前没有数据；由承接实现的运行实测并记录在 circus 的运行 issue 里，本文不预设比例。
+- **生产窗口内的实际分布**：可复现的分层注入只能证明已登记与未登记两侧的行为，不能把人为等额采样当成生产发生率。样本定义、原始数据与限制只保留在 circus 的运行 issue；本文不预设比例，也不据此放宽 `UnknownIdentity`。
 - **能否更早识别该窗口**：attempt 已落盘、`Start` 未送达时，恢复编排是否可以更早发现并直接进入查询，属于实现范围；本文不改变派发顺序与持久化顺序。
 
-## 落地顺序
+## 落地边界
 
-1. **规格**（本文）：扩展 D6 的停止确认证据并同步核心用例。完成条件：本文 `approved`、截止决策标题下注明 D6 已被本文扩展、核心用例含 `NotStarted` 与 `UnknownIdentity` 两侧义务。
-2. **实现**（desktop）：停止确认接受 `NotStarted`，合成 `NotStarted` 的路径必须满足 D1 的 fencing 前提，含矛盾检测与覆盖测试；`UnknownIdentity` 维持未知路径。完成条件：原 Scope `Closed` + `NotStarted` 时走正常路径发终态并清理；`Closed` + `UnknownIdentity` 时不发终态、到期登记 `stop_unconfirmed`；已确认启动的 Run 报 `NotStarted` 被拒绝；不满足 fencing 前提时不合成 `NotStarted`。实现还要记录窗口内两种应答的实测占比，作为重估依据。
+desktop 的停止确认已接受一致且身份匹配的 `NotStarted`；平台未启动与 guardian 停止取消两类来源分别保留实际 cleanup 证据。worker 先取得当前 host binding，只有停止路径上的 `UnknownRun` 才能合成 `NotStarted`，之后不再发送 `Start`；过期 binding、过期 session 与启动路径上的 `UnknownRun` 均不产生这一事实。host 的矛盾拒绝跨重启保留原事实，且不终止其他 Scope 的协调。
 
-保持不变：D1–D5、`stop_unconfirmed` 的登记与转交、交付隔离、Cloud 2/6/5 窗口与残留账本状态；截止决策继续为 `approved`，整份恢复 ADR 转 `implemented` 仍由原落地运行负责。
+保持不变：D1–D5、`stop_unconfirmed` 的登记与转交、交付隔离、Cloud 2/6/5 窗口与残留账本状态。当前交付的 Linux BestEffort 不因此获得 Strong 保证；受控重启采样不代表生产发生率。截止决策继续为 `approved`，整份恢复 ADR 的部署级联合验证与最终状态更新独立承接。
 
 ## 核心测试用例
 
-见[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)：在既有 `Stop Confirmation Requires Scope Closure And Direct Process Exit` 上写明基础证据与扩展的关系，并新增 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted`，覆盖 `NotStarted` 走正常路径、两类来源、fencing 前提、矛盾检测、`UnknownIdentity` 保守与 cleanup 证据分级。实现尚未合入 desktop main，证据标为 `Missing`。
+见[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)的 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted`：直接测试分别验证 Node 的停止确认与私有输入清理、host 持久事实与错误隔离、worker 的 fencing 和平台 cleanup 证据分级。`UnknownIdentity` 的完整交付与部署级故障矩阵仍按该用例的实际证据状态保留覆盖边界，不用较低层测试代替联合验收。

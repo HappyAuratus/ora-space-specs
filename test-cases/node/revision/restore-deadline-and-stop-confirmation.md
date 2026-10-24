@@ -2,7 +2,7 @@
 
 依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)；其中 D6 的停止确认证据另由[恢复停止确认接受 host 权威 NotStarted 决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)扩展（下称“扩展决策”）。下文的 D 编号与不变量编号未加限定时指前一篇 ADR，引用扩展决策时写明其 D 编号或“扩展决策不变量”；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
 
-本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不覆盖本文新增的义务：内部线实现的恢复时限固定为 5 分钟，只覆盖建立传输仓库、拉取、重试与取入，不覆盖检出与祖先检查，也没有停止确认与停止证据未知的路径，所以下列义务都是 `Missing`，落地运行按最终实现补上具体测试名与 commit 后再改状态。
+本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不能替代本文新增的验证义务。host 权威 `NotStarted` 扩展的直接证据登记在下方同名用例，其余截止、取消与 Cloud/Node 联合故障义务保持各自的实际证据状态；扩展已实现不表示整份截止决策已经完成部署级验收。
 
 ## A Restore Deadline Covers Every Step And Clips Command Budgets To Its Remainder
 
@@ -103,7 +103,7 @@ D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/2026
 - 原 Scope 已 `Closed` 且 host 权威报告该 Run 为 `NotStarted`（`direct` 为 `DirectProcessState::NotStarted`、`launch` 为 `LaunchFact::NotStarted`、cleanup 为 `CleanupState::Complete`）构成停止确认，走与直接进程退出相同的正常路径：在有界清理预算内清理临时目录与传输仓库（失败只记录），报告 `prior_revision_unavailable`（取消先生效时按取消原因），会话以 `agent_failed` 结束；不进入 `stop_unconfirmed`。
 - `NotStarted` 的来源限于平台 spawn 明确报告未启动与 guardian 在接受到启动请求前取消两类；后者由 worker 在发 `Stop` 收到 `GuardianRunRejection::UnknownRun` 后合成，可信前提是 fencing：当前 host binding 挡住旧请求，且 worker 发出 `Stop` 之后不再排 `Start`。
 - `UnknownIdentity` 仍不是停止确认：不发终态、不交付、不读 HEAD、不重开或复制执行、不解除 checkout 冲突责任，停止证据上限到期后在原执行上登记 `stop_unconfirmed`，迟到证据仍按原执行身份补报一次。
-- 对已确认启动的 Run 报 `NotStarted` 是矛盾，必须作为错误拒绝，不能当作停止确认。
+- 对已确认启动的 Run 报 `NotStarted` 是矛盾，只拒绝该快照、保留原事实并公开协调错误；同批其他 Run、Scope 观测和其他 Scope 的协调继续，不能当作停止确认。
 - cleanup 证据按实际取得的结果分级报告：平台 spawn 路径取 `cleanup_evidence(guarantee)`，guardian 取消路径固定 `CleanupEvidence::BestEffortComplete`；BestEffort 的尽力清理完成不等于已确认静止。
 
 ### 禁止结果
@@ -118,12 +118,12 @@ D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/2026
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| `NotStarted` 走正常路径 | 原 Scope `Closed` 且 host 报告 `NotStarted`：断言进入正常路径、在有界清理预算内清理、报告 `prior_revision_unavailable`、会话 `agent_failed`，且不登记 `stop_unconfirmed` | Missing |
-| 两种来源各自成立 | 平台 spawn 明确返回未启动；guardian 在接收到启动请求前取消（worker 对 `Stop` 的 `UnknownRun` 合成）：两种情况都得到 `NotStarted` 并进入正常路径 | Missing |
-| fencing 前提 | 证明只有“已决定停止、旧请求已被挡住、收到 `UnknownRun` 且之后不再排 `Start`”的路径能产生 `NotStarted`；去掉任一 fencing 条件时不产生 `NotStarted`，仍按未知处理 | Missing |
-| 矛盾检测 | 对已确认启动的 Run 注入 `NotStarted`，断言作为错误拒绝，不产生停止确认、不发终态 | Missing |
-| `UnknownIdentity` 保守 | 注入 `UnknownIdentity`：无终态、交付读 HEAD/快照/推送被拒、checkout 复用被拒、原 Run 记录保留，上限到期后登记 `stop_unconfirmed`；迟到证据仍只按原身份补报一次 | Missing |
-| cleanup 证据分级 | guardian 取消路径固定 `BestEffortComplete`；平台 spawn 路径按实际保证取证据；BestEffort 下不报告已确认静止 | Missing |
+| `NotStarted` 走正常路径 | [`not_started_requires_closed_scope_consistent_facts_and_original_identity`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/apps/ora-node/src/managed/not_started_tests.rs) 经真实 Unix IPC、SQLite 与生产停止确认/私有输入清理入口，断言一致 NotStarted 被接受、清理前输入保留、确认后传输目录清除、原 attempt 解除且 `agent_failed` / `prior_revision_unavailable` 终态只提交一次；不一致、cleanup 未完成及身份错配均不能终结，确认期间不执行 Git | Covered |
+| 两种来源各自成立 | [`platform_nonlaunch_preserves_cleanup_evidence_for_each_guarantee`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/tests/launch.rs) 从生产 ScopeRuntime 的平台 spawn 未启动路径取得快照与 Closed；[`nonlaunch_requires_bound_stop_and_never_sends_start_after_stop`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/worker_tests.rs) 经生产 worker 与真实 Unix IPC 从已绑定的 Stop/UnknownRun 取得一致 NotStarted。两类产出的事实由上述 Node 判定回归验证；这是分层行为证据，不是 Strong 平台部署验收 | Covered |
+| fencing 前提 | [`nonlaunch_requires_bound_stop_and_never_sends_start_after_stop`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/worker_tests.rs) 断言管理 binding 先于 Close/Stop、Stop 后无 Start；旧 binding、旧 session 和 Start/UnknownRun 均无 NotStarted；[`queued_request_checks_binding_after_takeover`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/guardian/management_tests.rs) 在实际执行互斥门禁排队后接管，旧 session 被拒。未尝试 guardian 的关闭路径由 [`restart_before_first_dispatch_distinguishes_recorded_and_unknown_runs`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/non_launch_tests.rs) 验证原 Scope 封闭、拒绝后续 Start 且未登记 Run 仍未知 | Covered |
+| 矛盾检测与错误隔离 | [`confirmed_launch_rejects_not_started_before_and_after_host_recovery`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host_state/observations.rs) 验证 Running/Exited 与后续 Unknown 不能抹掉已启动事实；[`contradictory_nonlaunch_preserves_facts_and_keeps_tick_serving`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/non_launch_tests.rs) 经生产 tick 与真实 SQLite，在重启前后断言 tick 成功、原观测不变、同批其他 Run 与另一 Scope 的观测/进度继续提交、查询暴露 Rejected(ConflictingRun)，不制造 settled 证据；Node 的一致性回归拒绝矛盾快照、无终态 | Covered |
+| `UnknownIdentity` 保守 | Node 一致性回归的 UnknownIdentity 分支验证无终态、输入与原身份保留；[`unknown_stop_matrix_expires_without_terminal_then_original_proof_settles_once`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/apps/ora-node/src/managed/restore_tests.rs) 通过真实 IPC/SQLite 验证到期登记 stop_unconfirmed、停止轮询且原身份迟到终态只提交一次；[`unknown_stop_retains_clock_terminal_and_checkout_responsibility`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/node-db/src/tests/session/restore.rs) 验证重启后原时钟与身份保留、拒绝新会话复用 checkout。尚缺把 UnknownIdentity 注入完整交付入口并直接断言无 HEAD/快照/推送的组合证据；该联合隔离验证随截止决策独立承接，不将较低层状态拒绝写成全链路 Covered | Partial |
+| cleanup 证据分级 | 平台 nonlaunch 回归逐一断言 BestEffort/Strong 的实际快照与 Closed 证据；worker 的 Stop/UnknownRun 回归及 host 重启回归固定断言 BestEffortComplete，不升级为 ConfirmedQuiescence。这证明分级规则，不声明 Strong 部署已经启用 | Covered |
 
 ### 决策依据
 
