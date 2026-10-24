@@ -141,9 +141,15 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 - 任务历史读取时一并返回 verdict、产物数量和被拒数量；产物读取/下载只在 Cloud 公开 API 上提供，按
   当前有效租户成员对绑定 issue 的读取权限判定，不存在与无权限统一 `404`。读取权限、下载授权与每
   任务淘汰都经 `issue_run_id → issue` 定位，不依赖 `occurrence_id`。
-- 下载使用短期签名 URL，不暴露永久公开对象地址；对象存储凭据与桶配置只留在 Cloud，Controller/Node
-  不持有对象存储业务凭据。产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制（产物文件不进入
-  Revision 的 Git 快照，见 D3）。
+- 下载由 **Cloud 代理**：短事务鉴权并读取登记行，事务外经私有端点读取对象，按登记的大小与 SHA-256
+  校验，单产物读取上限为 10 MiB；返回前再次核对当前权限和登记。浏览器不取得对象存储地址或凭据，
+  Controller/Node 不持有对象存储业务凭据。对象存储的沙盒网络别名不要求浏览器可达。
+- 成功响应返回原始字节，使用 `Content-Disposition: attachment`（文件名取 `display_name` 的 basename
+  并安全编码）、`Content-Type: application/octet-stream`、`X-Content-Type-Options: nosniff` 与
+  `Cache-Control: private, no-store`；HTML 等产物也只能作为附件下载。对象缺失或大小/摘要校验失败返回
+  `404 artifact_unavailable`，对象存储未配置返回 `503 object_store_unavailable`。前端使用同源下载路径，
+  契约不含对象下载 `url` / `expiresAt`。产物的对象存储登记不随 Revision、Thread 或 Issue 评论复制
+  （产物文件不进入 Revision 的 Git 快照，见 D3）。
 - 手工 IssueRun 没有定时产物；同一 IssueRun 的产物只能由该次运行的执行端上报，不能由普通客户端
   直接创建。
 
@@ -168,8 +174,8 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
   只设每运行上限和每任务 10 个运行上限来约束成本，不新增独立计费项或全局配额。费用明细与配额属于
   后续决策。
 - **敏感信息**：不做内容密钥扫描（沿用 local ADR D4 的 owner 结论）。Ora 自身不向产物存储写入模型
-  Key、token 或环境变量；产物是 Agent 输出，暴露面由类型白名单、大小上限、运行可见性和短期下载
-  授权约束。
+  Key、token 或环境变量；产物是 Agent 输出，暴露面由类型白名单、大小上限、运行可见性和 Cloud 代理下载
+  鉴权约束。
 
 ### D6：历史投影、事件与 Cloud/local 边界
 
@@ -206,7 +212,7 @@ verdict 由 Node 执行端在会话收尾时从 Agent 最终 Assistant 轮解析
 | 把产物登记进 Revision 的 Git 交付 / session JSONL | Revision 是 Git 成果与历史归档，产物与 Revision 生命周期和校验语义不同，混入会扩大交付失败面；产物目录已在快照中排除（D3），产物只走对象存储登记通道 |
 | 产物跟随 Worktree/Workspace 生命周期 | Workspace 释放后丢失，无法按 Run ID 稳定访问 |
 | 复用 local 的每任务 10 个运行、随历史裁剪清文件 | Cloud 的 100 条历史视图与对象存储成本边界不同；本文显式定义 Cloud 自己的 10 个运行产物上限 |
-| 开放永久公开对象 URL | 绕过 issue 可见性；短期签名 URL 才能跟随读取权限 |
+| 开放对象存储直连下载 URL | 永久公开地址绕过 issue 可见性；短期签名地址也可能只有沙盒网络可达，且允许 HTML 在存储源直接渲染。Cloud 代理使下载沿用当前鉴权并统一作为附件返回 |
 | 对产物做内容密钥扫描 | 漏报率高且只带来虚假安全感；沿用 local owner 结论，靠白名单、上限、可见性与不写凭据约束 |
 | 只拒绝截止后签发新授权，不做前缀 GC | 更省事；但预签名 PUT 一旦签出就独立有效，截止前签出的授权在截止后仍可能完成写入，只能靠前缀 GC 兜底 |
 
