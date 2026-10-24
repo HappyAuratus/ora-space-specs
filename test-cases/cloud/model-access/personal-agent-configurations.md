@@ -2,7 +2,7 @@
 
 决策依据：[个人 Agent 配置](../../../decisions/cloud/model-access/20261017-personal-agent-configurations.md)。
 除各节另列提交外，证据固定到 cloud `7a48f34`。多数义务目前只有 store 层证据（真实 PostgreSQL、直接调用核心分发，
-未经 HTTP）或单用户 HTTP 证据，按 `Partial` 标记并写明缺口；没有浏览器端到端测试。下文 DB 指
+未经 HTTP）或单用户 HTTP 证据，按 `Partial` 标记并写明缺口；新增受控模型浏览器联合证据见配置缺口一节，不替代真实供应商或双用户验证。下文 DB 指
 [`personal_agent_configurations_db_test.go`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/internal/core/personal_agent_configurations_db_test.go)。既有 OpenCode/个人连接的证据保持原范围；供应商确认不是 Ora 实测证据。
 
 ## Plugin configuration must reuse owner-scoped connections without exposing keys
@@ -17,7 +17,7 @@
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | 用户/来源隔离 | [`TestPersonalAgentConfigurationHTTP`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/integration/personal_agent_configurations_test.go) 单用户经生产 HTTP 拒绝请求体自报 `userId`、同幂等键重放返回原结果；DB `TestPersonalAgentConfigurationRepairAndOwnership` 中管理员读不到成员配置、写入得到 `not_found`。缺 HTTP 跨用户/管理员矩阵与同名不同来源插件 | Partial |
-| 网页秘密通路 | [`editor.test.tsx`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/frontend/src/features/agent-configurations/editor.test.tsx) 的 “keeps write-only credentials outside query and mutation caches…” 核对 Key 不进前端缓存且提交前清空输入；[`TestPersonalAgentConfigurationHTTP`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/integration/personal_agent_configurations_test.go) 核对读取不含凭据引用、上游地址、Key 或令牌，Settings 里传 `apiKey` 被拒。缺生产页面经 Gateway/model-gateway 的联合验证和日志核对 | Partial |
+| 网页秘密通路 | [`editor.test.tsx`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/frontend/src/features/agent-configurations/editor.test.tsx) 核对 Key 不进前端缓存且提交前清空输入；[`TestPersonalAgentConfigurationHTTP`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/integration/personal_agent_configurations_test.go) 核对读取不含凭据引用、上游地址、Key 或令牌，Settings 里传 `apiKey` 被拒。新增[浏览器套件](https://github.com/ora-space/cluster/blob/b270261fe0503b38d3e26ad480d35834ce1bafd2/scripts/personal-agent-readiness-browser.py) 经真实页面及 Gateway/model-gateway 写入合成 Key，并在截图前核对密码框清空；仍缺日志、持久存储与请求缓存的联合核对 | Partial |
 | 连接单一事实来源 | [`editor.test.tsx`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/frontend/src/features/agent-configurations/editor.test.tsx) 的内联新建连接写入共享连接库、清除插件选项保留连接库。缺两插件共用连接经轮换/删除的集成验证 | Partial |
 
 ## Configuration writes must reject stale revisions without a declaration change
@@ -42,23 +42,23 @@
 - 触发：分别编辑两种插件配置并从普通任务与原工作流入口创建运行；包括 Claude 缺配置。
 - 必须成立：OpenCode 插件页和全局默认读写同一选择；Claude 独立解析；缺配置明确拒绝。
 - 禁止结果：复制 default、切换全局 CLI、缺配置回退其他人/槽位/宿主凭据。
-- 验证义务与证据：DB `TestPersonalAgentOpenCodeUsesGlobalDefaultAndRepairsRemovedSettings` 证明 OpenCode 读取全局默认而不复制；`TestPersonalAgentAdmissionRollback`、`TestPersonalAgentInvalidDeclarationCannotUseLegacyFallback` 证明声明缺失或非法时不回退旧路线。缺“已有 OpenCode 默认值但 Claude 无配置时拒绝（`agent_configuration_required`）”的直接测试、工作流 default 槽位入口，以及 HTTP 和浏览器验证。当前 `Partial`。
+- 验证义务与证据：DB `TestPersonalAgentOpenCodeUsesGlobalDefaultAndRepairsRemovedSettings` 证明 OpenCode 读取全局默认而不复制；`TestPersonalAgentAdmissionRollback`、`TestPersonalAgentInvalidDeclarationCannotUseLegacyFallback` 证明声明缺失或非法时不回退旧路线。新增 [`TestPersonalAgentMissingModelSelectionHTTPAdmissionAndRepair`](https://github.com/ora-space/cloud/blob/80481ce4433080adcb6d15f450cbd6b1b905a4ff/integration/personal_agent_admission_http_test.go) 经 HTTP 核对已有可用全局默认时，Claude 从未选择或清除选择仍拒绝；修复后固定其个人配置 revision，全局默认不变。工作流 default 槽位入口和两种默认的连贯编辑验证仍缺，整体保持 `Partial`。
 
 ## Personal model gaps must stay actionable across readiness and admission
 
 - 风险：已保存的 Claude 配置因连接停用、Key 清除或模型撤下而不可用，却显示临时故障或失去修复入口。
 - 前置：当前用户拥有有效的 Claude 插件配置、个人连接和模型，部署具备对应运行能力。
 - 触发：停用或删除连接、清除 Key、撤下所选模型后读取任务就绪状态或再次尝试绑定运行；另检查未配置插件模型选择的提示。
-- 必须成立：就绪投影和最终配置绑定准入给出同一公开原因；连接、凭据和模型问题保留个人连接入口，未配置插件模型选择保留插件设置入口。拒绝绑定不留下部分模型绑定或 Agent 配置快照。
+- 必须成立：就绪投影和最终配置绑定准入给出同一公开原因；连接、凭据和模型问题保留个人连接入口，未配置插件模型选择保留插件设置入口。修复后原任务页恢复就绪并保留未发送草稿；拒绝绑定不留下部分模型绑定或 Agent 配置快照。
 - 禁止结果：直接暴露领域内部缺口码、把永久配置缺口统一显示为“稍后重试”、引导用户修改无关默认值或静默回退。
-- 本节证据固定到 cloud `c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6`。
+- 新增公开边界证据固定到 cloud `80481ce4433080adcb6d15f450cbd6b1b905a4ff`、cluster `b270261fe0503b38d3e26ad480d35834ce1bafd2`；既有领域/组件证据仍按各自链接固定。
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | 当前用户的配置缺口在读取与绑定准入中一致 | [`TestPersonalAgentReadinessAndAdmissionUsePublicModelGaps`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/internal/core/personal_agent_readiness_db_test.go) 使用真实 PostgreSQL：有效配置先可用，再分别停用/删除连接、移除凭据或撤下模型；经 `Store.Public` 读取 readiness，并经绑定准入核对同一公开错误及无残留绑定/快照。未经过 HTTP 适配层 | Covered |
 | 提示与处理入口匹配 | [`agent-readiness.test.tsx`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/frontend/src/features/issues/conversation/agent-readiness.test.tsx) 组件测试直接检查连接、凭据、模型及默认模型缺口的文案与个人连接链接；插件缺配置、声明缺失或需修复时链接到插件设置 | Covered |
-| 未配置插件选择的完整准入链 | [`TestSafeAgentModelGap`](https://github.com/ora-space/cloud/blob/c3ad6761ec3d6353f2c93ad4eac2054ff9d924f6/internal/core/personal_agent_run_test.go) 只直接证明未配置原因转换为插件配置公开码；缺该状态的持久化场景与完整准入入口验证 | Partial |
-| 生产 HTTP 与浏览器联合修复 | 尚无覆盖上述故障 → 页面提示 → 按正确入口修复 → 再次准入的联合测试 | Missing |
+| 未配置插件选择的完整准入链 | [`TestPersonalAgentMissingModelSelectionHTTPAdmissionAndRepair`](https://github.com/ora-space/cloud/blob/80481ce4433080adcb6d15f450cbd6b1b905a4ff/integration/personal_agent_admission_http_test.go) 使用真实 HTTP/PostgreSQL，在全局默认可用时分别创建“从未配置”和“已清除”状态；任务 readiness、手动 Run、任务提及、任务消息均明确拒绝，公开读取无残留运行/评论/消息；显式保存插件模型选择后恢复准入，Run 固定修复后的个人配置 revision。凭据仅为前置的密文边界替身，不声称真实 Node 执行 | Covered |
+| 生产 HTTP 与浏览器联合修复 | [可复跑浏览器套件](https://github.com/ora-space/cluster/blob/b270261fe0503b38d3e26ad480d35834ce1bafd2/scripts/personal-agent-readiness-browser.py) 经生产 UI/HTTP 对未配置插件选择、停用连接、缺 Key、模型撤下四条链逐一验证：原因/入口一致、禁用发送、直接 POST 409 且无新增消息；经链接修复后保留草稿并恢复发送，由当前消息 ID 定位新 Run，校验官方 Claude 0.4.1、正确 Agent 与修复后的模型，收到回复并正常结束。真实 Gateway、Cloud/PostgreSQL、Controller、Sandbox、Node 和官方插件；开发登录、受控模型 API、初始 Git 快照替身。[组件回归](https://github.com/ora-space/cloud/blob/80481ce4433080adcb6d15f450cbd6b1b905a4ff/frontend/src/features/issues/conversation/conversation-panel.test.tsx) 的 “refreshes the selected blocked Agent…” 核对跨窗口修复后的原页恢复和草稿保留。运行与证据格式见[套件说明](https://github.com/ora-space/cluster/blob/b270261fe0503b38d3e26ad480d35834ce1bafd2/docs/testing/personal-agent-readiness.md) | Covered |
 
 ## Claude thread permissions must protect the initiator's model access
 
@@ -151,6 +151,6 @@
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | 受限协议兼容 | [`anthropic_test.go`](https://github.com/ora-space/cloud/blob/7a48f3403ae3c6daff974b787708a372226012ef/internal/modelgateway/anthropic_test.go)：`TestPinnedCLIClaudeModelBetas`、`TestPinnedClaudeAgentSDKCapabilities`、`TestPinnedClaudeACPHaikuBetaCombination` 回放固定 CLI/SDK 的请求头；`TestClaudeMessagesQueryHeadersAndToolStream` 覆盖 query、头、SSE 工具数据和单次请求不重发；`TestClaudeProtocolRejectsUnknownSurface` 覆盖未知路径/方法/头拒绝；`TestFrozenAnthropicDiscoveryUsesOnlyCurrentGrant` 覆盖发现只用当前授权 | Covered |
-| 真实网页正常链路 | 没有可复跑的入库证据。固定版本栈上的真实运行验收用的驱动不在仓库里，且 Key 经凭据 API 而非页面写入 | Missing |
+| 真实网页正常链路 | 新增[浏览器套件](https://github.com/ora-space/cluster/blob/b270261fe0503b38d3e26ad480d35834ce1bafd2/scripts/personal-agent-readiness-browser.py) 经网页配置连接/合成 Key/模型并驱动官方 Claude 回复、正常结束；模型 API 受控，外部初始 Git 同步用 preset 替身。仍缺真实供应商个人 Key、成果/Git 身份和敏感材料排除的可复跑联合证据 | Partial |
 | 隔离与收尾 | 没有双用户并发、错误/取消/撤销与真实 Key 排除的可复跑入库测试 | Missing |
 | 旧 OpenCode 回归 | [cluster 固定版本验收脚本](https://github.com/ora-space/cluster/blob/8f39f4219addbd6c788255cea416dff3e7c24644/scripts/opencode-session-acceptance.py) 的 fixture 路径用固定官方包在升级后的栈上跑两种协议的真实 CLI 会话、交付、Git 身份和 Workspace 释放；模型是受控 fixture，不是真实供应商 | Partial |
