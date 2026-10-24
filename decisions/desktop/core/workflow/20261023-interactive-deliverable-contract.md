@@ -1,27 +1,28 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 交互式节点产出物声明：先做确定性 files 校验，criteria 与运行时清单分阶段
 
 交互式节点的完成目前只由本轮终态和输出契约决定，不知道节点「应该产出什么」。本决策给节点增加可选的、随冻结图保存的产出物声明：`agentConfig.completion.files` 声明期望存在（或必须变更）的文件，完成时由后端对照运行 workspace 与节点启动时持久化的基线做确定性校验，缺失或未变更时拒绝完成并列出原因。criteria（自然语言验收项 + 模型判定）与运行时验收清单不在本期：前者需要单独决定模型来源、凭据、成本与降级，后者依赖 agent→host 的声明信号，分别留给后续决策。
 
-本决策为 `proposed`。它在冻结图里增加可选字段，并把声明该字段的图提升到 `agentConfig.schemaVersion: 4`；完成路径复用现有 blocker 与 `WorkflowNodeIncomplete`，不新增命令、错误码或数据库迁移。Cloud 的发布门禁拒绝该字段，无声明节点的行为保持不变；`Loop`/`Iteration` 区域与 `agent 自报完成`不在范围内。
+本决策为 `approved`。它在冻结图里增加可选字段，并把声明该字段的图提升到 `agentConfig.schemaVersion: 4`；完成路径复用现有 blocker 与 `WorkflowNodeIncomplete`，不新增命令、错误码或数据库迁移。Cloud 的发布门禁拒绝该字段，无声明节点的行为保持不变；`Loop`/`Iteration` 区域与 `agent 自报完成`不在范围内。
 
 ## 继承与修改
 
-继承[交互式节点完成契约](20261021-interactive-node-completion.md)（`implemented`），并沿用[节点运行时编排决策](0-node-runtime-orchestration.md)的 per-run 门与失效事件边界。
+继承[交互式节点完成契约](20261021-interactive-node-completion.md)（`implemented`），并沿用[节点运行时编排决策](0-node-runtime-orchestration.md)的 per-run 门与失效事件边界；对 [Cloud 调度根决策](../../../cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md) D2 的字段去向作出修改（见 D8）。
 
 | 前序约定 | 处理 | 当前规则 |
 | --- | --- | --- |
 | 完成只认本轮 `EndTurn`，其余终态阻塞 | 继承，不变 | 仍是第一道门禁 |
-| 快照在 park 写入 `payload.completion`，投影只读快照 | 继承，不变 | 快照字段与结构不变 |
-| 已完成快照的 blockers 是权威，`prepare` 只做一次性修复 | 修改 | 文件校验不写快照，在 `prepare` 完成时按现场 workspace 判定；快照权威规则只作用于回合与输出契约 blockers |
+| 快照在 park 写入 `payload.completion`，投影只读快照 | 继承，不变 | 快照字段与结构不变；基线缺失时 park 在既有 `warnings` 里写入 `file_check_unavailable`（D4） |
+| 已完成快照的 blockers 是权威，`prepare` 只做一次性修复 | 修改 | 文件 blockers 不写快照，在 `prepare` 完成时按现场 workspace 判定；快照权威规则只作用于回合与输出契约 blockers |
 | 错误优先级：状态 → turn key → digest → blockers | 继承，不变 | 文件 blockers 汇入第 4 步的 blockers 列表 |
 | `force` 只覆盖 blockers，二次确认并审计 | 继承，不变 | 文件 blockers 同样可被 force 覆盖并留痕 |
 | 无 turn key 的 `turn_unknown` 只能 force | 继承，不变 | 文件校验不改变该规则 |
 | 投影 `completion { ready, blockers, warnings }` | 继承，不变 | `ready` 仍只反映回合/契约；文件缺失在完成被拒时返回 |
 | 区域 interactive 行为不变 | 继承，不变 | 本期只覆盖外层平图 |
+| Cloud 调度根决策 D2：agent 配置首期只执行 `executorSlot`、`roleId`、`prompt`，延后字段由发布门禁按名拒绝；未知字段忽略 | 修改 | `completion` 加入按名拒绝的延后字段，任何非 null 值都拒绝；`agentConfig.schemaVersion` 只接受 `3`，`4` 拒绝（D8） |
 
 ## 决策
 
@@ -44,7 +45,7 @@ status: proposed
 
 选择随图保存，是因为产出去向属于作者的节点设计，必须和 prompt、输出契约一起版本化；运行时可变配置会让同一 run 在不同时刻得出不同判定。
 
-### D2：文件校验在完成时按现场 workspace 判定，不写入快照
+### D2：文件 blockers 在完成时按现场 workspace 判定，不写入快照
 
 `prepare` 组装完成结果时，在门外执行文件校验：
 
@@ -53,7 +54,7 @@ status: proposed
 3. 读取节点启动时持久化的 worktree 基线，计算变更集合；`mustChange: true` 要求至少一个匹配路径在变更集合内；
 4. 失败项转成 blockers：`file_missing`、`file_unchanged`，params 带 `path`（原始声明）。
 
-文件判定**不写入 `payload.completion` 快照**。workspace 是可变的：用户看到缺失项后可能手动补文件再点完成，如果判定在 park 时就固化，快照会在此时变陈旧，而 #351 的规则是已存快照 blockers 权威、不自动刷新。完成时重新判定让「看到缺失 → 修复 → 重试」直接生效，也避免投影为了显示文件状态去读 workspace。
+文件 blockers **不写入 `payload.completion` 快照**（基线缺失的 warning 例外，见 D4）。workspace 是可变的：用户看到缺失项后可能手动补文件再点完成，如果判定在 park 时就固化，快照会在此时变陈旧，而 #351 的规则是已存快照 blockers 权威、不自动刷新。完成时重新判定让「看到缺失 → 修复 → 重试」直接生效，也避免投影为了显示文件状态去读 workspace。
 
 代价是 `completion.ready` 不包含文件判定，用户只有在点完成时才会看到缺失项；这是可接受的，因为缺失项来自一次明确的完成动作，且卡片会用 `WorkflowNodeIncomplete` 的 blockers 渲染。
 
@@ -96,14 +97,15 @@ v1 不实现 `criteria` 的模型判定，也不实现运行时验收清单：
 - Rust 的 `WireAgentConfig` 增加可选 `completion` 与版本校验；旧图（版本 3、无 `completion`）行为不变。
 - TypeScript 的 `WorkflowAgentConfig` 与 `normalizeWorkflowAgentConfig` 显式规范化 `completion` 与版本，不依赖 `...config` 透传；`workflow-mock` 的校验同步接受 3/4。
 - 不改数据库 schema，不迁移既有 run。
-- **旧版 desktop 的残留风险**：已经发布的客户端不认识版本 4，会忽略版本并丢弃 `completion`，节点按旧行为完成。这一点无法回溯修复，缓解措施是：新 desktop 拒绝「3 + completion」的非法组合；Cloud 发布门禁拒绝 `completion` 与版本 4（D8）；发布说明要求使用支持该字段的 desktop 版本。旧编辑器保存会丢字段，保存后的图仍是合法的版本 4（只是没有声明），不会被误认为已通过校验；作者需要在新编辑器里重新声明。
+- **旧版 desktop 的残留风险**：已经发布的客户端不认识版本 4，会忽略版本并丢弃 `completion`，节点按旧行为完成。这一点无法回溯修复，缓解措施是：新 desktop 拒绝「3 + completion」的非法组合；Cloud 发布门禁拒绝 `completion` 与版本 4（D8）；发布说明要求使用支持该字段的 desktop 版本。旧编辑器保存会丢弃 `completion`，版本号按旧客户端的写法保存；保存后的图不再含声明，不会被误认为已通过校验，作者需要在新编辑器里重新声明。
 
 ### D8：Cloud 发布门禁拒绝，规范 schema 记为 desktop-only
 
 - Cloud 首期的可执行子集不含 interactive 完成语义，`agentConfig.completion` 在 Cloud 没有对应判定。发布门禁**拒绝任何非 null 的 `completion`**，拒绝原因指出节点与字段（`agentConfig.completion`），不静默剥离。
 - `agentConfig.schemaVersion` 4 同样拒绝：Cloud 只接受 3。这样带声明的图无法绕过门禁，也不会在 Cloud 上「没有检查就完成」。
 - 规范 schema（由 specs 拥有，见 cloud 调度根决策 D2）在 agent 配置字段去向里记录：`completion` 是 desktop-only 字段，与 `schemaVersion: 4` 绑定；Cloud 若要支持，需要自己的后续决策并同步门禁与字段表。
-- 该处置同步写进 cloud 调度根决策 D2 的字段去向段落（本次一并更新）。
+- 这是对 Cloud 调度根决策 D2 字段去向的修改，记录在本文「继承与修改」，根决策标题下以历史决策注明；根决策正文与状态不变。
+- Cloud 现行门禁忽略未知的 agentConfig 字段、不校验 `agentConfig.schemaVersion`，因此本条需要 Cloud 实现；在它上线前，desktop 不得发布可写 `completion` 的编辑器（见落地顺序）。
 
 ## 不变量
 
@@ -131,8 +133,9 @@ v1 不实现 `criteria` 的模型判定，也不实现运行时验收清单：
 
 ## 落地顺序
 
+0. **Cloud 发布门禁**（ora-space/cloud）：`completion` 加入按名拒绝的延后字段，`agentConfig.schemaVersion` 只接受 `3`；拒绝原因指出节点与字段。**必须先于第 2 步的编辑器发布**，否则带声明的图可以发布到 Cloud 并在没有检查的情况下完成。
 1. **契约与校验**：contracts 增加两个 blocker kind；application 解析并校验 `completion.files`；`prepare` 执行文件判定并汇入 blockers；单测覆盖存在/缺失/变更/未变更/glob/基线缺失。
-2. **编辑器与兼容**：inspector 的 files 编辑、`workflow-runtime` 类型与规范化、`workflow-mock` 校验、`workflow-transfer` 与 graph codec 测试、中英文案。
+2. **编辑器与兼容**（在第 0 步上线之后发布）：inspector 的 files 编辑、`workflow-runtime` 类型与规范化、`workflow-mock` 校验、`workflow-transfer` 与 graph codec 测试、中英文案。
 3. **文档**：`docs/workflows/workflow-runs.md` 与 `.zh.md` 补充声明、判定时机与降级。
 4. **后续**：criteria 与 judge 另开 ADR；运行时清单随 #427 的信号能力推进。
 

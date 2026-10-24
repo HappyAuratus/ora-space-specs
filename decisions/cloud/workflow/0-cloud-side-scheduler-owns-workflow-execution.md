@@ -4,6 +4,8 @@ status: approved
 
 # 工作流由 Cloud 侧调度器执行：WorkflowRun 是执行聚合，服务端首期只做 start / agent / condition / output
 
+> 历史决策：D2 的 agent 节点配置字段去向已由[交互式节点产出物声明](../../desktop/core/workflow/20261023-interactive-deliverable-contract.md) D8 扩展：`agentConfig.completion` 是 desktop-only 字段，发布门禁拒绝任何非 null 值；`agentConfig.schemaVersion` 只接受 `3`，`4` 同样拒绝。其余规则保持有效，本文继续为 `approved`。
+
 Cloud 侧新增一个工作流调度器，复用既有控制面（`execution_work`、claim、`node_executions`、hooks）和 Node 侧
 `ora-agent-runtime`，把 `workflow_runs` 从"写完 `pending` 就没有执行者"变成真实的执行聚合；运行的身份
 （快照、输入、插件版本、逐槽位模型绑定、Project、Workspace）在创建运行的同一事务里冻结；**specs 是语义的
@@ -143,14 +145,10 @@ desktop 节点——这样门禁才能给出确切原因，而不是"未知类�
 在 `workflow_node_runs.node_type` 里，改名是破坏性变更且没有收益；将来若要统一拼写，需要单独决策。
 
 **agent 节点配置字段的去向同样要写明**，避免"配置被静默忽略"：首期只使用 `executorSlot`、`roleId`、`prompt`；
-`skills`、`mcps`、`interactive`、`outputContract`、`retry`、`promptInactivity`、`completion` 延后，**发布门禁拒绝真正启用它们的
+`skills`、`mcps`、`interactive`、`outputContract`、`retry`、`promptInactivity` 延后，**发布门禁拒绝真正启用它们的
 配置，并指出节点与字段**：`skills`、`mcps` 是列表，空数组是编辑器"未选"的默认值，`interactive` 是布尔，`false`
 同样是默认值——这三种"未启用"形态放行；非空列表、`interactive: true`，以及没有"未启用"形态的 `outputContract`、
-`retry`、`promptInactivity` 的任意非 null 值仍拒绝。`completion` 是 desktop 交互式节点的产出物声明
-（[交互式节点产出物声明](../../desktop/core/workflow/20261023-interactive-deliverable-contract.md)），Cloud 首期没有对应的完成判定，
-**任何非 null 值都拒绝**并指出 `agentConfig.completion`。`agentConfig.schemaVersion` 只接受 `3`；`4` 与 `completion`
-绑定，表示图里带有 Cloud 尚未支持的字段语义，发布门禁拒绝。规范 schema 因此记录：`completion` 是 desktop-only 字段，
-Cloud 要支持它需要自己的后续决策并同步门禁与字段表。理由：这些字段会改变执行行为，静默忽略会让作者以为配置生效；
+`retry`、`promptInactivity` 的任意非 null 值仍拒绝。理由：这些字段会改变执行行为，静默忽略会让作者以为配置生效；
 未启用的默认值不改变行为，放行它才不至于把编辑器导出的图卡在门禁上。
 
 **发布门禁与服务端可执行子集**：发布时校验图结构、节点类型、节点配置 schema 和 canonical `PluginId`，
