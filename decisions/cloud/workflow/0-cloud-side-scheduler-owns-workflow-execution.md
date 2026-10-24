@@ -4,6 +4,8 @@ status: approved
 
 # 工作流由 Cloud 侧调度器执行：WorkflowRun 是执行聚合，服务端首期只做 start / agent / condition / output
 
+> 历史决策：D2 的 agent 节点配置字段去向已由[交互式节点产出物声明](../../desktop/core/workflow/20261023-interactive-deliverable-contract.md) D8 扩展：`agentConfig.completion` 是 desktop-only 字段，发布门禁拒绝任何非 null 值；`agentConfig.schemaVersion` 只接受 `3`，`4` 同样拒绝。其余规则保持有效，本文继续为 `approved`。
+
 Cloud 侧新增一个工作流调度器，复用既有控制面（`execution_work`、claim、`node_executions`、hooks）和 Node 侧
 `ora-agent-runtime`，把 `workflow_runs` 从"写完 `pending` 就没有执行者"变成真实的执行聚合；运行的身份
 （快照、输入、插件版本、逐槽位模型绑定、Project、Workspace）在创建运行的同一事务里冻结；**specs 是语义的
