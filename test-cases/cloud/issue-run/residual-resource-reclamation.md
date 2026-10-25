@@ -4,6 +4,8 @@
 
 本文覆盖 D4/D5 业务收尾之后残留责任的收尾：账本清理状态机、自动对账层的证据与系统清理授权、部署运维的受控回收意图、逐目标终止与 late ensure fencing 的完成条件、三级显式升级，以及存量 D8 删除残留的按身份接管。业务结算、启动与创建截止、迟到事实接管本身的义务仍由[有界启动用例](bounded-agent-startup.md)拥有，本文不重复登记。
 
+没有任何原删除操作的历史 D8 由[补充 ADR](../../../decisions/cloud/issue-run/20261025-d8-residual-without-delete-operation.md)和[独立核心用例](d8-residual-without-delete-operation.md)覆盖。本文原 D6 的 `Covered` 仅覆盖原失败删除操作存在的变体，不表示新变体或未来产生路径已经实现或验证。
+
 回收实现的 PR 为 cloud#112、cloud#116、desktop#710 与 cluster#35；演练工具为 cluster#36。部署证据固定如下，后文“第一轮”“第二轮”“第三轮”均指对应候选，不指可变 PR head：
 
 | 轮次 | 固定演练记录 | 候选与工具版本 | 场景及边界 |
