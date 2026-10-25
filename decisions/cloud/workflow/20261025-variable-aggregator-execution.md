@@ -32,7 +32,8 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | 根决策 D4：aggregator 延后，「随所属特性一起」处置 | **落实**：本文给出首期可执行契约；iteration/subflow 仍延后 |
 | 根决策不变量 3：节点结果提交是带状态的比较交换，迟到回执是空操作 | **继承**：aggregator 是无副作用的同步节点，结果随同一行的版本 CAS 提交 |
 | 根决策 D5 / 条件求值：调度器只从已提交状态重算 | **继承**：候选的「已赋值」只由 `node_states` 与环境变量决定，不引入新的调度器状态 |
-| [变量聚合的 desktop 参考实现](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承**：Cloud 声明 `{aggregator}.output` 一个根；不引入类型系统（D3） |
+| [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：Aggregator 候选只能有一个已赋值值，多值冲突失败 | **修改**：Cloud 的 aggregator 按候选声明顺序透传第一个已赋值值；多个候选同时赋值也不冲突。这是对 D6 规则的显式变更，选择与 desktop V1 执行契约一致的确定性优先级语义 |
+| desktop 根决策 D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承 owner 边界**：Cloud 声明 `{aggregator}.output` 一个根；静态类型校验的差异见 D3 |
 | desktop `workflow_run/engine/aggregator.rs` V1 contract：有序、非空、根选择器、first-assigned、no-match 失败 | **继承**：逐项一致；本文是 Cloud 侧的实现决策 |
 | while-Loop 后续决策（另案：circus#631、specs PR #224，`proposed`）：loop body 是独立作用域 | **交叉约束**：aggregator 可以在 loop body 内；它只看到本轮作用域可见的已提交状态，语义不变 |
 
@@ -68,6 +69,9 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
   会让一个明确产出了空值的分支消失，而作者恰恰用它表达「这一轮没有结果」。
 - **没有候选被赋值**：节点失败，`output.reason = aggregator_no_match`，运行失败；失败信息列出扫描过的候选，
   便于作者定位。绝不输出空对象并记为成功。
+- **多个候选同时赋值**：仍选声明顺序中的第一个。例如候选为 `[["writer","output"],["reviewer","output"]]`，
+  两者都有值时始终透传 writer 的值。这一行为修改 desktop 根决策 D6 的「多值冲突失败」，不是把既有决策
+  当作笔误忽略；理由是聚合的优先级由作者显式声明，且与 desktop V1 的实际执行契约一致。
 - **不读分支决策**：节点不知道 Condition 存在。哪条分支跑过只体现在已提交状态上；未走的分支没有状态，
   其根自然「未赋值」。
 - **环境变量可见**：`sys.workflow_id`、`sys.timestamp` 与 globals 与节点状态一起参与解析，因此候选可以选择
@@ -105,7 +109,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 
 | 方案 | 取舍 |
 |---|---|
-| 多个候选同时赋值即冲突失败（根决策 D6 的旧措辞） | 会拒绝「分支并行、各自产出」的合法图；desktop 的 V1 contract 已明确 first-assigned，本文以代码与契约为准，并在根决策的过期描述旁注明 |
+| 多个候选同时赋值即冲突失败（desktop 根决策 D6） | 能暴露意外的多源赋值，但不能表达作者指定的候选优先级；本文显式修改这项决策，选择与 desktop V1 契约一致的 first-assigned，多个已赋值候选按声明顺序确定结果 |
 | 在 Cloud 建一套静态类型推断来对齐 desktop 的 parse 期校验 | 需要变量声明集、节点输出类型与 globals 类型的完整推导，超出聚合节点本身；当前不引入类型系统（D3） |
 | 要求候选必须声明在传递前驱上 | 需要图可达性实现；非前驱的根在运行期恒为未赋值，行为可解释，暂缓（D3） |
 | 把聚合做成 Junction 的一种模式 | `junction` 是 Cloud 独有的结构性合流占位，desktop 没有执行语义；聚合有确定的取值语义，混在一起会让两类概念都失去边界 |
@@ -120,9 +124,9 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 
 ## 落地顺序
 
-1. **发布门禁与执行**（已实现，cloud#637）：配置校验、first-assigned、no-match 失败，表驱动测试与
+1. **发布门禁与执行**：配置校验、first-assigned、no-match 失败，表驱动测试与
    PostgreSQL 调度器用例。
-2. **编辑器**（已实现）：节点类型、调色板、检查器、导入与文案。
+2. **编辑器**：节点类型、调色板、检查器、导入与文案。
 3. **真实栈端到端**：发布 → 启动 → 分支汇合 → 运行详情；证据写进运行 issue。
 4. ADR 评审通过后补核心用例（命中、跳过未赋值、null 计为已赋值、no-match、顺序优先）；真实栈 E2E 完成前
    不把 ADR 标记为 `implemented`。
