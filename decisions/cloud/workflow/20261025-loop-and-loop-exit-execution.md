@@ -44,10 +44,12 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
 
 ## 决策
 
-### D1：执行模型——轮次文档写进运行行，单行 CAS 提交
+### D1：执行模型——轮次文档写进运行行，活动轮的成员状态留在扁平 `node_states`
 
-`workflow_runs.node_states` 现在以节点 id 为键、值是节点状态对象。Loop 的状态在同一条记录里多一个 `loop`
-字段，承载轮次：
+`workflow_runs.node_states` 以节点 id 为键、值是节点状态对象。Loop 的状态在同一条记录里多一个 `loop`
+字段承载轮次；**活动轮**的成员状态仍以各自的节点 id 留在同一张扁平表里，完成的轮次归档进 `loop.completed`。
+这样同一份文档同时满足三件事：轮次进度可恢复、运行视图仍按节点 id 读状态、既有会话/重试/分支路径不需要
+认识容器。
 
 ```json
 {
@@ -59,31 +61,32 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
       "round": 2,
       "maxIterations": 5,
       "carried": {"draft": "第一轮产出"},
-      "rounds": [
-        {"index": 1, "status": "completed", "carried": {"draft": ""}, "states": {"entry": {"status": "succeeded"}, "writer": {"status": "succeeded", "output": {"output": "第一轮产出"}}}},
-        {"index": 2, "status": "running", "carried": {"draft": "第一轮产出"}, "states": {}}
+      "completed": [
+        {"index": 1, "carried": {"draft": ""}, "states": {"entry": {"status": "succeeded"}, "writer": {"status": "succeeded", "output": {"output": "第一轮产出"}}}}
       ]
     }
-  }
+  },
+  "entry": {"status": "succeeded", "startedAt": "…", "finishedAt": "…"},
+  "writer": {"status": "running", "startedAt": "…"}
 }
 ```
 
-- `status` 仍是运行视图读的节点状态，只取 `running` / `succeeded` / `failed` / `cancelled`；轮次文档只描述
+- `status` 仍是运行视图读的节点状态，只取 `running` / `succeeded` / `failed` / `cancelled`；`loop` 只描述
   「这一轮走到哪里」，不新增公开运行状态（根决策不变量 6 与运行状态机不变）。
-- 轮内节点状态复用 `workflowNodeState` 的形状（`status` / `displayName` / `startedAt` / `finishedAt` /
-  `error` / `output`），键是 body 节点 id。轮内 agent 节点不写 `attempt` / `retryAt` 到 Loop 状态上，它们的
-  重试事实留在轮内的节点状态里。
-- `carried` 是「进入当前轮时」的 carried 值；`rounds[].carried` 是该轮进入时的快照，用于审计与恢复。
+- 活动轮成员状态复用 `workflowNodeState` 的形状，键是 body 节点 id，因此 body 内 agent 的会话、重试、
+  `workflow_node_id` 与控制面绑定与普通节点完全一致；body 内 condition 的分支选择也存在同一个键上。
+- `carried` 是「进入当前轮时」的 carried 值。一轮结束时把该轮成员状态快照进 `completed[]`：继续下一轮时
+  从扁平表删除这些成员，下一轮从空状态开始；Loop 结束（成功或耗尽）时保留最后一轮的成员状态，同时归档，
+  运行视图因此能看到最后执行的一轮。
 - Loop 成功时，`output` 的每个键是 `loopConfig.outputs[].name`，节点 id 加输出名构成外层可引用的
-  `{loopId}.{name}` 根；Loop 失败时写 `error` 与 `output.reason`（稳定错误码，见 D6），轮次文档保留。
-- 轮次数上界 100，每轮状态数上界是 body 节点数，所以一次运行的文档有界；不保留跨运行的轮次历史。
+  `{loopId}.{name}` 根；Loop 失败时写 `error` 与 `output.reason`（稳定错误码，见 D6）。
+- 轮次数上界 100，每轮状态数上界是 body 节点数，所以一次运行的文档有界；归档只保留本次运行的轮次。
 
 **为什么不是新表**：desktop 的 scope 表服务于它自己的 SQLite 仓储接口（`start_loop_round` /
 `settle_iteration_round` / `list_node_runs_in_scope`），Cloud 的执行聚合本来就是「一行 + 版本 CAS + 重算」，
-按行内文档实现可以让轮次推进和运行终态在同一个事务里提交，恢复也不需要跨表重建。代价是查询能力弱、
-文档随轮数增长；本文把轮数上界固定为 100、只在运行详情读取时展开，先接受这个代价。若将来 iteration 的
-并行轮次或运行历史需要按轮查询，再单独决策拆表。
-
+按行内文档实现可以让轮次推进和运行终态在同一个事务里提交，恢复也不需要跨表重建；活动轮留在扁平表里还让
+会话路由不必为容器新增一套查找。代价是查询能力弱、文档随轮数增长；本文把轮数上界固定为 100、只在运行详情
+读取时展开，先接受这个代价。若将来 iteration 的并行轮次或运行历史需要按轮查询，再单独决策拆表。
 ### D2：发布门禁接受 loop / loopExit，校验容器结构与配置形状
 
 门禁按下面的规则拒绝，错误码沿用三要素风格（`code` / `nodeId` / `field`）。**运行时使用同一个校验器**，
