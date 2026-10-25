@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # loop 与 loopExit 由 Cloud 调度器执行：轮次并入运行聚合，后测循环语义沿用 desktop
@@ -9,22 +9,24 @@ status: proposed
 以及 [ora-space/circus#448](https://github.com/ora-space/circus/issues/448) owner 选定的「继续 Go 移植」。
 它把这两个节点从「发布门禁拒绝」改为「可发布、可由 Cloud 调度器执行」，并决定轮次状态放在哪里。结论：
 
-- **执行模型**：沿用运行行聚合。轮次与轮内节点状态写在 `workflow_runs.node_states[loop节点]` 的 `loop`
-  字段里，继续用运行行的 `version` 比较交换提交，不新建 scope 表、不改控制面契约。恢复只读已提交的运行行。
+- **执行模型**：沿用运行行聚合。轮次进度与已完成轮的成员状态写在 `workflow_runs.node_states[loop节点]` 的
+  `loop` 字段里，活动轮成员状态留在顶层；继续用运行行的 `version` 比较交换提交，不新建 scope 表、不改控制面契约。
+  恢复只读已提交的运行行。
 - **语义**：与 desktop 的 [`while-loop`](../../desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md)
   逐项对齐：后测循环、carried 变量只在进入时求值一次、feedback 在同一完成快照上同时赋值、轮末求值 `until`、
   `maxIterations` 1..100、耗尽默认失败且可显式 `succeed`、外层只能经 Loop 命名 `outputs` 读取轮内产物。
 - **loopExit**：只能是 loop body 内无出边的终端节点，只有所在分支被选中并成为本轮就绪节点时才提前结束；
   它跳过 feedback，直接按本轮变量池发布 outputs；串行调度下没有需要排空的兄弟执行，清理是「把本轮未执行成员
-  记为 inactive」这一步，提交失败则整体失败。
+  记为既有的 `inactive` 状态」这一步，提交失败则整体失败。
 - **发布门禁**：接受 `loop` / `loopExit`，校验容器结构、配置形状与 selector 声明，拒绝时给节点、字段、原因；
   运行时与门禁共用同一个校验器。保存草稿仍然宽松（继承根决策 D2 与 MCP 决策 D4）。
 
-**状态与影响面**：本文为 `proposed`，需 owner 评审后改为 `approved`，之后按「落地顺序」推进；核心用例在批准后
-落到 `test-cases/cloud/workflow/`。涉及 cloud 的发布门禁（`internal/core/workflow_graph.go`）、调度器
+**状态与影响面**：本文为 `approved`，固定以下执行契约；实现与直接验证尚待完成，批准不表示已交付。
+核心用例见[轮次执行与早退](../../../test-cases/cloud/workflow/loop-and-loop-exit.md)，证据缺口逐项标为 `Missing`。
+涉及 cloud 的发布门禁（`internal/core/workflow_graph.go`）、调度器
 （`internal/core/workflow_scheduler.go`）、`workflow_runs.node_states` 投影、前端检查器与画布、运行详情视图；
 涉及 specs 的 Cloud 工作流执行契约与核心用例。**兼容边界**：不改数据库 schema，不新增运行状态；`node_states`
-新增 `loop` 字段与 `loopExit` 节点状态，旧读取方忽略未知字段即可；已发布快照在根决策下不可能含 loop，
+新增 `loop` 字段与 `loopExit` 节点记录，复用既有节点状态集合；旧读取方忽略未知字段即可；已发布快照在根决策下不可能含 loop，
 所以存量运行的执行行为不变。**非目标**：`iteration`、`aggregator`、`subflow`、嵌套复合节点、loop body 内的
 HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
 
@@ -71,8 +73,10 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
 }
 ```
 
-- `status` 仍是运行视图读的节点状态，只取 `running` / `succeeded` / `failed` / `cancelled`；`loop` 只描述
-  「这一轮走到哪里」，不新增公开运行状态（根决策不变量 6 与运行状态机不变）。
+- `status` 沿用既有节点状态：`running` / `retrying` / `succeeded` / `failed` / `cancelled` / `inactive`；
+  前端对尚无已提交状态的节点仍显示 `idle`。`inactive` 已用于 condition 未选中分支，表示该节点本轮不会执行，
+  不是新增状态，也不表示失败或取消。Loop 自身不重试，`retrying` 只用于轮内 agent；`loop` 只描述
+  「这一轮走到哪里」，不扩展 `workflow_runs.status` 的公开运行状态机。
 - 活动轮成员状态复用 `workflowNodeState` 的形状，键是 body 节点 id，因此 body 内 agent 的会话、重试、
   `workflow_node_id` 与控制面绑定与普通节点完全一致；body 内 condition 的分支选择也存在同一个键上。
 - `carried` 是「进入当前轮时」的 carried 值。一轮结束时把该轮成员状态快照进 `completed[]`：继续下一轮时
@@ -91,11 +95,13 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
 |---|---|---|
 | Loop 轮数 | 100；配置仍为 `1..100` | 发布拒绝 `loop_max_iterations_invalid` |
 | 一轮归档（carried 与所有成员状态合计）、一组最终 outputs | 各 1 MiB | Loop 失败，`output.reason = loop_state_size_exceeded`；不追加该轮归档或发布部分 outputs |
-| 含复合节点的运行的完整 `node_states`（顶层成员、所有容器归档、重复输出全部计入） | 16 MiB，其中预留 64 KiB 给失败记录 | 普通状态提交不得用掉预留；超限使运行失败，`output.reason = workflow_state_size_exceeded` |
+| 含复合节点的运行的完整 `node_states`（顶层成员、所有容器归档、重复输出全部计入） | 8 MiB，其中预留 64 KiB 给失败记录 | 普通状态提交不得超过 `8 MiB - 64 KiB`；超限使运行失败，`output.reason = workflow_state_size_exceeded` |
 
-100 轮沿用既有 Loop 边界；单轮 1 MiB 为文本与结构化产物留出空间，16 MiB 总预算限制归档和输出重复保存
-对整行 CAS 的放大。两层字节预算共同生效，因此达到 100 轮不保证仍可写入任意大小的每轮产物；需要更大
-产物时应传引用，不能通过提高轮数绕过总预算。这些容量参数属于本提案的评审内容。
+100 轮沿用既有 Loop 边界；单轮与最终 outputs 各 1 MiB 为文本与结构化产物留出空间。模型 X 每次成员状态
+提交都会整行 CAS 重写 `node_states`，归档与重复输出越多，写放大和 PostgreSQL WAL 成本越高，因此完整状态
+初始取保守的 8 MiB。以后放宽上限兼容，收紧却会让已发布的图失败；调整上限须以落地顺序第 3 步的近上限
+测量为依据。两层字节预算共同生效，因此达到 100 轮不保证仍可写入任意大小的每轮产物；需要更大产物时应传引用，
+不能通过提高轮数绕过总预算。
 
 预算检查发生在每次成员状态提交、轮次归档和输出提交之前，不能等整个容器完成后才检查；进入 Loop 时的
 carried 初值也必须满足单轮预算。超限保留上一次已提交状态及既有归档，用预留空间记录容器、轮次、
@@ -136,8 +142,9 @@ carried 初值也必须满足单轮预算。超限保留上一次已提交状态
 | `until` | `logic` 是 `and` / `or`；`conditions` 复用 condition 的比较校验（算子、selector 声明） | `loop_until_invalid` / `condition_*` |
 | `outputs[]` | 数组；`name` 合法且不重复；selector 已声明 | `loop_output_invalid` / `loop_selector_undeclared` |
 
-selector 的「已声明」沿用根决策的变量根声明表：外层可见祖先与 globals、body 节点声明的根、以及
-`{loopId}.{variableName}` 形式的 carried 根。body 内节点引用 carried 值时写 `[loopId, variableName]`。
+selector 的「已声明」沿用根决策的变量根声明表，并受 D3 的轮内可见性约束：Loop 可见的外层祖先与
+`sys.*` / globals、本 body 节点声明的根、以及 `{loopId}.{variableName}` 形式的 carried 根。
+body 内节点引用 carried 值时写 `[loopId, variableName]`；存在于全图的声明不等于在该作用域可见。
 
 **兼容**：保存草稿不校验；已发布快照不重新过门禁；`schemaVersion` 不在本文新增（desktop 的 loop 图使用
 顶层 schemaVersion 2，Cloud 的文档读取本来就接受，本文不改）。
@@ -147,8 +154,15 @@ selector 的「已声明」沿用根决策的变量根声明表：外层可见�
 - **后测循环**：进入 Loop 先解析 carried 初值、开第 1 轮；首轮总会执行。
 - **初值一次**：`initial.kind = constant` 用常量（按 `valueType` 规范化）；`kind = variable` 用外层 selector
   在进入时求值。求值失败、类型不匹配则在进入 Loop 时失败，不发起任何轮次。
-- **轮内变量池**：外层可见祖先与 globals 的值 + `{loopId}.{variableName}` 的 carried 值 + body 节点声明的根。
-  不导入其它轮或已经结束分支的值；body 内的 condition 只按本轮已提交状态选分支。
+- **轮内变量池**：Loop 可见的外层祖先与 `sys.*` / globals 的值 + `{loopId}.{variableName}` 的 carried 值 +
+  本 body 节点声明的根。外层可见祖先是 Loop 在所属外层图中的传递前驱；这些值在进入 body 时已确定。
+  body 内节点（包括 aggregator）的节点前驱**只在本 body 的图里计算**：读取本 body 产物时，producer 必须是
+  消费节点在 body 图里的传递前驱；不能因另一个分支恰好先提交就获得读取权。外层值只能经上述可见祖先，或
+  经 `{loopId}.{variableName}` 的 carried 根进入；`sys.*` / globals 与 carried 根无需 body 前驱边。
+  不得直接选择另一个容器的成员、外层非祖先或其它轮的状态。aggregator 的非前驱候选在发布时以
+  `aggregator_selector_not_upstream` 拒绝，不能留到运行期当成未赋值跳过；aggregator 后续决策必须使用同一边界。
+  Loop 在轮末求值 feedback / until / outputs 时可读取本轮完成快照中的可见 body 根；未选中分支的根仍未赋值，
+  不用其它轮的旧值补齐。body 内的 condition 也只按本轮已提交状态选分支。
 - **轮末 feedback**：本轮所有节点结算后，从同一份完成快照解出全部 feedback selector，逐个按 `valueType`
   规范化；缺值或类型不符则 Loop 失败，不提交半组 feedback。赋值同时发生，交换两个变量不会受顺序影响。
 - **until**：feedback 校验通过后，用本轮完成快照求值 `until`。至少有一个非空 case 时才可能命中；命中即成功
@@ -166,8 +180,10 @@ selector 的「已声明」沿用根决策的变量根声明表：外层可见�
 
 - `loopExit` 是 body 内的终端节点：没有出边，只有入边。它没有配置，成功输出 `{}`。
 - 一轮内，当投影把 `loopExit` 解析为就绪（即它的入边来自本轮已成功的分支）时，调度器**优先**派发它；
-  这一轮剩下的未提交成员记为 `inactive`，不再执行。串行调度下此时没有其它在途节点；若 body 内 agent
-  会话仍在途，投影不会让 `loopExit` 就绪，必须先结算该会话。
+  这一轮剩下的未执行成员记为既有的 `inactive`，不再执行，也不伪造成功输出。该状态与 condition 未选中分支
+  相同，随节点状态和轮次归档提交；只表示本轮被跳过，不改变其它轮的归档。
+  串行调度下早退提交前没有其它在途节点；若 body 内 agent 会话仍在途，必须先按既有串行规则结算，
+  不得把它作为未执行成员直接改为 `inactive`。
 - 早退成功时：按本轮完成快照解析 outputs（不计算 feedback），Loop 成功，`reason = "loop_exit"`。
   outputs 缺值则失败（fail closed）。
 - 迟到的 body 结果不能复活已结束的轮次或 Loop：轮次文档已终结时，后续提交按运行版本 CAS 变成空操作，
@@ -179,7 +195,10 @@ selector 的「已声明」沿用根决策的变量根声明表：外层可见�
   不需要新增 schema 字段。前端运行详情在 Loop 节点卡片上展示轮次摘要（第几轮 / 上限 / 终态原因），
   展开后从 `loop.completed[index]` 按轮显示成员的名称、状态、输出、错误及会话入口；活动轮从顶层成员状态
   读取，最后一轮既已归档又留在顶层时按轮去重，不显示成两次执行。取消和体积超限失败同样保留可见的轮次与原因。
-  未识别的字段与状态按现有「未知即忽略」处理，旧前端不会崩。
+  `inactive` 仍以节点 `status: "inactive"` 经 API 返回，前端沿用现有未激活的淡化展示；它不是运行终态。
+  既有前端已有该状态的类型与样式分支，无需新增状态兼容逻辑；不认识 `loop` 的节点状态读取方仍可忽略该字段，
+  读取顶层保留的成员状态。
+  其它未知状态沿用既有中性兜底样式，不能推断成成功或失败。
 - 运行列表的 `nodeStates` 仍是摘要投影，不展开轮次，避免列表响应随轮数膨胀。
 
 ### D6：失败码
@@ -210,6 +229,7 @@ Cloud 的公开契约是 `reason` 字符串而不是枚举（既有做法），�
 6. 轮次推进只依据已提交的轮内状态；没有提交结果的节点永不被记为成功，迟到的提交不改变终态。
 7. 发布门禁与运行时共用同一份结构与配置校验；保存草稿不受影响。
 8. 成员只由归一后的有效容器决定；状态提交同时受轮数与字节预算限制，超限不会变成截断后的成功。
+9. body 节点的前驱关系只在本 body 计算；外层非祖先、其它容器与其它轮的提交顺序不改变其可见根集合。
 
 ## 为什么不是这些替代方案
 
@@ -224,20 +244,23 @@ Cloud 的公开契约是 `reason` 字符串而不是枚举（既有做法），�
 ## 本决策未解决的问题
 
 - **嵌套复合节点**：本文与 desktop 一致地拒绝 body 内的 loop / iteration / subflow；将来要支持需要单独决策。
-- **loop body 内的 HITL**：`human` 节点和 `agentConfig.interactive` 仍按 #413 的契约推进；本文不实现，
+- **loop body 内的 HITL**：`human` 节点和 `agentConfig.interactive` 仍按 [human 节点后续决策](20261021-human-node-run-input.md)
+  的契约推进；本文不实现，
   门禁继续拒绝 `interactive: true`（既有行为）。
-- **iteration / aggregator**：共用轮次与变量池模型，但语义不同，分别由后续决策承接（总事项 #630 的分片）。
+- **iteration / aggregator**：共用轮次与变量池模型，但语义不同，分别由后续决策承接。
 - **运行中途 resume（从失败轮重开）**：继承重试决策 D7，resume 仍不可用；本文只保证恢复从已提交轮次继续。
 - **按轮查询/分页**：轮次文档只在运行详情整体读取；如出现大轮数需求再考虑拆表。
 
 ## 落地顺序
 
 1. **ADR 评审通过**（本文改 `approved`）并登记核心用例：while-loop 的结构、feedback 同时赋值、耗尽两策略、
-   outputs、loopExit 与恢复。
+   outputs、loopExit、恢复与体积超限稳定失败且不截断；无直接证据的义务标 `Missing`。
 2. **门禁与校验**：`loop` / `loopExit` 进入可执行集合，容器结构与配置校验落地，带表驱动测试。
    完成条件：合法 loop 图可发布；上面每一条拒绝都有直接测试。
 3. **调度器轮次引擎**：轮次初始化、轮内投影、feedback/until/outputs、耗尽与 loopExit、取消与恢复，
-   带 PostgreSQL 集成测试与并发/恢复测试。
+   带 PostgreSQL 集成测试与并发/恢复测试。完成条件包括每次提交前执行字节预算检查，超限稳定失败且保留已提交归档；
+   并在真实 PostgreSQL 上给出接近 `8 MiB - 64 KiB` 可用上限时整行 CAS 提交的耗时与 WAL 测量，
+   记录实际状态字节数、提交次数、数据库与测量条件。测量结果写在实现运行里，作为以后调整上限的依据。
 4. **编辑器**：loop 检查器的变量/feedback/until/outputs、`loopExit` 节点与连线路由、desktop 图导入导出。
 5. **真实栈端到端**：发布 → 启动 → 多轮 → 三种终态 → 运行视图；证据写进运行 issue，ADR 转 `implemented`。
 
