@@ -31,7 +31,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | [根决策](0-cloud-side-scheduler-owns-workflow-execution.md) D2：发布门禁按首期可执行子集拒绝 `aggregator` | **修改**：`aggregator` 进入可执行集合，门禁改为按配置校验，拒绝时给节点、字段、原因 |
 | 根决策 D4：aggregator 延后，「随所属特性一起」处置 | **落实**：本文给出首期可执行契约；iteration/subflow 仍延后 |
 | 根决策不变量 3：节点结果提交是带状态的比较交换，迟到回执是空操作 | **继承**：aggregator 是无副作用的同步节点，结果随同一行的版本 CAS 提交 |
-| 根决策 D5 / 条件求值：调度器只从已提交状态重算 | **继承**：候选的「已赋值」只由 `node_states` 与环境变量决定，不引入新的调度器状态 |
+| Cloud 根决策 D1 / D4：调度器只从已提交状态重算 | **继承**：候选的「已赋值」只由 `node_states` 与环境变量决定，不引入新的调度器状态 |
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：Aggregator 候选只能有一个已赋值值，多值冲突失败 | **修改**：Cloud 的 aggregator 按候选声明顺序透传第一个已赋值值；多个候选同时赋值也不冲突。这是对 D6 规则的显式变更，选择与 desktop V1 执行契约一致的确定性优先级语义 |
 | desktop 根决策 D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承 owner 边界**：Cloud 声明 `{aggregator}.output` 一个根；静态类型校验的差异见 D3 |
 | desktop `workflow_run/engine/aggregator.rs` V1 contract：有序、非空、根选择器、first-assigned、no-match 失败 | **继承**：逐项一致；本文是 Cloud 侧的实现决策 |
