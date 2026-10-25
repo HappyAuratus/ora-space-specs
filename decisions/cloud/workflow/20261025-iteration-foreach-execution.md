@@ -31,7 +31,7 @@ status: proposed
 |---|---|
 | 根决策 D2：发布门禁拒绝首期子集之外的 kind | **修改**：`iteration` 进入可执行集合，门禁改为按配置与区域校验 |
 | 根决策 D4：iteration、loop 等复合运行时延后 | **落实**：iteration 的首期可执行契约；loop 另案（specs PR #224） |
-| 根决策 D5：调度器只从已提交状态重算，节点结果随版本 CAS 提交 | **继承**：每轮 body 节点状态、轮终态与账本在同一次提交里写入 |
+| Cloud 根决策 D1 / D4、不变量 3：调度器只从已提交状态重算，节点结果随版本 CAS 提交 | **继承**：每轮 body 节点状态、轮终态与账本在同一次提交里写入 |
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D3：六条区域边界校验 | **继承边界、收紧预算**：Cloud 复用 loop 的有效容器校验；`maxIterations` 必须在 `1..100` 内（D2、D6） |
 | desktop `iteration.rs` 与 `20260915-iteration-composite-runtime.md`：数组长度即轮数、item/index 绑定、三暴露变量、fail/continue、超限启动失败、空数组成功 | **继承语义，修改容量边界**：Cloud 增加 100 项与字节硬上限，以约束单行 CAS 的写入体积（D5、D6） |
 | desktop 根决策 D6：变量根声明与下游可见性 | **继承**：iteration 声明三个暴露变量；`item` / `index` 只对区域内可见 |
