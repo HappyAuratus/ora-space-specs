@@ -50,6 +50,7 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [Start 输入 kickoff 取值](workflow/start-input-kickoff.md) | 运行读到编辑器默认提示词而非本次 kickoff、unset 与空串混淆、非字符串 `input` 被放行、历史行被误读 |
 | workflow | [节点重试与恢复](workflow/retry-and-resume.md) | 可重试失败被直接失败或误判成功、等待依赖进程内定时器、跨尝试证据串用、取消被等待拖延、resume 改写状态 |
 | workflow | [人工节点的运行级输入与有界等待](workflow/hitl-run-input.md) | 等待无界、输入绕过校验、重复提交、无绑定运行越权、409/410 顺序、取消竞争、超时误判、活动被当回合 |
+| workflow | [变量聚合的发布门禁与有序透传](workflow/variable-aggregator.md) | 首个已赋值与空值混淆、多值顺序漂移、no-match 空成功、非前驱放行、跨容器与跨轮串值、非法配置冻结 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的定时任务决策

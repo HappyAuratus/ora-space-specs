@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 变量聚合由 Cloud 调度器执行：按声明顺序透传第一个已赋值的候选
@@ -14,15 +14,15 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 - **执行语义**沿用 desktop `aggregator.rs` 的 V1 contract：节点按声明顺序取**第一个已赋值**的候选，
   原样透传为 `{aggregatorId}.output`；**已赋值 = 键存在**，`null`、`false`、`0`、`""`、空列表、空对象都算；
   全部未赋值是稳定失败 `aggregator_no_match`，不是空成功。
-- **发布门禁**接受 `aggregator`，校验列表形状、根选择器、重复与根声明；保存草稿仍然宽松。
+- **发布门禁**接受 `aggregator`，校验列表形状、根选择器、重复、根声明与传递前驱；容器边界按 D1 判断，
+  `sys.*` 与 globals 免前驱校验。保存草稿仍然宽松。
 - **运行时**不读分支决策，只读已提交的节点状态与环境变量（`sys.*`、globals）。节点自身不自动重试。
 
-**状态与影响面**：本文为 `proposed`，需 owner 评审后改为 `approved`，核心用例在批准后登记；实现由
-[ora-space/circus#637](https://github.com/ora-space/circus/issues/637) 承接（cloud 分支 `feat/637-aggregator`）。
-涉及 cloud 的发布门禁（`internal/core/workflow_graph.go`）、调度器（`internal/core/workflow_scheduler.go`）、
-新增的 `internal/core/workflow_aggregator_graph.go`，以及前端的节点类型、调色板、检查器与导入。**兼容边界**：
+**状态与影响面**：本文为 `approved`；核心验证义务见[变量聚合核心用例](../../../test-cases/cloud/workflow/variable-aggregator.md)，
+直接证据按义务标记，不以决策获批代替实现验证。涉及 Cloud 的发布门禁、调度器，以及前端的节点类型、
+调色板、检查器与导入。**兼容边界**：
 不改数据库 schema、不改 OpenAPI、不改运行状态机；`node_states` 里只是多一个 succeeded/failed 的节点状态。
-**非目标**：`iteration`、`subflow`、静态类型系统、跨容器 producer 可达性校验（见 D3）。
+**非目标**：`iteration`、`subflow` 的执行、嵌套复合节点、静态类型系统（见 D3）。
 
 ## 继承与修改
 
@@ -35,7 +35,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：Aggregator 候选只能有一个已赋值值，多值冲突失败 | **修改**：Cloud 的 aggregator 按候选声明顺序透传第一个已赋值值；多个候选同时赋值也不冲突。这是对 D6 规则的显式变更，选择与 desktop V1 执行契约一致的确定性优先级语义 |
 | desktop 根决策 D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承 owner 边界**：Cloud 声明 `{aggregator}.output` 一个根；静态类型校验的差异见 D3 |
 | desktop `workflow_run/engine/aggregator.rs` V1 contract：有序、非空、根选择器、first-assigned、no-match 失败 | **继承**：逐项一致；本文是 Cloud 侧的实现决策 |
-| while-Loop 后续决策（另案：circus#631、specs PR #224，`proposed`）：loop body 是独立作用域 | **交叉约束**：aggregator 可以在 loop body 内；它只看到本轮作用域可见的已提交状态，语义不变 |
+| [while-Loop 后续决策](https://github.com/ora-space/specs/pull/224)：loop body 是独立作用域，有效容器统一解析 | **交叉约束**：body 内前驱只在本 body 图里计算；外层值只经可见祖先或 carried 根读取，不越过容器边界（D1） |
 
 ## 决策
 
@@ -57,6 +57,28 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | `aggregator_selector_unsupported` | 某项不是「节点 id + 根」两段非空字符串，或带嵌套路径 |
 | `aggregator_selector_duplicate` | 两项指向同一个 `{node}.{root}` |
 | `aggregator_selector_undeclared` | 选择器指向的根不在变量根声明表里（含 `sys.*`、globals 与各节点声明的根） |
+| `aggregator_selector_not_upstream` | 根已声明，但 producer 不是当前作用域内的传递前驱，也不属于下述外层可见祖先或 carried 根；`sys.*` 与 globals 豁免前驱校验 |
+
+**前驱与容器边界**：前驱是图上沿有向边可到达 aggregator 的**严格传递前驱**，不包括节点自身。
+发布校验依据图结构，不依据节点排列、执行先后或运行时恰好已经存在的值；未被实际分支选中的节点仍可以是
+图上的前驱，其根在运行时未赋值时按 D2 跳过。
+
+| aggregator 所在位置 / 候选来源 | 发布时的允许条件 |
+|---|---|
+| 外层 aggregator 选择外层节点 | producer 必须在外层图上是 aggregator 的严格传递前驱；Loop 在外层图上是一个节点，只能选择其已声明的命名 outputs |
+| loop body 内选择本 body 节点 | 只在同一 body 的节点与边构成的图里求严格传递前驱；不能借外层路径补成前驱 |
+| loop body 内选择外层节点 | producer 必须在外层图上是所属 Loop 的严格传递前驱，即进入 Loop 时已可见的祖先；Loop 旁边没有该前驱关系的兄弟分支不允许 |
+| loop body 内选择 `[loopId, variableName]` | 只允许所属 Loop 已声明的 carried 根；它是本轮作用域的输入，不靠跨容器连边建立前驱关系，也不借此读取该 Loop 的最终 outputs |
+| 选择 `sys.*` 或 globals | 免前驱校验，仍须通过根声明校验 |
+
+成员归属沿用 Loop 的统一解析：非空 `data.containerId` 优先，缺失或为空时回落到 `parentId`；两者冲突时
+使用显式 `containerId`。门禁、前驱计算与运行时可见性使用同一归属。外层节点不能直接选 body 成员的根；
+一个 body 不能直接选另一个容器的内部成员，也不能选外层非祖先节点；这些根即使全局已声明，仍以
+`aggregator_selector_not_upstream` 拒绝。容器之间的产物只能通过容器已声明的命名 outputs、按外层前驱规则传递。
+
+运行时只解析进入 Loop 时的可见祖先、globals、当前轮 carried 与本轮已提交的可见前驱值，不从其他轮归档
+或其他 body 的扁平状态中补值。这样同一图的候选优先级不会被兄弟分支的调度顺序改变；如果只校验根声明，
+兄弟分支可能先于 aggregator 提交，也可能尚未执行，first-assigned 的结果就会随调度先后变化。
 
 保存草稿不校验；发布是「这份图将成为运行执行的冻结文档」的时刻（根决策 D2）。**安装、模型与授权不是
 聚合节点的门禁**：它没有执行器槽位、不建会话，也不需要 Workspace。
@@ -79,20 +101,18 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 - **无自动重试**：aggregator 是同步、无副作用的节点；no-match 是定义/产物问题，重试不会改变结果。运行级
   失败与取消沿用既有路径，节点没有 in-flight 状态。
 
-### D3：与 desktop 的两处已知差异
+### D3：保留静态类型相等这一项差异
 
 | 差异 | desktop 行为 | Cloud 现状 | 处置 |
 |---|---|---|---|
-| 静态类型相等 | parse 期要求所有候选的声明类型相同，并用该类型声明输出 | 无类型系统；只校验结构、根声明与运行期取值 | 接受差异，记录在案；输出按实际值透传，运行期行为不受影响。若将来 Cloud 引入变量的静态声明集，再补类型相等 |
-| producer 必须是传递前驱 | parse 期拒绝非前驱（globals 豁免） | 未校验；非前驱的根永远「未赋值」，运行期等价于跳过 | 暂不补。补它需要图可达性校验与 globals 豁免的同一份实现；在引入前，门禁接受、运行时行为可解释（不会伪造值） |
+| 静态类型相等 | parse 期要求所有候选的声明类型相同，并用该类型声明输出 | 无类型系统；校验结构、根声明与 D1 的前驱/可见性，运行时按键存在取值 | 接受差异：不在发布期保证候选类型相同；实际值原样透传，下游仍按自身取值契约校验。将来引入静态声明集时再补类型相等 |
 
-两处差异都朝着「更宽松地接受、运行期按已提交状态解释」的方向，而不是静默改写值；这也是本文选择把它们
-写进 ADR 而不是绕过的原因。
+这一差异只放宽类型承诺，不放宽 producer 的前驱与作用域边界，也不把未知值或缺键伪造成已赋值。
 
 ### D4：视图与 API
 
 - 节点状态仍是既有 `workflowNodeState` 形状：`status` / `displayName` / `startedAt` / `finishedAt` /
-  `output` / `error`；`output` 只有一个键 `output`。
+  `output` / `error`；成功时 `output` 只有一个键 `output`，失败原因沿用 D2 的 `output.reason`。
 - 运行详情与历史不需要新字段；OpenAPI 无变化，无数据库迁移。
 - 前端检查器编辑的就是 `aggregatorConfig.variables`；顺序即优先级，面板不自动重排。
 
@@ -104,6 +124,8 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 4. 节点只声明一个根 `output`；不透传多个候选，也不合并值。
 5. 发布门禁与运行时读同一份 `variables`；运行时对无法解析的文档报 `aggregator_invalid_config`，不猜测。
 6. aggregator 是同步无副作用节点：不建会话、不重试、不持有运行状态。
+7. 节点候选只读当前作用域的严格传递前驱、进入容器时的可见祖先或所属容器的 carried 根；`sys.*` 与 globals
+   免前驱校验。非前驱、跨 body 与反向读取 body 的配置在发布时被拒，不由运行期先后决定是否可读。
 
 ## 为什么不是这些替代方案
 
@@ -111,22 +133,20 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 |---|---|
 | 多个候选同时赋值即冲突失败（desktop 根决策 D6） | 能暴露意外的多源赋值，但不能表达作者指定的候选优先级；本文显式修改这项决策，选择与 desktop V1 契约一致的 first-assigned，多个已赋值候选按声明顺序确定结果 |
 | 在 Cloud 建一套静态类型推断来对齐 desktop 的 parse 期校验 | 需要变量声明集、节点输出类型与 globals 类型的完整推导，超出聚合节点本身；当前不引入类型系统（D3） |
-| 要求候选必须声明在传递前驱上 | 需要图可达性实现；非前驱的根在运行期恒为未赋值，行为可解释，暂缓（D3） |
+| 只校验根声明，允许非前驱候选在运行时缺值就跳过 | 校验成本较低，但兄弟分支可能已经提交或尚未执行，同一图的优先候选会受调度顺序影响；本文在发布时拒绝，使用 D1 的前驱与作用域规则 |
 | 把聚合做成 Junction 的一种模式 | `junction` 是 Cloud 独有的结构性合流占位，desktop 没有执行语义；聚合有确定的取值语义，混在一起会让两类概念都失去边界 |
 | 运行时遇到空值就视为未赋值 | 会让明确产出的 `null`/`false`/`""` 消失，改变作者表达；desktop 的键存在判定是更准确的语义 |
 
 ## 本决策未解决的问题
 
-- **静态类型系统**：Cloud 何时引入变量的声明集与类型相等，由后续决策给出；届时补上 D3 第一项。
-- **producer 前驱校验**：与上图可达性校验一起，由后续决策承接；在此之前门禁与运行时的差异按 D3 记录。
+- **静态类型系统**：Cloud 何时引入变量的声明集与类型相等，由后续决策给出；届时补上 D3 的差异。
 - **iteration 内的聚合**：iteration 尚未实现；本文只保证聚合节点在任意已提交作用域内按同一规则工作。
 - **检查器的变量选择器**：当前是 `node.root` 文本输入，选择器化属于编辑器体验，不改变契约。
 
 ## 落地顺序
 
-1. **发布门禁与执行**：配置校验、first-assigned、no-match 失败，表驱动测试与
-   PostgreSQL 调度器用例。
-2. **编辑器**：节点类型、调色板、检查器、导入与文案。
-3. **真实栈端到端**：发布 → 启动 → 分支汇合 → 运行详情；证据写进运行 issue。
-4. ADR 评审通过后补核心用例（命中、跳过未赋值、null 计为已赋值、no-match、顺序优先）；真实栈 E2E 完成前
-   不把 ADR 标记为 `implemented`。
+1. **发布门禁与执行**：完成条件是合法配置可发布，非法配置与非前驱候选按 D1 定位拒绝；
+   first-assigned、空值计为已赋值、no-match 失败及容器隔离均有直接门禁/调度器证据。
+2. **编辑器**：完成条件是节点可创建、编辑、导入，有序候选在保存和发布后保持原顺序，运行视图显示产物与失败原因。
+3. **真实栈端到端与落地**：完成条件是发布 → 启动 → 分支汇合 → 运行详情的真实链路验证通过，
+   核心用例逐项登记直接证据；完成后才将 ADR 标记为 `implemented`。
