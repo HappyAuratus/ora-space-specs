@@ -1,8 +1,8 @@
-# 工作流整次成果与执行授权：评审草案
+# 工作流整次成果与执行授权
 
-依据[整次成果提案](../../../decisions/cloud/workflow/20261025-run-owned-git-delivery-and-history.md)。
-本文与 proposed ADR 一起用于审阅用户要求的验证范围，尚不是批准后的系统承诺；批准时必须按最终结论重新核对。
-全部新增义务为 Missing。既有 Agent 交付测试不能证明 WorkflowRun 归属、多节点历史或任务混合接力。
+依据[整次成果决策](../../../decisions/cloud/workflow/20261025-run-owned-git-delivery-and-history.md)。
+以下用例是 ADR 批准后的验证义务，全部新增义务当前为 Missing。既有 Agent 交付测试不能证明 WorkflowRun
+归属、多节点历史或整次交付；它们不替代这五项义务。
 
 ## Workflow Revision Keeps Its Real Owner
 
@@ -34,14 +34,14 @@
 - **验证义务与证据：** Node 真实历史归档、对象存储核验、PG 结算和故障重放；旧 Agent JSONL 兼容读取。**Missing**。
 - **决策依据：** D4，不变量 3、4。
 
-## Restore Runs Once And Delivery Waits For All Writers
+## Delivery Waits For Every Writer And Starts From The Project Snapshot
 
-- **风险：** 尚未批准混合交接就携带前序；后续节点或重试重建基线覆盖本次改动；旧尝试仍活着就保存。
+- **风险：** 恢复未获批准的任务前序；后续节点或重试重建基线覆盖本次改动；旧尝试仍活着就保存。
 - **前置状态：** Project 冻结快照有文件 A，任务另有不同的历史 Revision；任务调用与独立运行的工作流各含两个节点，节点一新增 B，节点二读取 B 并新增 C，期间存在自动重试。
-- **触发：** 初始化 checkout、节点推进、重启调度器/Node，最后进入交付。
-- **必须成立：** 当前两种运行均从项目快照初始化，输入不携带任务前序；后续节点仍看见 B；全部写入者停止后最终 Revision 含 A/B/C。
-- **禁止结果：** 混合交接定稿前恢复任务前序；用最后 session ended 替代整次停止证据；后续重试覆盖已推进的 checkout。
-- **验证义务与证据：** 真实 Git、受控进程与节点故障；核对固定输入、会话开始先后、最终提交和工作区身份。后续混合交接启用后另核对首个会话前仅恢复一次、恢复中断及半恢复隔离；当前不将该扩展视为已启用义务。**Missing**。
+- **触发：** 初始化 checkout（不恢复前序）、节点推进、重启调度器/Node，最后进入交付。
+- **必须成立：** 两种运行都从项目快照初始化，运行输入不含任务前序；后续节点仍看见 B；全部写入者停止后最终 Revision 含 A/B/C。
+- **禁止结果：** 携带或恢复任务前序；用最后 session ended 替代整次停止证据；后续重试覆盖已推进的 checkout。
+- **验证义务与证据：** 真实 Git、受控进程与节点故障；核对固定输入无前序、会话开始先后、最终提交和工作区身份。前序恢复次数、恢复中断与半恢复隔离属于任务交接决策启用后的义务，不在本用例当前范围。**Missing**。
 - **决策依据：** D2、D5，不变量 2、5。
 
 ## Execution Delivery And Release Remain Separate Facts
@@ -49,7 +49,7 @@
 - **风险：** 图成功就释放；没有配置被当无改动；取消后丢部分成果；残留未知却允许后继启动。
 - **前置状态：** 任务调用和独立工作流分别处于成功、失败、取消、交付失败和释放未知状态；另有无 Workspace 的纯计算图。
 - **触发：** 注入 Git 拒绝、上传失败、Node 断线、迟到结果，重启后重放交付或显式放弃未保存成果。
-- **必须成立：** 三类结果分别可查，正常先保存后释放；故障保持屏障；纯计算记 not_required 并保留原代码基线。
-- **禁止结果：** abandoned 等于 released、skipped 等于 saved、保存成功改变执行失败结论、无授权清理或隐式丢弃成果。
+- **必须成立：** 三类结果分别可查，正常先保存后释放；执行失败或取消仍先尝试保全成果；故障保持屏障，交付未成立时不解除任务占用；纯计算记 not_required 并保留原代码基线。
+- **禁止结果：** abandoned 等于 released、skipped 等于 saved、保存成功改变执行失败结论、以 skipped 或 abandoned 放行后继、无授权清理或隐式丢弃成果。
 - **验证义务与证据：** 真实服务故障矩阵，核对交付 ref、Revision、存储对象、进程停止和物理 Workspace 释放；无 Workspace 路径不得伪造历史。**Missing**。
 - **决策依据：** D1、D5，不变量 4、6。

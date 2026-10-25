@@ -238,10 +238,10 @@ _Avoid_: 将连接、登记和真实回复统称为启动成功
 没有新改动也有自身可核验的 Revision；它不同于可移动的 Workspace 分支，也不表示项目校验通过。
 当前契约见 [Git Revision](../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md)。
 
-### Workflow History Manifest（工作流历史清单，提案术语）
+### Workflow History Manifest（工作流历史清单）
 
 一份工作流运行的已建立节点会话及尝试的归档目录，保留各段历史的来源身份，不把多段原始历史
-解释为同一 Thread。它不是工作流最终输出或自动摘要。定义来源是[整次成果提案](../decisions/cloud/workflow/20261025-run-owned-git-delivery-and-history.md)，尚未批准。
+解释为同一 Thread。它不是工作流最终输出或自动摘要。定义来源是[整次成果决策](../decisions/cloud/workflow/20261025-run-owned-git-delivery-and-history.md)。
 
 ### Internal Snapshot（内部快照）
 
