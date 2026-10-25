@@ -1,8 +1,10 @@
 # 无删除操作的 D8 残留：显式接管、真实来源与两阶段处置
 
-依据[已批准的 D8 补充决策](../../../decisions/cloud/issue-run/20261025-d8-residual-without-delete-operation.md)，下文 D 编号指该 ADR。既有[残留回收用例](residual-resource-reclamation.md)覆盖原失败删除操作存在的 D6；其证据不自动覆盖本变体。
+依据[已实现的 D8 补充决策](../../../decisions/cloud/issue-run/20261025-d8-residual-without-delete-operation.md)，下文 D 编号指该 ADR。既有[残留回收用例](residual-resource-reclamation.md)覆盖原失败删除操作存在的 D6；其证据不自动覆盖本变体。
 
-本文登记 approved 决策的正式义务。当前没有已合并实现的直接证据，新增义务均为 `Missing`；不引用未合并候选作为当前系统的证据。未来产生路径的自动登记/正常回收由 [circus#643](https://github.com/ora-space/circus/issues/643) 维护，不在本历史入口用例中冒充已实现。
+Cloud 实现见 [cloud#173](https://github.com/ora-space/cloud/pull/173)，以下直接测试固定在 `1b772b442d2346aa19e85e80b40438faf0cc0bed`。数据库测试执行真实 D8 worker 与 Cloud 事务，终止及移除成功结果由测试提交，不运行真实 Controller/Substrate，也不证明真实卷或原任务已恢复。10 项完整义务中 8 项 `Partial`、2 项 `Missing`；状态按每项完整要求判断，不把较窄直接断言提升为完整覆盖。
+
+未来产生路径的自动登记/正常回收由 [circus#643](https://github.com/ora-space/circus/issues/643) 维护，不在本历史入口用例中冒充已实现。
 
 ## Missing Delete D8 Takeover Requires Explicit Exact Original Scope
 
@@ -15,9 +17,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 合法状态的产生与默认拒绝 | 真实 D8 worker 产生零删除操作状态；默认命令拒绝且 Run、资源与意图无变化 | Missing |
-| 显式精确准入与拒绝矩阵 | 通过 CLI 和事务准入验证全部前述边界，检查拒绝后无半份意图或计划；原失败删除变体不被绕过 | Missing |
-| 部署身份与入口约束 | 非 terminate 命令拒绝新选项，缺影响确认拒绝，租户 HTTP 对隐藏 Workspace 仍 404 | Missing |
+| 合法状态的产生与默认拒绝 | [直接回归][missing-db] `TestControlledD8MissingDeleteRequiresExplicitScopeAndKeepsHistory` 使用真实 D8 worker，默认拒绝、显式成功且原删除历史为空；尚未在默认拒绝前后比较完整 Run/资源/意图快照 | Partial |
+| 显式精确准入与拒绝矩阵 | 同文件 `TestControlledD8MissingDeleteRejectsOtherResources` 覆盖缺 Run/Workspace、异租户/错误 Run、非 D8/终态、缺交付结论、admission open 和已有原删除，拒绝后意图数为零；[CLI 测试][cli] `TestCloudctlResidualManagement` / `TestCloudctlResidualRejectsUnsafeOrAmbiguousArguments` 覆盖选择与 scope。尚缺本变体错误 Project/代次、已释放、账本/强停/其他责任及拒绝后目标计划的完整矩阵 | Partial |
+| 部署身份与入口约束 | [CLI 测试][cli] 直接验证新选择解析、精确 scope 与原 operation 冲突，并验证普通终止缺影响确认拒绝；尚缺新变体非 terminate 选项、影响确认缺失以及隐藏 Workspace HTTP 的专项直接测试 | Partial |
 
 - 决策依据：D1，不变量 1、3、5。
 
@@ -32,8 +34,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| fresh/upgrade/replay 保真 | 对旧根/从属意图、历史引用、旧命令回执和进度逐项比较；重复迁移与 schema 检查 | Missing |
-| 来源约束与继承 | 所有合法/矛盾组合的真实数据库约束，以及新根和从属删除来源一致、原删除历史仍为空 | Missing |
+| fresh/upgrade/replay 保真 | [直接回归][missing-db] `TestControlledD8MissingDeleteMigrationUpgradesAndRepeats` 在隔离数据库建立新 schema，再重建前一 schema，比较既有 legacy 根意图除新字段外的完整内容，验证默认 false、重复 Migrate 与 CheckSchema；尚缺旧从属/ledger 意图、回执及非初始进度的完整升级矩阵 | Partial |
+| 来源约束与继承 | 同文件首个准入测试与 `TestControlledD8MissingDeleteRetainsThenReleasesWithoutRewritingRun` 直接核对新根/从属的空原引用和 true 标记，且没有伪造原删除；升级测试拒绝有原引用/true 及空引用/false 两种矛盾组合。尚缺 residual_ledger 各组合与全部根/从属来源的约束矩阵 | Partial |
 
 - 决策依据：D2，不变量 2、3。
 
@@ -48,8 +50,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 旧回执兼容与新选择冲突 | 真实旧规范回执重放；新选择同键相同/不同输入；检查冲突审计和原意图不变 | Missing |
-| 单一责任、回滚和重启 | 双事务两种提交顺序、不同键竞争、冲突责任与故障回滚；重启读回同一原身份 | Missing |
+| 旧回执兼容与新选择冲突 | [直接回归][missing-db] `TestControlledD8MissingDeleteRequiresExplicitScopeAndKeepsHistory` 比较同键相同输入重放的完整意图；尚缺迁移前真实旧规范回执，以及同键改变新选择后的冲突审计专项断言 | Partial |
+| 单一责任、回滚和重启 | 同文件准入重放验证返回原意图，拒绝矩阵检查无半份意图；尚缺本变体双事务两种提交顺序、不同键竞争、冲突责任、事务内故障回滚和进程重启读回 | Partial |
 
 - 决策依据：D1–D3，不变量 3。
 
@@ -64,7 +66,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 两阶段、来源继承和完整历史保护 | 数据库/RPC 直接验证部分证明、stale lease、无确认拒绝；终止 retained、独立清理 released，并前后比较完整 Run 与 operation/账本 | Missing |
+| 两阶段、来源继承和完整历史保护 | [直接回归][missing-db] `TestControlledD8MissingDeleteRetainsThenReleasesWithoutRewritingRun` 经 Cloud 控制入口提交双确认、终止 retained，再独立声明清理并提交 removed，核对根/从属来源、仅一条新清理 operation、无残留账本及完整 Run 行不变；尚缺本变体部分证明、stale lease、缺独立确认和完整 operation/账本前后快照矩阵 | Partial |
 | 真实组件上的物理保留与移除 | 原目标双确认、有效围栏、终止后卷仍在、单独删卷后真实移除；不以注入成功结果代替 | Missing |
 
 - 决策依据：D3，不变量 1–5。
@@ -83,3 +85,6 @@
 | 原任务恢复与两轮持久化 | [circus#621](https://github.com/ora-space/circus/issues/621) 在部署后提供原任务内真实执行、Revision、续作和最终文件逐项校验；已有副本证据不替代本义务 | Missing |
 
 - 决策依据：D3、验收边界与落地顺序；未来产生路径由 D4/#643 独立承接。
+
+[missing-db]: https://github.com/ora-space/cloud/blob/1b772b442d2346aa19e85e80b40438faf0cc0bed/internal/core/agent_run_controlled_missing_delete_db_test.go
+[cli]: https://github.com/ora-space/cloud/blob/1b772b442d2346aa19e85e80b40438faf0cc0bed/cmd/cloudctl/residual_test.go
