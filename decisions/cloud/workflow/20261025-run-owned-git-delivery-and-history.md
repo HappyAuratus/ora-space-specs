@@ -10,7 +10,8 @@ status: proposed
 
 本文为 `proposed`，尚不改变现有系统承诺。涉及 Cloud workflow/revision/Git 授权、Controller 固定输入转交和
 Node 交付。既有 Agent IssueRun 身份、交付结果与单会话历史保持原义；历史 WorkflowRun 不补造 Revision。
-任务层如何选择前序成果和排队由[混合交接提案](../issue-run/20261025-mixed-task-execution-handoffs.md)负责。
+任务调用和独立运行均从 Project 既有仓库快照初始化 checkout，运行输入不携带任务前序 Revision。
+任务层如何选择前序成果和排队留待混合交接决策定稿；尚未批准的混合方案不构成本文依据。
 
 ## 问题与边界
 
