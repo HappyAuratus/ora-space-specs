@@ -234,8 +234,24 @@ _Avoid_: 将连接、登记和真实回复统称为启动成功
 
 ### Revision
 
-一次运行结束时保存的成果：最终提交（Agent 提交之后可能追加的内部快照提交）、相对 clone 基础提交的
-增量 bundle 与会话 JSONL。没有改动时也有 Revision，但没有 bundle。
+一次运行结束时经平台核验保存的成果。当前 Git 交付使用指向最终提交的不可变交付 ref 与会话历史，
+没有新改动也有自身可核验的 Revision；它不同于可移动的 Workspace 分支，也不表示项目校验通过。
+当前契约见 [Git Revision](../decisions/cloud/revision/20261017-git-native-delivery-refs-and-resume.md)。
+
+### Task Execution Request（任务执行请求，提案术语）
+
+用户明确提交、面向一个类型化执行目标的任务意图。它有自己的来源与接受顺序，不等同于评论、
+尚未确认的表单或已经开始的运行。定义来源是[混合任务交接提案](../decisions/cloud/issue-run/20261025-mixed-task-execution-handoffs.md)，尚未批准。
+
+### Task Execution Occupancy（任务执行占用，提案术语）
+
+一个运行对任务接力的排他责任，覆盖执行、成果保存与资源收尾；它不同于某个 Agent 进程存活、
+工作流节点状态或界面当前选中的历史记录。定义来源是[混合任务交接提案](../decisions/cloud/issue-run/20261025-mixed-task-execution-handoffs.md)，尚未批准。
+
+### Workflow History Manifest（工作流历史清单，提案术语）
+
+一份工作流运行的已建立节点会话及尝试的归档目录，保留各段历史的来源身份，不把多段原始历史
+解释为同一 Thread。它不是工作流最终输出或自动摘要。定义来源是[整次成果提案](../decisions/cloud/workflow/20261025-run-owned-git-delivery-and-history.md)，尚未批准。
 
 ### Internal Snapshot（内部快照）
 
