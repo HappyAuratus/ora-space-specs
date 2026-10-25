@@ -80,13 +80,34 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
   运行视图因此能看到最后执行的一轮。
 - Loop 成功时，`output` 的每个键是 `loopConfig.outputs[].name`，节点 id 加输出名构成外层可引用的
   `{loopId}.{name}` 根；Loop 失败时写 `error` 与 `output.reason`（稳定错误码，见 D6）。
-- 轮次数上界 100，每轮状态数上界是 body 节点数，所以一次运行的文档有界；归档只保留本次运行的轮次。
+- **成员归一**：Go 解码后的有效容器统一取 `data.containerId ?? parentId`，非空 `containerId` 优先，
+  缺失或空值时回落到 React Flow 的 `parentId`。门禁、调度器、变量可见性只用这个解析入口；两个键冲突时
+  显式 `containerId` 优先，不产生第二份成员集合。不回写、不迁移存量草稿；iteration 使用同一规则。
+
+**行内状态的体积预算**：只限制轮数不能限制 JSON 字节数。本文为模型 X 固定以下边界；MiB 为
+`1024 * 1024` 字节，体积按实际写入的紧凑 UTF-8 JSON 编码计算，重复保存的值也重复计入：
+
+| 对象 | 硬上限 | 超限行为 |
+|---|---|---|
+| Loop 轮数 | 100；配置仍为 `1..100` | 发布拒绝 `loop_max_iterations_invalid` |
+| 一轮归档（carried 与所有成员状态合计）、一组最终 outputs | 各 1 MiB | Loop 失败，`output.reason = loop_state_size_exceeded`；不追加该轮归档或发布部分 outputs |
+| 含复合节点的运行的完整 `node_states`（顶层成员、所有容器归档、重复输出全部计入） | 16 MiB，其中预留 64 KiB 给失败记录 | 普通状态提交不得用掉预留；超限使运行失败，`output.reason = workflow_state_size_exceeded` |
+
+100 轮沿用既有 Loop 边界；单轮 1 MiB 为文本与结构化产物留出空间，16 MiB 总预算限制归档和输出重复保存
+对整行 CAS 的放大。两层字节预算共同生效，因此达到 100 轮不保证仍可写入任意大小的每轮产物；需要更大
+产物时应传引用，不能通过提高轮数绕过总预算。这些容量参数属于本提案的评审内容。
+
+预算检查发生在每次成员状态提交、轮次归档和输出提交之前，不能等整个容器完成后才检查；进入 Loop 时的
+carried 初值也必须满足单轮预算。超限保留上一次已提交状态及既有归档，用预留空间记录容器、轮次、
+实测字节数、上限和稳定失败原因，走既有有界资源收尾；不把超大值原样放进错误信息，不截断后记成功。
+取消、失败记录与旧归档不因为体积检查被丢弃。此预算限制新引入的复合运行，不回写历史快照或历史运行。
 
 **为什么不是新表**：desktop 的 scope 表服务于它自己的 SQLite 仓储接口（`start_loop_round` /
 `settle_iteration_round` / `list_node_runs_in_scope`），Cloud 的执行聚合本来就是「一行 + 版本 CAS + 重算」，
 按行内文档实现可以让轮次推进和运行终态在同一个事务里提交，恢复也不需要跨表重建；活动轮留在扁平表里还让
-会话路由不必为容器新增一套查找。代价是查询能力弱、文档随轮数增长；本文把轮数上界固定为 100、只在运行详情
-读取时展开，先接受这个代价。若将来 iteration 的并行轮次或运行历史需要按轮查询，再单独决策拆表。
+会话路由不必为容器新增一套查找。代价是查询能力弱、文档随轮数增长；本文同时限制轮数和序列化体积，
+只在运行详情读取时展开，先接受这个代价。若将来需要按轮查询或更强的恢复能力，再单独决策模型 Y。
+
 ### D2：发布门禁接受 loop / loopExit，校验容器结构与配置形状
 
 门禁按下面的规则拒绝，错误码沿用三要素风格（`code` / `nodeId` / `field`）。**运行时使用同一个校验器**，
@@ -96,8 +117,8 @@ HITL、运行中途 resume / snapshot switch，均按各自后续决策处理。
 
 | 规则 | 拒绝码 |
 |---|---|
-| loop 的 body 必须恰好有一个 `start`（`containerId` 指向该 loop） | `loop_body_start_count` |
-| body 成员必须声明 `containerId` 等于该 loop id；`loopExit` 只能在 body 内 | `loop_member_container_mismatch` / `loop_exit_outside_body` |
+| loop 的 body 必须恰好有一个 `start`（D1 的有效容器指向该 loop） | `loop_body_start_count` |
+| body 成员的有效容器必须等于该 loop id；`loopExit` 只能在 body 内 | `loop_member_container_mismatch` / `loop_exit_outside_body` |
 | body 内不允许 `loop` / `iteration` / `subflow` / `output`（v1 不嵌套复合节点） | `loop_nested_composite_unsupported` / `loop_body_output_unsupported` |
 | 跨容器连边拒绝（一端在 body、另一端在外层） | `loop_cross_container_edge` |
 | `loopExit` 必须无出边 | `loop_exit_has_outgoing_edge` |
@@ -156,7 +177,9 @@ selector 的「已声明」沿用根决策的变量根声明表：外层可见�
 
 - `GET /workflows/{wid}/runs/{rid}` 的 `nodeStates` 原样带出 `loop` 字段；OpenAPI 里 `nodeStates` 是自由对象，
   不需要新增 schema 字段。前端运行详情在 Loop 节点卡片上展示轮次摘要（第几轮 / 上限 / 终态原因），
-  展开后按轮显示成员状态；未识别的字段与状态按现有「未知即忽略」处理，旧前端不会崩。
+  展开后从 `loop.completed[index]` 按轮显示成员的名称、状态、输出、错误及会话入口；活动轮从顶层成员状态
+  读取，最后一轮既已归档又留在顶层时按轮去重，不显示成两次执行。取消和体积超限失败同样保留可见的轮次与原因。
+  未识别的字段与状态按现有「未知即忽略」处理，旧前端不会崩。
 - 运行列表的 `nodeStates` 仍是摘要投影，不展开轮次，避免列表响应随轮数膨胀。
 
 ### D6：失败码
@@ -171,9 +194,11 @@ Loop 失败时 `output.reason` 取稳定错误码，`error` 是给人读的说�
 | 类型不匹配 | `loop_variable_type_mismatch` |
 | loopExit 的 outputs 缺失 | `loop_exit_output_unset` |
 | 轮次文档与配置不符（恢复时发现） | `loop_invalid_round` |
+| 单轮状态或最终 outputs 超过 D1 的 1 MiB 预算 | `loop_state_size_exceeded` |
+| 整体 `node_states` 超过 D1 的可用字节预算 | `workflow_state_size_exceeded` |
 
-这些码与 desktop 的 `NodeFailureKind` 文案同义，但 Cloud 的公开契约是 `reason` 字符串而不是枚举
-（既有做法），不新增枚举值。
+既有语义失败与 desktop 的 `NodeFailureKind` 对应；字节预算失败是 Cloud 模型 X 新增的容量边界。
+Cloud 的公开契约是 `reason` 字符串而不是枚举（既有做法），不新增公开运行状态。
 
 ## 不变量
 
@@ -184,6 +209,7 @@ Loop 失败时 `output.reason` 取稳定错误码，`error` 是给人读的说�
 5. `maxIterationsBehavior=succeed` 只忽略未命中的终止条件，不掩盖执行、取值、类型或 outputs 错误。
 6. 轮次推进只依据已提交的轮内状态；没有提交结果的节点永不被记为成功，迟到的提交不改变终态。
 7. 发布门禁与运行时共用同一份结构与配置校验；保存草稿不受影响。
+8. 成员只由归一后的有效容器决定；状态提交同时受轮数与字节预算限制，超限不会变成截断后的成功。
 
 ## 为什么不是这些替代方案
 
