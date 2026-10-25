@@ -1,12 +1,11 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Iteration 在 Cloud 执行：区域成员、foreach 轮次与按轮账本
 
-本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策，承接
-[ora-space/circus#641](https://github.com/ora-space/circus/issues/641)：把 desktop 可执行的 `iteration`
-（foreach）节点迁到 Cloud。根决策 D4 把它列为延后项，Cloud 现在仍拒绝该 kind。
+本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策：把 desktop
+可执行的 `iteration`（foreach）节点迁到 Cloud，将根决策 D4 延后的该 kind 纳入可发布、可执行的集合。
 
 结论：
 
@@ -21,7 +20,8 @@ status: proposed
 - **失败**：区域内失败可被 `continue` 吸收进账本；iteration 自身的失败（迭代源非数组、超限、暴露写入
   失败）总是传播为 run 失败。
 
-**状态与影响面**：`proposed`；实现由 circus#641 承接。涉及 `internal/core` 的门禁、调度器、运行状态与
+**状态与影响面**：`approved`，固定执行契约与容量边界；实现和验证完成后再转为 `implemented`。
+核心验证义务见[迭代执行用例](../../../test-cases/cloud/workflow/iteration-foreach-execution.md)。涉及 `internal/core` 的门禁、调度器、运行状态与
 前端检查器；**不改数据库 schema、不改 OpenAPI**（沿用 `workflow_runs.node_states` 单行 CAS）。
 **非目标**：并行迭代、`maxIterations` 的界面软警告、子流程画布、变量选择器化。
 
@@ -30,7 +30,7 @@ status: proposed
 | 前序约定 | 本文处理 |
 |---|---|
 | 根决策 D2：发布门禁拒绝首期子集之外的 kind | **修改**：`iteration` 进入可执行集合，门禁改为按配置与区域校验 |
-| 根决策 D4：iteration、loop 等复合运行时延后 | **落实**：iteration 的首期可执行契约；loop 另案（specs PR #224） |
+| 根决策 D4：iteration、loop 等复合运行时延后 | **落实**：iteration 的首期可执行契约；loop 由后测循环决策独立定义 |
 | Cloud 根决策 D1 / D4、不变量 3：调度器只从已提交状态重算，节点结果随版本 CAS 提交 | **继承**：每轮 body 节点状态、轮终态与账本在同一次提交里写入 |
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D3：六条区域边界校验 | **继承边界、收紧预算**：Cloud 复用 loop 的有效容器校验；`maxIterations` 必须在 `1..100` 内（D2、D6） |
 | desktop `iteration.rs` 与 `20260915-iteration-composite-runtime.md`：数组长度即轮数、item/index 绑定、三暴露变量、fail/continue、超限启动失败、空数组成功 | **继承语义，修改容量边界**：Cloud 增加 100 项与字节硬上限，以约束单行 CAS 的写入体积（D5、D6） |
@@ -64,7 +64,7 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 |---|---|
 | `iteration_config_missing` | 没有配置或不是对象 |
 | `iteration_iterator_unsupported` | `iteratorSelector` 不是「节点 + 根」两段，或带嵌套路径 |
-| `iteration_iterator_undeclared` | 迭代源根未声明，或不是区域外的可见变量（含 globals / `sys.*`） |
+| `iteration_iterator_undeclared` | 迭代源根未声明，或其节点不是 iteration 在外层图上的传递前驱；已声明的 globals / `sys.*` 豁免前驱检查 |
 | `iteration_collect_unsupported` | `collectSelector` 不是两段根选择器 |
 | `iteration_collect_outside_region` | 收集目标不是区域成员声明的根 |
 | `iteration_error_strategy_unknown` | `errorStrategy` 不是 `fail` / `continue` |
@@ -75,8 +75,12 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 `maxIterations` 缺省 50，硬上限 100。desktop 只要求 ≥ 1；Cloud 为控制运行行聚合的体积增加该约束，
 导入超过上限的图时保留可编辑草稿，但发布明确拒绝，不静默改成 100。
 100 项与 Loop 的轮数边界保持同一数量级，并保留默认 50 项的余量；单项和总字节预算共同约束大项和
-重复归档造成的整行写入放大。具体参数属于本提案的评审内容，不由 desktop 的无上限配置推导为已经批准。
+重复归档造成的整行写入放大。这些是 Cloud 的容量承诺，不继承 desktop 的无上限配置。
 保存草稿不校验；发布是冻结执行文档的时刻（根决策 D2）。
+
+迭代源的节点前驱在 iteration 所属的**外层图**内沿入边传递计算，不能指向自身、区域成员、其他容器的
+成员或外层非前驱节点；`sys.*` 与 globals 只豁免前驱检查，仍须声明合法的根。即使非前驱节点偶然先提交了
+值也不能成为合法来源，否则同一张图的迭代数组会随调度顺序改变。发布和运行使用同一校验规则。
 
 ### D3：轮次与作用域
 
@@ -87,38 +91,112 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 - 轮次串行：第 r 轮全部结算（成功或失败）后才开始第 r+1 轮。
 - `item` / `index` 只对区域内可见；区域外不可见（轮内私有）。区域外可见三个暴露变量。
 - body 入口成员：区域内没有来自其他成员入边的成员。没有入口或存在入口不可达成员时发布被拒（D2）。
+- **区域前驱**：body 内所有节点（包括 aggregator）的传递前驱只在该 iteration 的区域图内计算。
+  区域外的节点值只能从 iteration 的可见外层祖先导入，另加已声明的 globals / `sys.*` 与本轮
+  `{iter}.item` / `{iter}.index`；它们是显式作用域来源，不伪造成 body 内的前驱。区域外非祖先、其他
+  容器的成员与其他轮次均不可直接读取。body 内 aggregator 对本区域候选执行同一前驱检查，对上述显式
+  导入的作用域来源按可见性校验；与 aggregator 的传递前驱规则及 loop
+  的区域前驱规则一致。当前容器的三个最终暴露变量不在本轮变量池内。
+- **未选中成员**：condition 未选中分支上的成员在本轮结算前持久化为 `status: "inactive"`，随后随本轮
+  归档；不写成功结果，不产生输出或执行会话。`inactive` 是既有节点状态，运行详情显示“未到达”，
+  不是新增的 WorkflowRun 状态，也不需要 API 枚举或旧前端迁移。已开始的成员不能被改写成 `inactive`。
 
 ### D4：暴露变量与账本
 
 | 变量 | 类型 | 含义 |
 |---|---|---|
 | `{iter}.output` | `array` | 只含**成功轮**的收集值，保持输入顺序 |
-| `{iter}.entries` | `array[object]` | 完整账本：每轮 `{item, status, output, error}`，与输入数组位置对齐 |
+| `{iter}.entries` | `array[object]` | 已结算轮的完整账本：每轮 `{item, status, output, error}`，与输入数组的已处理前缀对齐 |
 | `{iter}.failed_count` | `number` | 失败轮数 |
 
 - `output` / `entries` / `failed_count` 的类型不随 `errorStrategy` 改变：策略只决定「失败轮之后是否继续」，
   不改变下游变量的类型。
-- 每轮的收集值来自 `collectSelector` 指向的根；该根本轮未运行时，该轮记为失败，错误为
+- 每轮的收集值来自 `collectSelector` 指向的根，且目标必须有本轮 `succeeded` 的成员状态；该根本轮未运行时，该轮记为失败，错误为
   `collect target did not run this round`。
-- 账本以轮次为键、连续且不可变更；`entries` 按轮次投影，`output` 过滤失败轮。
+- 账本以零起始轮号为键、连续且不可变更；`entries` 按轮次投影，`output` 过滤失败轮。全部 N 轮结束时
+  `entries` 长度为 N；`fail` 提前结束时只记到失败轮，后续未执行项不伪造条目。
+- 成功条目是 `{item, status:"succeeded", output:收集值, error:null}`；失败条目是
+  `{item, status:"failed", output:null, error:失败说明}`。成功收集到的 `null` 与失败依靠 `status` 区分。
+  两种策略都先把失败轮写入账本并归档，再决定失败还是推进下一轮；容器自身失败不伪装成 body 失败条目。
 
 ### D5：持久化与取消
 
-- 复用 `workflow_runs.node_states` 单行 CAS：运行中的当前轮 body 状态与 iteration 状态（轮次、账本摘要、
-  item/index 当前值）一起提交；已完成的轮归档在 `iteration.completed` 中，最后一轮保留在顶层。
-- **不新增表**、不改 OpenAPI；`iteration` 状态的 wire 形状由实现定义并在文档中登记。
+复用 `workflow_runs.node_states` 单行 CAS：活动轮成员以各自节点 id 留在扁平表，iteration 节点的
+`iteration` 字段保存可恢复的轮次文档。下面展示第 0 轮已经结算、第 1 轮正在执行的持久化 JSON：
+
+```json
+{
+  "iter-1": {
+    "status": "running",
+    "displayName": "逐项处理",
+    "startedAt": "2026-10-25T02:00:00Z",
+    "iteration": {
+      "round": 1,
+      "items": ["甲", "乙"],
+      "strategy": "continue",
+      "ledger": [
+        {"item": "甲", "status": "succeeded", "output": "结果甲", "error": null}
+      ],
+      "output": ["结果甲"],
+      "failedCount": 0,
+      "completed": [
+        {
+          "index": 0,
+          "states": {
+            "choose": {"status": "succeeded", "output": {"selectedBranch": "yes"}},
+            "writer": {"status": "succeeded", "output": {"output": "结果甲"}},
+            "other": {"status": "inactive"}
+          }
+        }
+      ]
+    }
+  },
+  "choose": {"status": "succeeded", "output": {"selectedBranch": "yes"}},
+  "writer": {"status": "running", "startedAt": "2026-10-25T02:01:00Z"}
+}
+```
+
+| 字段 | 持久化含义与约束 |
+|---|---|
+| `iteration.round` | 零起始的当前轮号；终态保留最后启动的轮号，不递增为 N。空数组使用 0，但没有活动轮或归档 |
+| `iteration.items` | 进入时一次解析并冻结的输入数组；总项数是其长度，恢复不重新读取来源 |
+| `iteration.strategy` | 冻结的 `fail` / `continue`，缺省值在进入时写成 `fail` |
+| `iteration.ledger` | D4 信封数组，第 r 项就是第 r 轮；仅追加已结算轮，绝不记录尚未执行的后续项 |
+| `iteration.output` / `failedCount` | 账本中成功值的有序过滤 / 失败条目数；与账本在同一次 CAS 中提交 |
+| `iteration.completed[]` | 每轮一个 `{index, states}`，`index` 零起始且唯一；`states` 是该轮成员完整状态快照，包含 condition 选择、会话 / 尝试信息及 `inactive`，沿用既有节点状态形状 |
+| 当前 `item` / `index` | 不另存第二份值；由 `items[round]` 与 `round` 推导，只注入当前区域变量池，不写成 iteration 节点的最终 `output` |
+| 顶层成员状态 | 只属于 `iteration.round`；开始下一轮时旧成员从扁平表清空，旧结果只能从归档读取 |
+
+- 一轮结算时，账本条目、成功值 / 失败计数、`completed` 归档与轮次推进在同一次版本 CAS 中提交。
+  有下一轮且策略允许继续时，清空顶层成员并将 `round` 加一；成功结束或 `fail` 停止时，保留最后一轮
+  成员及其轮号，同时保留归档。空数组的 `items` / `ledger` / `output` / `completed` 都是 `[]`，
+  `failedCount` 为 0，不创建成员状态。
+- **最后一轮去重**：运行详情以 `(iteration 节点 id, 轮号)` 标识一轮。存在 `completed[index = round]` 时
+  只展示该归档一次，顶层成员是同一轮的兼容投影；不存在该归档时，顶层成员就是未结算的活动轮。
+  取消或体积失败发生在轮中时保留活动轮，不凭空生成归档或账本；两个来源不能被计作两轮。
+- 成功终态的节点 `output` 为
+  `{"output": iteration.output, "entries": iteration.ledger, "failed_count": iteration.failedCount}`；
+  失败时沿既有 `error` / `output.reason` 写入有界原因，历史账本仍从 `iteration` 读取。
+- **不新增表**、不改 OpenAPI；`nodeStates` 仍是自由对象，新增的 `iteration` 字段由详情读取方解析，旧前端
+  继续读取既有节点字段并忽略未知字段。节点 `status` 沿用既有集合（包括成员的 `inactive` / `retrying`），
+  不新增 WorkflowRun 状态。
 - 取消：run 取消时停止当前轮、把 iteration 标记为 cancelled，不再启动后续轮；已提交的轮保持原样。
-- 恢复：调度器只依据已提交状态重算，崩溃后从未结算的轮继续；已结算的轮不重跑。
+- 恢复：调度器只依据已提交状态重算，崩溃后从未结算的轮继续；已结算的轮不重跑。活动轮内已提交结果不重派，
+  在途 agent 按根决策持有到自身结果，不能因换副本另建会话。恢复校验轮号、账本、归档与派生值一致性；
+  不合法的轮次文档稳定失败为 `iteration_invalid_round`，不能把它当作“未开始”清空后从第 0 轮重跑。
 - **体积预算**：MiB 为 `1024 * 1024` 字节，按实际写入的紧凑 UTF-8 JSON 编码计算。
   每项输入、每项 collect 值、每轮归档（该轮所有成员状态合计）分别不得超过 1 MiB；
-  完整 `node_states` 不得超过 16 MiB，其中预留 64 KiB 给失败记录。完整体积包括迭代源、
+  完整 `node_states` 不得超过 8 MiB，其中预留 64 KiB 给失败记录；普通提交最多使用 `8 MiB - 64 KiB`。
+  完整体积包括迭代源、
   `iteration.completed`、当前成员以及 `output` / `entries` 中的所有重复值，不用逻辑去重后的大小代替。
 - 检查覆盖启动边界的数组/项、每次成员提交、归档和最终暴露变量提交。超限保留上一次已提交的状态与账本，
   不追加超大数据，利用预留空间记录容器、轮次、字节数、上限与稳定失败原因，沿既有路径有界收尾；
   不截断值、不删掉既有失败轮后宣告成功。该预算与 loop 相同，只约束新引入的复合运行，历史运行不回写。
+  8 MiB 初值约束模型 X 每次整行 CAS 的重写与 WAL 放大；以后放宽预算兼容，收紧却可能让已发布图失败，
+  因此先采用保守上限，后续调整以接近上限的测量为依据。
 - **运行视图**：iteration 节点显示当前轮 / 总项数、成功和失败项数及终态原因；展开后先按 `entries`
   展示每项的 item、status、output、error，再从 `iteration.completed` 按轮展示成员名称、状态、输出、
-  错误与会话入口。活动轮读顶层成员状态，最后一轮与归档重复时按轮去重；取消、`continue` 吸收的失败和
+  错误与会话入口。未结算的活动轮读顶层成员状态，已归档的最后一轮按上述轮号去重；取消、`continue` 吸收的失败和
   体积超限都能定位到项和成员。列表只取摘要，轮次详情在运行详情中展开。
 
 ### D6：失败与上限
@@ -133,19 +211,22 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 - `errorStrategy = continue`：失败轮记入账本并继续；iteration 正常完成，失败留在 `entries` 与
   `failed_count`。
 - iteration **自身**的失败（迭代源不是数组、暴露变量写入失败、超限）总是传播为 run 失败，不被自身策略吸收。
+- 恢复发现轮号、账本、归档或派生值不一致：`iteration_invalid_round`，不重置轮次或重新执行已结算项。
 - 无自动重试：失败轮不重跑。
 
 ## 不变量
 
 1. 成员只由 `effectiveContainer` 决定，两个持久化键不会产生两套成员集合。
-2. 轮数等于数组长度；空数组立即成功且账本为空。
+2. 计划轮数等于数组长度；空数组立即成功且账本为空。
 3. 第 r 轮的 `item` / `index` 只在该轮区域内可见。
-4. `output` 只含成功轮，`entries` 与输入位置对齐，`failed_count` 等于失败轮数；三者类型固定。
+4. `output` 只含成功轮，`entries` 与已结算的输入前缀位置对齐，`failed_count` 等于失败轮数；三者类型固定。
 5. `N > maxIterations` 时零轮执行并失败，绝不截断。
 6. 区域内失败按策略处理；iteration 自身失败总是 run 失败。
 7. 已结算的轮不可变更、不重跑；取消后不再启动新轮。
 8. 不新增表、不改 OpenAPI、不改已发布图的 wire 形状。
 9. 轮数与序列化字节数同时有界；超限零截断、失败原因稳定，既有账本仍可在运行详情读取。
+10. 迭代源来自本容器的传递前驱（globals / `sys.*` 豁免）；body 节点的前驱只在本区域计算，外层只导入可见祖先。
+11. 同一轮只展示一次；condition 未选中成员使用既有 `inactive` 状态，归档与最终顶层投影不伪造执行。
 
 ## 为什么不是这些替代方案
 
@@ -167,8 +248,12 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 
 ## 落地顺序
 
-1. **成员归一与门禁**（cloud#641）：`effectiveContainer`、区域规则、配置校验与错误码、表驱动测试。
+1. **核心用例与门禁**：ADR 进入 `approved` 时登记核心验证义务；`effectiveContainer`、区域规则、迭代源与
+   区域前驱校验、配置校验及错误码具备表驱动测试，非法图发布被拒且原因可定位。
 2. **轮次执行**：item/index 注入、body 波次、收集、账本、fail/continue、超限启动失败、空数组；PostgreSQL
-   调度器用例覆盖四种终态。
-3. **暴露变量与运行视图**：三个根声明、可见性、运行详情展示。
-4. **编辑器**：已有检查器接入新校验错误；真实栈 E2E 完成前不改 ADR 状态。
+   调度器用例覆盖成功、失败与取消，换副本后不重跑已结算轮，未选中成员和最后一轮去重符合 D3 / D5。
+3. **预算、暴露变量与运行视图**：落实 1 MiB 单项 / 8 MiB 总预算与 64 KiB 失败预留；三个根声明、可见性、
+   逐轮详情及稳定失败原因具备直接测试。完成条件还包括接近总预算时整行 CAS 提交的耗时与 WAL 测量，
+   记录编码体积、负载、测量方法及结果到实现运行 issue，可与 loop 共用一次测量；作为以后调整上限的依据。
+4. **编辑器与真实验收**：已有检查器接入新校验错误；真实栈验证 foreach、fail/continue、取消与逐轮视图，
+   核心义务按直接证据逐项更新；实现和验证完成后才将 ADR 转为 `implemented`。
