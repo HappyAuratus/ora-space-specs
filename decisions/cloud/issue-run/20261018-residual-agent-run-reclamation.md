@@ -155,6 +155,8 @@ Cloud 以可配置周期（默认 1 分钟）扫描 `reconciling` 条目，只�
 
 ### D6：存量 D8 删除残留按原身份接入，不回填不改写
 
+本节已有实现与证据覆盖“原失败删除操作存在”的变体。[无删除操作的 D8 补充决策](20261025-d8-residual-without-delete-operation.md)已批准以默认关闭的显式选择扩展没有任何原删除操作的历史残留，并规定缺失来源、迁移和两阶段处置约束；该扩展的实现及证据状态以补充决策为准，不由本文的 `implemented` 或原 D6 证据代替。未来产生路径由补充决策 D4 指定事项承接。
+
 - 存量特征（根 D8）：Run 已会话结算、`delete_workspace` 以 `node_unavailable` 终结失败、Workspace 行与运行绑定保留、无 `agent_run_residuals` 行。
 - 接入规则：受控回收与外部确认以**资源身份**（Workspace、失败的 delete operation、沙盒计划）为目标，同样适用于存量 D8 残留，不要求先回填账本表——`reason` 的 CHECK 约束（`agent_start_failed` / `workspace_unavailable`）也不允许无据改写来源。回收意图单独记录“D8 删除残留”来源。
 - 自动层不扫描或重启这些存量删除：根 D8 放弃后 Run 已为 `done`，既有重新声明循环仅扫描 `releasing`，因此 Node 恢复可达也不会触发既有重试。本 ADR 不新增存量 D8 的自动恢复扫描；存量只由 D3 新增的受控回收入口接管，证据仍未知时保留原资源，不把恢复连接等同于清理授权。
