@@ -42,8 +42,9 @@
 拒绝 `human` 与 `interactive: true`）。[loop 与 loopExit 执行决策](../../decisions/cloud/workflow/20261025-loop-and-loop-exit-execution.md)
 于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[变量聚合执行决策](../../decisions/cloud/workflow/20261025-variable-aggregator-execution.md)
 与[iteration 执行契约](../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 侧调度器已随根决策落地：运行从 `pending` 进入真实执行，节点状态由
-调度器与真实会话写入，模拟 trace 按根决策排除在验收之外；执行类义务的直接证据登记在各用例里，两个副本同时推进
-同一个 run 的竞争与部分真实执行侧路径仍为 `Partial`。门禁类义务（图校验、启动门禁、槽位解析）的实现在
+调度器与真实会话写入，模拟 trace 按根决策排除在验收之外；执行类义务的直接证据登记在各用例里，按 `Covered` / `Partial` 如实
+标注，仍为 `Partial` 的部署级与真实执行侧路径由[承接事项 #665](https://github.com/ora-space/circus/issues/665) 继续跟踪。
+门禁类义务（图校验、启动门禁、槽位解析）的实现在
 [cloud#65](https://github.com/ora-space/cloud/pull/65) 上，已随合并提交
 [`df507f0`](https://github.com/ora-space/cloud/commit/df507f0) 落到 main，按逐条核对该提交的实现与测试后得到的证据
 状态登记（`Covered` / `Partial`），不再按"未合并"整体降级。

@@ -17,9 +17,10 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
 归属唯一，merge `f837c454`）的堆叠里落地，下表因此不再全是 `Missing`。**多副本**现有控制面证据：cloud#140 用独立连接池的
 第二个 `Store` 在同一个数据库上持有同一个 run 的排他权，锁被持有时推进放弃该 run、不写、不建 Workspace；部署级的一半由
 运行 #507 补上：两个 Controller 接到同一个 store、在它们的窗口里取消运行，删除操作恰好一条、完成代等于完成时生效的租约代。
-两个副本同时推进**同一个 run** 的竞争仍只在控制面层面观察过。**崩溃接手**中重启后的同一副本接手已由 cloud#113 的 DB 用例
-与运行 #377 的真实重启验收覆盖，由另一副本接手仍缺部署级证据；其余要求"真实执行侧"而尚未覆盖的路径继续记 `Partial`，
-整体属 D1 落地顺序第 3 步（ora-space/circus#70）。
+两个副本同时推进**同一个 run** 的部署级竞争还没有观察过，它不在下表第 1 行的「所需直接证据」之内（该栏要求的是多副本真实
+PostgreSQL），因此只作补充缺口，不改变该行的 `Covered`。**崩溃接手**中重启后的同一副本接手已由 cloud#113 的 DB 用例
+与运行 #377 的真实重启验收覆盖，由另一副本接手仍缺部署级证据；其余要求"真实执行侧"而尚未覆盖的路径继续记 `Partial`。
+这些部署级与真实执行侧缺口由承接事项 [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
 
 ## At Most One Serial Executor Advances A Workflow Run
 
@@ -43,8 +44,9 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   `Store`（独立连接池、同一数据库）持有 run 排他权，断言推进放弃该 run、运行行与版本不变、不建 Workspace，锁释放后
   下一 tick 正常认领并建出恰好一个 Workspace；`TestWorkflowAdvanceAdvancesAnotherRunWhileOneRunIsHeld` 断言锁按 run
   而不是全局划分（另一个 run 在同一次推进里照常结算）；`TestWorkflowRunRightIsReleasedWhenTheTransactionAborts`
-  断言事务回滚就释放排他权，不靠心跳。运行 #507 的 `controller-replica` 场景在部署层面补上另一半：两个 Controller
-  同时接到同一个 store，取消窗口里的删除操作只有一条、完成代等于完成时生效的租约代。第 2 行仍为 `Partial`：
+  断言事务回滚就释放排他权，不靠心跳。运行 #507 的 `controller-replica` 场景补上部署层面的单一完成者：两个 Controller
+  同时接到同一个 store，取消窗口里的删除操作只有一条、完成代等于完成时生效的租约代（它证明的是操作完成者唯一，
+  不是两个副本竞争推进同一个 run）。第 2 行仍为 `Partial`：
   [cloud#72](https://github.com/ora-space/cloud/pull/72) 的 `TestWorkflowSessionRunsTwoAgentNodesInOrder` 在真实
   PostgreSQL schema 上跑完同一运行内的两个 agent 节点，断言 a1 结算后 a2 才派发、a2 在途时运行保持 `running` 且下游
   `output` 不跑、两个节点各拿自己的执行与自己的结果（a2 的 `reason` 不是 a1 的）、每个 agent 节点恰好一条注册会话；
@@ -52,7 +54,7 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   恰好一行）。两者都在控制面接缝上，真实栈还没有一条让同一运行的两个 agent 节点真实执行的验收。
 - 仍缺：同一运行两个 agent 节点的真实执行侧证据（控制面已断言两节点共用同一个 Workspace 行，运行 #507 的真实栈只跑过
   单 agent 节点）；排他权没有续租与失效窗口（锁就是事务本身），具体参数由实现给出；两个副本同时推进**同一个 run** 的
-  竞争仍未在部署层面观察，属 D1 落地顺序第 3 步（ora-space/circus#70）。
+  竞争仍没有部署级证据，属补充缺口，由 [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
 
 ## A Node Result Commit Is A Compare And Swap And Late Callbacks Are No-ops
 
@@ -115,7 +117,7 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   15 秒后仍只有一条执行、`executionId` 与 `dispatchedEpoch` 与重启前相同、执行无结果、运行保持 `running`，
   阻塞解除后由原执行的结果结算为 `succeeded` 并按 S5 释放 Workspace。
 - 仍缺：多副本同时推进与**另一个副本接管**仍没有部署级证据，属多副本验收；运行 #377 覆盖的是重启后的同一副本
-  接手，与上一条共同构成 D1 落地顺序第 3 步的验收面（ora-space/circus#70："真实跑通 Start → Agent → Output，fixtures=false"）。
+  接手，这一条由 [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
 
 ## A Node With No Committed Result Is Never Recorded Successful
 
@@ -161,7 +163,8 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   断言运行仍在执行时不带 `finishedAt`。唯一会写 `node_states` 成功的 `MockWorkflowRunSimulator` 在没有真实结果的
   情况下直接产出成功状态，根决策已把这类模拟 trace 排除在验收之外。
 - 仍缺：显式断言"终态写入发生在最后一个节点的结果提交之后"（现有用例只覆盖运行中不带 `finishedAt`）；回调丢失或
-  中断后重试仍不成功的用例；Node 不可达与回合窗口仍只在控制面接缝上验证，真实执行侧的失败结算与终态时点验证仍属 D1 落地顺序第 3 步。
+  中断后重试仍不成功的用例；Node 不可达与回合窗口仍只在控制面接缝上验证，真实执行侧的失败结算与终态时点验证由
+  [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
 
 ## Cancellation Is A Recorded Request With A Bounded Terminal State
 
@@ -210,8 +213,9 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   等于 Workspace 自己的 `deleted_at`。这条证据采自 cluster PR #42 合并前（merge `d75b92e`）的工具版本，run id 为
   `4050b211`；合并后的工具版本复跑了同组其余场景，这一场没有再次取到相同结论（细节见运行 #507）。
 - 仍缺：取消、清理与真实执行侧回调的同窗竞争已有直接证据（第 1 行据此记 `Covered`），但两个副本同时推进**同一个**正在
-  取消的 run 仍没有直接证据：运行 #507 的 `controller-replica` 场景只证明两个 Controller 的窗口里删除操作只有一个完成者，
-  没有让两个副本竞争推进同一个 run。属 D1 落地顺序第 3 步（ora-space/circus#70）。
+  取消的 run 仍没有部署级证据：运行 #507 的 `controller-replica` 场景只证明两个 Controller 的窗口里删除操作只有一个完成者，
+  没有让两个副本竞争推进同一个 run。它是多副本的补充缺口，不影响第 1 行的状态，由
+  [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
 
 ## The Workspace Release Is A Terminal Fact With A Bounded Give-Up
 
@@ -262,4 +266,4 @@ Cloud 侧调度器已在 [cloud#67](https://github.com/ora-space/cloud/pull/67)�
   由 `TestWorkflowRunReleaseHealsAWorkspaceDeletedByAnotherPath` 在控制面层面直接证明，端到端补记在真实栈上没有入口。
 - 仍缺："另一条路径已删除 Workspace"的端到端补记没有公开入口（项目删除在运行持有期间被拒并记下 `409 runtime_control_held` /
   `409 operation_in_progress`），补记只由控制面单测直接证明，第 4 行因此仍按 `Partial` 记；两个副本同时推进同一个 run 的
-  竞争仍缺部署级证据，属 D1 落地顺序第 3 步（ora-space/circus#70）。
+  部署级竞争仍缺，属补充缺口。两者都由 [ora-space/circus#665](https://github.com/ora-space/circus/issues/665) 承接。
