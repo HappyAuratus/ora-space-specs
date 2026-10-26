@@ -38,7 +38,8 @@
 于 2026-10-21 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[人工节点运行级输入契约](../../decisions/cloud/workflow/20261021-human-node-run-input.md)
 于 2026-10-22 经 owner 批准，核心用例同批建立，义务全部为 `Missing`（产品实现尚未开始，发布门禁继续
 拒绝 `human` 与 `interactive: true`）。[loop 与 loopExit 执行决策](../../decisions/cloud/workflow/20261025-loop-and-loop-exit-execution.md)
-于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 至今没有工作流执行者：生产里的
+于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[变量聚合执行决策](../../decisions/cloud/workflow/20261025-variable-aggregator-execution.md)
+同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 至今没有工作流执行者：生产里的
 运行停在 `pending`，唯一写节点状态的是开发夹具，而根决策已把模拟 trace 排除在验收之外，所以执行类义务在
 cloud 侧全部为 `Missing`；main 也还没有个人槽位映射。门禁类义务（图校验、启动门禁、槽位解析）的实现在
 [cloud#65](https://github.com/ora-space/cloud/pull/65) 上，已随合并提交

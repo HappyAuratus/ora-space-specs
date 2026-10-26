@@ -35,7 +35,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：Aggregator 候选只能有一个已赋值值，多值冲突失败 | **修改**：Cloud 的 aggregator 按候选声明顺序透传第一个已赋值值；多个候选同时赋值也不冲突。这是对 D6 规则的显式变更，选择与 desktop V1 执行契约一致的确定性优先级语义 |
 | desktop 根决策 D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承 owner 边界**：Cloud 声明 `{aggregator}.output` 一个根；静态类型校验的差异见 D3 |
 | desktop `workflow_run/engine/aggregator.rs` V1 contract：有序、非空、根选择器、first-assigned、no-match 失败 | **继承**：逐项一致；本文是 Cloud 侧的实现决策 |
-| [while-Loop 后续决策](https://github.com/ora-space/specs/pull/224)：loop body 是独立作用域，有效容器统一解析 | **交叉约束**：body 内前驱只在本 body 图里计算；外层值只经可见祖先或 carried 根读取，不越过容器边界（D1） |
+| [loop 与 loopExit 后续决策](20261025-loop-and-loop-exit-execution.md)：loop body 是独立作用域，有效容器统一解析 | **交叉约束**：body 内前驱只在本 body 图里计算；外层值只经可见祖先或 carried 根读取，不越过容器边界（D1） |
 
 ## 决策
 
