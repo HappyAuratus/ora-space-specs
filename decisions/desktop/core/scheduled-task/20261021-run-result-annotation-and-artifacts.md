@@ -1,14 +1,19 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Scheduled Run 携带独立业务结论，运行产物脱离 worktree 生命周期持久化
 
-本 ADR 处于 `approved`：评审已通过，是 #439 / #440 实现的依据，核心用例已按最终方案建立、证据随实现补齐。它在根决策 D7
-与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的 Nightly QA 补齐两件能力：①运行除执行层
-状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的生命周期持久化，按 Run ID 索引、随运行
-历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在本地轮实现。涉及模块：desktop 的
-scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
+本 ADR 处于 `implemented`：verdict（desktop#718）与运行产物（desktop#719）已合入 main；运行级接线、终态拒绝与读取侧链接安全的
+直接证据由 desktop#728（merge `fa572d6`）/ #731（merge `d0031ce`）补齐；V1.1 prompt 哨兵由 desktop#733（merge `e3e429c`）修正。
+真实 local Nightly QA 已在含 #733 的 main（desktop `8d8596ec`、agent `local/ora-space.claude`、run `8ffaac24-3ccb-4cb9-8249-169bd51f1dee`）
+上以 `nightly-code-quality-review-v1.1.md` 全文 + 产物约定 prompt 跑通：模型完成环境检查与增量判定并输出 `verdict=idle`（含 `QA_DETAIL`，
+哨兵与 detail 均被解析），并把完整报告写入 `.ora-scheduled-artifacts/report.md`（5201 字节、被采集为产物），重启后 verdict 与产物仍
+可读。实际执行顺序由 DB 时间戳证实：`verdict_at` 早于产物 `registered_at`，与 D3 冻结「verdict 写入 → 产物采集」顺序一致；实际模型未
+显式指定（`model` 字段为 NULL、agent 默认模型，具体模型名未落库）。据此转 `implemented`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的
+Nightly QA 补齐两件能力：①运行除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的
+生命周期持久化，按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在
+本地轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
 
 ## 继承与修改
 
@@ -142,9 +147,8 @@ verdict（执行层 `failure_reason` 已充分表达，见 D1 组合矩阵）。
 
 ## 落地顺序
 
-1. **specs**：本 ADR 评审通过（作者在 PR 内改 `approved`）并合并，同步建立核心测试用例（义务初始 `Missing`），
-   `domain/glossary.md` 补「业务 verdict / 运行产物」术语。
-2. **#439 实现**：domain+迁移（含 `verdict_at`）+ 契约（Rust/TS）+ runtime 收尾解析哨兵 + 历史展示 + 自动化测试（产品 PR）。
-3. **#440 实现**：产物固定目录声明 + copy 搬入 + 索引/对账 + 上限/清理 + 路径安全 + 历史查看/下载 + 测试。
-4. **集成验收**：真实 local 定时任务跑一次最小 Nightly QA，验证 verdict + 产物全链路、重启后历史与产物可读、安全与兼容测试。
-5. **收尾**：核心用例证据补齐，ADR 转 `implemented`，关闭 #439/#440。
+1. **specs**：本 ADR 评审通过并合并，核心测试用例建立（义务初始 `Missing`），`domain/glossary.md` 补「业务 verdict / 运行产物」术语。
+2. **#439 实现**：verdict 已合入 main（desktop#718）。
+3. **#440 实现**：产物持久化已合入 main（desktop#719）。
+4. **证据补齐**：运行级接线与终态拒绝（desktop#731）、读取侧链接安全（desktop#728）已合入 main，对应义务标 `Covered`。
+5. **收尾**：真实 local Nightly QA 已在 desktop#733 合入后的 main（`8d8596ec`）上以 `nightly-code-quality-review-v1.1.md` 全文 + 产物约定 prompt 重跑（run `8ffaac24-3ccb-4cb9-8249-169bd51f1dee`，`verdict=idle`、产物 `report.md` 5201 字节、重启后可读），据此更新核心用例证据并转 `implemented`。
