@@ -1,7 +1,7 @@
 # Agent 配置元数据的分发、版本与安装证据
 
 决策依据：[静态元数据分发](../../../decisions/cloud/plugin-marketplace/20261017-agent-configuration-metadata.md)。
-证据固定到 cloud `abc7b31`、desktop `8e497d7`。只有 Node 侧安装核对达到 `Covered`，离线发布一致性仍是 `Missing`，其余为 `Partial` 并写明缺口；没有浏览器端到端证据，也没有 Cloud→Controller→Node 的联合验收。
+证据固定到 cloud `abc7b31`、desktop `8e497d7`；“静态同步与安全文件读取”固定到 cloud `1dc2a46`。只有 Node 侧安装核对与静态同步安全读取达到 `Covered`，离线发布一致性仍是 `Missing`，其余为 `Partial` 并写明缺口；没有浏览器端到端证据，也没有 Cloud→Controller→Node 的联合验收。
 
 ## Configuration reads must not require agent execution or package downloads
 
@@ -14,7 +14,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 静态同步与安全文件读取 | [`catalog_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/internal/pluginmarket/catalog_test.go) 覆盖副本缺失、摘要不符、声明无效、目录冒充副本，[`agent_configuration_catalog_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/agent_configuration_catalog_test.go) 在真实 git 仓库与 PostgreSQL 上同步。缺超 256 KiB、非 UTF-8、schema 版本不一致和符号链接用例；中间目录符号链接在实现里也尚未拒绝（见 ADR D1） | Partial |
+| 静态同步与安全文件读取 | [`catalog_test.go`](https://github.com/ora-space/cloud/blob/1dc2a46afe20adcc6428316dd9959435599cbfa9/internal/pluginmarket/catalog_test.go) 覆盖副本缺失、摘要不符、声明无效、目录冒充副本、超 256 KiB、非 UTF-8、schema 版本与关联不一致和合法嵌套路径；[`TestScanRefusesSymbolicLinksOnTheCopyPath`](https://github.com/ora-space/cloud/blob/1dc2a46afe20adcc6428316dd9959435599cbfa9/internal/pluginmarket/catalog_test.go#L331) 验证中间目录与最终文件是指向条目内外的符号链接时都被拒绝（链接目标都是关联的原始字节），[`TestReadDeclarationCopyStaysInsideTheEntryWithoutTheGrammar`](https://github.com/ora-space/cloud/blob/1dc2a46afe20adcc6428316dd9959435599cbfa9/internal/pluginmarket/catalog_test.go#L372) 绕过路径语法验证 `..` 仍读不出条目；[`agent_configuration_catalog_test.go`](https://github.com/ora-space/cloud/blob/1dc2a46afe20adcc6428316dd9959435599cbfa9/integration/agent_configuration_catalog_test.go) 在真实 git 仓库与 PostgreSQL 上同步 | Covered |
 | 页面无执行副作用 | 集成测试中包服务器在同步、目录读取、选择、派发全程收到 0 次请求；[`personal_agent_configurations_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/personal_agent_configurations_test.go) 无 Workspace 经生产 HTTP 读写配置。缺对配置读写的进程观察与浏览器流程 | Partial |
 | 源快照失败边界 | [`plugins_test.go`](https://github.com/ora-space/cloud/blob/abc7b3112ea8c89d0a85b46041a6a5fbcbada561/integration/plugins_test.go) 验证整源失败保留旧目录并记录同步错误（既有，非声明专属）；上述集成测试验证含恶意副本的坏条目不拖垮同源其他条目。缺同一条目由有效变无效的连续同步断言 | Partial |
 
