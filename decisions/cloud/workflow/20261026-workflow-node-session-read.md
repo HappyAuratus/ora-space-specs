@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 工作流节点会话读取：按尝试有界读取节点会话记录，输出与结束原因按 cloud#182 口径分开呈现
@@ -14,7 +14,8 @@ status: proposed
 终态证据的序号权威排除、不由内容形状判定；运行中零历史回执、终态无历史、非 agent 节点各有真实空态，分页与
 截断都有显式状态，不用空列表或静默截断掩盖数据缺失。
 
-**状态与影响面**：本文为 `proposed`，待 owner 评审。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
+**状态与影响面**：本文为 `approved`，方向已经 owner 批准（ora-space/circus#691），待 cloud#182 合并后由实现运行
+落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
 节点详情的会话渲染。**兼容边界**：只新增接口，不改 `node_executions` / `node_event_receipts` 的持久化形状与
 既有约束，不新增迁移；`nodeStates` 的 `output` / `sessionEndReason` 分离由 cloud#182 候选实现，本文只消费这
 两个字段、不重新定义。**行为变化**：agent 节点详情从「只显示 `{"reason":...}`」变为「输出与结束原因分开、完整
@@ -182,8 +183,8 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 |---|---|---|
 | 尚未派发 | 所选尝试没有 `agent_session` 执行行（启动失败、从未派发或尝试等待中） | 明确「未建立会话」，不渲染空对话 |
 | **在途、零历史回执** | 有执行行、`result` 为空、`node.attempt == execution.attempt` 且 `node.status` 为 `running`、无历史回执 | 明确「等待首条记录」——会话在途，首条事件还没到，不是历史丢失 |
-| **终态、无历史** | 有执行行、零历史回执，且终态证据成立（`result` 非空；或 `node.attempt == execution.attempt` 且 `node.status` 终态；或 `node.attempt > execution.attempt`） | 明确「历史不可用」（沿用 #296 的 `unavailable`）——该次会话已终止，只是没留下可回放的历史 |
-| **终态证据缺失（未知）** | 有执行行、`result` 为空、零历史回执、且无法按上述证明已终态（罕见的数据异常） | 明确「未知」，不当作在途也不当作完整 |
+| **终态、无历史** | 有执行行、零历史回执，且终态证据成立（`result` 非空；或 `node.attempt == execution.attempt` 且 `node.status` 终态） | 明确「历史不可用」（沿用 #296 的 `unavailable`）——该次会话已终止，只是没留下可回放的历史 |
+| **终态证据缺失（未知）** | 有执行行、`result` 为空、零历史回执、且无法按上述证明已终态（如 `node.attempt > execution.attempt` 却 `result` 为空的数据异常） | 明确「未知」，不当作在途也不当作完整 |
 | 有结果、缺记录 | 终态证据成立、历史回执不齐（本页或已读页观测到显式 `Gap` / `truncated` / 形状校验失败） | 展示结果与「历史不完整／不可用」，分别说明，不当作完整 |
 | 非 agent 节点 | `output` / `condition` 等没有会话 | 明确「不适用」，不渲染空会话 |
 | 正常会话 | 有执行行、有历史回执、有/无终态证据 | 展示身份、记录、结果与分页状态 |
