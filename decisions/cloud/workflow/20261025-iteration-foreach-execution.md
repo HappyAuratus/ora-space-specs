@@ -33,8 +33,10 @@ status: approved
 | 根决策 D4：iteration、loop 等复合运行时延后 | **落实**：iteration 的首期可执行契约；loop 由后测循环决策独立定义 |
 | Cloud 根决策 D1 / D4、不变量 3：调度器只从已提交状态重算，节点结果随版本 CAS 提交 | **继承**：每轮 body 节点状态、轮终态与账本在同一次提交里写入 |
 | [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D3：六条区域边界校验 | **继承边界、收紧预算**：Cloud 复用 loop 的有效容器校验；`maxIterations` 必须在 `1..100` 内（D2、D6） |
-| desktop `iteration.rs` 与 `20260915-iteration-composite-runtime.md`：数组长度即轮数、item/index 绑定、三暴露变量、fail/continue、超限启动失败、空数组成功 | **继承语义，修改容量边界**：Cloud 增加 100 项与字节硬上限，以约束单行 CAS 的写入体积（D5、D6） |
+| desktop `iteration.rs` 与 [iteration 复合运行时决策](../../desktop/core/workflow/20260915-iteration-composite-runtime.md)：数组长度即轮数、item/index 绑定、三暴露变量、fail/continue、超限启动失败、空数组成功 | **继承语义，修改容量边界**：Cloud 增加 100 项与字节硬上限，以约束单行 CAS 的写入体积（D5、D6） |
 | desktop 根决策 D6：变量根声明与下游可见性 | **继承**：iteration 声明三个暴露变量；`item` / `index` 只对区域内可见 |
+| [loop 与 loopExit 后续决策](20261025-loop-and-loop-exit-execution.md)：有效容器统一解析、区域前驱只在本 body 计算、`inactive` 复用既有状态、8 MiB 总预算 | **继承**：成员归一、区域前驱、未选中成员状态与字节预算采用同一规则（D1、D3、D5） |
+| [变量聚合后续决策](20261025-variable-aggregator-execution.md)：候选必须是严格传递前驱，容器边界在发布时校验 | **继承**：迭代源与 body 内 aggregator 采用同一前驱与容器边界（D2、D3） |
 
 ## 决策
 
@@ -52,7 +54,7 @@ effectiveContainer(node) = data.containerId  (存在且非空)
   调度器和变量可见性会出现三份不一致的判断。
 - **兼容边界**：只读归一，不回写草稿、不改 wire；`parentId` 仍是 iteration 的持久化形式。
 - **优先级**：非空 `containerId` 优先；缺失或空值时才用 `parentId`。两者冲突时只使用显式
-  `containerId`，门禁、调度器与变量可见性复用同一解析入口；loop ADR 采用相同规则。
+  `containerId`，门禁、调度器与变量可见性复用同一解析入口；[loop ADR](20261025-loop-and-loop-exit-execution.md) 采用相同规则。
 - **区域规则**（沿用 loop 的校验器）：成员不能是 `loop` / `iteration` / `subflow`；`output` 不能出现在
   区域内；成员不能跨区域；区域必须非空。
 
@@ -225,7 +227,7 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 7. 已结算的轮不可变更、不重跑；取消后不再启动新轮。
 8. 不新增表、不改 OpenAPI、不改已发布图的 wire 形状。
 9. 轮数与序列化字节数同时有界；超限零截断、失败原因稳定，既有账本仍可在运行详情读取。
-10. 迭代源来自本容器的传递前驱（globals / `sys.*` 豁免）；body 节点的前驱只在本区域计算，外层只导入可见祖先。
+10. 迭代源来自 iteration 节点在外层图上的传递前驱（globals / `sys.*` 豁免）；body 节点的前驱只在本区域计算，外层只导入可见祖先。
 11. 同一轮只展示一次；condition 未选中成员使用既有 `inactive` 状态，归档与最终顶层投影不伪造执行。
 
 ## 为什么不是这些替代方案
