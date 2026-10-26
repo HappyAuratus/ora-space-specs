@@ -4,7 +4,7 @@ status: approved
 
 # 变量聚合由 Cloud 调度器执行：按声明顺序透传第一个已赋值的候选
 
-本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策。根决策
+本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`implemented`）的后续决策。根决策
 D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁拒绝它；本文承接该项的去向，并沿用
 [ora-space/circus#448](https://github.com/ora-space/circus/issues/448) owner 选定的「继续 Go 移植」。
 结论：
