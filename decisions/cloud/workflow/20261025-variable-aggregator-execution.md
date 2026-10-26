@@ -32,7 +32,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 | 根决策 D4：aggregator 延后，「随所属特性一起」处置 | **落实**：本文给出首期可执行契约；iteration/subflow 仍延后 |
 | 根决策不变量 3：节点结果提交是带状态的比较交换，迟到回执是空操作 | **继承**：aggregator 是无副作用的同步节点，结果随同一行的版本 CAS 提交 |
 | Cloud 根决策 D1 / D4：调度器只从已提交状态重算 | **继承**：候选的「已赋值」只由 `node_states` 与环境变量决定，不引入新的调度器状态 |
-| [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：Aggregator 候选只能有一个已赋值值，多值冲突失败 | **修改**：Cloud 的 aggregator 按候选声明顺序透传第一个已赋值值；多个候选同时赋值也不冲突。这是对 D6 规则的显式变更，选择与 desktop V1 执行契约一致的确定性优先级语义 |
+| [desktop 根决策](../../desktop/core/workflow/0-node-runtime-orchestration.md) D6：按声明顺序透传第一个已赋值候选，键存在即已赋值，全部未赋值失败 | **继承**：多个候选同时赋值也不冲突。desktop D6 已以 V1 契约取代早期多值冲突失败规则，两端采用相同的确定性优先级语义 |
 | desktop 根决策 D6：节点产物写入变量池，区域不能绕过 owner 与类型校验 | **继承 owner 边界**：Cloud 声明 `{aggregator}.output` 一个根；静态类型校验的差异见 D3 |
 | desktop `workflow_run/engine/aggregator.rs` V1 contract：有序、非空、根选择器、first-assigned、no-match 失败 | **继承**：逐项一致；本文是 Cloud 侧的实现决策 |
 | [loop 与 loopExit 后续决策](20261025-loop-and-loop-exit-execution.md)：loop body 是独立作用域，有效容器统一解析 | **交叉约束**：body 内前驱只在本 body 图里计算；外层值只经可见祖先或 carried 根读取，不越过容器边界（D1） |
@@ -92,8 +92,8 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 - **没有候选被赋值**：节点失败，`output.reason = aggregator_no_match`，运行失败；失败信息列出扫描过的候选，
   便于作者定位。绝不输出空对象并记为成功。
 - **多个候选同时赋值**：仍选声明顺序中的第一个。例如候选为 `[["writer","output"],["reviewer","output"]]`，
-  两者都有值时始终透传 writer 的值。这一行为修改 desktop 根决策 D6 的「多值冲突失败」，不是把既有决策
-  当作笔误忽略；理由是聚合的优先级由作者显式声明，且与 desktop V1 的实际执行契约一致。
+  两者都有值时始终透传 writer 的值。聚合优先级由作者显式声明，与 desktop V1 及修订后的 D6 一致；
+  早期 D6 的「多值冲突失败」已被明确取代。
 - **不读分支决策**：节点不知道 Condition 存在。哪条分支跑过只体现在已提交状态上；未走的分支没有状态，
   其根自然「未赋值」。
 - **环境变量可见**：`sys.workflow_id`、`sys.timestamp` 与 globals 与节点状态一起参与解析，因此候选可以选择
@@ -131,7 +131,7 @@ D4 把 `aggregator` 列为「随所属特性一起」的延后项，发布门禁
 
 | 方案 | 取舍 |
 |---|---|
-| 多个候选同时赋值即冲突失败（desktop 根决策 D6） | 能暴露意外的多源赋值，但不能表达作者指定的候选优先级；本文显式修改这项决策，选择与 desktop V1 契约一致的 first-assigned，多个已赋值候选按声明顺序确定结果 |
+| 多个候选同时赋值即冲突失败（早期 desktop D6，已被取代） | 能暴露意外的多源赋值，但不能表达作者指定的候选优先级；两端选择与 desktop V1 契约一致的 first-assigned，多个已赋值候选按声明顺序确定结果 |
 | 在 Cloud 建一套静态类型推断来对齐 desktop 的 parse 期校验 | 需要变量声明集、节点输出类型与 globals 类型的完整推导，超出聚合节点本身；当前不引入类型系统（D3） |
 | 只校验根声明，允许非前驱候选在运行时缺值就跳过 | 校验成本较低，但兄弟分支可能已经提交或尚未执行，同一图的优先候选会受调度顺序影响；本文在发布时拒绝，使用 D1 的前驱与作用域规则 |
 | 把聚合做成 Junction 的一种模式 | `junction` 是 Cloud 独有的结构性合流占位，desktop 没有执行语义；聚合有确定的取值语义，混在一起会让两类概念都失去边界 |
