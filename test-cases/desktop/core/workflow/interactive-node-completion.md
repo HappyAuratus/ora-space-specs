@@ -225,7 +225,7 @@ cleanup；之后的 `prepare`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 人类回合 prompt 带步骤边界，`record_prompt` 保持原文 | `workflow::run::interactive::turns::tests::boundary_precedes_the_prompt_and_records_the_original_turn`、`boundary_preserves_an_existing_recorded_turn`、`boundary_does_not_scope_an_empty_prompt`；渲染文案仍由 prompt 测试覆盖 | `Covered` |
+| 人类回合 prompt 带步骤边界，`record_prompt` 保持原文 | `workflow::run::interactive::turns::tests::boundary_precedes_the_prompt_and_records_the_original_turn`、`boundary_preserves_an_existing_recorded_turn`、`boundary_does_not_scope_an_empty_prompt` 断言边界前置、`record_prompt` 保持原文与空 prompt 不放行；e2e `workflow_interactive.rs` 断言人类回合实际发给 agent 的 prompt 带 `<workflow_step_boundary>`，覆盖从发送入口到注入的接线；渲染文案仍由 prompt 测试覆盖 | `Covered` |
 | 多后继 / 末节点文案正确 | prompt 测试覆盖多后继与不承诺运行时阻止；末节点空「下一步」由步骤卡片前端测试覆盖 | `Partial` |
 
 ### 决策依据
