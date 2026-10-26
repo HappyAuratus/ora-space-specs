@@ -80,6 +80,6 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 重启后历史与产物可读（登记、读取、重启后 verdict 与产物仍可读） | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop `8d8596ec`、agent `local/ora-space.claude`、run `8ffaac24-3ccb-4cb9-8249-169bd51f1dee` 以 V1.1 全文 + 产物约定 prompt 输出 `verdict=idle` 并把 `report.md` 5201 字节采集为产物，重启后 verdict 与产物仍可读） | `Covered` |
+| 重启后历史与产物可读（登记、读取、重启后 verdict 与产物仍可读） | `ora_db::repository::scheduled_artifact::tests::artifacts_survive_a_repository_restart`、`artifact_handlers::tests::copy_exports_an_artifact_after_the_worktree_was_reclaimed`；真实 local Nightly QA（desktop `8d8596ec`、agent `local/ora-space.claude`、run `8ffaac24-3ccb-4cb9-8249-169bd51f1dee`：agent 按 prompt Step 6 把报告写入 `.ora-scheduled-artifacts/report.md`，D3 在收尾采集为产物 `report.md` 5201 字节，`verdict=idle`，重启后 verdict 与产物仍可读） | `Covered` |
 | 产物/verdict 存储不调用 Cloud 上传/同步 | 无直接测试；由后续 ADR D5 的架构性说明覆盖（本地只落本机、不自动上传、不跨设备同步） | `Partial` |
 | 本地产物随运行历史驻留本机，与 D1 数据驻留一致 | 尚无直接证据 | `Missing` |
