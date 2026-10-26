@@ -1,7 +1,15 @@
 # Cloud Scheduled Task 接纳、会话边界与历史保留
 
 本文件登记 [Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)
-的核心验证义务。实现尚未合入 main，义务如实标为 `Missing`；每项落地完成时按直接证据更新状态。
+的核心验证义务。存储与调度 worker、公开 API 与 Web 管理面已随 [cloud#111](https://github.com/ora-space/cloud/pull/111)
+合入 main，worker/API 领域测试随 [cloud#141](https://github.com/ora-space/cloud/pull/141)、
+[cloud#145](https://github.com/ora-space/cloud/pull/145)、[cloud#152](https://github.com/ora-space/cloud/pull/152)、
+[cloud#153](https://github.com/ora-space/cloud/pull/153)、[cloud#156](https://github.com/ora-space/cloud/pull/156)、
+[cloud#159](https://github.com/ora-space/cloud/pull/159) 合入。下表按 cloud main
+[`f14cca4`](https://github.com/ora-space/cloud/commit/f14cca42275dad75024d8e64a36c2f67c978ee3c) 上的直接测试登记
+（真实 PostgreSQL；`integration/` 下的测试用文件名简写，`internal/core/` 下的单独注明）。这些证据只证明
+所测的 worker、写入者与 API 路径，cluster Compose 真实栈（Controller / Node / Sandbox 与真实模型）的端到端
+验收尚未进行；只能由真实栈证明的义务保持 `Missing` 或 `Partial`，ADR 在真实栈验收完成前保持 `approved`。
 
 ## Occurrence Admission Must Be Idempotent And Bounded
 
@@ -19,9 +27,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 重复扫描/重启/多副本对同一到期点只接纳一次 | 尚未实现 | `Missing` |
-| 迟到超阈值记 `missed` 且一次停机至多一条，计入 100 条保留 | 尚未实现 | `Missing` |
-| 停用与重新启用之间的到期点不评估、不补记 | 尚未实现 | `Missing` |
+| 重复扫描/重启/多副本对同一到期点只接纳一次 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskAdmissionCreatesARun`（同一到期点重复评估只留一条 `admitted` occurrence 与一个 IssueRun）。缺口：只覆盖串行重复扫描，多副本并发接纳与进程重启后的重放没有直接测试 | `Partial` |
+| 迟到超阈值记 `missed` 且一次停机至多一条，计入 100 条保留 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskMissedRecoverySingleOccurrence`（跨过多个到期点的停机两次评估后只有一条 `missed`）；`scheduled_task_schedule_retention_test.go`：`TestScheduledTaskHistoryRetentionPrunesOldestNonActive`（100 条 `missed` 按普通记录参与保留计数） | `Covered` |
+| 停用与重新启用之间的到期点不评估、不补记 | `scheduled_task_schedule_retention_test.go`：`TestScheduledTaskDisabledIntervalIsNotEvaluated`（停用期间不写 occurrence，重新启用后不回填 `missed`）。缺口：测试直接写入 `enabled_at` 模拟重新启用，没有经 `enable` API 证明它重新锚定启用时刻 | `Partial` |
 
 ## Deadline Cancellation Must Respect Session And Terminal Boundaries
 
@@ -40,9 +48,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 截止只在会话未结束且 IssueRun 未终态时写入，事实幂等只写一次 | 尚未实现 | `Missing` |
-| 投影为 `failed · timeout` 当且仅当截止事实存在且终态为 `cancelled` | 尚未实现 | `Missing` |
-| 用户取消先于截止时不产生截止事实，交付中的运行不被追改 | 尚未实现 | `Missing` |
+| 截止只在会话未结束且 IssueRun 未终态时写入，事实幂等只写一次 | `scheduled_task_worker_boundaries_test.go`：`TestScheduledTaskDeadlineWriterCancelsDueRunAndIsIdempotent`（同一事务写取消请求与截止事实，重复扫描不重写）、`TestScheduledTaskDeadlineWriterSkipsTerminalRun`（已终态运行不写）。缺口：`thread_state = ending / ended` 的边界、自动停用与截止写入时身份绑定不变、事务失败回滚没有直接测试 | `Partial` |
+| 投影为 `failed · timeout` 当且仅当截止事实存在且终态为 `cancelled` | 没有直接测试：历史读取的投影已实现，但没有测试断言截止事实与 `cancelled` 同时存在时才显示 `failed · timeout`、其余按 IssueRun 终态展示 | `Missing` |
+| 用户取消先于截止时不产生截止事实，交付中的运行不被追改 | 没有直接测试：截止写入者对已有 `cancel_requested_at` 的运行跳过，但没有测试驱动用户取消先于截止、或交付中的运行遇到截止 | `Missing` |
 
 ## Headless Sessions Must End At The First Successful Turn
 
@@ -66,9 +74,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 首个成功 `turnEnded` 后放出 `EndSession{idle_timeout}`，IssueRun 终态 `completed` | 尚未实现 | `Missing` |
-| 非成功 `TurnEnded` 不触发结束，运行由截止收敛 | 尚未实现 | `Missing` |
-| 定时运行任何状态下追加均被 `409 thread_closed` 拒绝（`canAppend = false`） | 尚未实现 | `Missing` |
+| 首个成功 `turnEnded` 后放出 `EndSession{idle_timeout}`，IssueRun 终态 `completed` | `internal/core/agent_run_thread_end_db_test.go`：`TestScheduledIdleThreadEndsImmediately`（定时运行进入 `idle` 后下一次扫描即进入 `ending`，恰好一条 `EndSession{idle_timeout}`，不等部署空闲窗口）。缺口：测试直接置入 `idle` 状态，没有从真实成功 `turnEnded` 回执驱动；会话终态与 IssueRun `completed` 的推导留给真实栈验收 | `Partial` |
+| 非成功 `TurnEnded` 不触发结束，运行由截止收敛 | 没有直接测试，留给真实栈验收 | `Missing` |
+| 定时运行任何状态下追加均被 `409 thread_closed` 拒绝（`canAppend = false`） | `integration/agent_run_thread_message_test.go`：`TestThreadMessagePostRejectsScheduledRun`（定时运行的追加返回 `409 thread_closed`，不写用户轮次、不放出命令）。缺口：只覆盖一个 Thread 状态；资源上的 `canAppend = false` 与前端不显示输入框没有直接测试 | `Partial` |
 
 ## Eligibility Must Be Rechecked At Save And Every Admission
 
@@ -87,9 +95,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 保存与接纳的资格表逐项校验，失败按原因映射并终止 | 尚未实现 | `Missing` |
-| 插件版本在接纳时按 Space 当时值快照，任务编辑不影响已接纳运行 | 尚未实现 | `Missing` |
-| 创建者资格失效 / 绑定 issue 删除 / 同意撤销分别自动停用任务 | 尚未实现 | `Missing` |
+| 保存与接纳的资格表逐项校验，失败按原因映射并终止 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskNonModelBindingFailureIsTargetUnavailable`、`TestScheduledTaskSingleFailureDoesNotBlock`（目标侧失败记 `failed` / `target_unavailable`，不建运行，不挡住同批其他任务）、`TestScheduledTaskModelBindingFailureIsDurable`；`scheduled_task_model_protocol_test.go`：`TestScheduledTaskIncompatibleModelOverrideFailsOccurrence`（模型侧失败记 `model_unavailable`，重复评估不重试）；`scheduled_task_contract_obligations_test.go`：`TestScheduledTaskDisabledCreateDoesNotPersistConsent`、`TestScheduledTaskReconsentAfterRevoke`（缺少有效同意的启用以 `approval_policy_invalid` 拒绝）。缺口：保存时的资格表没有逐项测试，接纳时的 `approval_policy_invalid` 映射没有直接测试 | `Partial` |
+| 插件版本在接纳时按 Space 当时值快照，任务编辑不影响已接纳运行 | 没有直接测试，留给真实栈验收。相邻证据 `TestScheduledTaskModelBindingFreezesDefinitionSelection` 只证明模型绑定在接纳时冻结，不证明插件版本快照 | `Missing` |
+| 创建者资格失效 / 绑定 issue 删除 / 同意撤销分别自动停用任务 | `scheduled_task_worker_boundaries_test.go`：`TestScheduledTaskCreatorInactiveAutoDisables`、`TestScheduledTaskIssueDeletedAutoDisables`（分别以 `creator_inactive` / `issue_deleted` 停用且不写 occurrence）；`scheduled_task_api_boundaries_test.go`：`TestScheduledTaskRevokeConsentDisables`（以 `consent_revoked` 停用并清空同意）。缺口：重新满足条件后不自动恢复、同意撤销不改写既有运行事实没有直接断言 | `Partial` |
 
 ## History Retention Must Stay Bounded Per Task
 
@@ -105,8 +113,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 第 101 条写入后同事务从最旧清理，活跃运行与刚写入事实保留 | 尚未实现 | `Missing` |
-| 清理不触碰 IssueRun / Thread / Revision 审计事实 | 尚未实现 | `Missing` |
+| 第 101 条写入后同事务从最旧清理，活跃运行与刚写入事实保留 | `scheduled_task_schedule_retention_test.go`：`TestScheduledTaskHistoryRetentionPrunesOldestNonActive`（恰好删除最旧一条，新接纳保留，总数为 100）、`TestScheduledTaskHistoryRetentionSkipsActiveRun`（最旧记录挂着活跃运行时顺延删次旧，活跃运行保留） | `Covered` |
+| 清理不触碰 IssueRun / Thread / Revision 审计事实 | 没有直接测试，留给真实栈验收。`TestScheduledTaskHistoryRetentionSkipsActiveRun` 只断言活跃 IssueRun 行保留，被清理的已终态运行的 IssueRun、Thread 与 Revision 是否保留没有断言 | `Missing` |
 
 ## Visibility And Ownership Must Follow The Bound Issue
 
@@ -123,6 +131,6 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 读取跟随 issue 可见性，`404` 语义与 Space API 根决策一致 | 尚未实现 | `Missing` |
-| 管理操作仅限创建者；绑定 issue 与执行归属不可修改 | 尚未实现 | `Missing` |
-| Space 归档后不再接纳新的运行 | 尚未实现 | `Missing` |
+| 读取跟随 issue 可见性，`404` 语义与 Space API 根决策一致 | `scheduled_task_api_boundaries_test.go`：`TestScheduledTaskMissingTaskIsNotFound`（不存在的任务读写均为 `404 not_found`）；`scheduled_task_contract_obligations_test.go`：`TestScheduledTaskReadRequiresBoundIssue`（绑定 issue 删除后读取为 `404 not_found`）。缺口：能读取 issue 的非创建者成员可见、读不到 issue 的成员得到 `404` 没有直接测试 | `Partial` |
+| 管理操作仅限创建者；绑定 issue 与执行归属不可修改 | `scheduled_task_api_boundaries_test.go`：`TestScheduledTaskManagementIsCreatorOnly`（非创建者的停用、删除、PATCH 均为 `404 not_found` 且不改任务，创建者仍可操作）、`TestScheduledTaskVersionConflict`（过期 `version` 以 `409 version_conflict` 拒绝且无部分写入）。缺口：创建者以 PATCH 修改绑定 issue 或执行归属被拒没有直接测试 | `Partial` |
+| Space 归档后不再接纳新的运行 | 没有直接测试，留给真实栈验收 | `Missing` |
