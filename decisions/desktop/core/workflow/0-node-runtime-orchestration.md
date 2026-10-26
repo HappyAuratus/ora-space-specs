@@ -75,8 +75,21 @@ values；旧轮结算与新轮启动或父 Loop 完成在同一事务提交。
 
 ### D6：变量、输出和并发由各自 owner 保证
 
-变量池以声明 owner 和类型验证写入，区域不能绕过该边界。Aggregator 是 swift runtime：候选
-输入只能有一个已赋值值，多值冲突失败。并发来自 DAG ready 集合与扇入规则，不需要并行容器。
+变量池以声明 owner 和类型验证写入，区域不能绕过该边界。Aggregator 是 swift runtime，沿用
+[V1 contract](https://github.com/ora-space/desktop/blob/d91344097ac9a2d0f079585cb1d8fbffa8dd78f7/crates/application/src/workflow_run/engine/aggregator.rs)：
+
+- 候选是有序、非空、无重复的根选择器列表；不接受嵌套路径。parse 期要求候选根已声明、声明类型
+  相等，并以共同类型声明 `{aggregatorId}.output`。节点来源必须是严格传递前驱；globals/system
+  免节点前驱校验，仍须满足声明和类型要求。
+- 节点就绪后按声明顺序透传第一个已赋值候选，顺序决定优先级，不按分支完成先后选值。
+  已赋值只指键存在；`null`、`false`、`0`、`""`、`[]`、`{}` 均原样透传。
+- 全部候选未赋值时节点失败并使 run 失败；多个候选同时赋值不构成图结构错误，仍取声明顺序中的
+  第一个。节点只读变量池，不直接读取 Condition 的分支决策；就绪性由 DAG 扇入规则决定。
+
+此规则取代早期 D6 的“唯一已赋值、多值冲突失败”：采用已合并 V1 的确定性候选优先级，使既有
+desktop 图的行为保持一致，并与 Cloud 的 first-assigned 契约对齐；不再用多源赋值本身检测图错误。
+核心验证义务见[变量聚合](../../../../test-cases/desktop/core/workflow/variable-aggregator.md)。
+并发来自 DAG ready 集合与扇入规则，不需要并行容器。
 未来节点的 IO、沙箱、超时和失败恢复须由相应 ADR 决定；不能在注册表扩展名义下跨越调度锁等待。
 
 ### D7：状态提交后发失效事件，观察者重查持久状态

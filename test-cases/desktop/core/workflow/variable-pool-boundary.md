@@ -25,7 +25,7 @@
 - Code 节点输出、远程子工作流返回、聚合节点选择结果全部通过同一校验路径。
 - 迭代节点完成时的暴露变量从账本派生写入，经同一校验路径；`array[T]` 的逐元素类型检查
   对账本投影同样成立。
-- 迭代副本与聚合（预留能力）同样不得绕过。
+- 迭代副本与聚合节点同样不得绕过；聚合的候选声明和取值规则见[变量聚合](variable-aggregator.md)。
 
 ### 禁止结果
 
@@ -37,7 +37,8 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 |---|---|---|
 | 既有 `pool.set` 校验语义（未声明/错 owner/类型不符/超长即拒）在重构后不变 | 既有 `variable_pool.rs` 测试族持续通过 | `Verified`（Stage 1 重构后原样通过；新节点形态的写入路径待各自实现后补证据） |
-| Code/远程/聚合节点输出经同一校验 | 尚无直接证据 | `Missing` |
+| 聚合输出经声明 owner 与类型边界写入 | [聚合 parse 与引擎场景](variable-aggregator.md)：直接断言输出声明的类型/owner 和内存 repository 中的输出值；尚未直接证明生产持久化路径拒绝非法 owner/类型 | `Partial` |
+| Code/远程节点输出经同一校验 | 尚无直接证据 | `Missing` |
 | 迭代节点账本派生写入经同一校验路径、逐元素类型检查成立 | `ora_backend::workflow::run::iteration_tests::serial_foreach_executes_every_round_and_exposes_the_ledger`（暴露变量经 `write_declared_pool_variable` 严格写入并端到端断言值与类型） | `Verified` |
 
 ### 决策依据
