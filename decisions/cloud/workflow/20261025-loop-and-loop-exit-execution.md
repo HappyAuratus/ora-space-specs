@@ -4,7 +4,7 @@ status: approved
 
 # loop 与 loopExit 由 Cloud 调度器执行：轮次并入运行聚合，后测循环语义沿用 desktop
 
-本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策，
+本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`implemented`）的后续决策，
 承接[根决策 D4](0-cloud-side-scheduler-owns-workflow-execution.md) 把 `loop` / `loopExit` 列为延后项的去向，
 以及 [ora-space/circus#448](https://github.com/ora-space/circus/issues/448) owner 选定的「继续 Go 移植」。
 它把这两个节点从「发布门禁拒绝」改为「可发布、可由 Cloud 调度器执行」，并决定轮次状态放在哪里。结论：

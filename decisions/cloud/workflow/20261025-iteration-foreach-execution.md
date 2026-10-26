@@ -4,7 +4,7 @@ status: approved
 
 # Iteration 在 Cloud 执行：区域成员、foreach 轮次与按轮账本
 
-本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`approved`）的后续决策：把 desktop
+本文是[工作流执行根决策](0-cloud-side-scheduler-owns-workflow-execution.md)（`implemented`）的后续决策：把 desktop
 可执行的 `iteration`（foreach）节点迁到 Cloud，将根决策 D4 延后的该 kind 纳入可发布、可执行的集合。
 
 结论：
