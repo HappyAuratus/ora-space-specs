@@ -6,7 +6,7 @@ e2e 覆盖的是「重启 → 停止 → 完成」路径，与记录 2 的「停
 
 证据表里仍标 `Partial` / `Missing` 的项是已知缺口：真实 agent 的重启恢复证据与人类回合步骤边界注入证据由 #567 承接，其余非阻断改进（e2e 停止时机、act card 截断展示、文档措辞、格式）由 #565 承接。
 
-另一条已知限制：完成先按已存快照的 blockers 判定；`prepare` 复算新出现、快照未记录的 blocker 不会阻断本次完成。但 blocker 门禁通过不等于输出契约通过：`prepare` 仍会重跑 `Structured` 契约，失败时返回 `WorkflowNodeIncomplete`（ADR 风险段已登记）。
+另一条已知限制：完成先按已存快照的 blockers 判定；`prepare` 复算新出现、快照未记录的 blocker 不会阻断 blocker 门禁。但 blocker 门禁通过不等于输出契约通过：`prepare` 仍会重跑 `Structured` 契约，失败时返回 `WorkflowNodeIncomplete`（ADR 风险段已登记）。
 
 ## Only An EndTurn Turn May Complete A Parked Node
 

@@ -118,7 +118,7 @@ cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只�
 
 只有第 4 步的 blockers 可以被 `force` 覆盖。`force` 必须由用户二次确认，并在 payload 记录 `completion_forced { blockers, without_turn, output_source }`；`blockers` 只记 blocker 快照，不混入用户自由文本。
 
-`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim，不复核 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照：已存 blockers 非空时返回 `WorkflowNodeIncomplete`；已存为空时先按已存快照放行 blocker 门禁，但随后仍会用同一段文本重跑 `Structured` 契约，失败时同样返回 `WorkflowNodeIncomplete`。因此 blocker 门禁通过不等于输出契约通过；快照未记录的 blocker（例如历史完整性变化）不阻断本次完成，是已知限制（见风险段）。只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
+`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim，不复核 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照：已存 blockers 非空时返回 `WorkflowNodeIncomplete`；已存为空时先按已存快照放行 blocker 门禁，但随后仍会用同一段文本重跑 `Structured` 契约，失败时同样返回 `WorkflowNodeIncomplete`。因此 blocker 门禁通过不等于输出契约通过；快照未记录的 blocker（例如历史完整性变化）不阻断 blocker 门禁，是已知限制（见风险段）。只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
 
 没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：最后一条用户消息之后的最后一条 assistant 消息文本（可能为空）；不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
 
@@ -227,14 +227,14 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 4. **blockers 不一致不刷新快照**
    - 行为：已有 turn key 且非 provisional 的已存快照保持原样，即使 `prepare` 复算与它不同；只有缺 turn key 的 provisional 或旧节点在同一 `userSeq` 下写回修复。
    - 采用原因：快照记录的是用户停靠时看到的状态；复算差异不能证明该快照已错，静默改写反而会篡改用户操作时的审计。
-   - 安全依据：判定完全按已存 blockers——已存非空时拒绝并要求 `force`，已存为空时放行。这里**不是** fail-closed：已存为空、turn key/digest 未变而 `prepare` 复算出新 blocker 时，本次完成仍会通过，这是已登记的限制（见风险段）。修复只发生在缺少回合身份、且 `userSeq` 相同的窗口内，不会把后来的一轮替换成完成对象。
+   - 安全依据：blocker 门禁按已存 blockers 判定——已存非空时拒绝并要求 `force`，已存为空时先放行 blocker 门禁；但门禁通过不等于输出契约通过：随后仍会用同一段文本重跑 `Structured`，失败时返回 `WorkflowNodeIncomplete`。只有快照未记录的 blocker（例如历史完整性变化）不会阻断本次完成，这是已登记的限制（见风险段）。修复只发生在缺少回合身份、且 `userSeq` 相同的窗口内，不会把后来的一轮替换成完成对象。
 
 ## 风险、未解决问题与验收
 
 - **每次交互回合读一次整文件历史**：turn key 依赖 `HistoryLine.seq`，事件流不提供，park 必须读历史；这是本决策接受的成本，长会话是 O(会话) 的读取。读取投影不读历史，修复只在 `prepare` 做一次。
 - **重试边界（已知限制）**：`settle_cancelled_prompt` 不写 `TurnEnded`，重试没有可用的 attempt 边界，`attemptStart` 只能等于 `userSeq`；被放弃尝试的文本可能进入最终窗口。后续增加独立 attempt boundary record 后修复。
 - **provisional 快照修复**：流 drop 且等待超时会先写 `turn_unknown`；只有 `prepare` 在同一个 `userSeq` 之后看到 `TurnEnded` 时替换。修复窗口内界面显示未完成，用户仍可 `force`。
-- **已存快照的 blockers 是权威（已知限制）**：完成按已存快照的 blockers 判定。若已存 blockers 为空、turn key 与 `outputDigest` 未变，`prepare` 复算出新 blocker（例如冻结契约或历史细节在 park 之后变化）不会阻断这次完成；补偿是下一次 park 刷新快照，完成路径不自动改写快照。
+- **已存快照的 blockers 是权威（已知限制）**：完成先按已存快照的 blockers 判定。若已存 blockers 为空、turn key 与 `outputDigest` 未变，`prepare` 复算出的新 blocker 不会阻断 blocker 门禁；但随后重跑 `Structured` 失败仍会返回 `WorkflowNodeIncomplete`。例外是快照未记录的 blocker（例如历史完整性变化）不阻断本次完成；补偿是下一次 park 刷新快照，完成路径不自动改写快照。
 - **旧节点只在完成时物化**：升级前的 `Pending` 节点在 `prepare` 前显示「回合未知」；用户点击完成后由 `prepare` 一次性回填，不在 1.5 秒轮询里读历史。
 - **`turn_unknown` 的 force**：没有 turn key/digest，只能显式 force；文本取最后一条用户消息之后的最后一条 assistant 消息，可能为空，不写 `structured_output`，审计 `without_turn`。
 - **交互式 Refusal/未知停靠**：修改 `pauses_interactive_node` 的集合，使交互式节点在拒答/未知时也停在 `Pending`；非交互节点保持现有失败语义。这是有意的行为变化，首轮 Refusal/未知停靠的直接证据在核心用例中仍为 `Partial`。
