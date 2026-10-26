@@ -23,14 +23,14 @@ Controller 不能把这笔结算或一次 `Unknown` 当作 Node 空闲。解除�
 
 ## 继承与修改
 
-| 前序决策 | 本文关系 |
-| --- | --- |
-| [IssueRun 根 D4/D5/D8](0-agent-run-in-disposable-isolated-workspace.md) | 继承业务结果、成果保存和物理释放的分离及既有窗口；新增原交付执行的独立业务结算，不重写 Node result。 |
-| [未登记撤回 D1](20261012-bounded-agent-startup-and-undispatched-withdrawal.md) | 继承登记与撤回互斥；本文处理已经登记的执行，不能套用“没有登记”的证明。 |
-| [verdict/产物 D3](../scheduled-task/20261022-run-verdict-and-artifacts.md) | 继承运行级不可续期截止、截止后只接回执不登记对象；新增截止事务封闭派发及独立执行结算。 |
-| [迟到事实 D1–D3](20261022-late-delivery-fact-takeover.md) | 继承原身份事实接管、receipt-only、后创建 Run 守卫及真实接管后 ACK；行政结算不关闭该入口。 |
-| [历史 D8 两阶段处置](20261025-d8-residual-without-delete-operation.md) | 继承真实终止/围栏、终止后保留数据、独立确认后删除；本文不新增物理回收授权。 |
-| [任务串行交接](20261018-serialize-task-agent-handoffs.md) | 继承失败暂停和显式恢复，不以新结算自动丢弃未保存成果。 |
+| 前序决策 | 关系 | 本文边界 |
+| --- | --- | --- |
+| [IssueRun 根 D4/D5/D8](0-agent-run-in-disposable-isolated-workspace.md) | 修改 | 保留业务结果、成果保存和物理释放的分离及既有窗口；新增原交付执行的独立业务结算，不重写 Node result。 |
+| [未登记撤回 D1](20261012-bounded-agent-startup-and-undispatched-withdrawal.md) | 继承，不变 | 登记与撤回互斥；本文处理已经登记的执行，不能套用“没有登记”的证明。 |
+| [verdict/产物 D3](../scheduled-task/20261022-run-verdict-and-artifacts.md) | 修改 | 保留运行级不可续期截止、截止后只接回执不登记对象；新增截止事务封闭派发及独立执行结算。 |
+| [迟到事实 D1–D3](20261022-late-delivery-fact-takeover.md) | 继承，不变 | 原身份事实接管、receipt-only、后创建 Run 守卫及真实接管后 ACK；行政结算不关闭该入口。 |
+| [历史 D8 两阶段处置](20261025-d8-residual-without-delete-operation.md) | 继承，不变 | 真实终止/围栏、终止后保留数据、独立确认后删除；本文不新增物理回收授权。 |
+| [任务串行交接](20261018-serialize-task-agent-handoffs.md) | 继承，不变 | 失败暂停和显式恢复，不以新结算自动丢弃未保存成果。 |
 
 ## 决策
 
