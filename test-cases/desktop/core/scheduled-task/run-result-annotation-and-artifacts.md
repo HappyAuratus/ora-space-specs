@@ -65,7 +65,7 @@
 | 软删除或已不存在的任务的产物由启动 sweep 清理；禁用任务的产物保留、不被 sweep 清理 | `ora_db::repository::scheduled_artifact::tests::sweep_removes_artifacts_after_the_task_is_soft_deleted`、`sweep_keeps_artifacts_for_a_disabled_task`、`artifact_handlers::tests::sweep_removes_orphan_rows_and_soft_deleted_task_storage` | `Covered` |
 | 旧运行无产物显示「无产物」；访问跟随运行可见性 | `scheduled-task-artifacts-dialog.test.tsx::shows the empty state for a run that produced no artifacts`；`artifact_handlers::tests::list_and_read_reject_pruned_or_soft_deleted_runs` | `Covered` |
 | 清单只存元数据，不存文件内容或凭据 | 尚无直接测试 | `Missing` |
-| 产物存储只含固定目录 copy 的文件与清单元数据，Ora 不写入模型 Key、token 或环境变量 | 尚无直接测试：实现只写入从固定目录复制的文件与清单行；待真实 local 集成验收确认 | `Partial` |
+| 产物存储只含固定目录 copy 的文件与清单元数据，Ora 不写入模型 Key、token 或环境变量 | 尚无直接测试：实现只写入从固定目录复制的文件与清单行（本次 local 验收未直接验证不写凭据） | `Partial` |
 
 ## Local Artifacts And Verdicts Must Stay On The Device
 
