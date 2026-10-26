@@ -118,7 +118,7 @@ cleanup 与首轮 executor 都通过 D3 的函数获取 per-run 门；门内只�
 
 只有第 4 步的 blockers 可以被 `force` 覆盖。`force` 必须由用户二次确认，并在 payload 记录 `completion_forced { blockers, without_turn, output_source }`；`blockers` 只记 blocker 快照，不混入用户自由文本。
 
-`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim，不复核 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照，按已存快照的 blockers 判定：已存 blockers 非空时返回 `WorkflowNodeIncomplete`；已存为空时这次完成仍然放行，复算新出现而快照未记录的 blocker 是已知限制（见风险段）。只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
+`complete` 不在锁内重算 schema。`prepare` 在门外读取 D2 定义的同一窗口文本、比对 turn key 与 `outputDigest`，并用这段文本重跑 `Structured` schema 得到结构化值（纯 CPU）。提交阶段在门内只复核 run `Running`、node `Pending` 与 completion claim，不复核 turn key。若 `prepare` 复算的 blockers 与已存快照不一致，不刷新快照：已存 blockers 非空时返回 `WorkflowNodeIncomplete`；已存为空时先按已存快照放行 blocker 门禁，但随后仍会用同一段文本重跑 `Structured` 契约，失败时同样返回 `WorkflowNodeIncomplete`。因此 blocker 门禁通过不等于输出契约通过；快照未记录的 blocker（例如历史完整性变化）不阻断本次完成，是已知限制（见风险段）。只有缺少 turn key 的 provisional 或旧节点在同一 `userSeq` 下才写回修复。
 
 没有 turn key 的 `turn_unknown` 快照只能 `force`。`force` 的“当前产出”固定为：最后一条用户消息之后的最后一条 assistant 消息文本（可能为空）；不计算 `outputDigest`，不写 `structured_output`，并在 `completion_forced` 记录 `without_turn: true` 与 `output_source: "last_assistant_message"`。若 `prepare` 在修复时找到了 `TurnEnded`，则按正常 turn key 路径完成，不需要 force。
 
