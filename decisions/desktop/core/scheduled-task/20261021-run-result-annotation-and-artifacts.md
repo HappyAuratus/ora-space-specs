@@ -9,7 +9,8 @@ status: implemented
 真实 local Nightly QA 已在含 #733 的 main（desktop `8d8596ec`、agent `local/ora-space.claude`、run `8ffaac24-3ccb-4cb9-8249-169bd51f1dee`）
 上以 `nightly-code-quality-review-v1.1.md` 全文 + 产物约定 prompt 跑通：模型完成环境检查与增量判定并输出 `verdict=idle`（含 `QA_DETAIL`，
 哨兵与 detail 均被解析），并把完整报告写入 `.ora-scheduled-artifacts/report.md`（5201 字节、被采集为产物），重启后 verdict 与产物仍
-可读，据此转 `implemented`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的
+可读。实际执行顺序由 DB 时间戳证实：`verdict_at` 早于产物 `registered_at`，与 D3 冻结「verdict 写入 → 产物采集」顺序一致；实际模型未
+显式指定（`model` 字段为 NULL、agent 默认模型，具体模型名未落库）。据此转 `implemented`。它在根决策 D7 与紧邻的后续 ADR `20261020-worktree-ownership-atomic-commit.md` 之上，为质量工程方向的
 Nightly QA 补齐两件能力：①运行除执行层状态外还能携带机器可读的业务结论（verdict）；②运行产出的报告/测试结果脱离隔离 worktree 的
 生命周期持久化，按 Run ID 索引、随运行历史访问。它不改动执行层状态机与 `failure_reason` 语义；Cloud 侧仅冻结接口边界与设计约束、不在
 本地轮实现。涉及模块：desktop 的 scheduled-run domain/repository、runtime、前端运行历史；specs 的后续 ADR 与核心用例。
