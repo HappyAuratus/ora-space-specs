@@ -39,7 +39,7 @@
 于 2026-10-22 经 owner 批准，核心用例同批建立，义务全部为 `Missing`（产品实现尚未开始，发布门禁继续
 拒绝 `human` 与 `interactive: true`）。[loop 与 loopExit 执行决策](../../decisions/cloud/workflow/20261025-loop-and-loop-exit-execution.md)
 于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[变量聚合执行决策](../../decisions/cloud/workflow/20261025-variable-aggregator-execution.md)
-同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 至今没有工作流执行者：生产里的
+与[iteration 执行契约](../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 至今没有工作流执行者：生产里的
 运行停在 `pending`，唯一写节点状态的是开发夹具，而根决策已把模拟 trace 排除在验收之外，所以执行类义务在
 cloud 侧全部为 `Missing`；main 也还没有个人槽位映射。门禁类义务（图校验、启动门禁、槽位解析）的实现在
 [cloud#65](https://github.com/ora-space/cloud/pull/65) 上，已随合并提交
@@ -60,6 +60,7 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [人工节点的运行级输入与有界等待](workflow/hitl-run-input.md) | 等待无界、输入绕过校验、重复提交、无绑定运行越权、409/410 顺序、取消竞争、超时误判、活动被当回合 |
 | workflow | [loop 轮次执行、早退与容量边界](workflow/loop-and-loop-exit.md) | 越界读取其它容器或旧轮、feedback 半组赋值、耗尽策略漂移、早退伪造成功、恢复重放成员、体积超限被截断成成功 |
 | workflow | [变量聚合的发布门禁与有序透传](workflow/variable-aggregator.md) | 首个已赋值与空值混淆、多值顺序漂移、no-match 空成功、非前驱放行、跨容器与跨轮串值、非法配置冻结 |
+| workflow | [Iteration 的 foreach 执行与按轮账本](workflow/iteration-foreach-execution.md) | 迭代源非前驱、轮内变量泄漏、收集陈旧值、策略丢账本、恢复重跑、取消后开新轮、体积截断、最后一轮重复展示 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的定时任务决策
