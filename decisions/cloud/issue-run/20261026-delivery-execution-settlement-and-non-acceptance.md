@@ -31,6 +31,11 @@ Controller 不能把这笔结算或一次 `Unknown` 当作 Node 空闲。解除�
 | [迟到事实 D1–D3](20261022-late-delivery-fact-takeover.md) | 继承，不变 | 原身份事实接管、receipt-only、后创建 Run 守卫及真实接管后 ACK；行政结算不关闭该入口。 |
 | [历史 D8 两阶段处置](20261025-d8-residual-without-delete-operation.md) | 继承，不变 | 真实终止/围栏、终止后保留数据、独立确认后删除；本文不新增物理回收授权。 |
 | [任务串行交接](20261018-serialize-task-agent-handoffs.md) | 继承，不变 | 失败暂停和显式恢复，不以新结算自动丢弃未保存成果。 |
+| [Controller 沙盒管理根 D5](../../controller/node-management/0-controller-drives-workspace-sandboxes.md) | 修改 | idle 仍依据派发账本，quiesce 仍先封闭新派发；Node 原身份未受理证明经 Cloud 持久接管后，对应 execution 才能从未完成集合移除，其余责任继续检查（D3）。 |
+| [Controller 会话根 D4/D5](../../controller/session/0-controller-relays-agent-sessions.md) | 修改 | 原终态的接管与 ACK 顺序不变；新增仅对从未受理的交付执行使用专门证明解除责任，不能用 Completed 查询或业务结算代替（D3）。 |
+| [Controller 终态拒绝隔离 D2/D3](../../controller/session/20261022-isolate-refused-delivery-terminals.md) | 继承，不变 | 已产生终态却被拒绝接管的 execution 不符合“从未受理”；仍须重交原事件、取得原 receipt 才解除 unresolved，不借新证明绕过拒绝。 |
+| [Node 协议根 D2/D4/D5](../../node/protocol/0-controller-node-protocol.md) | 修改 | 保留原执行身份、能力协商和“持久接管后才 ACK”；扩充 Node 本地持久受理 ledger 与证明能力，同一原身份下原子提交围栏与证明，旧程序不得忽略新 schema（D2/D5）。 |
+| [Node 停止确认证据 D1/D2](../../node/revision/20261021-stop-confirmation-accepts-not-started.md) | 继承，不变 | host 的 `NotStarted` 只证明特定 ProcessRun 未启动且未来 `Start` 已被围住，`UnknownIdentity` 仍是未知；两者都不能代替本次业务 execution 的原 ledger 未受理证明（D2）。 |
 
 ## 决策
 
@@ -65,6 +70,11 @@ Node 在与受理互斥的持久事务中检查完整执行身份 ledger，包�
 
 Node 身份发生变化时不能用新实例的一张空表证明旧实例没有受理。已经持久化的原证明可按原身份
 重放；不能取得原 ledger 或原身份证据的执行继续保留未知责任，转既有 D8 处置。
+
+Node 的恢复停止确认中，host 报 `NotStarted` 是特定 ProcessRun 未启动、且旧/新 `Start` 已被围住的
+正面事实；它不能推断所属交付 execution 从未被 Node 受理。`UnknownIdentity` 只表示 host 查不到该
+Run，更不能推出未受理。两种应答都不能替代本节对原 execution 完整 ledger 的原子检查与持久输入
+围栏；已受理但尚未启动进程的执行仍保留原责任，走真实执行对账或既有受控处置。
 
 ### D3：Cloud 接管专门的未受理事实，Controller 据此解除对应责任
 
