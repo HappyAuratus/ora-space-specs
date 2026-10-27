@@ -19,7 +19,7 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 不解析 `executorSlot`、不接入 [Workflow 根决策](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md)
 的 Server Workflow 执行链。核心测试用例见
 [`test-cases/cloud/scheduled-task/admission-and-session-bounds.md`](../../../test-cases/cloud/scheduled-task/admission-and-session-bounds.md)，
-17 项义务全部 `Covered`。
+18 项义务全部 `Covered`。
 
 涉及 Cloud 的 `internal/core`（定时任务定义、occurrence、调度 worker）、PostgreSQL 迁移与公开 API。
 兼容性边界：manual run、`@` Confirm、Workflow 路径与 desktop 决策全部不变；`issue_runs` 只增加
@@ -57,7 +57,7 @@ Cloud 侧的取消写入者；任务所有者的个人模型连接承担模型�
 Prompt、执行 Agent（`space_agents` 引用；插件版本不在此冻结，由既有 IssueRun 用例在接纳时按 Space
 当时值快照，见 D3 与不变量 6）、创建者的模型选择、schedule
 与创建时固定的 IANA 时区、无人值守同意（策略名与同意时间）、定义 revision、启用状态与停用原因、
-软删除墓碑、创建/更新时间。执行归属固定为 `cloud`：Cloud 任务只能由 Cloud 调度，不存储也不暴露
+软删除墓碑、创建/更新时间。下一次到期时间不持久化，读取时现算（见 D2）。执行归属固定为 `cloud`：Cloud 任务只能由 Cloud 调度，不存储也不暴露
 可写字段。修改 schedule、时区、Prompt、Agent 或模型选择增加 revision；纯展示修改（如名称）不增加。
 
 - **归属与费用**：任务属于创建者。每次触发产生的 IssueRun 以创建者为运行发起者：个人模型连接承担
@@ -95,6 +95,13 @@ schedule 首版只有三种受限周期：每 N 小时（最短间隔 1 小时�
   的启用锚语义；daily / weekly 按任务时区的日历求值。**停用（或自动停用）与重新启用之间的到期点
   一律不评估、不补记 `missed`**：调度器只求值启用（重新启用）时刻之后的到期点，停用区间不视作
   停机。手动停用保留原锚点，重新启用由 `enable` 把锚点改为数据库当时时刻；自动停用同时清除锚点。
+- **下一次到期展示**：任务的列表与单个读取返回只读字段 `nextDueAt`（UTC），是读取时按 schedule、任务
+  时区与锚点现算的展示值，不是触发事实：不落库，不写 occurrence，也不参与接纳。它与调度器使用同一套
+  求值规则：每 N 小时取锚点网格（锚点加 N 小时的整数倍）上晚于读取时刻的第一个点，daily / weekly 按任务
+  时区日历取晚于读取时刻与锚点的第一个点，夏令时跳过与回拨的处理与接纳一致；读取时刻取数据库时钟。
+  停用的任务（含自动停用后锚点被清除）返回 `null`，前端只显示停用状态与原因。到期点刚过、调度器尚未
+  扫描到它的那一个扫描周期内，`nextDueAt` 已指向下一个到期点；展示不因此回退或补齐，接纳仍以调度器的
+  观察为准。现算而不落库，是为了让展示值永远跟随锚点与定义变更，不再维护一份会和接纳规则分叉的状态。
 - **身份**：`scheduled_task_occurrences` 以 `(task_id, scheduled_at)` 唯一。调度器多副本、重启、
   部署或重复扫描都按同一身份幂等：先到的事务接纳，后到的读取既有结果原样返回，不产生第二个运行。
 
@@ -298,6 +305,8 @@ IssueRun 的持久事实为准。
 - 端到端验收（第 5 步）：2026-10-26 在 cluster Compose 真实栈上完成，部署为 cluster `28bac76`、cloud
   `da2125f`、desktop `d913440` 的干净检出，真实 Controller / Node / Sandbox、官方 Claude 插件 0.4.1
   与真实模型，目标 Project 为匿名公开 Git。逐项结果登记在核心用例中。
+- 下一次到期展示（D2）：[cloud#192](https://github.com/ora-space/cloud/pull/192)，cloud commit `88c665a6`，
+  在公开 API、OpenAPI 与 Web 任务卡片上提供 `nextDueAt`。
 
 与 approved 决策的偏离（正文已按实际行为改写）：
 
@@ -319,5 +328,6 @@ IssueRun 的持久事实为准。
 7. **插件版本可解析（D5）**：approved 版本要求 Agent「当时 desired 版本可解析」。实现只校验 Agent
    为 active，插件版本由既有 IssueRun 用例按 Space 当时的 desired 版本快照，资格表不单独校验它能否
    解析。
-8. **执行归属与下一次触发投影（D1、D2）**：执行归属固定为 `cloud`，没有持久化列，也没有可写字段；
-   任务不持久化、也不展示「下一次触发」投影。
+8. **执行归属与下一次触发投影（D1、D2）**：执行归属固定为 `cloud`，没有持久化列，也没有可写字段。
+   approved 版本把「下一次触发投影」列为持久化字段；实现不持久化它，改为读取时现算的只读字段
+   `nextDueAt`（D2），与调度器同一套求值规则，停用的任务为 `null`。
