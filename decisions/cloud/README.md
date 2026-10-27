@@ -34,7 +34,7 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 层引用，不复制成多份权威规则。
 
 [交付执行结算与未受理证明](issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
-为 `proposed`：细化 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。
+为 `approved`：确定 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。
 
 ## 多人协作运行时控制
 

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 交付截止由 Cloud 结算业务责任，未受理事实由 Node 的持久围栏证明
@@ -8,8 +8,10 @@ status: proposed
 Controller 不能把这笔结算或一次 `Unknown` 当作 Node 空闲。解除未完成执行责任须有 Node 在原身份下
 持久证明“没有受理且以后也不能受理”，或者既有受控处置取得真实终止和迟到创建围栏。
 
-本文细化已经批准的 [A+B 职责分离](https://github.com/ora-space/circus/issues/670)，当前为 `proposed`：
-具体持久化、证明协议和兼容边界尚待评审。覆盖 IssueRun 的 Revision 与 Scheduled Run 产物交付；
+本文细化已经批准的 [A+B 职责分离](https://github.com/ora-space/circus/issues/670)，当前为 `approved`：
+具体持久化、证明协议和兼容边界已批准，实现与验证完成后再转为 `implemented`。
+核心验证义务见[交付结算与未受理证明用例](../../../test-cases/cloud/issue-run/delivery-execution-settlement-and-non-acceptance.md)。
+覆盖 IssueRun 的 Revision 与 Scheduled Run 产物交付；
 不改变 WorkflowRun 的会话/成果契约、交付窗口长度、失败暂停或隐藏 Workspace 的运维权限。
 
 ## 问题与约束
@@ -136,7 +138,7 @@ Node 增加显式 schema 升级；旧程序面对新围栏 schema 必须拒绝�
 
 ## 验收与落地
 
-规格获批后建立核心用例，分别检验：从未派发、登记响应未知、已受理但回报丢失、截止/登记与
+核心用例按本次批准的契约登记，分别检验：从未派发、登记响应未知、已受理但回报丢失、截止/登记与
 受理/围栏竞争、旧 permit、错绑实例/代次/输入、重启/接管、存量升级、持久化失败、迟到终态和
 quiesce。单个低层状态断言不能代替跨进程义务。
 

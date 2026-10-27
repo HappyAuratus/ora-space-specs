@@ -24,6 +24,6 @@
 [运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `implemented`，要求 Cloud 执行入口以持久控制绑定约束迟到指令、交互输入和恢复，并验证管理程序与工作负载的权限隔离。Node 单连接、心跳及宿主代次不是用户独占证明；本决策不自动恢复进程控制领域此前延期的完整信任体系。完整联合故障矩阵仍有缺口，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。
 
 [交付执行结算与未受理证明](../cloud/issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
-为 `proposed`：它拟扩充 Node 原 execution 的持久受理 ledger、输入围栏和证明能力，以及 schema
+为 `approved`：它扩充 Node 原 execution 的持久受理 ledger、输入围栏和证明能力，以及 schema
 升级与能力协商边界；[恢复停止确认的 `NotStarted` 证据](revision/20261021-stop-confirmation-accepts-not-started.md)
 只针对特定 ProcessRun，不能替代原 execution 的未受理证明。

@@ -239,7 +239,7 @@ Cloud 对一次交付停止业务等待的持久结论；它不表示 Node 已�
 ### Execution Non-Acceptance Proof（执行未受理证明）
 
 执行端对精确原执行没有受理、并已持久阻挡其未来受理的证明；普通 Unknown 查询或缺少回报不构成该证明。
-责任分工见[交付执行结算与未受理证明](../decisions/cloud/issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)（`proposed`）。
+责任分工见[交付执行结算与未受理证明](../decisions/cloud/issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)（`approved`）。
 
 ### Revision
 
