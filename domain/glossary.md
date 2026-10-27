@@ -1,5 +1,35 @@
 # Glossary
 
+## Workspace Collaboration
+
+`Collaboration Space`（协作空间，产品 UI 称工作区）是用户共同组织工作的空间，当前与一个租户
+一一对应；它不同于承载执行目录的[运行时 Workspace](#workspace)。
+
+`Workspace Membership`（工作区成员资格）是一个真实用户在工作区中的有效身份、角色与状态，
+是该用户进入空间的依据；它不表示已经参加某个小队。
+
+`Space Agent`（空间 Agent）是工作区选择的 Agent 插件所提供的协作身份；它不是人类账号、
+一次运行中的 Agent Session，或某位用户的私人模型配置。
+
+`Squad`（小队）是同一工作区内人类成员与 Space Agent 的协作编组。既有协作协议的 `team`
+引用指向这一身份，不表示另一个组织层级。小队不等于私有空间或已经启用的自动执行能力。
+
+`Squad Membership`（小队成员关系）是人或 Space Agent 显式参加一个小队的关系，携带其在队中
+的职责；与 Workspace Membership 分开，同一个对象可参加多个小队。
+
+`Squad Maintainer`（小队维护者）是有权维护本队的有效人类队员；该身份不等于工作区管理员，
+不提供对外邀请、私人模型或运行时权限。创建者的历史身份不等于永久维护权。
+
+`Squad Leader`（小队协调者）是小队可选的协调 Agent。配置了协调者不表示已授权或启用自动协作，
+也不将该 Agent 变为工作区管理员。
+
+`Targeted Joining Intent`（定向加入意图）是邀请或申请中明确的工作区与小队目标集合，表达接受者
+同意加入的范围；待接受意图本身不是成员资格或小队成员关系。
+
+领域决策见[小队](../decisions/cloud/squad/0-workspace-scoped-human-agent-squads.md)与
+[定向加入](../decisions/cloud/tenancy/20261027-squad-targeted-joining-and-inviter-revocation.md)，
+各自的 status 决定其是否已批准或实现，术语存在不表示能力已开放。
+
 ## Desktop Cloud Connection
 
 `Deployment Identity`（部署身份）是 Gateway 部署的稳定 deployment ID 与签名公钥身份，
