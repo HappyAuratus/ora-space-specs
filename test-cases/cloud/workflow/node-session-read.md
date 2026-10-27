@@ -77,7 +77,7 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 | --- | --- | --- |
 | `execution` 与 `node` 分开，旧尝试不冒领最新 `output` | 真实 PostgreSQL：两次尝试，读 `attempt=1`，`node.output` 仍描述当前尝试、`execution.result` 属第 1 次 | Missing |
 | `execution.attempt == node.attempt` 时 `node.output` 才是所选尝试的回答 | 真实 PostgreSQL：读当前尝试，两者一致 | Missing |
-| 旧尝试的最终回答从 `records` 重放、不由 `node.output` 提供 | 真实 PostgreSQL：旧尝试的 `records` 含 `agent_message_chunk`，`execution.result.reason` 是那次结束原因 | Missing |
+| 旧尝试的最终回答从 `records` 重放、不借用当前 `output` | 前端两次尝试渲染测试：读 `attempt=1` 渲染的回答来自第 1 次的 `agent_message_chunk`，不是第 2 次的 `node.output` | Missing |
 
 - 决策依据：D1，不变量 4，重试决策 D3。
 
@@ -130,23 +130,27 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 ## Output And Session End Reason Are Presented Separately
 
 - 风险：结束原因占用 `output` 槽位，下游 Output 节点或 Issue `run.message` 拿到 `reason` 而非回答；或结束原因
-  丢失。
-- 前置状态：一个已成功或已失败结算的 agent 节点，其会话有最终回答与结束原因（`user_ended` / `idle_timeout` /
-  `cancelled` / `agent_failed` / `interrupted` 或 Cloud 自己的诊断）。
-- 触发：读取该节点详情。
-- 必须成立：`output` 是最终可见回答（落 `output` 根、`{"output": text}`，不因读取被清空）；`sessionEndReason`
-  独立呈现结束原因；`error` 只在失败节点携带公开失败原因；Cloud 对记录业务字段的解释限于最终回答归集
-  （初始回合 `turnEnded` 边界前最后一条完整的 `agent_message_chunk` 或其 `visibleText` 投影），其余记录按原样
-  透传由前端渲染。
-- 禁止结果：输出与结束原因混在一个字段；`output` 被清空；Cloud 泛化解析全部记录业务字段。
+  丢失；或把失败中的部分文本误发布为最终 `output`。
+- 前置状态：一个成功结算的 agent 节点（成功回合，有最终回答与结束原因）；一个失败/取消结算的 agent 节点（有
+  结束原因、`error` 与部分会话记录，但没有已提交的最终 `output`）。
+- 触发：读取这些节点详情。
+- 必须成立：`output` 只对成功结算的节点是最终可见回答（成功回合才写 `{agent}.output`、落 `output` 根，不因
+  读取被清空）；`sessionEndReason` 独立呈现结束原因（`user_ended` / `idle_timeout` / `cancelled` /
+  `agent_failed` / `interrupted` 或 Cloud 自己的诊断）；失败/取消节点没有已提交的最终 `output`，只有
+  `sessionEndReason`、`error` 与部分会话记录；`error` 只在失败节点携带公开失败原因；Cloud 对记录业务字段的
+  解释限于最终回答归集（成功回合 `turnEnded` 边界前最后一条完整的 `agent_message_chunk` 或其 `visibleText`
+  投影），其余记录按原样透传由前端渲染。
+- 禁止结果：输出与结束原因混在一个字段；失败/取消节点的部分文本被误发布为最终 `output`；成功节点的 `output`
+  被清空；Cloud 泛化解析全部记录业务字段。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 成功/失败节点分别读到最终回答与独立 `sessionEndReason` | 真实 PostgreSQL：成功与失败各一例，`output` 与 `sessionEndReason` 分开 | Missing |
+| 成功节点读到最终回答与独立 `sessionEndReason` | 真实 PostgreSQL：成功结算节点，`output` 与 `sessionEndReason` 分开 | Missing |
+| 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | 真实 PostgreSQL：失败与取消各一例，`output` 为空、原因与错误独立 | Missing |
 | 结束原因闭集，Cloud 诊断（`node_unavailable` 等）作为 `sessionEndReason` 呈现 | 真实 PostgreSQL：Cloud 终态结算的节点 | Missing |
-| `output` 不因读取被清空，下游 Output 节点仍可取值 | 真实 PostgreSQL：读取前后节点状态不变 | Missing |
-| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records` 的 `record` 与 `node_event_receipts.event` 一致 | Missing |
+| 读取接口不修改 `node_states`（`output` 不被清空或改写） | 真实 PostgreSQL：读取前后 `node_states` 不变 | Missing |
+| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].record` 的内层字段与回执 `event.record` 解析结果一致，外层 `sequence` / `turnId` / `truncated` 分别与 `node_event_receipts` 对应列一致 | Missing |
 
 - 决策依据：D3，不变量 7、8，根决策变量根，#673 owner 结论。
 
