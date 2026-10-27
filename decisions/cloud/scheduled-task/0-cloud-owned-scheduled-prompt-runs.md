@@ -4,6 +4,10 @@ status: implemented
 
 # Cloud Scheduled Task 由服务端持久调度产生幂等触发，每次触发经既有 IssueRun 链执行绑定 issue 下的无头 Prompt 单会话
 
+> 历史决策：D5 的资格表与接纳失败原因已由[任务对话准入决策](20261027-task-conversation-admission.md)
+> 修改：每次接纳还要校验绑定 issue 的任务对话接受新的 Agent 输入，被拒时记 `task_paused` 或
+> `task_handoff_pending`。其余规则保持有效。
+
 用户可以在 Web 端创建周期性的定时任务（Scheduled Task）：把一条随任务版本冻结的 Prompt、一个执行
 Agent 与一份无人值守同意，绑定到租户内的一个 Issue 上；由 Cloud 的持久调度器在到期时产生稳定的
 occurrence，并在同一事务里幂等接纳为该 issue 下的一次 agent IssueRun。运行完全复用既有的
