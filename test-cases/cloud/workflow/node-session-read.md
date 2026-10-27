@@ -7,7 +7,7 @@
 [工作流会话结束与有界等待](session-end-after-initial-turn.md)，重试隔离见
 [工作流节点重试与恢复](retry-and-resume.md)。
 
-实现由 [ora-space/circus#691](https://github.com/ora-space/circus/issues/691) 承接，尚未合入 main，cloud 侧义务
+实现由运行 [ora-space/circus#720](https://github.com/ora-space/circus/issues/720)（ADR 运行是 #691）承接，尚未合入 main，cloud 侧义务
 全部为 `Missing`，随实现逐项登记直接测试；前端节点详情只渲染读取接口返回的字段，不能代替 Cloud 在真实
 PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182（已于 2026-10-27 合并）定义，读取端只消费。
 
@@ -38,19 +38,20 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 - 风险：`nextBefore` 指向未返回记录导致某条记录被永久跳过；`hasMore` 靠本页是否填满导致字节触顶时误判无更多；
   单页字节无上限形成无界响应。
-- 前置状态：一次尝试有 5 条历史回执（外层序号 5、4、3、2、1），或存在使单页字节先触顶的长记录。
+- 前置状态：一次尝试有 5 条历史回执（外层序号 1、2、3、4、5），或存在使单页字节先触顶的长记录。
 - 触发：`limit=2` 的首页；字节先触顶的一页；带 `before=<nextBefore>` 的下一页。
-- 必须成立：`nextBefore` 固定为本页最早一条**已返回**历史回执的外层 `sequence`；下一页 `before=<nextBefore>`
-  取 `sequence < before`，每条记录都被后续页面覆盖；`hasMore` 由独立探测（是否存在 `sequence < nextBefore`
-  的历史回执）决定，条数触顶与字节触顶两种情况都成立；单页受条数（≤ 200）与字节（`maxPageBytes`，4 MiB）
-  双上限，任一先触顶处停止；`nextBefore` 仅当存在更早历史回执时返回；终态回执被跳过，不计入 `limit`、
-  不产生 `hasMore`、不参与 `nextBefore`。
+- 必须成立：取页由新到旧，**响应内 `records` 按外层 `sequence` 升序返回**（与 `thread_read.go`、
+  `task_conversation_messages.go` 同向）；`nextBefore` 固定为本页最早一条**已返回**历史回执的外层
+  `sequence`（升序响应的第一条）；下一页 `before=<nextBefore>` 取 `sequence < before`，每条记录都被后续页面
+  覆盖；`hasMore` 由独立探测（是否存在 `sequence < nextBefore` 的历史回执）决定，条数触顶与字节触顶两种情况
+  都成立；单页受条数（≤ 200）与字节（`maxPageBytes`，4 MiB）双上限，任一先触顶处停止；`nextBefore` 仅当
+  存在更早历史回执时返回；终态回执被跳过，不计入 `limit`、不产生 `hasMore`、不参与 `nextBefore`。
 - 禁止结果：某条记录被跳过；字节触顶时 `hasMore` 误报为无；单页超过 200 条或 4 MiB；分页折叠或截断记录正文。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `nextBefore` 指向本页最早已返回序号，逐页覆盖全部记录 | 真实 PostgreSQL：5 条记录 `limit=2` 逐页，序列 5,4 / 3,2 / 1，不漏 | Missing |
+| 响应按序号升序，`nextBefore` 指向本页最早已返回序号，逐页覆盖全部记录 | 真实 PostgreSQL：5 条记录 `limit=2` 逐页，响应序列 4,5 / 2,3 / 1，不漏 | Missing |
 | 字节触顶时 `hasMore` 仍由独立探测决定 | 真实 PostgreSQL：构造单页字节先触顶的数据，`hasMore` 正确 | Missing |
 | 单页受条数与字节双上限，超出即停止 | 真实 PostgreSQL：`limit=200` 与超长记录，单页响应在 4 MiB 内 | Missing |
 | 终态回执不参与分页计数与游标 | 真实 PostgreSQL：含终态回执的会话，`limit`、`hasMore`、`nextBefore` 只看历史回执 | Missing |
@@ -85,8 +86,8 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 - 风险：用「是 JSON 对象且有 `record`」证明某行是历史回执，正常结束的会话在终态回执处解析失败或被误报成历史
   缺口；`result` 为空时把不存在的终态回执当成历史回执。
-- 前置状态：一次会话既有历史回执又有终态回执（如 `"ended"` / `"session-terminal-event"`）；终态 `event` 允许是
-  任意非空字符串，可能恰好也是含 `record` 的 JSON 对象。
+- 前置状态：一次会话既有历史回执又有终态回执（如 `"session-terminal-event"` / `"late-original-terminal"`）；
+  终态 `event` 允许是任意非空字符串，可能恰好也是含 `record` 的 JSON 对象。
 - 触发：读取该尝试的 `records`。
 - 必须成立：`result` 非空时，终态回执就是 `sequence = node_executions.last_event_sequence` 那一行，读取端按
   序号排除它，其余 `sequence < last_event_sequence` 的行才是历史回执；`result` 为空时该执行没有终态回执
@@ -136,9 +137,13 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 - 触发：读取这些节点详情。
 - 必须成立：`output` 只对成功结算的节点是最终可见回答（成功回合才写 `{agent}.output`、落 `output` 根，不因
   读取被清空）；`sessionEndReason` 独立呈现结束原因（Node 报告的 `user_ended` / `idle_timeout` / `cancelled` /
-  `agent_failed` / `interrupted`，或 Cloud 提到公开面的诊断 `agent_plugin_unavailable` / `node_unavailable` /
+  `agent_failed` / `interrupted`；Cloud 会话期结算的诊断 `node_unavailable` /
   `session_turn_deadline_exceeded` / `session_start_deadline_exceeded` / `session_end_deadline_exceeded` / 取消
-  结算的 `cancelled`）；失败/取消节点没有已提交的最终 `output`，只有
+  结算的 `cancelled`，以及 `agent_failed` + `detail` 提升的 `agent_plugin_unavailable`；Cloud 启动期结算的
+  `workflow_run_project_required` / `workspace_unavailable` / `agent_plugin_unavailable` /
+  `agent_plugin_version_unfrozen` / `agent_prompt_template_invalid` / `workflow_executor_unconfigured`）。
+  `sessionEndReason` 不是闭集：Cloud 增加新诊断不需要改读取端，读取端只呈现、不新增也不改写取值；
+  失败/取消节点没有已提交的最终 `output`，只有
   `sessionEndReason`、`error` 与部分会话记录；`error` 只在失败节点携带公开失败原因；Cloud 对记录业务字段的
   解释限于最终回答归集（成功回合 `turnEnded` 边界前最后一条完整的 `agent_message_chunk` 或其 `visibleText`
   投影），其余记录按原样透传由前端渲染。
@@ -150,9 +155,9 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 | --- | --- | --- |
 | 成功节点读到最终回答与独立 `sessionEndReason` | 真实 PostgreSQL：成功结算节点，`output` 与 `sessionEndReason` 分开 | Missing |
 | 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | 真实 PostgreSQL：失败与取消各一例，`output` 为空、原因与错误独立 | Missing |
-| 结束原因闭集，Cloud 诊断（`node_unavailable`、`session_*_deadline_exceeded`、取消的 `cancelled`、提升后的 `agent_plugin_unavailable`）作为 `sessionEndReason` 呈现 | 真实 PostgreSQL：Cloud 终态结算的节点 | Missing |
+| Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 真实 PostgreSQL：启动期结算（如 `workflow_run_project_required`、`workspace_unavailable`）与会话期结算（`node_unavailable`、`session_*_deadline_exceeded`、取消的 `cancelled`）各一例 | Missing |
 | 读取接口不修改 `node_states`（`output` 不被清空或改写） | 真实 PostgreSQL：读取前后 `node_states` 不变 | Missing |
-| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].record` 的内层字段与回执 `event.record` 解析结果一致，外层 `sequence` / `turnId` / `truncated` 分别与 `node_event_receipts` 对应列一致 | Missing |
+| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].sequence` 与 `node_event_receipts.sequence` 一致；`records[i].record` 与 `node_event_receipts.event` 解析出的 `event.record` 一致；`records[i].turnId` / `truncated` / `historySequence` / `visibleText` 与同一解析结果里的同名字段一致（`node_event_receipts` 只有 `execution_id` / `sequence` / `event` 三列） | Missing |
 
 - 决策依据：D3，不变量 7、8，根决策变量根，#673 owner 结论。
 
@@ -170,8 +175,8 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 - 触发：读取这些场景。
 - 必须成立：未派发 →「未建立会话」；在途零历史 →「等待首条记录」；终态零历史 →「历史不可用」（沿用 #296 的
   `unavailable`）；证据缺失 →「未知」；非 agent 节点 →「不适用」；有结果、缺记录 → 分别展示结果与「历史不完整
-  ／不可用」；这些状态位由读取接口返回，节点状态本身继续只有 `status` / `output` / `sessionEndReason` /
-  `error`。
+  ／不可用」；这些状态位由读取接口返回，节点状态不新增字段（仍是既有的 `status` / `output` /
+  `sessionEndReason` / `error` 等）。
 - 禁止结果：把 `result` 为空的 Cloud 终态路径标成「在途」；把零回执的在途会话标成「历史不可用」；用空列表掩盖
   数据缺失。
 - 验证义务与证据：
@@ -193,8 +198,8 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 - 触发：逐页读取全部 `records`。
 - 必须成立：`incomplete` 表示「本页观测到历史无法完整呈现」（本页投影时出现 `Gap` / 截断 / 形状校验失败），
   不是整次尝试的完整性结论；Cloud 不从单页断言整次完整；前端在读齐全部页且各页都无 `incomplete` 前保持
-  「完整性未知」，任一页有即整体不完整；`hasMore` 表示「还有更早一页可读」，与 `incomplete` 独立；旧尝试的
-  最终回答只能从读齐的 `records` 重放，不从尚未读齐的页提前推定。
+  「完整性未知」，任一页有即整体不完整；`hasMore` 表示「还有更早一页可读」，与 `incomplete` 独立；响应内
+  `records` 按外层 `sequence` 升序，旧尝试的最终回答只能从读齐的 `records` 重放，不从尚未读齐的页提前推定。
 - 禁止结果：首页无缺口即宣称整次历史完整；旧尝试最终回答从第一页推断；`incomplete` 与 `hasMore` 语义混淆。
 - 验证义务与证据：
 

@@ -15,7 +15,7 @@ status: approved
 截断都有显式状态，不用空列表或静默截断掩盖数据缺失。
 
 **状态与影响面**：本文为 `approved`，方向已经 owner 批准（ora-space/circus#691）；cloud#182 已合并，读取实现由
-后续实现运行落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
+运行 [ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
 节点详情的会话渲染。**兼容边界**：只新增接口，不改 `node_executions` / `node_event_receipts` 的持久化形状与
 既有约束，不新增迁移；`nodeStates` 的 `output` / `sessionEndReason` 分离由 cloud#182 实现，本文只消费这
 两个字段、不重新定义。**行为变化**：agent 节点详情从「只显示 `{"reason":...}`」变为「输出与结束原因分开、完整
@@ -32,7 +32,7 @@ status: approved
 | 根决策 D4 / D2：agent 节点首期串行，发布门禁拒绝 `interactive: true`，同一 run 的 agent 会话是单回合 | 继承：读取端看到的是一次单回合会话的输入与结果，不出现用户后续轮次 |
 | 根决策「变量根的声明范围」：Agent 声明 `output` 根，Output 节点从这个根取值；节点产出首期落在节点状态里供详情展示 | 继承，并成为 D3 的前提：`output` 是最终可见回答，不因本文被清空 |
 | 根决策「实现与 approved 方案的差异」已知缺口（Agent 回答没写进 `output` 根） | 已由 cloud#182 修复（ora-space/circus#673、#676，2026-10-27 合并）；本文读取端消费修复后的 `output`，不重复修复 |
-| [会话结束后续决策](20261019-workflow-session-end-after-initial-turn.md) D1–D5：成功回合后 Cloud 按节点唯一放出 `end_session`，结束原因取 `idle_timeout`；节点终态仍只来自会话结果 | 继承结束原因词汇：`user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted` 及 Cloud 自己的诊断是结束原因的闭集；本文把它们作为 `sessionEndReason` 呈现，不新增原因 |
+| [会话结束后续决策](20261019-workflow-session-end-after-initial-turn.md) D1–D5：成功回合后 Cloud 按节点唯一放出 `end_session`，结束原因取 `idle_timeout`；节点终态仍只来自会话结果 | 继承结束原因词汇与写入路径：`sessionEndReason` 由 Node 报告的 `user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted`，以及 Cloud 自己结算的会话期与启动期诊断组成（见 D3），不是闭集；本文把它们作为 `sessionEndReason` 呈现，不新增也不改写取值 |
 | [节点重试](20261021-node-retry-and-resume-contract.md) D4：每次尝试有独立的 `node_executions` 行，按尝试唯一的会话证据与结束命令 | 继承，并成为读取的作用域：一次读取只落到一个尝试的执行行，重试后能区分每次尝试，切节点/切运行/刷新不串用会话 |
 | 节点重试 D1：`attempt` 是 Cloud 内部路由字段，不来自线上请求 | 继承：读取按（运行，节点，尝试）解析执行行，尝试序号来自已提交节点状态，不接受调用方指定 execution_id |
 | 节点重试 D3：下一次启动把节点状态改为 `running`、`attempt+1`、清掉旧错误，最终被新回答覆盖 | 继承：`node_states` 里 `status` / `output` / `sessionEndReason` / `error` 只有当前尝试一份；本文把「节点当前状态」与「所选尝试执行证据」分开呈现（见 D1），旧尝试不冒领最新 `output` |
@@ -48,7 +48,7 @@ status: approved
 新增只读接口 `GET /api/v1/tenants/:tid/workflows/:wfid/runs/:rid/nodes/:nodeId/session`，参数：
 
 - `?attempt=N`（可选）：读第 N 次尝试；缺省读该节点当前/最新尝试；越界或不属于该节点 404。
-- `?before=<sequence>`（可选）：取该尝试中外层 `sequence < before` 的一页历史回执，按降序；缺省从最新往回取。**只与 `attempt` 配对使用**：带了 `before` 却不带 `attempt` 时 400——`before` 只有钉在具体尝试上才有意义。
+- `?before=<sequence>`（可选）：取该尝试中外层 `sequence < before` 里离游标最近的一页历史回执；缺省从最新往回取。取页由新到旧，**响应内 `records` 按外层 `sequence` 升序返回**，与 `thread_read.go`、`task_conversation_messages.go`「降序取页、升序响应」的既有读法一致；客户端按升序消费，更早的页取回后拼在前面。**只与 `attempt` 配对使用**：带了 `before` 却不带 `attempt` 时 400——`before` 只有钉在具体尝试上才有意义。
 - `?limit=N`（可选）：一页条数，缺省 100、上限 200；与字节上限共同限界（见下）。
 
 响应固定两块，把「所选尝试的执行证据」与「节点当前状态」分开，**旧尝试不冒领最新输出**：
@@ -70,11 +70,13 @@ status: approved
 **历史回执与终态回执要按「终态证据」权威区分，不能只看内容形状（核心边界）**：`node_event_receipts` 同表存
 两类回执——历史回执（`takeOverThreadEvents` 写入的 canonEvent JSON 对象 `{record, sequence, truncated, turnId,
 historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRecord 的 JSON 字符串）与终态回执
-（`nodeExecutionResult` → `recordNodeReceipt` 写入的任意非空字符串，如 `"ended"`、
-`"session-terminal-event"`）。终态 `event` 既然允许是任意字符串，就可能恰好也是一个含 `record` 的 JSON 对象，
+（`nodeExecutionResult` → `recordNodeReceipt` 写入的任意非空字符串，如 `"session-terminal-event"`、
+`"late-original-terminal"`）。终态 `event` 既然允许是任意字符串，就可能恰好也是一个含 `record` 的 JSON 对象，
 所以「是 JSON 对象且有 `record`」不能作为「这是历史回执」的来源证明。权威判据来自已提交的终态证据：
-`nodeExecutionResult` 在同一事务里写入 `result` 与终态回执，`recordNodeReceipt` 强制终态回执取该执行的
-`last_event_sequence`（最后一个序号）。因此：
+`nodeExecutionResult` 在同一事务里写入 `result` 与终态回执；`recordNodeReceipt` 要求终态回执的序号等于该执行
+当前的 `last_event_sequence + 1`，插入后把 `last_event_sequence` 更新为该序号。另一个方向同样成立：
+`takeOverThreadEvents` 在为新批次追加历史回执前要求该执行的 `result` 为空，结果提交后接管不再追加历史回执。
+两者合起来，读取时该执行的 `last_event_sequence` 就是终态回执的序号，比它小的行才是历史回执。因此：
 
 - 当所选执行的 `result` 非空时，终态回执就是 `sequence = node_executions.last_event_sequence` 那一行，读取端
   **按序号排除它**，其余 `sequence < last_event_sequence` 的行才是历史回执；
@@ -100,12 +102,13 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
 全部页且各页都无 `incomplete` 之前应保持「完整性未知」；任一页有 `incomplete` 即整体不完整。同理，旧尝试的
 最终回答只能从读齐的 `records` 重放得到，不从尚未读齐的页提前推定。
 
-**分页游标规则固定，不能漏记录**：`nextBefore` 固定为本页**最早一条已返回**历史回执的外层 `sequence`；下一页
-请求 `before=<nextBefore>` 取 `sequence < before` 的历史回执。这样每条记录都被后续页面覆盖（记录序号
-5,4,3,2,1，首页 `limit=2` 返回 5、4 → `nextBefore=4` → 下页 `sequence<4` 返回 3、2，不漏）。`hasMore` 由独立
-探测决定——是否存在 `sequence < nextBefore` 的历史回执——不靠本页是否填满，条数触顶与字节触顶两种情况都成立；
-`nextBefore` 仅当存在更早历史回执时返回。若 `nextBefore` 指到下一条未返回记录，`sequence < before` 会把它
-永久跳过，故必须指向已返回的序号。
+**分页游标规则固定，不能漏记录**：`nextBefore` 固定为本页**最早一条已返回**历史回执的外层 `sequence`（升序
+响应的第一条）；下一页请求 `before=<nextBefore>` 取 `sequence < before` 的历史回执。这样每条记录都被后续
+页面覆盖（记录序号 1..5，首页 `limit=2` 取最近两条、响应返回 4、5 → `nextBefore=4` → 下页响应返回 2、3；
+再下页返回 1，不漏）。前端首页即最近一页，更早的页按 `nextBefore` 逐页取回后拼在前面，渲染顺序与
+`sequence` 升序一致。`hasMore` 由独立探测决定——是否存在 `sequence < nextBefore` 的历史回执——不靠本页是否
+填满，条数触顶与字节触顶两种情况都成立；`nextBefore` 仅当存在更早历史回执时返回。若 `nextBefore` 指到下一条
+未返回记录，`sequence < before` 会把它永久跳过，故必须指向已返回的序号。
 
 **翻页游标必须绑定尝试，重试时才不会串会话**：首次请求缺省 `attempt` 时读「当前/最新」尝试，但 `nextBefore`
 只是外层序号，若翻页期间节点重试出了新尝试，下一页若再按「当前/最新」解析就会落到新尝试、把新尝试的记录
@@ -146,11 +149,20 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
   节点绑定与 Issue `run.message` 使用（根决策变量根 + #673 owner 结论）。**不因本文清空**。文本是初始回合在
   `turnEnded` 边界前、最后一次 `agent_message_chunk` 的完整回答；被截断的记录不作为成功输出，cloud#182 把
   节点判 `agent_output_truncated` 失败，不发布裁剪预览。
-- **`sessionEndReason`**：会话结束原因的独立字段，是执行证据，不是变量根。取值有两类来源：Node 报告的
-  `user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted`，以及 Cloud 提到公开面的诊断
-  （`agent_plugin_unavailable` 由 `agent_failed` + `detail` 提升，`node_unavailable`、
-  `session_turn_deadline_exceeded`、`session_start_deadline_exceeded`、`session_end_deadline_exceeded` 与取消
-  结算的 `cancelled` 由 Cloud 自己给出，沿用 #296 D4 与取消路径的词汇）。Cloud 不因读取新增或改写取值。
+- **`sessionEndReason`**：会话结束原因的独立字段，是执行证据，不是变量根。**它不是闭集**，来源分两类：
+  - Node 报告：`user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted`（Cloud 对 Node 报告
+    的这组做闭集校验）。
+  - Cloud 自己结算：
+    - 会话期：`node_unavailable`、`session_turn_deadline_exceeded`、`session_start_deadline_exceeded`、
+      `session_end_deadline_exceeded`、取消结算的 `cancelled`（沿用 #296 D4 与取消路径的词汇）；
+      `workflowAgentTerminalReason` 还把 Node 的 `agent_failed` + `detail=agent_plugin_unavailable` 提升为
+      `agent_plugin_unavailable`。
+    - 启动期（会话尚未建立就结算，`failWorkflowAgentNode` 把原因同时写进 `error` 与 `sessionEndReason`）：
+      `workflow_run_project_required`、`workspace_unavailable`、`agent_plugin_unavailable`（pinned 插件缺口，
+      独立于上面的提升路径）、`agent_plugin_version_unfrozen`、`agent_prompt_template_invalid`、
+      `workflow_executor_unconfigured`。
+
+  Cloud 增加新诊断不需要改本文，读取端只呈现、不新增也不改写取值。
 - **`error`**：维持原义，只在失败节点携带公开失败原因。
 
 **「Cloud 不解释记录业务字段」的窄例外**：既有边界是为了不让 Cloud 重写一份 ACP 会话解析。cloud#182 为了
@@ -163,8 +175,8 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
 
 会话读取不得用空列表掩盖数据缺失，空态要能区分。**判据用「所选尝试」的终态证据与历史回执，不用整个 run 的
 状态**：重试后第 1 次尝试可能已有终态 `result`、第 2 次仍在运行，若按整个 run 是否 `running` 判，会把旧尝试
-的「无历史」误标成「在途等待」。同样，「零回执」指「零历史回执」——正常结束的会话一定有终态回执（`"ended"`
-等），按表行数判会把任何已结束会话都排除在「零回执」之外。
+的「无历史」误标成「在途等待」。同样，「零回执」指「零历史回执」——正常结束的会话一定有终态回执（如
+`"session-terminal-event"`），按表行数判会把任何已结束会话都排除在「零回执」之外。
 
 **`result` 为空不等于该次尝试在途**：Cloud 会在 `node_executions.result IS NULL` 时按自己的判定结算节点——
 Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算 `failed`
@@ -197,8 +209,8 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 会话超时 / 已取消」的零历史尝试误标成「等待首条」。只有 `result` 为空且节点仍停在该尝试且 `status == running`
 时才是在途；否则一旦有终态证据就判终态，证据都缺才标「未知」。这比整个 run 的 `running` 更精确，也与节点重试
 后「旧尝试已结算、新尝试在途」的多尝试并存事实一致。「有结果、缺记录」要有可验证判据（显式 `Gap` 或
-`truncated` 或形状校验失败），不能因为某页没读满就推断历史完整。这些状态位由读取接口返回，节点状态本身继续
-只有 `status` / `output` / `sessionEndReason` / `error`。`not_started` 与 `unavailable` 是不同事实（#296 D4 已
+`truncated` 或形状校验失败），不能因为某页没读满就推断历史完整。这些状态位由读取接口返回，节点状态不新增
+字段（仍是既有的 `status` / `output` / `sessionEndReason` / `error` 等）。`not_started` 与 `unavailable` 是不同事实（#296 D4 已
 这样区分），第二期释放后回看复用同一套状态。
 
 ## 不变量
@@ -220,7 +232,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 | 一次返回整次会话、不分页 | 接管只限制单批与单条，不限制总量；长会话形成无界公开响应，违背「整次读取有界」原则 |
 | 把 agent 的 `output` 清空，实际结果只进会话读取 | 违背根决策变量根（Agent 声明 `output`）与 #673 owner 结论（最终回答写进 `{agent}.output` 供下游和 Issue 使用），也与 cloud#182 冲突；要改输出语义须先请 owner 改前序决策 |
 | Cloud 通用解析 `Update` 记录，把整段对话摘要进 `output` | 把「不解释记录业务字段」的窄例外扩大成通用解析器，记录形状变化时要维护 Go 侧解析；`output` 根只承载最终回答，完整对话属于会话读取 |
-| 把 `node_event_receipts` 每一行都当作 HistoryRecord 解码进 `records` | 终态回执是任意非空字符串（如 `"ended"`），不是含 `record` 的 JSON；正常结束的会话会在终态回执处解析失败，或被误报成历史缺口 |
+| 把 `node_event_receipts` 每一行都当作 HistoryRecord 解码进 `records` | 终态回执是任意非空字符串（如 `"late-original-terminal"`），不是含 `record` 的 JSON；正常结束的会话会在终态回执处解析失败，或被误报成历史缺口 |
 | 用「是 JSON 对象且有 `record`」证明某行是历史回执 | 终态 `event` 允许是任意字符串，可能恰好也是含 `record` 的 JSON 对象；来源判据必须用已提交终态证据的序号，不能把内容形状当来源证明 |
 | `nextBefore` 指向下一条未返回记录 | `before=<nextBefore>` 取 `sequence<before` 会把那条记录永久跳过；必须指向本页最早已返回序号 |
 | 响应把节点当前 `status` / `output` / `sessionEndReason` 与所选旧尝试的执行证据放在同一组 | 这些字段只有当前尝试一份，重试后被新回答覆盖；旧尝试详情会冒领最新成功状态与回答 |
@@ -258,8 +270,9 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
   不误判在途（Node 不可达/会话超时/取消等 Cloud 终态路径）、`incomplete` 为本页观测且读齐前完整性未知、读取
   纯只读不隐式开启新对话。完成条件是每条不变量都有对应用例或明确的 `Missing`，`decisions` 与 `test-cases`
   目录镜像一致，PR 由 owner 合并。
-- **阶段 3（Cloud 实现，待开运行）**：新增公开读取路由、历史回执筛选（终态序号排除）与分页、授权、前端节点
-  详情接入会话渲染（消费 cloud#182 的 `output` / `sessionEndReason`）。完成条件是真实 PostgreSQL 的读取
+- **阶段 3（Cloud 实现，运行 [#720](https://github.com/ora-space/circus/issues/720)）**：新增公开读取路由、历史回执
+  筛选（终态序号排除）与分页、授权、前端节点详情接入会话渲染（消费 cloud#182 的 `output` /
+  `sessionEndReason`）。完成条件是真实 PostgreSQL 的读取
   测试覆盖上述路径、OpenAPI 与前端生成物已同步、`task check` 全绿。
 - **阶段 4（状态同步）**：实现合并后由落地运行把本文改为 `implemented`，核对偏离、精简正文，并按最终实现
   登记核心用例证据状态。
