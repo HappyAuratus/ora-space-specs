@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Cloud Scheduled Task 接纳受任务对话的准入与暂停约束，被拒时记 `task_paused` 或 `task_handoff_pending`
@@ -10,9 +10,10 @@ status: proposed
 记 `failed / task_paused`；有先前接收、仍在等待的消息时，记 `failed / task_handoff_pending`。两种情况都不
 创建 IssueRun，不重试，也不排队等待对话恢复。
 
-本 ADR 处于 `proposed`：失败原因码与 waiting 消息的处理方式待评审拍板，核心测试用例在 `approved` 后补充。
-涉及 Cloud 的定时任务接纳事务与 `scheduled_task_occurrences.failure_reason` 的取值集合；任务对话、直接
-输入入口、manual run 与 Workflow 路径不变。
+本 ADR 处于 `approved`：失败原因码（D2）与 waiting 消息直接拒绝（D2 末段）已经评审确认，实现尚未合入
+main。核心测试用例见 [任务对话准入用例](../../../test-cases/cloud/scheduled-task/task-conversation-admission.md)，
+义务初始 `Missing`。涉及 Cloud 的定时任务接纳事务、`scheduled_task_occurrences.failure_reason` 的取值集合
+与任务历史对两个新原因的展示文案；任务对话、直接输入入口、manual run 与 Workflow 路径不变。
 
 ## 问题
 
@@ -78,7 +79,17 @@ waiting 消息选择直接拒绝而不是让定时运行排到消息之后：排
 | waiting 消息时让定时运行排到消息之后执行 | 不丢这次触发；但等待时长不定，与 60 分钟截止和不补跑规则冲突，并需要新的排队状态 |
 | 保持现状，依赖领取屏障拦截 | 屏障只阻止执行，不结束运行：occurrence 显示为接纳，运行永久排队，后续到期点全部 `skipped_busy`，waiting 消息的顺序仍会被越过 |
 
+## 落地顺序
+
+1. **接纳预检与原因集**：接纳事务按 D1 预检任务对话，被拒时按 D2 写失败 occurrence；`failure_reason`
+   的取值约束只放宽、不改写既有行。完成条件：三种对话状态各有领域测试证明一次写成失败、不建
+   IssueRun、之后不变成 `missed`，去掉预检后测试失败；对话正常时同一夹具照常接纳。
+2. **历史展示**：任务历史把 `task_paused`、`task_handoff_pending` 展示为指向任务对话的说明，其余原因
+   保持原样。完成条件：前端测试覆盖两条文案。
+
+两步在同一次实现中交付。从实现合入起，被对话拒绝的到期点由「接纳后永久排队」或「越过 waiting
+消息执行」改为一条明确的失败记录；直接输入入口的判断与错误码保持不变。
+
 ## 本决策未解决的问题
 
-- 失败原因码（D2）与 waiting 消息的处理方式（D2 末段）待评审拍板；拍板后按结论修订本文并标记
-  `approved`，再补充核心测试用例。
+无。
