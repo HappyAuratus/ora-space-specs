@@ -68,12 +68,13 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 
 ## 已批准的定时任务决策
 
-[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)经 owner 评审批准，状态为 `approved`；核心用例随合并同批建立（[admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)）。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。实现尚未合入 main，义务全部为 `Missing`，随实现落地逐项更新；完成后 ADR 转 `implemented`。
+[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)已按最终实现同步为 `implemented`；核心用例见 [admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。根决策的存储与调度 worker、公开 API 与 Web 管理面已随 [cloud#111](https://github.com/ora-space/cloud/pull/111) 合入 main，worker/API 领域测试随后续 PR 合入；admission-and-session-bounds 按 cloud main [`88c665a`](https://github.com/ora-space/cloud/commit/88c665a61ab169240f42328c3a4f74491ab673c0) 的直接测试与 2026-10-26 的 cluster Compose 真实栈验收（真实 Controller / Node / Sandbox、官方 Claude 插件与真实模型，任务不声明产物）登记，18 项义务全部 `Covered`。verdict-and-artifacts 的证据随该 ADR 的实现另行登记，状态以该用例为准。[任务对话准入 ADR](../../decisions/cloud/scheduled-task/20261027-task-conversation-admission.md)已批准为 `approved`，核心用例同批建立（[task-conversation-admission](scheduled-task/task-conversation-admission.md)），证据随实现合入后登记。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | scheduled-task | [接纳、会话边界与历史保留](scheduled-task/admission-and-session-bounds.md) | 重复接纳、停机补记与超时误判、无人值守会话空等、资格失效仍接纳、历史无界增长 |
 | scheduled-task | [verdict 与产物](scheduled-task/verdict-and-artifacts.md) | verdict 伪造、产物目录进快照绕过可见性、迟到回执绕过保留、产物排行与鉴权缺运行身份 |
+| scheduled-task | [任务对话准入](scheduled-task/task-conversation-admission.md) | 对话暂停时接纳后永久排队、越过 waiting 消息执行、两条入口准入结论分叉、历史只显示原因码 |
 
 ## 已批准的会话分析与模型请求统计
 
