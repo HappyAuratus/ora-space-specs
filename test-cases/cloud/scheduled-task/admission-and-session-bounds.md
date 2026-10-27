@@ -6,17 +6,19 @@
 [cloud#145](https://github.com/ora-space/cloud/pull/145)、[cloud#152](https://github.com/ora-space/cloud/pull/152)、
 [cloud#153](https://github.com/ora-space/cloud/pull/153)、[cloud#156](https://github.com/ora-space/cloud/pull/156)、
 [cloud#159](https://github.com/ora-space/cloud/pull/159)、[cloud#183](https://github.com/ora-space/cloud/pull/183)、
-[cloud#188](https://github.com/ora-space/cloud/pull/188) 合入。
+[cloud#188](https://github.com/ora-space/cloud/pull/188) 合入，下一次到期展示随
+[cloud#192](https://github.com/ora-space/cloud/pull/192) 合入。
 
 证据分两类：
 
 - 领域测试：cloud main [`44daf7c`](https://github.com/ora-space/cloud/commit/44daf7c3a6c8b5fea226ee78aaf135ecc3f96c2c)
-  上的直接测试（真实 PostgreSQL；`integration/` 下的测试用文件名简写，`internal/core/` 与 `frontend/` 下的单独注明）。
+  上的直接测试（真实 PostgreSQL；`integration/` 下的测试用文件名简写，`internal/core/` 与 `frontend/` 下的单独注明）；
+  下一次到期展示一行以 cloud main [`88c665a`](https://github.com/ora-space/cloud/commit/88c665a61ab169240f42328c3a4f74491ab673c0) 为准。
 - 真实栈：2026-10-26 在 cluster Compose 栈上的端到端验收，部署为 cluster `28bac76`、cloud `da2125f`、desktop `d913440`
   的干净检出，真实 Controller / Node / Sandbox、官方 Claude 插件 0.4.1 与真实模型（经个人模型连接接入的
   Anthropic 协议端点）；验收开关只在该部署打开，任务经公开 API 创建并启用，不声明产物。播种或直接改库的步骤在对应行写明。
 
-17 项义务全部 `Covered`。
+18 项义务全部 `Covered`。
 
 ## Occurrence Admission Must Be Idempotent And Bounded
 
@@ -37,6 +39,7 @@
 | 重复扫描/重启/多副本对同一到期点只接纳一次 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskAdmissionCreatesARun`（同一到期点重复评估只留一条 `admitted` occurrence 与一个 IssueRun）。`scheduled_task_admission_boundaries_test.go`：`TestScheduledTaskReplicasAdmitADuePointOnce`（两个 Store 各用独立连接池，8 个评估 pass 同时开始，只有一条 `admitted` occurrence 与一个 IssueRun，没有评估报错）、`TestScheduledTaskRestartReplayKeepsTheAdmission`（运行结束、任务不再 busy 后，新进程重放仍返回原结果）。真实栈：worker 每 10 秒扫描一次，每个到期点只有一条 occurrence 和一个 IssueRun | `Covered` |
 | 迟到超阈值记 `missed` 且一次停机至多一条，计入 100 条保留 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskMissedRecoverySingleOccurrence`（跨过多个到期点的停机两次评估后只有一条 `missed`）；`scheduled_task_schedule_retention_test.go`：`TestScheduledTaskHistoryRetentionPrunesOldestNonActive`（100 条 `missed` 按普通记录参与保留计数） | `Covered` |
 | 停用与重新启用之间的到期点不评估、不补记 | `scheduled_task_schedule_retention_test.go`：`TestScheduledTaskDisabledIntervalIsNotEvaluated`（停用期间不写 occurrence，重新启用后不回填 `missed`）；`scheduled_task_admission_boundaries_test.go`：`TestScheduledTaskEnableAPIReanchorsTheDisabledInterval`（经公开 `disable` / `enable` 端点：手动停用保留旧锚点，停用区间跨过两个到期点，`enable` 把 `enabled_at` 重新锚定到数据库 `now()`，之后不接纳、不补记） | `Covered` |
+| 读取返回的 `nextDueAt` 与接纳规则同源，停用为 `null`，重新启用按新锚点重算 | `internal/core/scheduled_task_test.go`：`TestNextScheduledDueMatchesWorkerLatestDue`（三种 schedule 在 UTC、New_York、Berlin、Shanghai 下按 17 分钟步长跨三周、跨夏令时切换逐点比对：`latestDue(anchor, nextDueAt)` 等于 `nextDueAt`，且读取时刻与它之间没有更早的到期点）、`TestNextScheduledDueExamples`、`TestScheduledTaskNextDueAtFollowsEnableAnchor`。`scheduled_task_admission_boundaries_test.go`：`TestScheduledTaskReadsProjectTheNextDuePoint`（get 与 list 返回同一值；`disable` 后为 `null`；`enable` 后为新锚点加间隔；不写 occurrence）。`frontend/` `scheduled-tasks-page.test.tsx`：`shows the next due point in the task timezone only while the task is enabled` | `Covered` |
 
 ## Deadline Cancellation Must Respect Session And Terminal Boundaries
 
