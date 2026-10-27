@@ -6,11 +6,11 @@
 [cloud#145](https://github.com/ora-space/cloud/pull/145)、[cloud#152](https://github.com/ora-space/cloud/pull/152)、
 [cloud#153](https://github.com/ora-space/cloud/pull/153)、[cloud#156](https://github.com/ora-space/cloud/pull/156)、
 [cloud#159](https://github.com/ora-space/cloud/pull/159)、[cloud#183](https://github.com/ora-space/cloud/pull/183)、
-[cloud#188](https://github.com/ora-space/cloud/pull/188) 合入。
+[cloud#188](https://github.com/ora-space/cloud/pull/188)、[cloud#190](https://github.com/ora-space/cloud/pull/190) 合入。
 
 证据分两类：
 
-- 领域测试：cloud main [`44daf7c`](https://github.com/ora-space/cloud/commit/44daf7c3a6c8b5fea226ee78aaf135ecc3f96c2c)
+- 领域测试：cloud main [`0b2cc14`](https://github.com/ora-space/cloud/commit/0b2cc14e4b6dd717697b05019dd08afbce4cad20)
   上的直接测试（真实 PostgreSQL；`integration/` 下的测试用文件名简写，`internal/core/` 与 `frontend/` 下的单独注明）。
 - 真实栈：2026-10-26 在 cluster Compose 栈上的端到端验收，部署为 cluster `28bac76`、cloud `da2125f`、desktop `d913440`
   的干净检出，真实 Controller / Node / Sandbox、官方 Claude 插件 0.4.1 与真实模型（经个人模型连接接入的
@@ -145,4 +145,4 @@
 | --- | --- | --- |
 | 读取跟随 issue 可见性，拒绝语义与 Space API 根决策一致 | `scheduled_task_api_boundaries_test.go`：`TestScheduledTaskMissingTaskIsNotFound`（不存在的任务读写均为 `404 not_found`）；`scheduled_task_contract_obligations_test.go`：`TestScheduledTaskReadRequiresBoundIssue`（绑定 issue 删除后读取为 `404 not_found`）；`scheduled_task_management_boundaries_test.go`：`TestScheduledTaskReadFollowsTenantMembership`（非创建者成员可读任务与历史；已停用成员与外租户成员访问本租户路径为 `403 membership_required`；外租户成员在自己租户路径下指名该任务为 `404 not_found`） | `Covered` |
 | 管理操作仅限创建者；绑定 issue 与创建者不可修改 | `scheduled_task_api_boundaries_test.go`：`TestScheduledTaskManagementIsCreatorOnly`（非创建者的停用、删除、PATCH 均为 `404 not_found` 且不改任务，创建者仍可操作）、`TestScheduledTaskVersionConflict`（过期 `version` 以 `409 version_conflict` 拒绝且无部分写入）；`scheduled_task_management_boundaries_test.go`：`TestScheduledTaskBindingIsImmutable`（PATCH 带 `issueId` 或 `creatorUserId` 时传输层为 `400 unknown_field`、任务不变；绕过传输层交给领域层也不改绑定） | `Covered` |
-| Space 归档后不再接纳新的运行 | 真实栈：Space 归档（公开 API 没有归档入口，经数据库设置 `archived_at`）后到期的任务，由 worker 评估为 `failed / target_unavailable`，不建 IssueRun。保存侧：`TestScheduledTaskSaveChecksEachEligibilityRow` 的 Space 归档行，启用的创建与 `enable` 均为 `404 not_found` 且整体回滚 | `Covered` |
+| Space 归档后不再接纳新的运行 | `scheduled_task_admission_db_test.go`：`TestScheduledTaskArchivedSpaceRejectsOpenCode`（未声明配置的插件，Space 归档后到期点记 `failed / target_unavailable`，不建 IssueRun）、`TestScheduledTaskArchivedSpaceRejectsDeclaredClaude`（已声明配置的 Claude 插件：同一夹具在 Space 未归档时正常接纳，归档后同样 `failed / target_unavailable` 且不建 IssueRun）。真实栈：Space 归档（公开 API 没有归档入口，经数据库设置 `archived_at`）后到期的 Claude 任务，由 worker 评估为 `failed / target_unavailable`，不建 IssueRun。保存侧：`TestScheduledTaskSaveChecksEachEligibilityRow` 的 Space 归档行，启用的创建与 `enable` 均为 `404 not_found` 且整体回滚 | `Covered` |
