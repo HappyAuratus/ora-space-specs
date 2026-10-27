@@ -8,16 +8,16 @@ status: approved
 「运行中和终态运行如何读到某一个 agent 节点本次尝试的完整会话」这一接缝。结论：Cloud 新增一个公开只读接口，
 按（WorkflowRun，节点，尝试）把 `node_executions` 的会话证据与 `node_event_receipts` 的会话记录有界、分页地
 呈现为节点会话历史；节点状态把「结束原因」与「输出」分开，其中 `output` 是最终可见回答、结束原因独立成
-`sessionEndReason`——这套分离由 cloud#182（承接 ora-space/circus#676，当前为 Draft 候选、未合并）实现，本文
-继承它的口径、依赖它先合并，不重新定义。读取沿用 `workflowModelRead` 的授权模板下探到节点，不新增 sessionId
+`sessionEndReason`——这套分离由 cloud#182（承接 ora-space/circus#676，已于 2026-10-27 合并，merge commit
+`f433499b`）实现，本文继承它的口径、不重新定义。读取沿用 `workflowModelRead` 的授权模板下探到节点，不新增 sessionId
 或产物地址直读；响应把「所选尝试的执行证据」与「节点当前状态」分开，旧尝试不冒领最新输出；终态回执按已提交
 终态证据的序号权威排除、不由内容形状判定；运行中零历史回执、终态无历史、非 agent 节点各有真实空态，分页与
 截断都有显式状态，不用空列表或静默截断掩盖数据缺失。
 
-**状态与影响面**：本文为 `approved`，方向已经 owner 批准（ora-space/circus#691），待 cloud#182 合并后由实现运行
-落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
+**状态与影响面**：本文为 `approved`，方向已经 owner 批准（ora-space/circus#691）；cloud#182 已合并，读取实现由
+后续实现运行落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
 节点详情的会话渲染。**兼容边界**：只新增接口，不改 `node_executions` / `node_event_receipts` 的持久化形状与
-既有约束，不新增迁移；`nodeStates` 的 `output` / `sessionEndReason` 分离由 cloud#182 候选实现，本文只消费这
+既有约束，不新增迁移；`nodeStates` 的 `output` / `sessionEndReason` 分离由 cloud#182 实现，本文只消费这
 两个字段、不重新定义。**行为变化**：agent 节点详情从「只显示 `{"reason":...}`」变为「输出与结束原因分开、完整
 会话按尝试分页可读」——这是修复缺陷，不是回归。**非目标**：不新增会话写入、不改变会话的结束与结算路径、
 不新增取消或 HITL 入口、不读取 Workspace 里的文件与 diff（那是 #296 的成果契约）；不把 Cloud 升级为解释
@@ -31,12 +31,12 @@ status: approved
 | 根决策 D4：节点终态只来自会话执行结果（`node_executions.result`）；崩溃恢复只按已提交结果重算 | 继承，并成为读取前提：会话证据与记录都挂在已提交的执行行上，读取不推进节点、不重算 |
 | 根决策 D4 / D2：agent 节点首期串行，发布门禁拒绝 `interactive: true`，同一 run 的 agent 会话是单回合 | 继承：读取端看到的是一次单回合会话的输入与结果，不出现用户后续轮次 |
 | 根决策「变量根的声明范围」：Agent 声明 `output` 根，Output 节点从这个根取值；节点产出首期落在节点状态里供详情展示 | 继承，并成为 D3 的前提：`output` 是最终可见回答，不因本文被清空 |
-| 根决策「实现与 approved 方案的差异」已知缺口（Agent 回答没写进 `output` 根） | 由 cloud#182 候选 / ora-space/circus#673、#676 修复（待合并）；本文读取端消费修复后的 `output`，不重复修复 |
+| 根决策「实现与 approved 方案的差异」已知缺口（Agent 回答没写进 `output` 根） | 已由 cloud#182 修复（ora-space/circus#673、#676，2026-10-27 合并）；本文读取端消费修复后的 `output`，不重复修复 |
 | [会话结束后续决策](20261019-workflow-session-end-after-initial-turn.md) D1–D5：成功回合后 Cloud 按节点唯一放出 `end_session`，结束原因取 `idle_timeout`；节点终态仍只来自会话结果 | 继承结束原因词汇：`user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted` 及 Cloud 自己的诊断是结束原因的闭集；本文把它们作为 `sessionEndReason` 呈现，不新增原因 |
 | [节点重试](20261021-node-retry-and-resume-contract.md) D4：每次尝试有独立的 `node_executions` 行，按尝试唯一的会话证据与结束命令 | 继承，并成为读取的作用域：一次读取只落到一个尝试的执行行，重试后能区分每次尝试，切节点/切运行/刷新不串用会话 |
 | 节点重试 D1：`attempt` 是 Cloud 内部路由字段，不来自线上请求 | 继承：读取按（运行，节点，尝试）解析执行行，尝试序号来自已提交节点状态，不接受调用方指定 execution_id |
 | 节点重试 D3：下一次启动把节点状态改为 `running`、`attempt+1`、清掉旧错误，最终被新回答覆盖 | 继承：`node_states` 里 `status` / `output` / `sessionEndReason` / `error` 只有当前尝试一份；本文把「节点当前状态」与「所选尝试执行证据」分开呈现（见 D1），旧尝试不冒领最新 `output` |
-| cloud#182（`fix/676-agent-output-template`，Draft 候选 `b327040`，未合并）：成功结算时把初始回合最终的完整助手回答写进 `output`（`{"output": text}`），截断则失败；结束原因另存 `sessionEndReason`，不占用 `output`；用 `event IS JSON OBJECT` 保护终态回执的解析 | 继承，不改写，并作为实现前置：cloud#182 先合并，本文读取端消费 `output` / `sessionEndReason`；历史回执的筛选与 cloud#182 同一方向，但判别以终态序号为准（见 D1） |
+| cloud#182（`fix/676-agent-output-template`，已于 2026-10-27 合并，head `42b1b91`，merge commit `f433499b`）：成功结算时把初始回合最终的完整助手回答写进 `output`（`{"output": text}`），截断则失败；结束原因另存 `sessionEndReason`，不占用 `output`；用 `event IS JSON OBJECT` 保护终态回执的解析 | 继承，不改写；实现前置已满足（cloud#182 先合并），本文读取端消费 `output` / `sessionEndReason`；历史回执的筛选与 cloud#182 同一方向，但判别以终态序号为准（见 D1） |
 | [运行拥有成果决策](20261025-run-owned-git-delivery-and-history.md) D4：完整归档的读取继承原运行授权，本文只交付保存与可验证引用，不增加完整节点日志 UI | 边界切分：节点会话读取/UI 由本文承接，不属于 #296；`not_started` / `unavailable` 的空态词汇沿用 #296 D4 |
 | `workflowModelRead`（`session_model_statistics.go`）：sessionReadIdentity + 成员 + workflow 归档门禁 + run∈workflow/tenant | 继承授权模板，扩展到节点级作用域；不引入 sessionId 直读 |
 | `SessionHistory`（`session_history.go`）的读取边界：整次历史 32 MiB / 10 万条上限、超限返回 413 | 继承「整次读取必须有界」的原则；但节点会话读取用「分页 + 单页字节上限」保证每次响应有界，不复用它的 413/截断态（见 D1） |
@@ -140,14 +140,17 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
 
 ### D3：输出是最终可见回答，结束原因独立成 `sessionEndReason`，读取端分别呈现
 
-节点状态的「结束原因」与「输出」分离由 cloud#182 候选（Draft，未合并）实现，本文继承它的口径、不改写：
+节点状态的「结束原因」与「输出」分离由 cloud#182（已于 2026-10-27 合并）实现，本文继承它的口径、不改写：
 
 - **`output`**：agent 节点的最终可见回答，写进 `{"output": text}`，落到节点声明的 `output` 根，供下游 Output
   节点绑定与 Issue `run.message` 使用（根决策变量根 + #673 owner 结论）。**不因本文清空**。文本是初始回合在
   `turnEnded` 边界前、最后一次 `agent_message_chunk` 的完整回答；被截断的记录不作为成功输出，cloud#182 把
   节点判 `agent_output_truncated` 失败，不发布裁剪预览。
-- **`sessionEndReason`**：会话结束原因的独立字段（`user_ended` / `idle_timeout` / `cancelled` / `agent_failed`
-  / `interrupted`，或 Cloud 自己的诊断），是执行证据，不是变量根。
+- **`sessionEndReason`**：会话结束原因的独立字段，是执行证据，不是变量根。取值有两类来源：Node 报告的
+  `user_ended` / `idle_timeout` / `cancelled` / `agent_failed` / `interrupted`，以及 Cloud 提到公开面的诊断
+  （`agent_plugin_unavailable` 由 `agent_failed` + `detail` 提升，`node_unavailable`、
+  `session_turn_deadline_exceeded`、`session_start_deadline_exceeded`、`session_end_deadline_exceeded` 与取消
+  结算的 `cancelled` 由 Cloud 自己给出，沿用 #296 D4 与取消路径的词汇）。Cloud 不因读取新增或改写取值。
 - **`error`**：维持原义，只在失败节点携带公开失败原因。
 
 **「Cloud 不解释记录业务字段」的窄例外**：既有边界是为了不让 Cloud 重写一份 ACP 会话解析。cloud#182 为了
@@ -215,7 +218,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 | 方案 | 否决理由 |
 |---|---|
 | 一次返回整次会话、不分页 | 接管只限制单批与单条，不限制总量；长会话形成无界公开响应，违背「整次读取有界」原则 |
-| 把 agent 的 `output` 清空，实际结果只进会话读取 | 违背根决策变量根（Agent 声明 `output`）与 #673 owner 结论（最终回答写进 `{agent}.output` 供下游和 Issue 使用），也与 cloud#182 候选冲突；要改输出语义须先请 owner 改前序决策 |
+| 把 agent 的 `output` 清空，实际结果只进会话读取 | 违背根决策变量根（Agent 声明 `output`）与 #673 owner 结论（最终回答写进 `{agent}.output` 供下游和 Issue 使用），也与 cloud#182 冲突；要改输出语义须先请 owner 改前序决策 |
 | Cloud 通用解析 `Update` 记录，把整段对话摘要进 `output` | 把「不解释记录业务字段」的窄例外扩大成通用解析器，记录形状变化时要维护 Go 侧解析；`output` 根只承载最终回答，完整对话属于会话读取 |
 | 把 `node_event_receipts` 每一行都当作 HistoryRecord 解码进 `records` | 终态回执是任意非空字符串（如 `"ended"`），不是含 `record` 的 JSON；正常结束的会话会在终态回执处解析失败，或被误报成历史缺口 |
 | 用「是 JSON 对象且有 `record`」证明某行是历史回执 | 终态 `event` 允许是任意字符串，可能恰好也是含 `record` 的 JSON 对象；来源判据必须用已提交终态证据的序号，不能把内容形状当来源证明 |
@@ -240,7 +243,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
   共用工作区时时间窗 diff 也不能当独占写入证明——这些由 #296 承接，本文不读文件。
 - **非 agent 节点（`output` / `condition`）的「结果」是否也需要会话式读取**：它们没有会话记录，本期只给
   「不适用」空态；若将来要展示它们的完整求值过程，另开决策。
-- **旧终态运行缺失 `sessionEndReason` 的呈现**：cloud#182 候选不回填旧终态运行（「old terminal runs are not
+- **旧终态运行缺失 `sessionEndReason` 的呈现**：cloud#182 不回填旧终态运行（「old terminal runs are not
   backfilled」），读取端对旧运行显示未知；若 owner 要求历史运行也能看到结束原因，按 #296 的归档回看一起决定，
   不在本期补造。
 
@@ -256,7 +259,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
   纯只读不隐式开启新对话。完成条件是每条不变量都有对应用例或明确的 `Missing`，`decisions` 与 `test-cases`
   目录镜像一致，PR 由 owner 合并。
 - **阶段 3（Cloud 实现，待开运行）**：新增公开读取路由、历史回执筛选（终态序号排除）与分页、授权、前端节点
-  详情接入会话渲染（消费 cloud#182 候选的 `output` / `sessionEndReason`）。完成条件是真实 PostgreSQL 的读取
+  详情接入会话渲染（消费 cloud#182 的 `output` / `sessionEndReason`）。完成条件是真实 PostgreSQL 的读取
   测试覆盖上述路径、OpenAPI 与前端生成物已同步、`task check` 全绿。
 - **阶段 4（状态同步）**：实现合并后由落地运行把本文改为 `implemented`，核对偏离、精简正文，并按最终实现
   登记核心用例证据状态。

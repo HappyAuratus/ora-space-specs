@@ -9,7 +9,7 @@
 
 实现由 [ora-space/circus#691](https://github.com/ora-space/circus/issues/691) 承接，尚未合入 main，cloud 侧义务
 全部为 `Missing`，随实现逐项登记直接测试；前端节点详情只渲染读取接口返回的字段，不能代替 Cloud 在真实
-PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182（Draft 候选）定义，读取端只消费。
+PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182（已于 2026-10-27 合并）定义，读取端只消费。
 
 ## An Attempt-Scoped Read Never Crosses Attempts
 
@@ -135,8 +135,10 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
   结束原因、`error` 与部分会话记录，但没有已提交的最终 `output`）。
 - 触发：读取这些节点详情。
 - 必须成立：`output` 只对成功结算的节点是最终可见回答（成功回合才写 `{agent}.output`、落 `output` 根，不因
-  读取被清空）；`sessionEndReason` 独立呈现结束原因（`user_ended` / `idle_timeout` / `cancelled` /
-  `agent_failed` / `interrupted` 或 Cloud 自己的诊断）；失败/取消节点没有已提交的最终 `output`，只有
+  读取被清空）；`sessionEndReason` 独立呈现结束原因（Node 报告的 `user_ended` / `idle_timeout` / `cancelled` /
+  `agent_failed` / `interrupted`，或 Cloud 提到公开面的诊断 `agent_plugin_unavailable` / `node_unavailable` /
+  `session_turn_deadline_exceeded` / `session_start_deadline_exceeded` / `session_end_deadline_exceeded` / 取消
+  结算的 `cancelled`）；失败/取消节点没有已提交的最终 `output`，只有
   `sessionEndReason`、`error` 与部分会话记录；`error` 只在失败节点携带公开失败原因；Cloud 对记录业务字段的
   解释限于最终回答归集（成功回合 `turnEnded` 边界前最后一条完整的 `agent_message_chunk` 或其 `visibleText`
   投影），其余记录按原样透传由前端渲染。
@@ -148,7 +150,7 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 | --- | --- | --- |
 | 成功节点读到最终回答与独立 `sessionEndReason` | 真实 PostgreSQL：成功结算节点，`output` 与 `sessionEndReason` 分开 | Missing |
 | 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | 真实 PostgreSQL：失败与取消各一例，`output` 为空、原因与错误独立 | Missing |
-| 结束原因闭集，Cloud 诊断（`node_unavailable` 等）作为 `sessionEndReason` 呈现 | 真实 PostgreSQL：Cloud 终态结算的节点 | Missing |
+| 结束原因闭集，Cloud 诊断（`node_unavailable`、`session_*_deadline_exceeded`、取消的 `cancelled`、提升后的 `agent_plugin_unavailable`）作为 `sessionEndReason` 呈现 | 真实 PostgreSQL：Cloud 终态结算的节点 | Missing |
 | 读取接口不修改 `node_states`（`output` 不被清空或改写） | 真实 PostgreSQL：读取前后 `node_states` 不变 | Missing |
 | Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].record` 的内层字段与回执 `event.record` 解析结果一致，外层 `sequence` / `turnId` / `truncated` 分别与 `node_event_receipts` 对应列一致 | Missing |
 
