@@ -36,24 +36,31 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 ## A Pagination Cursor Never Skips A Record
 
-- 风险：`nextBefore` 指向未返回记录导致某条记录被永久跳过；`hasMore` 靠本页是否填满导致字节触顶时误判无更多；
-  单页字节无上限形成无界响应。
-- 前置状态：一次尝试有 5 条历史回执（外层序号 1、2、3、4、5），或存在使单页字节先触顶的长记录。
-- 触发：`limit=2` 的首页；字节先触顶的一页；带 `before=<nextBefore>` 的下一页。
+- 风险：`nextBefore` 指向未考察记录导致某条记录被永久跳过；整页形状不合法时没有游标、更早的历史取不到；
+  `hasMore` 靠本页是否填满导致字节触顶时误判无更多；单页字节无上限形成无界响应。
+- 前置状态：一次尝试有 5 条历史回执（外层序号 1、2、3、4、5），或存在使单页字节先触顶的长记录，或本页窗口
+  含形状不合法的历史回执（含整页都不合法）。
+- 触发：`limit=2` 的首页；字节先触顶的一页；带 `before=<nextBefore>` 的下一页；窗口含形状不合法行的一页。
 - 必须成立：取页由新到旧，**响应内 `records` 按外层 `sequence` 升序返回**（与 `thread_read.go`、
-  `task_conversation_messages.go` 同向）；`nextBefore` 固定为本页最早一条**已返回**历史回执的外层
-  `sequence`（升序响应的第一条）；下一页 `before=<nextBefore>` 取 `sequence < before`，每条记录都被后续页面
-  覆盖；`hasMore` 由独立探测（是否存在 `sequence < nextBefore` 的历史回执）决定，条数触顶与字节触顶两种情况
-  都成立；单页受条数（≤ 200）与字节（`maxPageBytes`，4 MiB）双上限，任一先触顶处停止；`nextBefore` 仅当
-  存在更早历史回执时返回；终态回执被跳过，不计入 `limit`、不产生 `hasMore`、不参与 `nextBefore`。
-- 禁止结果：某条记录被跳过；字节触顶时 `hasMore` 误报为无；单页超过 200 条或 4 MiB；分页折叠或截断记录正文。
+  `task_conversation_messages.go` 同向）；`nextBefore` 固定为本页**最早一条考察过**的历史回执外层
+  `sequence`（升序响应的第一行，含形状不合法、只计入 `incomplete` 的行）；无形状不合法行时它就是本页最早
+  一条已返回记录，本页有（或全是）形状不合法行时它仍指向最早考察过的那一行；下一页 `before=<nextBefore>` 取
+  `sequence < before`，每条记录都被后续页面覆盖且每页只考察一次；`hasMore` 由独立探测（是否存在
+  `sequence < nextBefore` 的历史回执）决定，条数触顶与字节触顶两种情况都成立；单页受条数（≤ 200）与字节
+  （`maxPageBytes`，4 MiB）双上限，任一先触顶处停止，字节预算在加入下一条前判定，跨过预算的那一条整条计入，
+  单页正文上限为预算加单条上限（4 MiB + 256 KiB）；`nextBefore` 仅当存在更早历史回执时返回；终态回执被
+  跳过，不计入 `limit`、不产生 `hasMore`、不参与 `nextBefore`。
+- 禁止结果：某条记录被跳过；整页形状不合法时没有 `nextBefore`、更早历史读不到；同一行被反复读回；字节触顶时
+  `hasMore` 误报为无；单页超过 200 条；单页正文超过 4 MiB + 256 KiB；分页折叠或截断记录正文。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 响应按序号升序，`nextBefore` 指向本页最早已返回序号，逐页覆盖全部记录 | 真实 PostgreSQL：5 条记录 `limit=2` 逐页，响应序列 4,5 / 2,3 / 1，不漏 | Missing |
+| 响应按序号升序，`nextBefore` 指向本页最早考察过的序号，逐页覆盖全部记录 | 真实 PostgreSQL：5 条记录 `limit=2` 逐页，响应序列 4,5 / 2,3 / 1，不漏 | Missing |
+| 本页含形状不合法行时仍返回 `nextBefore`，下一页取到更早的历史回执，不重复读回同一行 | 真实 PostgreSQL：窗口最早几行为形状不合法、其后才有合法记录，逐页读到全部历史且每行只考察一次 | Missing |
+| 整页形状不合法时仍返回 `nextBefore`，更早的历史仍能取到 | 真实 PostgreSQL：构造整页窗口都不合法（`incomplete`）的会话，下一页取到更早的历史回执 | Missing |
 | 字节触顶时 `hasMore` 仍由独立探测决定 | 真实 PostgreSQL：构造单页字节先触顶的数据，`hasMore` 正确 | Missing |
-| 单页受条数与字节双上限，超出即停止 | 真实 PostgreSQL：`limit=200` 与超长记录，单页响应在 4 MiB 内 | Missing |
+| 单页受条数与字节双上限，跨过预算的那一条整条计入、不多返回半条 | 真实 PostgreSQL：`limit=200` 与超长记录，单页正文不超过 4 MiB + 256 KiB 且 `records` 无残缺记录 | Missing |
 | 终态回执不参与分页计数与游标 | 真实 PostgreSQL：含终态回执的会话，`limit`、`hasMore`、`nextBefore` 只看历史回执 | Missing |
 
 - 决策依据：D1，不变量 6。
@@ -157,7 +164,7 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 | 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | 真实 PostgreSQL：失败与取消各一例，`output` 为空、原因与错误独立 | Missing |
 | Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 真实 PostgreSQL：启动期结算（如 `workflow_run_project_required`、`workspace_unavailable`）与会话期结算（`node_unavailable`、`session_*_deadline_exceeded`、取消的 `cancelled`）各一例 | Missing |
 | 读取接口不修改 `node_states`（`output` 不被清空或改写） | 真实 PostgreSQL：读取前后 `node_states` 不变 | Missing |
-| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].sequence` 与 `node_event_receipts.sequence` 一致；`records[i].record` 与 `node_event_receipts.event` 解析出的 `event.record` 一致；`records[i].turnId` / `truncated` / `historySequence` / `visibleText` 与同一解析结果里的同名字段一致（`node_event_receipts` 只有 `execution_id` / `sequence` / `event` 三列） | Missing |
+| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].sequence` 与 `node_event_receipts.sequence` 一致；`records[i].record` 与 `node_event_receipts.event` 解析出的 `event.record` 一致；`records[i].turnId` / `truncated` / `historySequence` / `visibleText` / `visibleTextTruncated` 与同一解析结果里的同名可选字段一致（缺省时字段不返回）（`node_event_receipts` 只有 `execution_id` / `sequence` / `event` 三列） | Missing |
 
 - 决策依据：D3，不变量 7、8，根决策变量根，#673 owner 结论。
 
