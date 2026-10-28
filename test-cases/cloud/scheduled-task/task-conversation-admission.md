@@ -3,7 +3,7 @@
 本文件登记 [任务对话准入决策](../../../decisions/cloud/scheduled-task/20261027-task-conversation-admission.md)
 的核心验证义务。接纳预检、两个失败原因与任务历史文案已随 [cloud#193](https://github.com/ora-space/cloud/pull/193)
 合入 main，对话不变、恢复后接纳与两条入口联合验证的测试随 [cloud#199](https://github.com/ora-space/cloud/pull/199) 补齐；
-证据以 cloud [`60c1ae7`](https://github.com/ora-space/cloud/commit/60c1ae7b721caf2d2c65ee03ff77e8a68bab7d94)
+证据以 cloud main [`3bbaf94`](https://github.com/ora-space/cloud/commit/3bbaf940ff00b23cd3629bbdf3fb821b1d9bb1fe)
 为准，测试文件路径相对 cloud 仓库根目录。8 项义务全部 `Covered`。
 
 ## Admission Must Refuse While The Task Conversation Refuses Agent Input
