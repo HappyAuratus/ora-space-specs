@@ -11,7 +11,11 @@
 [cloud#195](https://github.com/ora-space/cloud/pull/195) 合入 main（merge `63034cfcad687845ee9fdc498449f481e6eb0f9e`），
 源码链接固定到该提交。cloud 侧证据来自真实 PostgreSQL 的读取用例（按 router 的入口驱动 `Store.Public`）、
 路由契约测试与前端渲染测试；前端测试只证明节点详情的渲染，不代替 Cloud 在真实 PostgreSQL 上的义务。
-真实栈验收（按尝试读取、重试、输出与结束原因分离）由 #720 承接，结论发布前不把数据库用例当作真实栈证据。
+2026-10-28 在 cloud `63034cf` 上完成了真实栈验收（运行 `a4bb5182…` 的两个 agent 节点、运行 `6deea532…` 的一次
+真实重试）：按尝试读到用户输入、工具活动与助手回答，跨节点与跨尝试的执行 ID、会话 ID 互不混用，`output` 与
+`sessionEndReason` 分开呈现，`attempt` 越界、`limit=201` 与「`before` 不带 `attempt`」分别得到 404 / 400；
+证据与截图记在 #720。真实栈没有再现 `Gap` / `truncated` / 历史开头丢失三种 `incomplete` 判据，也没有覆盖跨运行
+越权，这些仍只由真实 PostgreSQL 用例证明。
 `output` / `sessionEndReason` 的语义由 cloud#182（已于 2026-10-27 合并）定义，读取端只消费。
 
 本文的 `Partial` 表示已有直接证据只覆盖义务的一部分；每行写明尚缺范围。
@@ -33,8 +37,8 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `attempt` 越界或不属于该节点 404，缺省读最新尝试 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadScopesToTheRequestedAttempt` 在同一节点的两次尝试上读 `attempt=1`（执行行、记录与 `result` 都属第 1 次）、缺省（落到第 2 次）、`attempt=3`（404）与 `attempt=0`（`invalid_pagination`） | Covered |
-| `before` 不带 `attempt` 返回 400 | 同一用例的 `before=2` 请求返回 `invalid_pagination`；[路由契约测试][router] 的 `TestNodeSessionQueryAllowlist` 只放行 `limit` / `before` / `attempt` 三个查询参数 | Covered |
+| `attempt` 越界或不属于该节点 404，缺省读最新尝试 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadScopesToTheRequestedAttempt` 在同一节点的两次尝试上读 `attempt=1`（执行行、记录与 `result` 都属第 1 次）、缺省（落到第 2 次）、`attempt=3`（404）与 `attempt=0`（`invalid_pagination`）；真实栈（#720，run `a4bb5182…`）缺省读落在唯一尝试、`attempt=2` 返回 404 | Covered |
+| `before` 不带 `attempt` 返回 400 | 同一用例的 `before=2` 请求返回 `invalid_pagination`；[路由契约测试][router] 的 `TestNodeSessionQueryAllowlist` 只放行 `limit` / `before` / `attempt` 三个查询参数；真实栈（#720）实测该组合返回 400 `invalid_pagination` | Covered |
 | 翻页期间重试，下一页仍读原尝试的记录 | 同一用例先读 `attempt=1` 的一页，再启动第 2 次尝试，然后按 `attempt=1&before=3` 翻页，仍返回 1、2 且 `hasMore` 为假 | Covered |
 
 - 决策依据：D1，不变量 1、4，重试决策 D4，会话结束决策不变量 2。
@@ -62,11 +66,11 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 响应按序号升序，`nextBefore` 指向本页最早考察过的序号，逐页覆盖全部记录 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadPagesEveryRecordWithoutSkipping`：5 条记录 `limit=2` 逐页得到 4,5 / 2,3 / 1，每页 `hasMore` 时 `nextBefore` 等于本页第一条记录，末页不再带 `nextBefore` | Covered |
+| 响应按序号升序，`nextBefore` 指向本页最早考察过的序号，逐页覆盖全部记录 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadPagesEveryRecordWithoutSkipping`：5 条记录 `limit=2` 逐页得到 4,5 / 2,3 / 1，每页 `hasMore` 时 `nextBefore` 等于本页第一条记录，末页不再带 `nextBefore`；真实栈（#720，run `a4bb5182…`）7 条记录 `limit=2` 得到 6,7 → `before=6` 取到 1–5 且 `hasMore` 为假 | Covered |
 | 本页含形状不合法行时仍返回 `nextBefore`，下一页取到更早的历史回执，不重复读回同一行 | `TestWorkflowNodeSessionReadReportsUnshapedHistoryWithoutStrandingTheRest`：记录 1、3 合法、2 形状不合法，首页 `limit=1` 返回 3；窗口落在 2 的那一页返回空 `records`、`incomplete`、`nextBefore=2`、`hasMore`，下一页取到 1 | Covered |
 | 整页形状不合法时仍返回 `nextBefore`，更早的历史仍能取到 | 同一用例：窗口只有那一条不合法行（整页都不合法）时仍返回 `nextBefore=2`，更早的 1 由 `before=2` 取到 | Covered |
 | 字节触顶时 `hasMore` 仍由独立探测决定 | `TestWorkflowNodeSessionReadStopsAPageAtItsByteBudget`：20 条 250 KiB 记录在 `limit=200` 下被 4 MiB 预算提前截断，`hasMore` 为真且 `nextBefore` 指向本页最早记录；下一页取到剩余记录 | Covered |
-| 单页受条数与字节双上限，跨过预算的那一条整条计入、不多返回半条 | 同一用例证明跨过预算的那一条整条返回（首条正文长度等于存储值）且该页不标 `incomplete`；条数上限由 `router.go` 的 `maxLimit = core.NodeSessionPageMax` 实现，路由测试只证明 200 被接受。尚缺精确页字节上限与 `limit=201` 拒绝的直接断言 | Partial |
+| 单页受条数与字节双上限，跨过预算的那一条整条计入、不多返回半条 | 同一用例证明跨过预算的那一条整条返回（首条正文长度等于存储值）且该页不标 `incomplete`；条数上限由 `router.go` 的 `maxLimit = core.NodeSessionPageMax` 实现，路由测试只证明 200 被接受，真实栈（#720）实测 `limit=201` 返回 400 `invalid_pagination`。尚缺精确页字节上限的直接断言 | Partial |
 | 终态回执不参与分页计数与游标 | `TestWorkflowNodeSessionReadExcludesTheTerminalReceiptBySequenceNotShape`：终态回执不投影，`records` 为 1、2，`hasMore` 假、无 `nextBefore`、`state` 为 `available` | Covered |
 
 - 决策依据：D1，不变量 6。
@@ -89,7 +93,7 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `execution` 与 `node` 分开，旧尝试不冒领最新 `output` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：读 `attempt=1` 时 `node` 块是第 2 次的 `succeeded`、`output` 与 `sessionEndReason=idle_timeout`，`execution.result.reason` 是第 1 次自己的 `agent_failed` | Covered |
+| `execution` 与 `node` 分开，旧尝试不冒领最新 `output` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：读 `attempt=1` 时 `node` 块是第 2 次的 `succeeded`、`output` 与 `sessionEndReason=idle_timeout`，`execution.result.reason` 是第 1 次自己的 `agent_failed`；真实栈（#720，run `6deea532…`）读第 1 次尝试得到同样的分离：`node` 块是第 2 次的 `succeeded` / `idle_timeout`，`execution.result.reason=agent_failed` | Covered |
 | `execution.attempt == node.attempt` 时 `node.output` 才是所选尝试的回答 | 同一用例的缺省读取（当前尝试）断言 `execution.attempt == node.attempt`，此时 `node.output` 是第 2 次自己的回答 | Covered |
 | 旧尝试的最终回答从 `records` 重放、不借用当前 `output` | [视图测试][view] 的 `shows the end reason only when the node state describes the attempt being read` 证明节点状态不属于所选尝试时结束原因不呈现，[面板测试][panel] 证明回答逐行来自 `records`。尚缺「两次尝试、旧尝试的最终回答取自第 1 次记录而非第 2 次 `node.output`」的直接渲染断言 | Partial |
 
@@ -166,9 +170,9 @@
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 成功节点读到最终回答与独立 `sessionEndReason` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：成功结算的第 2 次尝试 `node.output` 是最终回答（`{"output":"Inspected the files"}`），`node.sessionEndReason` 是独立的 `idle_timeout` | Covered |
-| 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | `TestWorkflowNodeSessionReadReportsACloudSettlementAsUnavailableNotInFlight`：`node_unavailable` 结算的节点 `status=failed`、`sessionEndReason` 与 `error` 都是 `node_unavailable`、`output` 为空。尚缺取消结算与「失败节点带部分会话记录」各一例 | Partial |
-| Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 同一用例覆盖会话期的 `node_unavailable`。尚缺启动期原因（如 `workflow_run_project_required`、`workspace_unavailable`）与各 deadline / 取消结算的读取用例 | Partial |
+| 成功节点读到最终回答与独立 `sessionEndReason` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：成功结算的第 2 次尝试 `node.output` 是最终回答（`{"output":"Inspected the files"}`），`node.sessionEndReason` 是独立的 `idle_timeout`；真实栈（#720，run `a4bb5182…`）的两个节点上 `node.output.output` 与 `node.sessionEndReason=idle_timeout` 也各自独立 | Covered |
+| 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | `TestWorkflowNodeSessionReadReportsACloudSettlementAsUnavailableNotInFlight`：`node_unavailable` 结算的节点 `status=failed`、`sessionEndReason` 与 `error` 都是 `node_unavailable`、`output` 为空；真实栈（#720，run `6deea532…`）的第 1 次尝试 `agent_failed`：`output` 为空、`sessionEndReason` 与 `error` 都是 `agent_failed`，读取该尝试得 `state=unavailable`、0 条记录。尚缺取消结算与「失败节点带部分会话记录」各一例 | Partial |
+| Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 同一用例覆盖会话期的 `node_unavailable`；真实栈（#720）覆盖会话期 `agent_failed` 与 `idle_timeout` 的原样呈现。尚缺启动期原因（如 `workflow_run_project_required`、`workspace_unavailable`）与各 deadline / 取消结算的读取用例 | Partial |
 | 读取接口不修改 `node_states`（`output` 不被清空或改写） | `TestWorkflowNodeSessionReadIsReadOnly` 读取前后比较 `workflow_runs.node_states` 的完整 JSON | Covered |
 | Cloud 只解释最终回答，其余记录原样透传 | 记录投影只挑 `sequence`、`record` 与 canonEvent 的可选字段；用例读回的记录内容（回答文本、`gap` 类型、`truncated` 标记、外层序号）与写入一致。尚缺 `historySequence` / `visibleText` / `visibleTextTruncated` 与存储回执逐字段相等的断言 | Partial |
 

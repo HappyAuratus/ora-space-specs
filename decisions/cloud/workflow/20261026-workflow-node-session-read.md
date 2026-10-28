@@ -289,7 +289,8 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
   新增公开读取路由、终态序号排除与分页、授权、前端节点详情接入（消费 cloud#182 的 `output` /
   `sessionEndReason`）；真实 PostgreSQL 读取测试、OpenAPI 与前端生成物随同合入，`task check` 全绿。
 - **阶段 4（状态同步）**：运行 [#749](https://github.com/ora-space/circus/issues/749) 把本文改为 `implemented`、
-  记录上述补充并登记核心用例证据；真实栈验收结论记在 #720，未兑现的行在核心用例中如实保留 `Partial`。
+  记录上述补充并登记核心用例证据；真实栈验收已在云 `63034cf` 上完成（证据记在 #720），验收直接证明的行把
+  真实栈运行登记为证据，未兑现的行在核心用例中如实保留 `Partial`。
 - **保持不变**：会话写入与结束/结算路径、`node_executions` / `node_event_receipts` 持久化形状与约束、
   `output` / `sessionEndReason` 的语义（由 cloud#182 定义）、非 agent 节点的 `output`、取消与释放的既有结算，
   以及 Controller 线上契约。
