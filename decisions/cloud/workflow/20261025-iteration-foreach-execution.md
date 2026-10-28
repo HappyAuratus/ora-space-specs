@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Iteration 在 Cloud 执行：区域成员、foreach 轮次与按轮账本
@@ -20,7 +20,9 @@ status: approved
 - **失败**：区域内失败可被 `continue` 吸收进账本；iteration 自身的失败（迭代源非数组、超限、暴露写入
   失败）总是传播为 run 失败。
 
-**状态与影响面**：`approved`，固定执行契约与容量边界；实现和验证完成后再转为 `implemented`。
+**状态与影响面**：`implemented`。串行 foreach、区域门禁、账本、容量保护和逐轮视图已在 Cloud 落地，
+真实栈已验证快节点、Agent 产出收集、取消及手动 Run / Issue @ Confirm 两个入口。
+`implemented` 不表示全部边界证据为 `Covered`；完整证据矩阵及明确承接的缺口见核心用例。
 核心验证义务见[迭代执行用例](../../../test-cases/cloud/workflow/iteration-foreach-execution.md)。涉及 `internal/core` 的门禁、调度器、运行状态与
 前端检查器；**不改数据库 schema、不改 OpenAPI**（沿用 `workflow_runs.node_states` 单行 CAS）。
 **非目标**：并行迭代、`maxIterations` 的界面软警告、子流程画布、变量选择器化。
@@ -57,6 +59,9 @@ effectiveContainer(node) = data.containerId  (存在且非空)
   `containerId`，门禁、调度器与变量可见性复用同一解析入口；[loop ADR](20261025-loop-and-loop-exit-execution.md) 采用相同规则。
 - **区域规则**（沿用 loop 的校验器）：成员不能是 `loop` / `iteration` / `subflow`；`output` 不能出现在
   区域内；成员不能跨区域；区域必须非空。
+- **编辑器入口边**：允许 iteration 本身以 `sourceHandle: iteration-entry` 指向自身有效成员；该边可选，
+  原样保留在草稿与发布快照中。它表达容器入口，不进入区域调度依赖或成员的传递前驱，成员不会等待容器
+  先完成。外部节点、其他容器和区域成员不能借此 handle 绕过跨区域限制。
 
 ### D2：配置与门禁
 
@@ -83,6 +88,11 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 迭代源的节点前驱在 iteration 所属的**外层图**内沿入边传递计算，不能指向自身、区域成员、其他容器的
 成员或外层非前驱节点；`sys.*` 与 globals 只豁免前驱检查，仍须声明合法的根。即使非前驱节点偶然先提交了
 值也不能成为合法来源，否则同一张图的迭代数组会随调度顺序改变。发布和运行使用同一校验规则。
+
+迭代源来自 Start JSON 控件时，共享运行准入按选定发布快照将声明为 `array`、typed array 或 `object`
+的 JSON 文本解析一次并验证结构；原生 API 结构值同样接受。非法 JSON / 类型不符在创建运行前返回
+`invalid_field_value` 与字段定位。普通文本、`any` 和保留的 kickoff `input` 不转换；该准入不替代
+iteration 启动时对其他来源执行的数组与项数检查。
 
 ### D3：轮次与作用域
 
@@ -198,8 +208,26 @@ effectiveContainer(node) = data.containerId  (存在且非空)
   因此先采用保守上限，后续调整以接近上限的测量为依据。
 - **运行视图**：iteration 节点显示当前轮 / 总项数、成功和失败项数及终态原因；展开后先按 `entries`
   展示每项的 item、status、output、error，再从 `iteration.completed` 按轮展示成员名称、状态、输出、
-  错误与会话入口。未结算的活动轮读顶层成员状态，已归档的最后一轮按上述轮号去重；取消、`continue` 吸收的失败和
-  体积超限都能定位到项和成员。列表只取摘要，轮次详情在运行详情中展开。
+  错误。会话入口尚未交付，由节点执行证据读取能力承接；不能用输出摘要代替完整会话。
+  未结算的活动轮读顶层成员状态，已归档的最后一轮按上述轮号去重；取消、`continue` 吸收的失败和
+  体积超限应能定位到项和成员，容量失败的完整视图矩阵仍缺直接证据。轮次详情在运行详情中展开；
+  列表只取摘要的目标尚未落实到传输层，当前运行历史接口仍携带完整 `nodeStates`，不能宣称归档已从列表响应移除。
+
+### 实现与 approved 方案的差异及边界
+
+- 入口边是 D1 区域边界的明确例外：只表示容器到自身成员的入口，不改变区域前驱与执行顺序；保留
+  desktop / 编辑器 wire，避免通过删除边来掩盖发布拒绝。
+- 64 KiB 预留按**整次状态转移**开放：新失败 / 取消或新失败账本可以使用预留，已有历史失败不会放宽
+  后续普通增长；相同已提交状态的重读允许。最后一项 `continue` 失败时，失败账本与最终暴露变量复制
+  在同一次 CAS 中，因此这次复制也可能使用预留，仍受 8 MiB 硬上限约束。这比“仅诊断字节使用预留”的
+  解释更宽；最后轮复制和下一轮增长的完整边界证据由 [#702](https://github.com/ora-space/circus/issues/702)
+  承接，不将其标成已验证的更强保证。
+- 按轮会话入口由 [#619](https://github.com/ora-space/circus/issues/619) 及其读取实现承接；当前视图只保证
+  已有轮次、成员状态、输出和错误的呈现。列表载荷摘要化及剩余边界 / 恢复 / 读取直接证据由
+  [#743](https://github.com/ora-space/circus/issues/743) 承接，调整公开响应须遵守既有兼容性流程。
+  这些缺口不因 ADR 标为 `implemented` 而消失，核心用例保留 `Partial` / `Missing`。
+- 超项数运行错误已包含实际项数和配置上限，但没有专门的调整指引；D6 的这一项用户提示仍由 #743
+  的上限验收承接，不把稳定失败码等同于完整提示已经交付。
 
 ### D6：失败与上限
 
@@ -248,14 +276,13 @@ effectiveContainer(node) = data.containerId  (存在且非空)
 - **类型系统**：`collectSelector` 的声明类型相等校验依赖变量类型系统，当前不引入。
 - **检查器体验**：selector 仍是文本输入；选择器化不改变契约。
 
-## 落地顺序
+## 落地与验证边界
 
-1. **核心用例与门禁**：ADR 进入 `approved` 时登记核心验证义务；`effectiveContainer`、区域规则、迭代源与
-   区域前驱校验、配置校验及错误码具备表驱动测试，非法图发布被拒且原因可定位。
-2. **轮次执行**：item/index 注入、body 波次、收集、账本、fail/continue、超限启动失败、空数组；PostgreSQL
-   调度器用例覆盖成功、失败与取消，换副本后不重跑已结算轮，未选中成员和最后一轮去重符合 D3 / D5。
-3. **预算、暴露变量与运行视图**：落实 1 MiB 单项 / 8 MiB 总预算与 64 KiB 失败预留；三个根声明、可见性、
-   逐轮详情及稳定失败原因具备直接测试。完成条件还包括接近总预算时整行 CAS 提交的耗时与 WAL 测量，
-   记录编码体积、负载、测量方法及结果到实现运行 issue，可与 loop 共用一次测量；作为以后调整上限的依据。
-4. **编辑器与真实验收**：已有检查器接入新校验错误；真实栈验证 foreach、fail/continue、取消与逐轮视图，
-   核心义务按直接证据逐项更新；实现和验证完成后才将 ADR 转为 `implemented`。
+核心实现见 [cloud#179](https://github.com/ora-space/cloud/pull/179)，入口边保真见
+[cloud#189](https://github.com/ora-space/cloud/pull/189)，结构化 Start 输入准入见
+[cloud#191](https://github.com/ora-space/cloud/pull/191)，逐轮视图见
+[cloud#184](https://github.com/ora-space/cloud/pull/184) 与 [cloud#187](https://github.com/ora-space/cloud/pull/187)。
+它们已经合并；固定版本的直接测试、真实栈证据及 CAS 耗时 / WAL 测量登记在
+[核心用例](../../../test-cases/cloud/workflow/iteration-foreach-execution.md)。近 8 MiB 测量是整行提交基线，
+不代表完整 100 轮运行成本或生产延迟承诺。未覆盖的边界按上节分工继续验证，不用共用调度器测试替代
+iteration 专属恢复、会话与取消竞争的直接证据。

@@ -16,8 +16,8 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | definition CRUD 和软删除从列表隐藏但保留数据库行语义 | `ora_db::repository::scheduled_task::tests::definitions_round_trip_update_and_soft_delete` | `Partial` |
-| run/missed 事实在禁用、删除和重启后保持 | 尚未实现 | `Missing` |
-| 第 101 条历史写入后只清理最旧记录，保留最新 100 条 | `ora_db::repository::scheduled_run::tests::one_hundred_and_first_history_entry_prunes_only_the_oldest_fact` | `Partial` |
+| run/missed 事实在禁用、删除和重启后保持 | `ora_db::repository::scheduled_run::tests::history_reads_newest_first_after_definition_delete_and_repository_restart` 证明软删除后重新构造 repository 可读取原 run/missed；测试复用同一 pool，未证明真实数据库重开或禁用路径 | `Partial` |
+| 第 101 条历史写入后只清理最旧记录，保留最新 100 条 | `ora_db::repository::scheduled_run::tests::one_hundred_and_first_history_entry_prunes_only_the_oldest_fact` | `Covered` |
 | 仍带保留 worktree 链接的运行不被裁剪；链接清除后恢复可裁剪 | `ora_db::repository::scheduled_run::tests::history_pruning_keeps_runs_that_still_reference_a_retained_worktree`、`ora_backend::scheduled_task::worktree::tests::retention_sweep_unlinks_a_run_whose_worktree_task_was_deleted` | `Partial` |
 
 ## Notifications Must Reflect Persisted Run Facts
@@ -59,6 +59,6 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | definition 通过 local SQLite repository 往返 | `ora_db::repository::scheduled_task::tests::definitions_round_trip_update_and_soft_delete` | `Partial` |
-| 未登录、离线环境可完成 local CRUD 和执行 | 尚未实现 | `Missing` |
+| 未登录、离线环境可完成 local CRUD 和执行 | 已有本机 SQLite 和真实 executor，实现不接收账号；尚缺未登录/断网贯穿 CRUD 与执行的直接测试 | `Missing` |
 | contracts/backend 不调用 Cloud 同步或上传接口 | 尚无跨边界直接证据 | `Missing` |
 

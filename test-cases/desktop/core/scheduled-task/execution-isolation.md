@@ -15,8 +15,8 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 定义内容变化增加 revision，纯名称变化不增加 revision | Prompt/schedule 已由 `prompt_and_schedule_changes_increment_revision_without_reconsent` 部分覆盖；名称路径尚无证据 | `Partial` |
-| run 持久冻结定义快照并调用真实 application use case | 尚未实现 | `Missing` |
-| 每个 Scheduled Run 创建不同 session ID 且不复用交互式会话 | 尚未实现 | `Missing` |
+| run 持久冻结定义快照并调用真实 application use case | `ora_domain::scheduled_run::tests::admitted_run_freezes_execution_inputs_at_its_task_revision`、`ora_db::repository::scheduled_run::tests::replay_returns_the_first_run_and_its_frozen_snapshot`；完整 executor 调用链尚缺直接测试 | `Partial` |
+| 每个 Scheduled Run 创建不同 session ID 且不复用交互式会话 | executor 已调用 `sessions.start`，尚缺两个真实 scheduled run 会话身份不同的直接断言 | `Missing` |
 
 ## Every Local Run Must Use An Independent Worktree
 
@@ -31,9 +31,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| run 创建独立 worktree 且 Session cwd 指向它 | 尚未实现 | `Missing` |
-| 无改动自动删除，有改动保留并可打开/丢弃 | 尚未实现 | `Missing` |
-| 有界保留清理只选择最旧且未使用的保留项 | 尚未实现，具体上限待实现确定 | `Missing` |
+| run 创建独立 worktree 且 Session cwd 指向它 | [原子归属用例](worktree-ownership-and-recovery.md#crash-around-provisioning-must-always-leave-a-durable-owner) 证明 task/run 归属持久化；尚缺实际 Session cwd 和不改用户工作区的直接断言 | `Partial` |
+| 无改动自动删除，有改动保留并可打开/丢弃 | `ora_backend::scheduled_task::worktree::tests::finished_run_discards_a_clean_worktree_only_after_its_session_stops`、`committed_agent_changes_mark_a_worktree_modified`、`untracked_files_mark_a_worktree_modified`；历史打开/丢弃完整交互仍缺直接证据 | `Partial` |
+| 有界保留清理只选择最旧且未使用的保留项 | `ora_backend::scheduled_task::worktree::tests::deletes_oldest_kept_worktrees_once_the_bound_is_exceeded`、`in_use_worktrees_are_neither_discarded_nor_counted_toward_the_bound`；上限 10，使用中项不删除也不计数 | `Covered` |
 
 ## Busy And Capacity Limits Must Skip Without Queuing
 
@@ -48,9 +48,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 同任务 active run 阻止第二次启动并持久 `skipped_busy` | 尚未实现 | `Missing` |
-| 全局 4 个 active run 时第 5 项持久 `skipped_capacity` | 尚未实现 | `Missing` |
-| skipped occurrence 不进入 retry/queue，也不创建 session | 尚未实现 | `Missing` |
+| 同任务 active run 阻止第二次启动并持久 `skipped_busy` | `ora_db::repository::scheduled_run::tests::active_run_causes_the_same_task_to_persist_skipped_busy` 证明状态与无 session 绑定；尚缺 executor 不启动目标的直接集成断言 | `Partial` |
+| 全局 4 个 active run 时第 5 项持久 `skipped_capacity` | `ora_db::repository::scheduled_run::tests::fifth_active_task_persists_skipped_capacity` | `Covered` |
+| skipped occurrence 不进入 retry/queue，也不创建 session | SQLite busy/capacity 测试只覆盖接纳状态；完整 runtime 不排队、不建会话仍缺直接测试 | `Partial` |
 
 ## Timeout And Failure Must Be Terminal Without Automatic Retry
 
@@ -65,6 +65,6 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 固定 60 分钟触发真实取消写入并终止 run | 尚未实现 | `Missing` |
-| failure/timeout 不注册自动 retry 且同 occurrence 不新建 run | 尚未实现 | `Missing` |
+| 固定 60 分钟触发真实取消写入并终止 run | executor 在 prompt 建链后设置固定 60 分钟 timer 并调用 `sessions.stop`；尚无完整截止/取消集成测试，provisioning/start/prompt 建链耗时也未计入此 timer | `Missing` |
+| failure/timeout 不注册自动 retry 且同 occurrence 不新建 run | `ora_db::repository::scheduled_run::tests::persists_forward_lifecycle_and_rejects_a_late_terminal_callback` 证明终态不可回退；不自动 retry 的 runtime 路径仍缺直接测试 | `Partial` |
 

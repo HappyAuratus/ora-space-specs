@@ -8,7 +8,9 @@
 
 - 用例按调度身份、授权、执行隔离和历史事实组织，不按 crate 或页面组织。
 - `Covered` 仅表示已有直接证据；定义层或 repository 层只覆盖部分义务时标为 `Partial`。
-- Cloud 真实运行仍由后续 `decisions/cloud/` ADR 决定；当前只登记 Desktop 必须保持不可激活的边界。
+- Cloud Web 首期已有独立 [implemented ADR](../../../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)
+  与[核心用例](../../../cloud/scheduled-task/admission-and-session-bounds.md)；Desktop Cloud 创建与管理仍待后续决策，保持不可激活。
+- 根决策保持 `approved`。已有实现和历史验收不自动补足 manual、资格/截止及跨边界验证缺口；源码存在不等同直接测试通过。
 
 | 文件 | 覆盖的风险面 |
 | --- | --- |

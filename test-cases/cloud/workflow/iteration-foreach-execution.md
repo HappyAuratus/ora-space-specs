@@ -1,9 +1,25 @@
 # Iteration 的 foreach 执行、作用域与按轮账本
 
 依据[Cloud iteration 执行契约](../../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)
-（`approved`，D1–D6）。按业务风险登记发布门禁、轮次执行、持久化、取消与容量边界。
-下列义务尚无已核对的 Cloud 直接证据，均标为 `Missing`；desktop 参考实现和未合并实现不能替代这些证据。
+（`implemented`，D1–D6）。按业务风险登记发布门禁、轮次执行、持久化、取消与容量边界。
+源码证据核对基线为 cloud `09982ab350886b028cea8e0ed74a9a0abed7a43b`，来自已合并的
+cloud#179、#182、#184、#187、#189、#191；源码链接固定到该提交。现场证据各自保留部署版本，
+不把较早版本的观察当作最新 main 重跑，也不以测试名称、代码实现或共用测试代替完整义务的直接断言。
 调度器共同义务见[调度串行与恢复](scheduler-serialism-and-recovery.md)。
+
+本文的 `Partial` 表示已有直接证据只覆盖义务的一部分；每行写明尚缺范围。剩余承接：
+
+- [#743][gaps]，@ElephantGit：G1 门禁/作用域，G2 数据/轮次矩阵，G3 恢复/取消竞争，G4 容量检查点/读取与视图矩阵。
+- [#702][reserve-gap]，@ElephantGit：最后失败轮的最终复制使用预留、两项以上 continue 在下一轮普通增长时超限的直接证据及正式说明。
+- [#619][sessions] / #691：完整节点会话读取及按轮入口；[共同恢复缺口 #665][recovery-gap] 保持原承接，不在此重复登记为已覆盖。
+
+真实栈的快节点 foreach/fail/continue/超项数/空数组、IA1/IC1、I8、ID1 和两入口验收分别见 [快节点][live-fast]、[真实 Agent 与取消][live-agent]、
+[main 入口边][live-entry]、[Agent 回答收集][live-output]、[两入口及拒绝副作用][live-input]。
+I6 的超大请求在 HTTP 层先返回 413，不能证明 iteration 内部 1 MiB 检查。
+现场版本边界：快节点与 IA1/IC1 使用 cloud `d27158a`，I8/ID1 使用已合并 main `0b25990`；
+两入口首次复验使用 main `5a0a504`，完整拒绝矩阵使用 `f4bd031`（该 main 加独立的前端撤销修复），
+desktop 均为 `d913440`。两入口补充报告记录 `deployment-ready`、`dirty:false`，手动 WorkflowRun
+`645ffcc8`、IssueRun `9ab621fd` 关联 WorkflowRun `8c32ce3c`；后者的非法输入无运行/活动/claim 副作用。
 
 ## The Publish Gate Uses One Membership And A Deterministic Iterator Source
 
@@ -19,9 +35,11 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 成员解析在缺失、空值与冲突时一致 | 门禁及调度器使用同一组图的归属断言 | Missing |
-| 传递前驱与已声明环境根合法，其他来源按命名错误拒绝 | 发布门禁表驱动测试，含非前驱已经有值的反例 | Missing |
-| D2 九个拒绝码定位节点与字段，合法草稿仍可保存 | 配置 / 区域门禁测试与 PostgreSQL 保存 / 发布测试 | Missing |
+| 成员解析在缺失、空值与冲突时一致 | [成员解析][membership] 的 `TestWorkflowContainerIDReadsBothMembershipKeys` 覆盖缺失与冲突；[入口边测试][entry] 覆盖显式键优先和 parentId 图执行。尚缺空字符串及冲突同图贯穿调度的完整矩阵（G1） | Partial |
+| 传递前驱与已声明环境根合法，其他来源按命名错误拒绝 | [作用域门禁][scope] 的 `TestWorkflowIterationProductionGate`、`TestWorkflowAmbientSelectorsNeedDeclarationsButNotEdges` 拒绝自身/非前驱与未声明环境根。尚缺非前驱已有值的运行反例及全部来源矩阵（G1） | Partial |
+| D2 九个拒绝码定位节点与字段，合法草稿仍可保存 | [配置矩阵][config] 检查九码及适用字段，[生产门禁][scope] 验证接线；[现场导入发布][live-import] 记录拒绝且未生成版本。尚缺九码完整 HTTP/PG 定位与草稿/快照副作用矩阵（G1） | Partial |
+| 可选入口边保真且不成为区域依赖，其他跨区域边仍拒绝 | [入口边测试][entry] 的 Publication、DoesNotBecomeADependency、RunsWithAndWithoutEdge 检查完整问题对象、ready 成员、门禁/运行前驱及两轮相同结果；[HTTP 草稿发布][entry-http] 保留 nodes/edges；[I8][live-entry] 真实栈发布并执行成功 | Covered |
+| 两种表单入口将声明的结构化 Start 输入送入运行，非法输入先拒绝 | [三入口 HTTP/PG 回归][input-http] 读回原生数组/对象并检查拒绝后的运行、活动、claim；[准入矩阵][input-unit] 覆盖原生输入、typed array、编码错误和普通字符串不转换；[两入口现场][live-input] 成功执行及拒绝无副作用 | Covered |
 
 - 决策依据：D1、D2，不变量 1、10。
 
@@ -37,7 +55,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 空数组输出与持久化形状正确，零成员执行 | PostgreSQL 调度器测试，检查 node_states、执行工作项与会话计数 | Missing |
+| 空数组输出与持久化形状正确，零成员执行 | [调度器][scheduler] 的 `TestWorkflowAdvanceIterationEmptyArraySucceeds` 断言 succeeded 与空输出/账本、零失败；[现场空数组][live-fast] 通过。测试用长度判断，不能证明全部字段严格为 [] 而非 null，也未计数工作项/会话（G2） | Partial |
 
 - 决策依据：D3–D5，不变量 2。
 
@@ -53,8 +71,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 缺省、硬上限与非法配置在发布时区分 | 门禁边界测试 | Missing |
-| N=M 正常运行，N=M+1 在两种策略下都零轮失败 | PostgreSQL 测试，检查账本 / 归档为空且没有成员工作项 | Missing |
+| 缺省、硬上限与非法配置在发布时区分 | [配置矩阵][config] 拒绝 0/小数；[生产门禁][scope] 接受 100、拒绝 101；[现场][live-import] 超限草稿保留且发布拒绝。尚缺缺省 50、全部非法类型及默认策略直接断言（G2） | Partial |
+| N=M 正常运行，N=M+1 在两种策略下都零轮失败 | [调度器][scheduler] 的 RefusesAnOverLimitArray 覆盖 fail；[启动拒绝][invalid-source] 的 ContinueRejectsInvalidSourceBeforeFirstRound 覆盖 continue 且无成员状态；[现场超项数][live-fast] 失败。尚缺 N=M 精确边界及两策略的账本/归档/工作项完整计数（G2） | Partial |
 
 - 决策依据：D2、D6，不变量 5。
 
@@ -72,9 +90,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 区域前驱与显式导入边界在门禁和取值时一致 | 门禁 + 变量池测试，包含 body aggregator 与外层非祖先反例 | Missing |
-| 两轮绑定独立，condition 选择与 inactive 按轮归档 | PostgreSQL 测试，逐轮检查顶层 / completed 状态、输出及会话计数 | Missing |
-| item/index 轮内私有、外层只读最终暴露根 | 发布可见性测试与真实运行读回 | Missing |
+| 区域前驱与显式导入边界在门禁和取值时一致 | [作用域门禁][scope] 的 BodyScopeIsolation 覆盖 body aggregator、祖先/item 与外层兄弟/其他容器拒绝；[入口依赖][entry] 对齐两套前驱。尚缺同矩阵的实际变量池读取（G1） | Partial |
+| 两轮绑定独立，condition 选择与 inactive 按轮归档 | [入口执行][entry] 检查两轮成员分别输出自己的 item；[inactive collect][body-failure] 检查单轮 inactive 及归档。尚缺两轮相反分支、index 与会话计数联合断言（G1/G2） | Partial |
+| item/index 轮内私有、外层只读最终暴露根 | [入口执行][entry] 直接核对 item 透传和最终三个根；[ID1][live-output] 读取真实 Agent 本项回答。未证明 index 私有与外层引用拒绝的完整矩阵（G1） | Partial |
 
 - 决策依据：D2、D3、D5，不变量 3、10、11。
 
@@ -91,7 +109,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 相反分支选择时收集缺失稳定记失败，策略边界正确 | PostgreSQL 两轮 / 三轮测试，检查每轮状态与账本及后续是否启动 | Missing |
+| 相反分支选择时收集缺失稳定记失败，策略边界正确 | [TestWorkflowIterationArchivesInactiveCollectTarget][body-failure] 证明 continue 下未执行目标不被收集且 inactive 入档；仅一轮，缺先成功后绕开的两/三轮场景、精确错误信封和两策略检查（G2） | Partial |
 
 - 决策依据：D4、D6，不变量 4、6。
 
@@ -107,8 +125,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| fail 停止、continue 完成，失败轮两者均留档且无自动重跑 | PostgreSQL 成员失败测试，检查每轮派发次数与运行终态 | Missing |
-| 容器自身失败不被策略吸收 | 非数组、暴露提交失败与容量失败注入测试 | Missing |
+| fail 停止、continue 完成，失败轮两者均留档且无自动重跑 | [FailureLedgerAndFinalProjection][guards] 精确检查两策略终态、轮号、账本/归档/失败数与最后成员投影；[现场 fail/continue][live-fast] 通过。尚缺中间轮失败、默认策略及逐轮派发次数完整断言（G2） | Partial |
+| 容器自身失败不被策略吸收 | [ContinueRejectsInvalidSourceBeforeFirstRound][invalid-source] 覆盖非数组/超项数；[OversizedInputNeverStartsRound、BudgetCASPreservesCommittedState][guards] 覆盖输入和成员体积失败。尚缺最终暴露提交失败及两策略/各检查点组合（G4） | Partial |
+| body Agent 超时在结束确认前不得推进下一轮，确认耗尽有界失败 | [TestWorkflowIterationTimeoutDrainsBeforeNextRound][drain] 检查重复 pass 只有一个结束命令、确认后才推进并归档原因，确认超时无后续 attempt 且 Workspace 释放 | Covered |
 
 - 决策依据：D4、D6，不变量 6、7。
 
@@ -125,8 +144,8 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 类型固定、假值保真、过滤与完整账本的顺序一致 | PostgreSQL 输出读回及变量根声明测试 | Missing |
-| fail 终态账本为连续已结算前缀 | 首轮 / 中间轮失败测试，断言无未执行条目 | Missing |
+| 类型固定、假值保真、过滤与完整账本的顺序一致 | [入口执行][entry] DeepEqual 完整两项成功输出和信封；[调度器][scheduler] 检查 continue 失败数及空成功输出；[ID1][live-output] 两项 Agent 回答有序收集。尚缺 null/false/空串/对象与混合成功失败的完整矩阵（G2） | Partial |
+| fail 终态账本为连续已结算前缀 | [FailureLedgerAndFinalProjection][guards] 首轮失败时仅一条账本/归档且 round=0；尚缺中间轮失败及信封的完整前缀比较（G2） | Partial |
 
 - 决策依据：D4、D5，不变量 4。
 
@@ -143,9 +162,9 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| wire 编解码与 round / ledger / completed 的关系符合 D5 | 持久化 round-trip 测试，含运行中、成功、失败、取消和空数组 | Missing |
-| 接手不重跑已结算轮 / 已提交成员或在途会话 | PostgreSQL 恢复及并发测试，检查状态版本与工作项 / 会话计数 | Missing |
-| CAS 原子性与非法轮次稳定失败 | 提交故障测试与不一致轮次文档测试 | Missing |
+| wire 编解码与 round / ledger / completed 的关系符合 D5 | [ProgressSurvivesStateJSON][codec] 检查运行中 round-trip 及取消不改账本；[终态投影][guards] 检查两策略轮号。尚缺全部终态和空数组逐字段 round-trip（G3） | Partial |
+| 接手不重跑已结算轮 / 已提交成员或在途会话 | [入口执行][entry] 证明终态重复推进的版本/状态不变；[结束屏障][drain] 证明在途确认期间重复 pass 不派发新 attempt。尚缺 iteration 专属换 Store、并发接手、冻结来源变化和活动轮已提交成员计数（G3），不能用普通 DAG 的恢复证据补齐 | Partial |
+| CAS 原子性与非法轮次稳定失败 | [BudgetCASPreservesCommittedState][guards] 直接拒绝旧版本 CAS；[RejectsCorruptRecovery][budget] 检查缺字段/非法轮号的稳定原因及矛盾账本校验。尚缺轮结算 CAS 故障和损坏文档经生产 DB 入口的组合（G3） | Partial |
 
 - 决策依据：D5，不变量 7、11，根决策 D1 / D4。
 
@@ -161,7 +180,7 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 轮中与轮边界取消均不启动新轮，历史可读且有界收尾 | PostgreSQL 取消竞争测试与真实栈取消 / 资源读回 | Missing |
+| 轮中与轮边界取消均不启动新轮，历史可读且有界收尾 | [CancellationDrainsInflightAgent][body-failure] 检查等待确认、当前轮取消、Workspace 释放；[状态 round-trip][codec] 保留已有账本；[IC1][live-agent] 第 2 项取消且第 3 项未开始。尚缺轮边界竞争和同一用例的全部历史/资源联合断言（G3） | Partial |
 
 - 决策依据：D5，不变量 7。
 
@@ -179,11 +198,18 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 每个检查点与两类字节边界按实际编码生效 | 预算单元测试 + PostgreSQL 边界测试，含多字节文本与重复输出 | Missing |
-| 超限保留既有提交，并在失败预留内稳定结算 | PostgreSQL 失败注入测试，检查 run / node 状态、账本、诊断大小与无后续工作项 | Missing |
-| 接近总预算时整行 CAS 的耗时与 WAL 成本可复核 | 实现运行中的可重现测量，记录体积、负载、方法与结果，可和 loop 共用 | Missing |
+| 每个检查点与两类字节边界按实际编码生效 | [预算测试][budget] ExactJSONBytes 精确断言 UTF-8/转义输入 1 MiB 与 +1，LocalObligations 检查 collect/归档超限，TotalBudgetCountsRepeatedValues 检查重复值；[DB][guards] 覆盖多字节输入和成员提交。尚缺所有检查点的等于/超出边界与两策略 DB 矩阵（G4） | Partial |
+| 超限保留既有提交，并在失败预留内稳定结算 | [BudgetCASPreservesCommittedState][guards] 检查旧成员/来源未变、候选未泄漏、总量不超硬限；[预留测试][reserve] 检查历史失败不能放宽新增长、相同状态可重读及新失败结算。最后失败轮复制/下一轮增长由 #702 承接；完整诊断/账本/后续派发矩阵由 G4 承接 | Partial |
+| 接近总预算时整行 CAS 的耗时与 WAL 成本可复核 | [可复现测试][measurement] 使用生产 settleWorkflowRunStates 与真实事务；[原始测量][measurement-report] 记录负载、版本、逐次耗时和 WAL LSN，范围见下文 | Covered |
 
-- 决策依据：D5、D6，不变量 9，落地顺序第 3 步。
+测量边界：WSL/Docker、Go 1.27.1、PostgreSQL 17.11 x86_64，`wal_compression=off`，独占测试数据库；
+`MEASURE_WORKFLOW_CAS=1 REQUIRE_POSTGRES=1 go test ./internal/core -run TestWorkflowNearLimitCASMeasurement -count=1 -v`。
+24 项、12 个已结算轮，固定种子 base64 数据及 2,111,786 字节 padding，包含 source/items/ledger/output/archive
+的物理重复，紧凑 JSON 8,322,048 字节，距普通上限 1,024 字节。10 次 CAS 合计 1.661229 s、平均 166.123 ms；
+WAL insert LSN 从 `0/791ABA58` 到 `0/7E8A38B0`，增量 91,192,920 字节。结果来自 #660 的记录，
+本次未重新测量；只证明该负载的整行 CAS 基线，不证明 100 轮完整成本或生产性能。
+
+- 决策依据：D5、D6，不变量 9、落地与验证边界。
 
 ## RunDetails Show Each Round Once And Preserve Member Attribution
 
@@ -198,7 +224,39 @@
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 活动 / 最终轮去重，成员和错误归因完整 | 前端投影 / 详情测试与真实栈逐轮展开读回 | Missing |
-| API 兼容且列表不展开归档 | API 响应与前端解析测试 | Missing |
+| 活动 / 最终轮去重，成员和错误归因完整 | [轮次投影][rounds] 检查三项含 continue 失败、fail 后无后续轮、空源及活动轮；[详情组件][round-views] 检查 item/collect/成员与失败账本，现场 [I8][live-entry]、[IC1][live-agent]、[ID1][live-output] 补运行视图。会话入口未交付（#619/#691），iteration 容量失败完整呈现矩阵尚缺（G4） | Partial |
+| API 兼容且列表不展开归档 | [历史 API][run-api] 的 workflowRunSummary 仍返回完整 nodeStates；现有轮次解析测试不能证明旧读取方兼容或列表载荷隔离。该完整义务尚无直接证据，且摘要载荷目标未实现，由 G4 核对兼容方案及直接测试 | Missing |
 
 - 决策依据：D3、D5，不变量 11。
+
+<!-- 固定源码证据；现场报告保留各自部署版本。 -->
+[membership]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_loop_graph_test.go
+[entry]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_iteration_entry_test.go
+[entry-http]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/integration/workflow_iteration_entry_test.go
+[scope]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_scope_test.go
+[config]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_iteration_graph_test.go
+[input-http]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/integration/workflow_structured_input_test.go
+[input-unit]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_admission_test.go
+[scheduler]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_iteration_scheduler_db_test.go
+[guards]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_contract_guards_db_test.go
+[body-failure]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_body_failure_db_test.go
+[invalid-source]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_review_obligations_test.go
+[drain]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_session_drain_db_test.go
+[codec]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_iteration_state_test.go
+[budget]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_state_budget_test.go
+[reserve]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_failure_reserve_db_test.go
+[measurement]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_cas_measurement_test.go
+[rounds]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/frontend/src/features/workflows/run/run-rounds.test.ts
+[round-views]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/frontend/src/features/workflows/run/run-round-views.test.tsx
+[run-api]: https://github.com/ora-space/cloud/blob/09982ab350886b028cea8e0ed74a9a0abed7a43b/internal/core/workflow_run.go
+[live-fast]: https://github.com/ora-space/circus/issues/688#issuecomment-6416677057
+[live-agent]: https://github.com/ora-space/circus/issues/688#issuecomment-6432713447
+[live-entry]: https://github.com/ora-space/circus/issues/688#issuecomment-6433659478
+[live-output]: https://github.com/ora-space/circus/issues/688#issuecomment-6435562917
+[live-import]: https://github.com/ora-space/circus/issues/688#issuecomment-6438442434
+[live-input]: https://github.com/ora-space/circus/issues/688#issuecomment-6438477946
+[measurement-report]: https://github.com/ora-space/circus/issues/660#issuecomment-6407674257
+[gaps]: https://github.com/ora-space/circus/issues/743
+[reserve-gap]: https://github.com/ora-space/circus/issues/702
+[sessions]: https://github.com/ora-space/circus/issues/619
+[recovery-gap]: https://github.com/ora-space/circus/issues/665
