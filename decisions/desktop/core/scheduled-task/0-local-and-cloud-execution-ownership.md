@@ -4,16 +4,17 @@ status: approved
 
 # 定时任务以持久定义产生幂等触发，执行归属在创建时确定且不支持切换
 
-用户可以在 Desktop 左侧进入“定时任务”，创建周期性的代码质量检查、工作汇报、待办整理等任务，并为每个任务选择
-`local` 或 `cloud` 执行模式。执行归属在创建时确定，之后不支持在两端间切换；需要换执行位置时，复制成新任务并停用
+用户可以在 Desktop 左侧进入“定时任务”，创建周期性的代码质量检查、工作汇报、待办整理等本地任务；Cloud 首期
+通过 Web 管理无头 Prompt 单会话任务。`local` 与 `cloud` 分别由各自执行端创建和管理，Desktop 当前不提供可激活的
+`cloud` 创建入口，也不合并展示 Cloud 任务。执行归属在创建时确定，之后不支持在两端间切换；需要换执行位置时，复制成新任务并停用
 旧任务。`local` 只在 Desktop 进程运行时触发；`cloud` 由服务端拥有未来触发，因此 Desktop 关闭后仍可运行。两种模式
 共享任务定义、occurrence 和运行状态的语义，各自持久化，不把浏览器计时器、内存状态或示例模板当作执行事实。
 
-本 ADR 处于 `approved`。它定义 Scheduled Task 新领域的执行归属、持久状态与分阶段交付边界，冻结共用语义与本地
-模式，不宣称 Cloud 调度、远程凭据、计费或任意 Workflow 已经交付。Cloud 首期的无头单会话 API 与权限校验作为
-`decisions/cloud/` 下的独立 ADR 推进，不依赖 ora-space/circus#60 / ora-space/circus#67 的 Server Workflow 执行链；只有
-该 Cloud 契约和真实执行适配器就绪后，`cloud` 才能成为可选值。Cloud 触发已发布 Workflow 则是依赖
-ora-space/circus#67 的后续阶段。
+本 ADR 保持 `approved`：它冻结共用语义、本地模式与分阶段边界，不能用本地 MVP 或独立 Cloud 首期的完成替代
+本文全部义务的实现与验证。本地 manual occurrence、运行资格与截止闭环及部分跨边界验证仍需补齐。
+[Cloud 首期根决策](../../../cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md) 已为 `implemented`，
+其 D8 明确首期仅 Web 管理：真实执行与取消链就绪是 Desktop 解锁的必要条件，不能据此推导 Desktop 已开放 Cloud。
+Desktop Cloud 入口与展示仍需后续决策；Cloud 触发已发布 Workflow 仍须另立 ADR，本文不宣称该能力已经交付。
 
 ## 决策
 
@@ -68,7 +69,9 @@ manual occurrence，不冒充原计划时间。未来若增加 catch-up，必须
 
 每次本地定时运行在独立 worktree 中执行目标项目，不直接改动用户正在编辑的目录；worktree 创建复用 Desktop 已有的
 初始化端口。运行结束后，无改动的 worktree 直接删除；有改动的 worktree 保留，运行历史显示其路径并提供“打开”和“丢弃”。
-保留数量设上限，超过后删除最旧项，具体上限在实现阶段确定。保存为 active 的 local 任务必须通过目标目录是 Git 仓库的
+非使用中的保留 worktree 上限为 10，超过后按最旧优先清理；正在使用的 worktree 不自动删除，也不计入该上限。
+资源归属与崩溃恢复由[原子归属提交决策](20261020-worktree-ownership-atomic-commit.md)细化；
+仅声明产物造成的改动按[结果与产物决策](20261021-run-result-annotation-and-artifacts.md)分类。保存为 active 的 local 任务必须通过目标目录是 Git 仓库的
 校验；不满足时不得降级为直接在原目录执行。
 
 ### D5：cloud 交由服务端拥有的语义冻结，细节另行决策
@@ -76,7 +79,8 @@ manual occurrence，不冒充原计划时间。未来若增加 catch-up，必须
 `cloud` 任务的未来 occurrence 只由 Cloud 持久调度器产生，Desktop 关闭不影响它；这是需要提前冻结的共用语义。创建后不
 支持迁移为 `local`；需要更换执行位置时，复制成新任务并停用旧任务。
 Cloud 首期的未来 occurrence 由 Cloud 持久调度器产生，并以本 ADR 的 `(taskId + scheduledAt)` 规则在 Cloud 侧幂等
-接纳。首期只调用 D3 所述的无头 Prompt 单会话链：保存及每次触发均校验目标 Project、模型配置和无人值守授权；不接入
+接纳。首期只调用 D3 所述的无头 Prompt 单会话链；资格复查和同意的校验时点以独立 Cloud 根决策 D5 为准：
+保存与接纳检查目标和模型，撤销同意原子停用任务，接纳不再单独校验同意。不接入
 ora-space/circus#60 / ora-space/circus#67 的 Server Workflow 执行链，也不解析 `executorSlot`。Cloud 的任务登记、存储、取消、状态读取、授权、通知、发起者
 归属与费用，以及无头会话 API 细节由独立 `decisions/cloud/` ADR 定义，本决策不预置协议。
 
@@ -85,8 +89,8 @@ Cloud 定时运行的默认超时为 60 分钟；超时取消依赖 Cloud 侧的
 Cloud 触发已发布 Workflow 是第二阶段能力，等待 ora-space/circus#67 的结论及 Workflow server 执行链落地后再提出。该阶段每次触发按
 任务所有者的个人执行器槽位映射解析执行器；不得复用其他用户的映射。所需槽位缺失时，该次触发明确失败并通知任务所有者。
 
-在 Cloud 首期 ADR 获批且真实无头单会话链路就绪之前，Desktop 可以展示 `cloud` 模式及其说明，但必须标为不可用，不能
-保存为执行归属、不能用本地 timer 代跑，也不能展示模拟成功。
+Cloud 首期已交付 Web 管理与真实无头单会话链路。按独立 Cloud 根决策 D8，Desktop 的 `cloud` 创建、展示与历史仍待
+后续决策；当前可以展示模式说明，但必须标为不可用，不能保存为执行归属、不能用本地 timer 代跑，也不能展示模拟成功。
 
 两端只对齐展示用的字段名与状态名，不共享 ID、存储或同步协议；Desktop 任务列表是否合并展示 Cloud 任务、运行历史
 能否跨端可见、Cloud 任务的账号与归属，均随 Cloud 决策一并定案。
@@ -125,12 +129,13 @@ D4 的 worktree 保留上限约束），链接清除后（用户丢弃、或清�
 ### D8：local 与 Cloud 分别在保存和每次运行时检查资格
 
 local 不记录账号身份或 Cloud 授权引用。保存 local 任务时检查目标项目目录存在、是 Git 仓库且模型配置可用；每次接纳
-时再次检查，失败则该 occurrence 以明确失败结束，不换用其他模型。Cloud 首期保存及每次接纳均检查该 Prompt 运行需要的
-目标 Project、模型配置与无人值守授权；失败时明确结束，不回退到 local，也不涉及 Workflow 的执行器槽位。Cloud 的创建者、
+时再次检查，失败则该 occurrence 以明确失败结束，不换用其他模型。Cloud 首期保存及每次接纳的资格规则由
+[Cloud 根决策 D5](../../../cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md#d5保存与每次接纳都校验资格失败明确到原因不回退不重试)
+细化：目标和模型在保存与接纳时复查，同意在保存/启用时校验，撤销即停用；不回退 local，不涉及 Workflow 执行器槽位。Cloud 的创建者、
 Workspace、模型凭据、费用与无头会话权限细节由独立 Cloud ADR 定义；第二阶段 Workflow 执行再继承
 ora-space/circus#67 的最终契约。
 
-首版唯一的无人值守工具批准策略是 `full_auto_in_worktree`：只在独立 worktree 中运行，运行时工具调用全自动批准。
+local 首版唯一的无人值守工具批准策略是 `full_auto_in_worktree`：只在独立 worktree 中运行，运行时工具调用全自动批准。
 创建任务时必须以清晰风险说明取得用户显式同意，并将策略名与同意时间随任务持久化；说明至少覆盖 worktree 不是沙箱、
 agent 仍可执行任意命令并读写 worktree 外文件、可使用本机凭据（例如 `git push`），且会消耗模型额度。仅当目标项目或
 策略变更时才必须重新同意；只改提示词或计划时间不要求重新同意。每次接纳均校验该策略仍受 runtime 支持且 worktree 可
@@ -169,18 +174,16 @@ agent 仍可执行任意命令并读写 worktree 外文件、可使用本机凭�
 
 ## 本决策未解决的问题
 
-- 三种受限周期规则的精确结构化字段与表单交互。
+- 三种受限周期已由 domain/contracts 和 Desktop 表单承载；进一步扩展计划规则需后续决策。
 - 本地 Workflow revision 目标属于后续扩展。
-- 更细的无人值守工具批准策略取值、worktree 的数量上限，以及与现有 Session approval 行为的迁移关系。
-- Cloud 首期无头单会话的公开 API、存储、调度、通知与配额，作为 `decisions/cloud/` 下的独立 ADR 提出，不以
-  ora-space/circus#67
-  为前置条件；该 ADR 细化 issue 绑定方式、任务所有者个人模型在创建运行时的锁定、仅匿名公开 Git 与任务所有者费用归属。
+- 更细的无人值守工具批准策略取值，以及与现有 Session approval 行为的迁移关系；当前 worktree 上限见 D4。
+- Cloud 首期的 API、存储、调度、通知和账号/费用归属已由独立 Cloud 根决策细化；跨任务配额、外发通知、
+  Desktop 管理等未解决范围以该决策为准，不能继续把已经交付的 Cloud 首期整体列为未实现。
 - Cloud 触发已发布 Workflow 的目标冻结、Start 参数校验及执行器槽位映射，作为第二阶段能力，等待
   ora-space/circus#67 及 Workflow
   server 执行链落地后另立 ADR。
-- 本地与 Cloud 任务数据的互通边界：Desktop 任务列表是否合并展示 Cloud 任务、Cloud 网页端对两类任务与运行历史的
-  可见与管理范围、运行历史的跨端展示位置，以及跨执行位置复制任务携带的数据范围。本地侧默认（只存本机、不上传、
-  不要求登录）已冻结为决策，其余随 Cloud 决策一并定案，避免本地数据模型做出相反假设。
+- 本地与 Cloud 任务互不同步；Cloud 首期只管理租户内 Cloud 任务，不读取本地历史，Desktop 不合并展示 Cloud 任务。
+  Desktop 后续管理入口与跨执行位置复制任务携带的数据范围仍需后续决策；本地只存本机、不上传、不要求登录的边界不变。
 - 操作系统后台服务、开机自启及显式 catch-up。
 
 ## 核心测试用例
@@ -208,7 +211,8 @@ Project、模型和无人值守授权，不解析 Workflow 或执行器槽位；
 3. **desktop / local scheduler**：用后端 scheduler 重建 active local jobs，落实 occurrence 幂等、迟到/离线
    missed、独立 worktree 执行、全局并发上限、`skip_if_running` 和真实 ExecutionTarget adapter；没有真实
    adapter 时不得把模拟运行作为 MVP 完成。
-4. **cloud / first phase**：以 `decisions/cloud/` 下的独立 ADR 定义无头 Prompt 单会话的 API、权限与持久化；复用
-   IssueRun / Thread 真实执行链并验证后，开放 `cloud` 选择，不以 ora-space/circus#60 / ora-space/circus#67 为前置条件。
+4. **cloud / first phase**：独立 Cloud 根决策已定义并交付无头 Prompt 单会话的 API、权限、持久化与 Web 管理，
+   不以 ora-space/circus#60 / ora-space/circus#67 为前置条件。Desktop 解除 `cloud` 禁用的必要条件已满足，
+   但其创建、展示与历史入口仍须后续决策，不能把 Web 首期验收等同 Desktop 入口已交付。
 5. **cloud / second phase**：ora-space/circus#67 及 Workflow server 执行链落地后，另立 ADR 支持 Cloud 触发已发布 Workflow，并按
    任务所有者的个人执行器槽位映射解析执行器。
