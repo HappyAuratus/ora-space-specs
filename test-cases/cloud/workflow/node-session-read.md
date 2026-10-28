@@ -1,15 +1,20 @@
 # 工作流节点会话读取
 
 依据[工作流节点会话读取](../../../decisions/cloud/workflow/20261026-workflow-node-session-read.md)
-（`approved`，D1–D4）。这些用例覆盖按（运行，节点，尝试）有界分页读取节点会话记录、终态回执按已提交证据
+（`implemented`，D1–D4）。这些用例覆盖按（运行，节点，尝试）有界分页读取节点会话记录、终态回执按已提交证据
 权威排除、旧尝试不冒领最新输出、输出与结束原因分开、授权下探到节点，以及按所选尝试终态证据与历史回执判定
 的空态。调度串行与恢复见 [调度串行与恢复](scheduler-serialism-and-recovery.md)，单个尝试内的会话结束见
 [工作流会话结束与有界等待](session-end-after-initial-turn.md)，重试隔离见
 [工作流节点重试与恢复](retry-and-resume.md)。
 
-实现由运行 [ora-space/circus#720](https://github.com/ora-space/circus/issues/720)（ADR 运行是 #691）承接，尚未合入 main，cloud 侧义务
-全部为 `Missing`，随实现逐项登记直接测试；前端节点详情只渲染读取接口返回的字段，不能代替 Cloud 在真实
-PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182（已于 2026-10-27 合并）定义，读取端只消费。
+实现由运行 [ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 经
+[cloud#195](https://github.com/ora-space/cloud/pull/195) 合入 main（merge `63034cfcad687845ee9fdc498449f481e6eb0f9e`），
+源码链接固定到该提交。cloud 侧证据来自真实 PostgreSQL 的读取用例（按 router 的入口驱动 `Store.Public`）、
+路由契约测试与前端渲染测试；前端测试只证明节点详情的渲染，不代替 Cloud 在真实 PostgreSQL 上的义务。
+真实栈验收（按尝试读取、重试、输出与结束原因分离）由 #720 承接，结论发布前不把数据库用例当作真实栈证据。
+`output` / `sessionEndReason` 的语义由 cloud#182（已于 2026-10-27 合并）定义，读取端只消费。
+
+本文的 `Partial` 表示已有直接证据只覆盖义务的一部分；每行写明尚缺范围。
 
 ## An Attempt-Scoped Read Never Crosses Attempts
 
@@ -28,9 +33,9 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `attempt` 越界或不属于该节点 404，缺省读最新尝试 | 真实 PostgreSQL：同一节点两次尝试，分别读 `attempt=1`、缺省、`attempt=3` | Missing |
-| `before` 不带 `attempt` 返回 400 | 接口测试：只带 `before` 的请求 | Missing |
-| 翻页期间重试，下一页仍读原尝试的记录 | 真实 PostgreSQL：首页后插入第 2 次尝试执行，带原 `attempt` 翻页，记录仍属第 1 次 | Missing |
+| `attempt` 越界或不属于该节点 404，缺省读最新尝试 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadScopesToTheRequestedAttempt` 在同一节点的两次尝试上读 `attempt=1`（执行行、记录与 `result` 都属第 1 次）、缺省（落到第 2 次）、`attempt=3`（404）与 `attempt=0`（`invalid_pagination`） | Covered |
+| `before` 不带 `attempt` 返回 400 | 同一用例的 `before=2` 请求返回 `invalid_pagination`；[路由契约测试][router] 的 `TestNodeSessionQueryAllowlist` 只放行 `limit` / `before` / `attempt` 三个查询参数 | Covered |
+| 翻页期间重试，下一页仍读原尝试的记录 | 同一用例先读 `attempt=1` 的一页，再启动第 2 次尝试，然后按 `attempt=1&before=3` 翻页，仍返回 1、2 且 `hasMore` 为假 | Covered |
 
 - 决策依据：D1，不变量 1、4，重试决策 D4，会话结束决策不变量 2。
 
@@ -43,25 +48,26 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 - 触发：`limit=2` 的首页；字节先触顶的一页；带 `before=<nextBefore>` 的下一页；窗口含形状不合法行的一页。
 - 必须成立：取页由新到旧，**响应内 `records` 按外层 `sequence` 升序返回**（与 `thread_read.go`、
   `task_conversation_messages.go` 同向）；`nextBefore` 固定为本页**最早一条考察过**的历史回执外层
-  `sequence`（升序响应的第一行，含形状不合法、只计入 `incomplete` 的行）；无形状不合法行时它就是本页最早
-  一条已返回记录，本页有（或全是）形状不合法行时它仍指向最早考察过的那一行；下一页 `before=<nextBefore>` 取
+  `sequence`（取页窗口升序后的第一行，含形状不合法、只计入 `incomplete` 的行）；本页窗口内没有形状不合法行时
+  它就是本页最早一条记录，有（或全是）形状不合法行时它仍指向最早考察过的那一行；下一页 `before=<nextBefore>` 取
   `sequence < before`，每条记录都被后续页面覆盖且每页只考察一次；`hasMore` 由独立探测（是否存在
   `sequence < nextBefore` 的历史回执）决定，条数触顶与字节触顶两种情况都成立；单页受条数（≤ 200）与字节
-  （`maxPageBytes`，4 MiB）双上限，任一先触顶处停止，字节预算在加入下一条前判定，跨过预算的那一条整条计入，
-  单页正文上限为预算加单条上限（4 MiB + 256 KiB）；`nextBefore` 仅当存在更早历史回执时返回；终态回执被
-  跳过，不计入 `limit`、不产生 `hasMore`、不参与 `nextBefore`。
+  （`maxPageBytes`，4 MiB）双上限，任一先触顶处停止，字节预算按回执 `event` 的字节数在加入下一条前判定，
+  跨过预算的那一条整条计入，单页正文上限为 `maxPageBytes` 加单条回执 `event` 的字节数上限；`nextBefore`
+  仅当存在更早历史回执时返回；终态回执被跳过，不计入 `limit`、不产生 `hasMore`、不参与 `nextBefore`。
 - 禁止结果：某条记录被跳过；整页形状不合法时没有 `nextBefore`、更早历史读不到；同一行被反复读回；字节触顶时
-  `hasMore` 误报为无；单页超过 200 条；单页正文超过 4 MiB + 256 KiB；分页折叠或截断记录正文。
+  `hasMore` 误报为无；单页超过 200 条；单页正文超过 `maxPageBytes` 加单条回执 `event` 的字节数上限；分页
+  折叠或截断记录正文。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 响应按序号升序，`nextBefore` 指向本页最早考察过的序号，逐页覆盖全部记录 | 真实 PostgreSQL：5 条记录 `limit=2` 逐页，响应序列 4,5 / 2,3 / 1，不漏 | Missing |
-| 本页含形状不合法行时仍返回 `nextBefore`，下一页取到更早的历史回执，不重复读回同一行 | 真实 PostgreSQL：窗口最早几行为形状不合法、其后才有合法记录，逐页读到全部历史且每行只考察一次 | Missing |
-| 整页形状不合法时仍返回 `nextBefore`，更早的历史仍能取到 | 真实 PostgreSQL：构造整页窗口都不合法（`incomplete`）的会话，下一页取到更早的历史回执 | Missing |
-| 字节触顶时 `hasMore` 仍由独立探测决定 | 真实 PostgreSQL：构造单页字节先触顶的数据，`hasMore` 正确 | Missing |
-| 单页受条数与字节双上限，跨过预算的那一条整条计入、不多返回半条 | 真实 PostgreSQL：`limit=200` 与超长记录，单页正文不超过 4 MiB + 256 KiB 且 `records` 无残缺记录 | Missing |
-| 终态回执不参与分页计数与游标 | 真实 PostgreSQL：含终态回执的会话，`limit`、`hasMore`、`nextBefore` 只看历史回执 | Missing |
+| 响应按序号升序，`nextBefore` 指向本页最早考察过的序号，逐页覆盖全部记录 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadPagesEveryRecordWithoutSkipping`：5 条记录 `limit=2` 逐页得到 4,5 / 2,3 / 1，每页 `hasMore` 时 `nextBefore` 等于本页第一条记录，末页不再带 `nextBefore` | Covered |
+| 本页含形状不合法行时仍返回 `nextBefore`，下一页取到更早的历史回执，不重复读回同一行 | `TestWorkflowNodeSessionReadReportsUnshapedHistoryWithoutStrandingTheRest`：记录 1、3 合法、2 形状不合法，首页 `limit=1` 返回 3；窗口落在 2 的那一页返回空 `records`、`incomplete`、`nextBefore=2`、`hasMore`，下一页取到 1 | Covered |
+| 整页形状不合法时仍返回 `nextBefore`，更早的历史仍能取到 | 同一用例：窗口只有那一条不合法行（整页都不合法）时仍返回 `nextBefore=2`，更早的 1 由 `before=2` 取到 | Covered |
+| 字节触顶时 `hasMore` 仍由独立探测决定 | `TestWorkflowNodeSessionReadStopsAPageAtItsByteBudget`：20 条 250 KiB 记录在 `limit=200` 下被 4 MiB 预算提前截断，`hasMore` 为真且 `nextBefore` 指向本页最早记录；下一页取到剩余记录 | Covered |
+| 单页受条数与字节双上限，跨过预算的那一条整条计入、不多返回半条 | 同一用例证明跨过预算的那一条整条返回（首条正文长度等于存储值）且该页不标 `incomplete`；条数上限由 `router.go` 的 `maxLimit = core.NodeSessionPageMax` 实现，路由测试只证明 200 被接受。尚缺精确页字节上限与 `limit=201` 拒绝的直接断言 | Partial |
+| 终态回执不参与分页计数与游标 | `TestWorkflowNodeSessionReadExcludesTheTerminalReceiptBySequenceNotShape`：终态回执不投影，`records` 为 1、2，`hasMore` 假、无 `nextBefore`、`state` 为 `available` | Covered |
 
 - 决策依据：D1，不变量 6。
 
@@ -83,9 +89,9 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `execution` 与 `node` 分开，旧尝试不冒领最新 `output` | 真实 PostgreSQL：两次尝试，读 `attempt=1`，`node.output` 仍描述当前尝试、`execution.result` 属第 1 次 | Missing |
-| `execution.attempt == node.attempt` 时 `node.output` 才是所选尝试的回答 | 真实 PostgreSQL：读当前尝试，两者一致 | Missing |
-| 旧尝试的最终回答从 `records` 重放、不借用当前 `output` | 前端两次尝试渲染测试：读 `attempt=1` 渲染的回答来自第 1 次的 `agent_message_chunk`，不是第 2 次的 `node.output` | Missing |
+| `execution` 与 `node` 分开，旧尝试不冒领最新 `output` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：读 `attempt=1` 时 `node` 块是第 2 次的 `succeeded`、`output` 与 `sessionEndReason=idle_timeout`，`execution.result.reason` 是第 1 次自己的 `agent_failed` | Covered |
+| `execution.attempt == node.attempt` 时 `node.output` 才是所选尝试的回答 | 同一用例的缺省读取（当前尝试）断言 `execution.attempt == node.attempt`，此时 `node.output` 是第 2 次自己的回答 | Covered |
+| 旧尝试的最终回答从 `records` 重放、不借用当前 `output` | [视图测试][view] 的 `shows the end reason only when the node state describes the attempt being read` 证明节点状态不属于所选尝试时结束原因不呈现，[面板测试][panel] 证明回答逐行来自 `records`。尚缺「两次尝试、旧尝试的最终回答取自第 1 次记录而非第 2 次 `node.output`」的直接渲染断言 | Partial |
 
 - 决策依据：D1，不变量 4，重试决策 D3。
 
@@ -106,10 +112,10 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `result` 非空时终态回执按 `last_event_sequence` 排除 | 真实 PostgreSQL：正常结束会话，`records` 只含历史回执 | Missing |
-| 含 `record` 形状的终态 `event` 仍按序号排除、不被当历史 | 真实 PostgreSQL：终态回执是含 `record` 的 JSON，`records` 不含它 | Missing |
-| `result` 为空时全部回执作为历史回执投影 | 真实 PostgreSQL：在途会话或 Cloud 终态结算（无 result）的历史回执 | Missing |
-| 形状不合法的历史回执标 `incomplete` 而非静默丢弃 | 真实 PostgreSQL：插入形状不合法的历史回执，响应标 `incomplete` | Missing |
+| `result` 非空时终态回执按 `last_event_sequence` 排除 | `TestWorkflowNodeSessionReadExcludesTheTerminalReceiptBySequenceNotShape`（终态序号 3 被排除，`records` 为 1、2）与 `TestWorkflowNodeSessionReadScopesToTheRequestedAttempt`（第 1 次已结算，`records` 为 1、2、3，不含序号 4 的终态回执） | Covered |
+| 含 `record` 形状的终态 `event` 仍按序号排除、不被当历史 | `ExcludesTheTerminalReceiptBySequenceNotShape` 的终态 `event` 本身就是含 `record` 的 JSON；读取仍按 `last_event_sequence` 排除它，且未把该页标 `incomplete` | Covered |
+| `result` 为空时全部回执作为历史回执投影 | `PagesEveryRecordWithoutSkipping` 与 `ReportsAGapOnlyOnThePageThatObservesIt` 的尝试都未结算（无 `result`、无终态回执），回执 1..5 / 1,2,4,5 全部作为历史回执返回 | Covered |
+| 形状不合法的历史回执标 `incomplete` 而非静默丢弃 | `ReportsUnshapedHistoryWithoutStrandingTheRest`：不合法行不进 `records`，该页标 `incomplete` 并给出仍能翻到更早历史的 `nextBefore` | Covered |
 
 - 决策依据：D1，不变量 5、8。
 
@@ -128,10 +134,10 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 节点不属于该运行或不存在时 404，不泄露其他运行数据 | 真实 PostgreSQL：跨节点、跨运行请求 | Missing |
-| 归档工作流连同运行历史 404 | 真实 PostgreSQL：归档后读该工作流运行 | Missing |
-| 活跃成员可读，非成员 403 / 其他租户 404 | 接口测试：四类请求者 | Missing |
-| 无 execution_id / session_id / 对象键直读路由 | OpenAPI 漂移检查：路由清单 | Missing |
+| 节点不属于该运行或不存在时 404，不泄露其他运行数据 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadStaysOnTheWorkflowRunNode`：冻结图里没有的 `nodeId` 与拿 `executionId` 当节点都 404；节点从运行的冻结快照解析，作用域不会落到别的运行 | Covered |
+| 归档工作流连同运行历史 404 | 同一用例把 workflow 标记 `deleted_at`（cloud 的归档/删除门禁：`workflow()` 只认 `deleted_at IS NULL`）后读取 404 | Covered |
+| 活跃成员可读，非成员 403 / 其他租户 404 | 同一用例：活跃非 admin 成员读到 200 与记录 1、2；租户外调用者得到 `membership_required`；同一节点在另一租户下 404 | Covered |
+| 无 execution_id / session_id / 对象键直读路由 | [路由契约测试][router] 的 `TestNodeSessionQueryAllowlist` 断言该路径只有一条无 action 的公开 GET、路径不含 `:sessionId` / `:executionId` / `:attempt`，查询白名单拒绝 `sessionId`、`executionId`、`path`、`after` | Covered |
 
 - 决策依据：D2，不变量 2、3。
 
@@ -160,11 +166,11 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 成功节点读到最终回答与独立 `sessionEndReason` | 真实 PostgreSQL：成功结算节点，`output` 与 `sessionEndReason` 分开 | Missing |
-| 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | 真实 PostgreSQL：失败与取消各一例，`output` 为空、原因与错误独立 | Missing |
-| Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 真实 PostgreSQL：启动期结算（如 `workflow_run_project_required`、`workspace_unavailable`）与会话期结算（`node_unavailable`、`session_*_deadline_exceeded`、取消的 `cancelled`）各一例 | Missing |
-| 读取接口不修改 `node_states`（`output` 不被清空或改写） | 真实 PostgreSQL：读取前后 `node_states` 不变 | Missing |
-| Cloud 只解释最终回答，其余记录原样透传 | 真实 PostgreSQL：`records[i].sequence` 与 `node_event_receipts.sequence` 一致；`records[i].record` 与 `node_event_receipts.event` 解析出的 `event.record` 一致；`records[i].turnId` / `truncated` / `historySequence` / `visibleText` / `visibleTextTruncated` 与同一解析结果里的同名可选字段一致（缺省时字段不返回）（`node_event_receipts` 只有 `execution_id` / `sequence` / `event` 三列） | Missing |
+| 成功节点读到最终回答与独立 `sessionEndReason` | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadNeverPresentsTheCurrentAttemptAsAnOldOne`：成功结算的第 2 次尝试 `node.output` 是最终回答（`{"output":"Inspected the files"}`），`node.sessionEndReason` 是独立的 `idle_timeout` | Covered |
+| 失败/取消节点不发布最终 `output`，只有 `sessionEndReason`、`error` 与部分会话记录 | `TestWorkflowNodeSessionReadReportsACloudSettlementAsUnavailableNotInFlight`：`node_unavailable` 结算的节点 `status=failed`、`sessionEndReason` 与 `error` 都是 `node_unavailable`、`output` 为空。尚缺取消结算与「失败节点带部分会话记录」各一例 | Partial |
+| Cloud 自造的启动期与会话期原因原样呈现为 `sessionEndReason`，读取端不新增或改写取值 | 同一用例覆盖会话期的 `node_unavailable`。尚缺启动期原因（如 `workflow_run_project_required`、`workspace_unavailable`）与各 deadline / 取消结算的读取用例 | Partial |
+| 读取接口不修改 `node_states`（`output` 不被清空或改写） | `TestWorkflowNodeSessionReadIsReadOnly` 读取前后比较 `workflow_runs.node_states` 的完整 JSON | Covered |
+| Cloud 只解释最终回答，其余记录原样透传 | 记录投影只挑 `sequence`、`record` 与 canonEvent 的可选字段；用例读回的记录内容（回答文本、`gap` 类型、`truncated` 标记、外层序号）与写入一致。尚缺 `historySequence` / `visibleText` / `visibleTextTruncated` 与存储回执逐字段相等的断言 | Partial |
 
 - 决策依据：D3，不变量 7、8，根决策变量根，#673 owner 结论。
 
@@ -190,10 +196,10 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| Cloud 终态结算（无 `result`）判「终态、无历史」，不判「在途」 | 真实 PostgreSQL：`node_unavailable`、各 deadline、取消结算的零历史节点 | Missing |
-| 在途零历史判「等待首条记录」 | 真实 PostgreSQL：`running` 且零历史回执的节点 | Missing |
-| 未派发、非 agent 节点、证据缺失分别判「未建立会话」「不适用」「未知」 | 真实 PostgreSQL：三类场景各一例 | Missing |
-| 有结果缺记录分别呈现结果与「不完整/不可用」 | 真实 PostgreSQL：`result` 非空但历史回执有 Gap/截断/形状不合法 | Missing |
+| Cloud 终态结算（无 `result`）判「终态、无历史」，不判「在途」 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadReportsACloudSettlementAsUnavailableNotInFlight`：Node 心跳失效后 Cloud 不写 `result` 就结算，读取 `state=unavailable`、`result` 为空、`node.status=failed`。尚缺各 deadline 与取消结算的零历史用例 | Partial |
+| 在途零历史判「等待首条记录」 | `TestWorkflowNodeSessionReadReportsAnInFlightAttemptAwaitingItsFirstRecord`：已派发、零回执的在途尝试 `state=awaiting_first_record`，无记录，`incomplete` 与 `hasMore` 都为假 | Covered |
+| 未派发、非 agent 节点、证据缺失分别判「未建立会话」「不适用」「未知」 | `TestWorkflowNodeSessionReadDistinguishesNotApplicableAndNotStarted`（未派发 `not_started`、`start` 节点 `not_applicable`）与 `TestWorkflowNodeSessionReadReportsContradictoryEvidenceAsUnknown`（`node.attempt > execution.attempt` 却无 `result` 判 `unknown`） | Covered |
+| 有结果缺记录分别呈现结果与「不完整/不可用」 | `TestWorkflowNodeSessionReadReportsAGapOnlyOnThePageThatObservesIt`、`...ReportsANodeGapRecordAsIncomplete`、`...ReportsATruncatedRecordAsIncomplete`、`...ReportsAHistoryMissingItsBeginning` 各自证明页标 `incomplete` 且记录不被丢弃，但这些尝试都未结算（`result` 为空）。尚缺「`result` 非空 + `Gap` / 截断 / 形状不合法」的直接用例 | Partial |
 
 - 决策依据：D4，不变量 9，cloud `workflow_run_session.go` 的终态路径，#296 D4 的空态词汇。
 
@@ -201,20 +207,22 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 - 风险：单页没有看到缺口就断言整次历史完整；从尚未读齐的页推定旧尝试的最终回答；`incomplete` 与 `hasMore`
   混为一谈。
-- 前置状态：一次尝试的历史在某页存在 `Gap` / 截断 / 形状校验失败；或较早页有缺口而当前页没有。
+- 前置状态：一次尝试的历史在某页存在 `Gap` / 截断 / 形状校验失败；或较早页有缺口而当前页没有；或所选尝试的
+  最早历史回执序号大于 1（开头已丢失，翻页看不到）。
 - 触发：逐页读取全部 `records`。
-- 必须成立：`incomplete` 表示「本页观测到历史无法完整呈现」（本页投影时出现 `Gap` / 截断 / 形状校验失败），
-  不是整次尝试的完整性结论；Cloud 不从单页断言整次完整；前端在读齐全部页且各页都无 `incomplete` 前保持
-  「完整性未知」，任一页有即整体不完整；`hasMore` 表示「还有更早一页可读」，与 `incomplete` 独立；响应内
-  `records` 按外层 `sequence` 升序，旧尝试的最终回答只能从读齐的 `records` 重放，不从尚未读齐的页提前推定。
+- 必须成立：`incomplete` 表示「本页观测到历史无法完整呈现」（本页投影时出现 `Gap` / 截断 / 形状校验失败，或
+  所选尝试的最早历史回执序号大于 1），不是整次尝试的完整性结论；Cloud 不从单页断言整次完整；前端在读齐
+  全部页且各页都无 `incomplete` 前保持「完整性未知」，任一页有即整体不完整；`hasMore` 表示「还有更早一页
+  可读」，与 `incomplete` 独立；响应内 `records` 按外层 `sequence` 升序，旧尝试的最终回答只能从读齐的
+  `records` 重放，不从尚未读齐的页提前推定。
 - 禁止结果：首页无缺口即宣称整次历史完整；旧尝试最终回答从第一页推断；`incomplete` 与 `hasMore` 语义混淆。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| `incomplete` 只在观测到缺口的页为真，无缺口的页不为真 | 真实 PostgreSQL：缺口在较早页，首页 `incomplete` 为假 | Missing |
-| 读齐全部页且各页无 `incomplete` 前，前端不宣称整次完整 | 前端测试：只读首页时完整性未知，读齐后确定 | Missing |
-| 旧尝试最终回答不从尚未读齐的页提前推定 | 前端测试：旧尝试 `records` 未读齐时不渲染最终回答 | Missing |
+| `incomplete` 只在观测到缺口的页为真，无缺口的页不为真 | `TestWorkflowNodeSessionReadReportsAGapOnlyOnThePageThatObservesIt` 逐页断言：缺口之上的页与缺口之下的页 `incomplete` 为假，跨越缺口的页为真；`ReportsANodeGapRecordAsIncomplete` 与 `ReportsATruncatedRecordAsIncomplete` 也证明不含该记录的页不为真 | Covered |
+| 读齐全部页且各页无 `incomplete` 前，前端不宣称整次完整 | [视图测试][view] 的 `keeps a gap any page observed` 证明多页合并保留任一页的缺口，[面板测试][panel] 只渲染已加载页并给出「可能不完整」告示。尚缺「只读首页时完整性未知」的直接断言：当前面板没有单独表达完整性未知的文案 | Partial |
+| 旧尝试最终回答不从尚未读齐的页提前推定 | 视图只从已加载页重建对话，`hasMore` 时提供「加载更早的记录」，面板渲染的回答逐行来自 `records`。尚缺「未读齐时不渲染最终回答」的直接断言 | Partial |
 
 - 决策依据：D1、D4，不变量 6。
 
@@ -230,8 +238,13 @@ PostgreSQL 上的证据。`output` / `sessionEndReason` 的语义由 cloud#182�
 
 | 义务 | 所需直接证据 | cloud 侧状态 |
 | --- | --- | --- |
-| 读取前后节点状态、执行行与回执不变 | 真实 PostgreSQL：读取前后比较 `node_states` 与 `node_event_receipts` | Missing |
-| 反复翻页幂等，不产生命令或执行工作项 | 真实 PostgreSQL：翻页后无 `thread_commands` / `execution_work` 新增 | Missing |
-| 不隐式开启新对话或 HITL | 契约测试：路由只读，无命令副作用 | Missing |
+| 读取前后节点状态、执行行与回执不变 | [读取 DB 用例][db] 的 `TestWorkflowNodeSessionReadIsReadOnly`：两次成功读取、两次等价重复与两个失败请求前后，完整比较 `workflow_runs.node_states`、`node_executions` 与 `node_event_receipts` 的 JSON | Covered |
+| 反复翻页幂等，不产生命令或执行工作项 | 同一用例同时比较 `thread_commands` 与 `execution_work` 的计数 | Covered |
+| 不隐式开启新对话或 HITL | 同一用例证明读取没有新增命令或工作项（隐式开启新对话或 HITL 都会留下它们）；[路由契约测试][router] 证明该路径只有一条无 action 的公开 GET | Covered |
 
 - 决策依据：D2，不变量 2，根决策 D2 的 `interactive` 门禁，#296 D4 的「只读不隐式注入」。
+
+[db]: https://github.com/ora-space/cloud/blob/63034cfcad687845ee9fdc498449f481e6eb0f9e/internal/core/workflow_node_session_db_test.go
+[router]: https://github.com/ora-space/cloud/blob/63034cfcad687845ee9fdc498449f481e6eb0f9e/internal/api/router/router_test.go
+[view]: https://github.com/ora-space/cloud/blob/63034cfcad687845ee9fdc498449f481e6eb0f9e/frontend/src/features/workflows/run/run-node-session-view.test.ts
+[panel]: https://github.com/ora-space/cloud/blob/63034cfcad687845ee9fdc498449f481e6eb0f9e/frontend/src/features/workflows/run/run-node-session.test.tsx

@@ -60,8 +60,10 @@
 拒绝 `human` 与 `interactive: true`）。[loop 与 loopExit 执行决策](../../decisions/cloud/workflow/20261025-loop-and-loop-exit-execution.md)
 于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[变量聚合执行决策](../../decisions/cloud/workflow/20261025-variable-aggregator-execution.md)
 与[iteration 执行契约](../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[工作流节点会话读取决策](../../decisions/cloud/workflow/20261026-workflow-node-session-read.md)
-于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`（cloud#182 已于 2026-10-27 合并；读取实现由运行
-[ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 承接，其 PR 待本规格合入后合并）。Cloud 侧调度器已随根决策落地：运行从 `pending` 进入真实执行，节点状态由
+于 2026-10-26 经 owner 批准；实现已由运行
+[ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 经 [cloud#195](https://github.com/ora-space/cloud/pull/195)（merge
+`63034cf`）合入 main，ADR 与核心用例同步为 `implemented`，cloud 侧义务按合并后的真实 PostgreSQL 用例、路由契约测试与前端渲染测试
+逐条登记 `Covered` / `Partial`，缺口写在对应行内。Cloud 侧调度器已随根决策落地：运行从 `pending` 进入真实执行，节点状态由
 调度器与真实会话写入，模拟 trace 按根决策排除在验收之外；执行类义务的直接证据登记在各用例里，按 `Covered` / `Partial` 如实
 标注，仍为 `Partial` 的部署级与真实执行侧路径由[承接事项 #665](https://github.com/ora-space/circus/issues/665) 继续跟踪。
 门禁类义务（图校验、启动门禁、槽位解析）的实现在
