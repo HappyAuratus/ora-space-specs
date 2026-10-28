@@ -7,6 +7,12 @@
 架构边界和不变量来自
 [已登录用户自助创建租户，租户成为协作空间的隐式容器](../../../decisions/cloud/tenancy/0-self-serve-tenant-provisioning.md)。
 
+## 小队定向加入
+
+[定向加入与撤权用例](targeted-joining-and-revocation.md)依据
+[approved 后续 ADR](../../../decisions/cloud/tenancy/20261027-squad-targeted-joining-and-inviter-revocation.md)，
+新增义务均为 Missing。既有邀请、租户隔离测试的 Covered 不表示新原子编组、空操作、来源及签发者失权规则已覆盖。
+
 ## 阅读与维护规则
 
 - 核心用例按业务风险组织，不按 Go package、单元测试或集成测试组织。

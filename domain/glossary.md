@@ -28,7 +28,7 @@
 
 领域决策见[小队](../decisions/cloud/squad/0-workspace-scoped-human-agent-squads.md)与
 [定向加入](../decisions/cloud/tenancy/20261027-squad-targeted-joining-and-inviter-revocation.md)，
-各自的 status 决定其是否已批准或实现，术语存在不表示能力已开放。
+两份决策均为 approved（尚待实现与直接验证），术语存在不表示能力已开放。
 
 ## Desktop Cloud Connection
 
