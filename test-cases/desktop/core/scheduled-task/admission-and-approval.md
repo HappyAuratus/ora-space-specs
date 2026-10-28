@@ -75,11 +75,11 @@
 ## Cloud Must Stay Visible But Inactive Until Its Real Adapter Exists
 
 - 风险：Desktop 用本地 timer、mock success 或本机凭据冒充 Cloud 执行。
-- 前置状态：Cloud Web 首期已有独立 implemented ADR 与真实执行/取消链，但 Desktop Cloud 创建、展示与历史入口仍待后续决策。
+- 前置状态：Cloud Web 首期已有独立 implemented ADR 与真实执行/取消链，但 Desktop Cloud 管理扩展 ADR 尚未获批。
 - 触发：用户查看 Cloud 说明或尝试保存 Cloud task。
 - 必须成立：当前 Desktop UI 可解释 Cloud，但不能激活或保存为 execution owner；backend 同样拒绝请求；不会产生模拟 run。
-  Cloud Web 的独立入口不受此 Desktop 限制；满足 Cloud 真实链条件不等同 Desktop 自动解锁。
-- 禁止结果：仅禁用按钮却允许直接 IPC 保存，或失败后回退 local。
+  Cloud Web 的独立入口不受此 Desktop 限制；满足 Cloud 真实链条件不等同 Desktop 自动解锁，必须先另立 Desktop Cloud 管理 ADR 并获批。
+- 禁止结果：仅禁用按钮却允许直接 IPC 保存，或失败后回退 local；因通用 Workflow 执行链已交付而自动开放定时 Workflow。
 - 决策依据：根决策 D3、D5 与不变量 1、5、7。
 
 ### 验证义务与证据
@@ -87,6 +87,7 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | application 拒绝 Cloud definition | `ora_application::scheduled_task::tests::cloud_definitions_are_rejected_while_cloud_is_unavailable` | `Covered` |
-| Desktop 显示 Cloud 说明但所有保存/激活入口不可用 | 尚无直接证据 | `Missing` |
+| Desktop Cloud 管理扩展获批前，显示说明但所有保存/激活入口不可用 | 尚无直接证据 | `Missing` |
+| 通用 Workflow 链路就绪不自动开放定时 Workflow | 尚缺直接拒绝未批准 Workflow 定时目标的测试；Prompt 真实栈证据不能代替该边界验证 | `Missing` |
 | Cloud 启用前具备真实 issue-bound IssueRun/Thread、资格复查和 60 分钟取消写入者 | [Cloud 核心用例](../../../cloud/scheduled-task/admission-and-session-bounds.md) 的直接 integration 与 cluster Compose 真实栈证据；只证明 Cloud Web 首期，不能证明 Desktop 入口已交付 | `Covered` |
 

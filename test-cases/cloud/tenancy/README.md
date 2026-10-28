@@ -14,6 +14,13 @@
 | [自助创建](self-serve-provisioning.md) | 创建事务、幂等及成员租户排序 |
 | [租户即空间及私有加入](tenant-space-and-joining.md) | 唯一成员权威、最后管理员、邀请与审批的既有义务 |
 | [成员加入来源与链接预检](member-entry-provenance-and-link-preview.md) | approved 后续契约：匿名边界、空操作不消费、来源原子性及升级；新增义务均为 Missing |
+| [定向加入与撤权](targeted-joining-and-revocation.md) | approved 小队定向加入后续契约：原子编组、空操作不消费、来源区分、签发者失权与升级；新增义务均为 Missing |
+
+## 小队定向加入
+
+[定向加入与撤权用例](targeted-joining-and-revocation.md)依据
+[approved 后续 ADR](../../../decisions/cloud/tenancy/20261027-squad-targeted-joining-and-inviter-revocation.md)，
+新增义务均为 Missing。既有邀请、租户隔离测试的 Covered 不表示新原子编组、空操作、来源及签发者失权规则已覆盖。
 
 ## 阅读与维护规则
 
