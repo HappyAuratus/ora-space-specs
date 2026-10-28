@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Cloud Scheduled Task 接纳受任务对话的准入与暂停约束，被拒时记 `task_paused` 或 `task_handoff_pending`
@@ -10,10 +10,10 @@ status: approved
 记 `failed / task_paused`；有先前接收、仍在等待的消息时，记 `failed / task_handoff_pending`。两种情况都不
 创建 IssueRun，不重试，也不排队等待对话恢复。
 
-本 ADR 处于 `approved`：失败原因码（D2）与 waiting 消息直接拒绝（D2 末段）已经评审确认，实现尚未合入
-main。核心测试用例见 [任务对话准入用例](../../../test-cases/cloud/scheduled-task/task-conversation-admission.md)，
-义务初始 `Missing`。涉及 Cloud 的定时任务接纳事务、`scheduled_task_occurrences.failure_reason` 的取值集合
-与任务历史对两个新原因的展示文案；任务对话、直接输入入口、manual run 与 Workflow 路径不变。
+本 ADR 处于 `implemented`：接纳预检、两个失败原因与任务历史文案已随 [cloud#193](https://github.com/ora-space/cloud/pull/193)
+合入 main，实现与批准的决策一致，没有偏离。核心测试用例见 [任务对话准入用例](../../../test-cases/cloud/scheduled-task/task-conversation-admission.md)，
+证据状态以该用例为准。涉及 Cloud 的定时任务接纳事务、`scheduled_task_occurrences.failure_reason` 的取值
+集合与任务历史对两个新原因的展示文案；任务对话、直接输入入口、manual run 与 Workflow 路径不变。
 
 ## 问题
 
@@ -93,3 +93,11 @@ waiting 消息选择直接拒绝而不是让定时运行排到消息之后：排
 ## 本决策未解决的问题
 
 无。
+
+## 落地结果
+
+- 接纳预检、原因集与历史展示（第 1、2 步）：[cloud#193](https://github.com/ora-space/cloud/pull/193)，cloud
+  commit `09982ab3`。定时接纳与直接输入共用同一项对话准入判断，直接输入的 `409` 行为不变；迁移 `0072`
+  只放宽 `failure_reason` 的取值约束，既有行不改写。三种对话状态的领域测试、对照接纳、迁移升级与
+  重放测试、前端文案测试随同一 PR 合入，逐项证据登记在核心用例中。
+- 与 approved 决策没有偏离。
