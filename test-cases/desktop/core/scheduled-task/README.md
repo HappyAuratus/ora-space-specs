@@ -9,8 +9,8 @@
 - 用例按调度身份、授权、执行隔离和历史事实组织，不按 crate 或页面组织。
 - `Covered` 仅表示已有直接证据；定义层或 repository 层只覆盖部分义务时标为 `Partial`。
 - Cloud Web 首期已有独立 [implemented ADR](../../../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)
-  与[核心用例](../../../cloud/scheduled-task/admission-and-session-bounds.md)；Desktop Cloud 创建与管理仍待后续决策，保持不可激活。
-- 根决策保持 `approved`。已有实现和历史验收不自动补足 manual、资格/截止及跨边界验证缺口；源码存在不等同直接测试通过。
+  与[核心用例](../../../cloud/scheduled-task/admission-and-session-bounds.md)；Desktop Cloud 管理与定时 Workflow 须分别另立扩展 ADR 并获批，不属于当前承诺；Desktop Cloud 保持不可保存、不可由本地 timer 代跑。
+- 当前落地范围为 Desktop local + Cloud Web Prompt。该范围满足实现与验证条件后即可转为 `implemented`，不等待两项扩展；不将未来扩展的用例当作当前落地义务。根决策目前保持 `approved`。已有实现和历史验收不自动补足 manual、资格/截止及跨边界验证缺口；源码存在不等同直接测试通过。
 
 | 文件 | 覆盖的风险面 |
 | --- | --- |
