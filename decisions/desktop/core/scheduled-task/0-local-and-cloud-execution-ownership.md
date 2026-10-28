@@ -10,11 +10,11 @@ status: approved
 旧任务。`local` 只在 Desktop 进程运行时触发；`cloud` 由服务端拥有未来触发，因此 Desktop 关闭后仍可运行。两种模式
 共享任务定义、occurrence 和运行状态的语义，各自持久化，不把浏览器计时器、内存状态或示例模板当作执行事实。
 
-本 ADR 保持 `approved`：它冻结共用语义、本地模式与分阶段边界，不能用本地 MVP 或独立 Cloud 首期的完成替代
+本 ADR 的当前承诺范围为 Desktop local + Cloud Web Prompt（首期），保持 `approved`：不能用本地 MVP 或独立 Cloud 首期的完成替代
 本文全部义务的实现与验证。本地 manual occurrence、运行资格与截止闭环及部分跨边界验证仍需补齐。
 [Cloud 首期根决策](../../../cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md) 已为 `implemented`，
 其 D8 明确首期仅 Web 管理：真实执行与取消链就绪是 Desktop 解锁的必要条件，不能据此推导 Desktop 已开放 Cloud。
-Desktop Cloud 入口与展示仍需后续决策；Cloud 触发已发布 Workflow 仍须另立 ADR，本文不宣称该能力已经交付。
+Desktop Cloud 管理（创建、展示、历史）与 Cloud 定时触发已发布 Workflow 都属于未来扩展，须另立 ADR 并获批，不属于本文已承诺但未交付的范围。当前范围的实现与直接验证齐全后，本文即可转为 `implemented`，不等待这两项扩展。
 
 ## 决策
 
@@ -86,11 +86,11 @@ ora-space/circus#60 / ora-space/circus#67 的 Server Workflow 执行链，也不
 
 Cloud 定时运行的默认超时为 60 分钟；超时取消依赖 Cloud 侧的取消写入者。该写入者就绪前，`cloud` 不得成为可选执行归属。
 
-Cloud 触发已发布 Workflow 是第二阶段能力，等待 ora-space/circus#67 的结论及 Workflow server 执行链落地后再提出。该阶段每次触发按
+Cloud 触发已发布 Workflow 必须先另立扩展 ADR 并获批；通用 Workflow server 执行链落地不自动开放定时 Workflow。扩展获批后仍须遵循以下共用语义：每次触发按
 任务所有者的个人执行器槽位映射解析执行器；不得复用其他用户的映射。所需槽位缺失时，该次触发明确失败并通知任务所有者。
 
 Cloud 首期已交付 Web 管理与真实无头单会话链路。按独立 Cloud 根决策 D8，Desktop 的 `cloud` 创建、展示与历史仍待
-后续决策；当前可以展示模式说明，但必须标为不可用，不能保存为执行归属、不能用本地 timer 代跑，也不能展示模拟成功。
+另立扩展 ADR 并获批；当前可以展示模式说明，但必须标为不可用，不能保存为执行归属、不能用本地 timer 代跑，也不能展示模拟成功。
 
 两端只对齐展示用的字段名与状态名，不共享 ID、存储或同步协议；Desktop 任务列表是否合并展示 Cloud 任务、运行历史
 能否跨端可见、Cloud 任务的账号与归属，均随 Cloud 决策一并定案。
@@ -132,8 +132,7 @@ local 不记录账号身份或 Cloud 授权引用。保存 local 任务时检查
 时再次检查，失败则该 occurrence 以明确失败结束，不换用其他模型。Cloud 首期保存及每次接纳的资格规则由
 [Cloud 根决策 D5](../../../cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md#d5保存与每次接纳都校验资格失败明确到原因不回退不重试)
 细化：目标和模型在保存与接纳时复查，同意在保存/启用时校验，撤销即停用；不回退 local，不涉及 Workflow 执行器槽位。Cloud 的创建者、
-Workspace、模型凭据、费用与无头会话权限细节由独立 Cloud ADR 定义；第二阶段 Workflow 执行再继承
-ora-space/circus#67 的最终契约。
+Workspace、模型凭据、费用与无头会话权限细节由独立 Cloud ADR 定义；定时 Workflow 的资格与执行契约须由另立且获批的扩展 ADR 定义。
 
 local 首版唯一的无人值守工具批准策略是 `full_auto_in_worktree`：只在独立 worktree 中运行，运行时工具调用全自动批准。
 创建任务时必须以清晰风险说明取得用户显式同意，并将策略名与同意时间随任务持久化；说明至少覆盖 worktree 不是沙箱、
@@ -179,9 +178,7 @@ agent 仍可执行任意命令并读写 worktree 外文件、可使用本机凭�
 - 更细的无人值守工具批准策略取值，以及与现有 Session approval 行为的迁移关系；当前 worktree 上限见 D4。
 - Cloud 首期的 API、存储、调度、通知和账号/费用归属已由独立 Cloud 根决策细化；跨任务配额、外发通知、
   Desktop 管理等未解决范围以该决策为准，不能继续把已经交付的 Cloud 首期整体列为未实现。
-- Cloud 触发已发布 Workflow 的目标冻结、Start 参数校验及执行器槽位映射，作为第二阶段能力，等待
-  ora-space/circus#67 及 Workflow
-  server 执行链落地后另立 ADR。
+- Desktop Cloud 管理与 Cloud 定时触发已发布 Workflow 不属于当前承诺。未来有需求时分别另立 ADR 并获批，明确管理入口、目标冻结、Start 参数校验及执行器槽位映射等边界；通用 Workflow 执行链交付不是批准这些扩展的依据。
 - 本地与 Cloud 任务互不同步；Cloud 首期只管理租户内 Cloud 任务，不读取本地历史，Desktop 不合并展示 Cloud 任务。
   Desktop 后续管理入口与跨执行位置复制任务携带的数据范围仍需后续决策；本地只存本机、不上传、不要求登录的边界不变。
 - 操作系统后台服务、开机自启及显式 catch-up。
@@ -194,14 +191,13 @@ agent 仍可执行任意命令并读写 worktree 外文件、可使用本机凭�
 超过 10 分钟记 `missed` 且不执行、10 分钟内迟到照常执行；manual run 不冒充计划触发；运行中到期产生
 `skipped_busy`；达到固定 4 项的全局并发上限时产生 `skipped_capacity`；每次 Scheduled Run 新建会话而不复用已有会话；
 本地运行在独立 worktree 中进行且不改动用户当前工作区，
-非 Git 目标不能保存为 active；任务编辑冻结旧运行；Cloud 能力不足时不能激活；授权失效明确失败且不自动回退；禁用/删除保留历史；本地任务及其运行
+非 Git 目标不能保存为 active；任务编辑冻结旧运行；Desktop Cloud 扩展获批前不能激活；授权失效明确失败且不自动回退；禁用/删除保留历史；本地任务及其运行
 历史不上传、不跨设备同步且不要求登录；失败、超时与 `missed` 分别通知；失败与超时均不自动重试；每个任务的历史保留最近
 100 条运行记录并从最旧删除，仍带保留 worktree 链接的运行例外（受 D4 上限约束，链接清除后恢复可裁剪）。
 还需覆盖：没有 `full_auto_in_worktree` 显式同意时不接纳运行；仅改提示词或计划时间不要求重新同意、目标项目或策略变更
 要求重新同意；策略撤销后任务自动停用且既有运行事实不被改写；固定 60 分钟超时取消运行并记录 `timeout`；无改动 worktree
 在运行后删除、有改动 worktree 保留且可从历史打开或丢弃；Cloud 首期 Prompt 复用绑定 issue 下的 IssueRun / Thread 并校验
-Project、模型和无人值守授权，不解析 Workflow 或执行器槽位；Cloud 取消写入者未就绪时不可激活。第二阶段 Workflow 的
-槽位缺失时，该次运行失败并通知任务所有者。
+Project、模型和无人值守授权，不解析 Workflow 或执行器槽位；Cloud 取消写入者未就绪时不可激活。定时 Workflow 扩展 ADR 获批后，才按 D5 的共用语义补充槽位缺失时明确失败并通知任务所有者的核心用例；该扩展不构成当前落地验收义务。
 
 ## 落地顺序
 
@@ -211,8 +207,8 @@ Project、模型和无人值守授权，不解析 Workflow 或执行器槽位；
 3. **desktop / local scheduler**：用后端 scheduler 重建 active local jobs，落实 occurrence 幂等、迟到/离线
    missed、独立 worktree 执行、全局并发上限、`skip_if_running` 和真实 ExecutionTarget adapter；没有真实
    adapter 时不得把模拟运行作为 MVP 完成。
-4. **cloud / first phase**：独立 Cloud 根决策已定义并交付无头 Prompt 单会话的 API、权限、持久化与 Web 管理，
-   不以 ora-space/circus#60 / ora-space/circus#67 为前置条件。Desktop 解除 `cloud` 禁用的必要条件已满足，
-   但其创建、展示与历史入口仍须后续决策，不能把 Web 首期验收等同 Desktop 入口已交付。
-5. **cloud / second phase**：ora-space/circus#67 及 Workflow server 执行链落地后，另立 ADR 支持 Cloud 触发已发布 Workflow，并按
-   任务所有者的个人执行器槽位映射解析执行器。
+4. **cloud / Web Prompt**：独立 Cloud 根决策已定义并交付无头 Prompt 单会话的 API、权限、持久化与 Web 管理。
+   该交付不自动开放 Desktop Cloud 管理或定时 Workflow；扩展 ADR 获批前 Desktop cloud 继续不可保存，不由本地 timer 代跑。
+5. **当前范围验收与状态落地**：补齐 local manual occurrence、每次资格复查、完整截止与取消闭环及跨边界直接验证。
+   Desktop local + Cloud Web Prompt 的当前承诺满足生命周期条件后，同步最终实现和核心用例，将根 ADR 转为 implemented。
+   Desktop Cloud 管理与定时 Workflow 不属于本轮落地步骤；未来须另立 ADR 并获批，本篇状态不等待两项扩展。
