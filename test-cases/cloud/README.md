@@ -11,6 +11,7 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | issue-run | [无删除操作的 D8 显式接管](issue-run/d8-residual-without-delete-operation.md) | 默认扩权、错绑与重复责任、缺失来源被伪造、升级回放失真、终止后误删数据、原任务恢复丢失成果 |
+| issue-run | [交付结算与执行未受理证明](issue-run/delivery-execution-settlement-and-non-acceptance.md) | 截止伪造终态、受理与围栏竞态、错绑原实例、接管前解除责任、迟到事实冲突、存量与混合版本丢失保护 |
 
 ## 已批准的多人协作运行时控制
 
