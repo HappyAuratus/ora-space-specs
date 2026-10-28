@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 工作流节点会话读取：按尝试有界读取节点会话记录，输出与结束原因按 cloud#182 口径分开呈现
@@ -14,8 +14,12 @@ status: approved
 终态证据的序号权威排除、不由内容形状判定；运行中零历史回执、终态无历史、非 agent 节点各有真实空态，分页与
 截断都有显式状态，不用空列表或静默截断掩盖数据缺失。
 
-**状态与影响面**：本文为 `approved`，方向已经 owner 批准（ora-space/circus#691）；cloud#182 已合并，读取实现由
-运行 [ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 落地。涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
+**状态与影响面**：本文为 `implemented`，方向已经 owner 批准（ora-space/circus#691），实现由运行
+[ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 经
+[cloud#195](https://github.com/ora-space/cloud/pull/195) 合入 cloud main（merge `63034cfcad687845ee9fdc498449f481e6eb0f9e`，
+owner 复审 head `9fd91a3d` 通过）；`output` / `sessionEndReason` 的分离由先行合并的 cloud#182 提供。`implemented` 不表示全部边界证据为
+`Covered`：完整证据矩阵与明确承接的缺口见[核心用例](../../../test-cases/cloud/workflow/node-session-read.md)。
+涉及 cloud 的公开读取路由与 OpenAPI 新增接口，以及前端
 节点详情的会话渲染。**兼容边界**：只新增接口，不改 `node_executions` / `node_event_receipts` 的持久化形状与
 既有约束，不新增迁移；`nodeStates` 的 `output` / `sessionEndReason` 分离由 cloud#182 实现，本文只消费这
 两个字段、不重新定义。**行为变化**：agent 节点详情从「只显示 `{"reason":...}`」变为「输出与结束原因分开、完整
@@ -90,13 +94,14 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
 分页、计数、游标、空态都作用在「历史回执」这个集合上：终态回执被跳过，不计入 `limit`、不产生 `hasMore`、
 不参与 `nextBefore`。
 
-**为什么必须有界分页、且每页要按字节限界**：接管路径只限制单批 64 条、单条 256 KiB，从不限制一次会话的
+**为什么必须有界分页、且每页要按字节限界**：接管路径只限制单批 64 条、单条 `record` 256 KiB，从不限制一次会话的
 条数或总字节；若公开 GET 一次返回全部记录，长会话就形成无界响应。分页把每次 GET 都限定在单页内。但
 `limit=200` × 单条允许的 256 KiB 理论上单页可到 50 MiB，所以单页还要一个字节预算 `maxPageBytes`（取 4 MiB，
 约 16 条最大记录或 100 条 40 KiB 记录，足够一屏，也远小于 `SessionHistory` 的 32 MiB 全量上限）：一页在
-条数或字节任一先触顶处停止。字节预算按回执正文逐条累计，并在**加入下一条之前**判定：一条回执要么整条进本页、
-要么整体留到下一页，不返回半条。所以跨过预算的那一条仍计入本页，单页正文上限是 `maxPageBytes` 加上单条上限
-（4 MiB + 256 KiB），仍有界。这样单次响应无论单条多大都有界。**不需要**「整次会话 32 MiB 总上限」：分页
+条数或字节任一先触顶处停止。字节预算按回执 `event` 的字节数逐条累计，并在**加入下一条之前**判定：一条回执
+要么整条进本页、要么整体留到下一页，不返回半条。所以跨过预算的那一条仍计入本页，单页上限是 `maxPageBytes`
+加上单条回执 `event` 的字节数上限（`event` 包住 ≤ 256 KiB 的 `record` 与可选的有界投影），仍有界；这样单次
+响应无论单条多大都有界。**不需要**「整次会话 32 MiB 总上限」：分页
 已经逐页限界，客户端按游标逐段展开即可；`SessionHistory` 的 413 是「一次全量读取超限」的失败信号，与这里的
 分页读取语义不同，不复用它的截断/413 态。`incomplete` 与分页的 `hasMore` 是两回事：`hasMore` 表示「还有更早
 一页可读」，`incomplete` 表示「本页观测到历史无法完整呈现」。**`incomplete` 是本页观测，不是整次尝试的完整性
@@ -105,8 +110,8 @@ historySequence?, visibleText?, visibleTextTruncated?}`，`record` 是 HistoryRe
 最终回答只能从读齐的 `records` 重放得到，不从尚未读齐的页提前推定。
 
 **分页游标规则固定，不能漏记录**：`nextBefore` 固定为本页**最早一条考察过**的历史回执外层 `sequence`（取页
-窗口降序取回、升序响应后的第一行）。「考察过」指进了本页窗口的历史回执，包括形状不合法、计入 `incomplete`
-而不进 `records` 的行。没有形状不合法行时，它就是本页最早一条已返回记录；本页有形状不合法行时它仍指向最早
+窗口升序后的第一行）。「考察过」指进了本页窗口的历史回执，包括形状不合法、计入 `incomplete`
+而不进 `records` 的行。本页窗口内没有形状不合法行时，它就是本页最早一条记录；有形状不合法行时它仍指向最早
 考察过的那一行（该页同时标 `incomplete`）。下一页请求 `before=<nextBefore>` 取 `sequence < before` 的历史回执，
 它既不重复考察同一行，也不会因为整页没有可返回记录而没有游标；这样每条记录都被后续页面覆盖（记录序号 1..5，
 首页 `limit=2` 取最近两条、响应返回 4、5 → `nextBefore=4` → 下页响应返回 2、3；再下页返回 1，不漏）。前端首页
@@ -204,7 +209,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 | **在途、零历史回执** | 有执行行、`result` 为空、`node.attempt == execution.attempt` 且 `node.status` 为 `running`、无历史回执 | 明确「等待首条记录」——会话在途，首条事件还没到，不是历史丢失 |
 | **终态、无历史** | 有执行行、零历史回执，且终态证据成立（`result` 非空；或 `node.attempt == execution.attempt` 且 `node.status` 终态） | 明确「历史不可用」（沿用 #296 的 `unavailable`）——该次会话已终止，只是没留下可回放的历史 |
 | **终态证据缺失（未知）** | 有执行行、`result` 为空、零历史回执、且无法按上述证明已终态（如 `node.attempt > execution.attempt` 却 `result` 为空的数据异常） | 明确「未知」，不当作在途也不当作完整 |
-| 有结果、缺记录 | 终态证据成立、历史回执不齐（本页或已读页观测到显式 `Gap` / `truncated` / 形状校验失败） | 展示结果与「历史不完整／不可用」，分别说明，不当作完整 |
+| 有结果、缺记录 | 终态证据成立、历史回执不齐（本页或已读页观测到显式 `Gap` / `truncated` / 形状校验失败，或所选尝试的最早历史回执序号大于 1） | 展示结果与「历史不完整／不可用」，分别说明，不当作完整 |
 | 非 agent 节点 | `output` / `condition` 等没有会话 | 明确「不适用」，不渲染空会话 |
 | 正常会话 | 有执行行、有历史回执、有/无终态证据 | 展示身份、记录、结果与分页状态 |
 
@@ -213,7 +218,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 会话超时 / 已取消」的零历史尝试误标成「等待首条」。只有 `result` 为空且节点仍停在该尝试且 `status == running`
 时才是在途；否则一旦有终态证据就判终态，证据都缺才标「未知」。这比整个 run 的 `running` 更精确，也与节点重试
 后「旧尝试已结算、新尝试在途」的多尝试并存事实一致。「有结果、缺记录」要有可验证判据（显式 `Gap` 或
-`truncated` 或形状校验失败），不能因为某页没读满就推断历史完整。这些状态位由读取接口返回，节点状态不新增
+`truncated` 或形状校验失败，或所选尝试的最早历史回执序号大于 1），不能因为某页没读满就推断历史完整。这些状态位由读取接口返回，节点状态不新增
 字段（仍是既有的 `status` / `output` / `sessionEndReason` / `error` 等）。`not_started` 与 `unavailable` 是不同事实（#296 D4 已
 这样区分），第二期释放后回看复用同一套状态。
 
@@ -224,7 +229,7 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
 3. 授权主体是租户成员 + workflow + 运行 + 节点，不接受 execution_id / session_id / 产物地址直读。
 4. 响应把「所选尝试的执行证据」（`execution`）与「节点当前状态」（`node`）分开；旧尝试不冒领最新 `output` / `sessionEndReason`。
 5. 历史回执与终态回执按已提交终态证据的序号权威区分：终态序号由 `result` 与 `last_event_sequence` 决定，内容形状只用于校验历史回执、不用于证明来源。
-6. 会话读取有界、分页：单页受条数与字节双上限约束（字节按回执正文逐条累计，跨过预算的那一条整条计入，单页正文不超过预算加单条上限），`nextBefore` 指向本页最早一条考察过的历史回执序号（含形状不合法、只计入 `incomplete` 的行）、`hasMore` 独立探测，游标绑定尝试，不漏记录、不静默截断。
+6. 会话读取有界、分页：单页受条数与字节双上限约束（字节按回执 `event` 的字节数逐条累计，跨过预算的那一条整条计入，单页正文不超过 `maxPageBytes` 加单条回执 `event` 的字节数上限），`nextBefore` 指向本页最早一条考察过的历史回执序号（含形状不合法、只计入 `incomplete` 的行）、`hasMore` 独立探测，游标绑定尝试，不漏记录、不静默截断。
 7. `output` 是最终可见回答（落 `output` 根），结束原因只在 `sessionEndReason`；两者由读取端分别呈现，`output` 不被清空。
 8. Cloud 对记录业务字段的解释限于最终回答归集的窄例外，完整会话记录按外层回执序号、携带内层回放序号原样透传。
 9. 未建立会话、等待首条记录、历史不可用、终态证据缺失（未知）、不适用是不同的空态，判据以所选尝试的终态证据（`result` 加上节点当前状态）与历史回执为准，`result` 为空不单独判在途，不用空列表掩盖数据缺失。
@@ -264,23 +269,28 @@ Node 不可达结算 `failed`（`node_unavailable`）、会话 turn 超时结算
   backfilled」），读取端对旧运行显示未知；若 owner 要求历史运行也能看到结束原因，按 #296 的归档回看一起决定，
   不在本期补造。
 
-## 落地顺序
+## 实现补充与偏离
 
-- **阶段 1（ADR 评审）**：本 ADR 以 `proposed` 提交 specs PR，只含正文，不碰 `test-cases/`（`proposed`
-  阶段不编写核心测试用例）。完成条件是 PR 已开、owner 开始评审，改动文件只有这一份 ADR。
-- **阶段 2（批准后补用例并合并）**：owner 批准后，在同一 PR 补 `test-cases/cloud/workflow/` 下的核心用例，
-  状态改为 `approved` 再合并。用例至少覆盖：按尝试读取不串会话、翻页游标绑定尝试、旧尝试不冒领最新输出、
-  终态序号权威排除、`nextBefore` 不漏记录、单页条数与字节双上限、显式不静默截断、授权拒绝跨节点/跨运行/
-  直读、输出与结束原因分开呈现、各空态按所选尝试的终态证据（`result` 与节点状态并取）真实呈现、`result` 为空
-  不误判在途（Node 不可达/会话超时/取消等 Cloud 终态路径）、`incomplete` 为本页观测且读齐前完整性未知、读取
-  纯只读不隐式开启新对话。完成条件是每条不变量都有对应用例或明确的 `Missing`，`decisions` 与 `test-cases`
-  目录镜像一致，PR 由 owner 合并。
-- **阶段 3（Cloud 实现，运行 [#720](https://github.com/ora-space/circus/issues/720)）**：新增公开读取路由、历史回执
-  筛选（终态序号排除）与分页、授权、前端节点详情接入会话渲染（消费 cloud#182 的 `output` /
-  `sessionEndReason`）。完成条件是真实 PostgreSQL 的读取
-  测试覆盖上述路径、OpenAPI 与前端生成物已同步、`task check` 全绿。
-- **阶段 4（状态同步）**：实现合并后由落地运行把本文改为 `implemented`，核对偏离、精简正文，并按最终实现
-  登记核心用例证据状态。
+以下一条在 approved 之后由实现与评审补齐，最终系统承诺以本节和 D4 为准：
+
+- **`incomplete` 多了第四条判据：所选尝试的最早历史回执序号大于 1**。回执由序号 1 起连续写入
+  （`takeOverThreadEvents` 只追加 `last_event_sequence + 1`），所以最早的历史回执不是 1 就说明开头已丢失；
+  而翻页看不到这件事——第一条下面没有可翻的页，最后一页会把「只是开始得晚」的历史读成完整。判据因此落在
+  所选尝试自身的最早历史回执序号上，由读取端逐页登记。它不改变 `incomplete` 的语义（本页观测到的历史无法
+  完整呈现），只是把观测面从本页扩到尝试的最早序号。approved 版只列了显式 `Gap`、`truncated` 与形状校验
+  失败三条，本条由运行 [#720](https://github.com/ora-space/circus/issues/720) 的实现补齐并写回 D4。
+
+## 落地与验证边界
+
+- **阶段 1–2（ADR 与核心用例）**：[specs#236](https://github.com/ora-space/specs/pull/236)（merge `0f6145f`）
+  把本文从 `proposed` 推到 `approved`，并补 `test-cases/cloud/workflow/node-session-read.md` 的核心用例。
+- **阶段 3（Cloud 实现）**：[cloud#195](https://github.com/ora-space/cloud/pull/195)（merge
+  `63034cfcad687845ee9fdc498449f481e6eb0f9e`，运行 [#720](https://github.com/ora-space/circus/issues/720)）
+  新增公开读取路由、终态序号排除与分页、授权、前端节点详情接入（消费 cloud#182 的 `output` /
+  `sessionEndReason`）；真实 PostgreSQL 读取测试、OpenAPI 与前端生成物随同合入，`task check` 全绿。
+- **阶段 4（状态同步）**：运行 [#749](https://github.com/ora-space/circus/issues/749) 把本文改为 `implemented`、
+  记录上述补充并登记核心用例证据；真实栈验收已在云 `63034cf` 上完成（证据记在 #720），验收直接证明的行把
+  真实栈运行登记为证据，未兑现的行在核心用例中如实保留 `Partial`。
 - **保持不变**：会话写入与结束/结算路径、`node_executions` / `node_event_receipts` 持久化形状与约束、
   `output` / `sessionEndReason` 的语义（由 cloud#182 定义）、非 agent 节点的 `output`、取消与释放的既有结算，
   以及 Controller 线上契约。
