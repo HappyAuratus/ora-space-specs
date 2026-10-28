@@ -27,3 +27,7 @@ Node 的实际文件、Git、Agent、Plugin 和资源操作放在 `specs/decisio
 
 [运行时控制同步交付决策](../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)为 `implemented`，定义 Cloud 场景下 Controller 的服务身份、派发许可、旧执行对账及强停协调义务。业务权限由 Cloud 决策拥有；本文仅导航，不建立第二份权限规则。继续遵守只拨出和过渡监听退役；完整联合故障矩阵仍有缺口，直接证据见[跨进程核心用例](../../test-cases/cloud/controller-integration/fenced-runtime-control-delivery.md)。
 
+[交付执行结算与未受理证明](../cloud/issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
+为 `approved`：它修改 `node-management` 根决策 D5 和 `session` 根决策 D4/D5 的未完成执行判定，
+仅在原身份未受理证明经 Cloud 持久接管后解除对应责任；其余 quiesce 与派发账本规则继续适用。
+

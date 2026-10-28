@@ -232,6 +232,15 @@ _Avoid_: 以没有回复或请求超时推断执行没有发生
 执行实例已承诺处理这次执行；它与 Agent 已产出回复是不同的事实。
 _Avoid_: 将连接、登记和真实回复统称为启动成功
 
+### Delivery Business Settlement（交付业务结算）
+
+Cloud 对一次交付停止业务等待的持久结论；它不表示 Node 已受理、完成或停止，也不证明资源已释放。
+
+### Execution Non-Acceptance Proof（执行未受理证明）
+
+执行端对精确原执行没有受理、并已持久阻挡其未来受理的证明；普通 Unknown 查询或缺少回报不构成该证明。
+责任分工见[交付执行结算与未受理证明](../decisions/cloud/issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)（`approved`）。
+
 ### Revision
 
 一次运行结束时经平台核验保存的成果。当前 Git 交付使用指向最终提交的不可变交付 ref 与会话历史，

@@ -30,9 +30,9 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| occurrence repository 具有 `(task_id, scheduled_at)` 唯一约束 | 尚未实现 | `Missing` |
-| application admission 重放返回同一 run 且不二次启动目标 | 尚未实现 | `Missing` |
-| Desktop 重启后重放仍不重复 | 尚未实现 | `Missing` |
+| occurrence repository 具有 `(task_id, scheduled_at)` 唯一约束 | `ora_db::repository::scheduled_run::tests::replay_returns_the_first_run_and_its_frozen_snapshot`、`missed_outcome_prevents_a_later_run_for_the_same_occurrence`（真实 SQLite 事务与冲突重放） | `Covered` |
+| application admission 重放返回同一 run 且不二次启动目标 | `ora_application::scheduled_task::admission_tests::replay_returns_the_original_application_admission_after_definition_changes` 直接证明返回原 run；尚缺 runtime 不二次启动目标的直接断言 | `Partial` |
+| Desktop 重启后重放仍不重复 | 尚缺关闭并重开数据库/进程后的调度重放测试；同一 pool 内重建 repository 不等同重启 | `Missing` |
 
 ## Late And Manual Occurrences Must Remain Distinct
 
@@ -48,8 +48,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 10 分钟边界两侧得到 run 与 `late_trigger` missed | 尚未实现 | `Missing` |
-| Desktop 离线恢复只记录有界 `app_not_running` missed 且不执行 | 尚未实现 | `Missing` |
-| manual occurrence 不占用计划 occurrence 的幂等身份 | 尚未实现 | `Missing` |
-| DST 跳过不补跑，回拨只接纳第一个 UTC 点，时区变化不改写已落盘 occurrence | 尚未实现 | `Missing` |
+| 10 分钟边界两侧得到 run 与 `late_trigger` missed | `ora_application::scheduled_task::admission_tests::ten_minute_boundary_admits_but_the_next_millisecond_records_missed` | `Covered` |
+| Desktop 离线恢复只记录有界 `app_not_running` missed 且不执行 | `ora_application::scheduled_task::offline_recovery_tests::offline_interval_records_only_its_latest_expired_point`、`a_point_inside_its_lateness_window_is_left_for_live_admission`；尚缺完整 runtime 恢复不执行过期点的直接测试 | `Partial` |
+| manual occurrence 不占用计划 occurrence 的幂等身份 | 尚无公开 manual command/API/UI 与独立身份实现，不能用计划 occurrence 重放测试替代 | `Missing` |
+| DST 跳过不补跑，回拨只接纳第一个 UTC 点，时区变化不改写已落盘 occurrence | 已有系统时区 calendar 求值代码，但尚无这些边界的直接测试 | `Missing` |
 

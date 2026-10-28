@@ -1,7 +1,9 @@
 # Cloud Scheduled Task 接纳的任务对话准入
 
 本文件登记 [任务对话准入决策](../../../decisions/cloud/scheduled-task/20261027-task-conversation-admission.md)
-的核心验证义务。实现尚未合入 main，义务如实标为 `Missing`；每项落地完成时按直接证据更新状态。
+的核心验证义务。接纳预检、两个失败原因与任务历史文案已随 [cloud#193](https://github.com/ora-space/cloud/pull/193)
+合入 main；证据以 cloud main [`09982ab`](https://github.com/ora-space/cloud/commit/09982ab350886b028cea8e0ed74a9a0abed7a43b)
+为准，测试文件路径相对 cloud 仓库根目录。8 项义务中 5 项 `Covered`、3 项 `Partial`。
 
 ## Admission Must Refuse While The Task Conversation Refuses Agent Input
 
@@ -22,10 +24,12 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 对话已暂停时到期，一次写成 `failed / task_paused`，不建 IssueRun，重复评估不变 | 尚未合入 main | `Missing` |
-| 有未解决的失败消息时到期，一次写成 `failed / task_paused`，不建 IssueRun，重复评估不变 | 尚未合入 main | `Missing` |
-| 有 waiting 消息时到期，一次写成 `failed / task_handoff_pending`，不建 IssueRun，waiting 消息仍在队首 | 尚未合入 main | `Missing` |
-| 对话正常时同一夹具照常接纳（对照） | 尚未合入 main | `Missing` |
+| 对话已暂停时到期，一次写成 `failed / task_paused`，不建 IssueRun，重复评估不变 | `integration/scheduled_task_admission_db_test.go`：`TestScheduledTaskPausedConversationRejectsAdmission`（`paused_run_id` 非空，连续两次评估后恰有一条 `failed / task_paused` occurrence，`run_id` 为空，没有以该任务为触发的 IssueRun；去掉预检时记 `admitted` 并建出运行，测试失败） | `Covered` |
+| 有未解决的失败消息时到期，一次写成 `failed / task_paused`，不建 IssueRun，重复评估不变 | 同文件：`TestScheduledTaskFailedMessageRejectsAdmission`（先前一条 `failed` 消息，断言同上） | `Covered` |
+| 有 waiting 消息时到期，一次写成 `failed / task_handoff_pending`，不建 IssueRun，waiting 消息仍在队首 | 同文件：`TestScheduledTaskWaitingMessageRejectsAdmission`（断言同上，且 `seq=1` 的消息仍为 `waiting`） | `Covered` |
+| 对话正常时同一夹具照常接纳（对照） | 同文件：`TestScheduledTaskAdmissionCreatesARun`（同一 `scheduledTaskStore` / `seedEnabledScheduledTask` 夹具、没有任务对话，记 `admitted` 并建出一个 IssueRun） | `Covered` |
+| 拒绝不改写任务对话的消息、暂停点与队列顺序 | `TestScheduledTaskWaitingMessageRejectsAdmission` 只断言 waiting 消息未被推进；已暂停与有失败消息两种情况没有断言 `paused_run_id` 与失败消息在拒绝后保持不变 | `Partial` |
+| 对话恢复后，下一个到期点按正常流程接纳，被拒的到期点不补跑 | 只有对照 `TestScheduledTaskAdmissionCreatesARun` 证明接受输入的对话不影响接纳；没有测试走完「被拒 → 恢复对话 → 下一个到期点接纳」，也没有断言恢复后不补跑被拒的到期点 | `Partial` |
 
 ## Scheduled Admission And Direct Input Must Agree On The Conversation Gate
 
@@ -42,7 +46,7 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 两条路径共用同一准入判断，拒绝原因同名 | 尚未合入 main | `Missing` |
+| 两条路径共用同一准入判断，拒绝原因同名 | 定时一侧：上面三个 `TestScheduledTask*RejectsAdmission` 分别记 `task_paused`、`task_paused`、`task_handoff_pending`。直接输入一侧：`internal/core/task_conversation_append_db_test.go`：`TestTaskConversationLegacyAppendRejectsHandoffAndPause`（暂停、失败消息为 `409 task_paused`，先前消息待交接为 `409 task_handoff_pending`）。两侧各自证明了同名原因码；但没有测试在同一对话状态上同时驱动两条路径，日后只在一侧增加拒绝条件时不会有测试失败 | `Partial` |
 
 ## History Must Point Conversation Refusals At The Task Conversation
 
@@ -57,4 +61,4 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 两个原因在任务历史中展示为任务对话说明 | 尚未合入 main | `Missing` |
+| 两个原因在任务历史中展示为任务对话说明，其余原因保持原码 | `frontend/src/features/scheduled-tasks/scheduled-task-history.test.tsx`：`points a task conversation refusal at the conversation instead of a raw code`（两条说明文案出现，原始 `task_paused` 不出现）、`keeps other failure reasons as their code`（`model_unavailable` 仍显示原码） | `Covered` |

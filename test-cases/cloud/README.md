@@ -11,6 +11,7 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | issue-run | [无删除操作的 D8 显式接管](issue-run/d8-residual-without-delete-operation.md) | 默认扩权、错绑与重复责任、缺失来源被伪造、升级回放失真、终止后误删数据、原任务恢复丢失成果 |
+| issue-run | [交付结算与执行未受理证明](issue-run/delivery-execution-settlement-and-non-acceptance.md) | 截止伪造终态、受理与围栏竞态、错绑原实例、接管前解除责任、迟到事实冲突、存量与混合版本丢失保护 |
 
 ## 已批准的多人协作运行时控制
 
@@ -41,7 +42,9 @@
 于 2026-10-22 经 owner 批准，核心用例同批建立，义务全部为 `Missing`（产品实现尚未开始，发布门禁继续
 拒绝 `human` 与 `interactive: true`）。[loop 与 loopExit 执行决策](../../decisions/cloud/workflow/20261025-loop-and-loop-exit-execution.md)
 于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[变量聚合执行决策](../../decisions/cloud/workflow/20261025-variable-aggregator-execution.md)
-与[iteration 执行契约](../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。Cloud 侧调度器已随根决策落地：运行从 `pending` 进入真实执行，节点状态由
+与[iteration 执行契约](../../decisions/cloud/workflow/20261025-iteration-foreach-execution.md)同日经 owner 批准，核心用例同批建立，义务全部为 `Missing`。[工作流节点会话读取决策](../../decisions/cloud/workflow/20261026-workflow-node-session-read.md)
+于 2026-10-26 经 owner 批准，核心用例同批建立，义务全部为 `Missing`（cloud#182 已于 2026-10-27 合并；读取实现由运行
+[ora-space/circus#720](https://github.com/ora-space/circus/issues/720) 承接，其 PR 待本规格合入后合并）。Cloud 侧调度器已随根决策落地：运行从 `pending` 进入真实执行，节点状态由
 调度器与真实会话写入，模拟 trace 按根决策排除在验收之外；执行类义务的直接证据登记在各用例里，按 `Covered` / `Partial` 如实
 标注，仍为 `Partial` 的部署级与真实执行侧路径由[承接事项 #665](https://github.com/ora-space/circus/issues/665) 继续跟踪。
 门禁类义务（图校验、启动门禁、槽位解析）的实现在
@@ -64,11 +67,12 @@ desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注
 | workflow | [loop 轮次执行、早退与容量边界](workflow/loop-and-loop-exit.md) | 越界读取其它容器或旧轮、feedback 半组赋值、耗尽策略漂移、早退伪造成功、恢复重放成员、体积超限被截断成成功 |
 | workflow | [变量聚合的发布门禁与有序透传](workflow/variable-aggregator.md) | 首个已赋值与空值混淆、多值顺序漂移、no-match 空成功、非前驱放行、跨容器与跨轮串值、非法配置冻结 |
 | workflow | [Iteration 的 foreach 执行与按轮账本](workflow/iteration-foreach-execution.md) | 迭代源非前驱、轮内变量泄漏、收集陈旧值、策略丢账本、恢复重跑、取消后开新轮、体积截断、最后一轮重复展示 |
+| workflow | [工作流节点会话读取](workflow/node-session-read.md) | 跨尝试串会话、游标跳过记录、旧尝试冒领新输出、终态回执按形状误判、sessionId 直读越权、输出与结束原因混用、`result` 为空误判在途、单页即宣称完整 |
 | model-access | [个人槽位映射与按槽位绑定](model-access/executor-slot-mappings.md) | 映射越权、槽位被顶替、在途运行被改映射、会话借用别的槽位授权 |
 
 ## 已批准的定时任务决策
 
-[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)已按最终实现同步为 `implemented`；核心用例见 [admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。根决策的存储与调度 worker、公开 API 与 Web 管理面已随 [cloud#111](https://github.com/ora-space/cloud/pull/111) 合入 main，worker/API 领域测试随后续 PR 合入；admission-and-session-bounds 按 cloud main [`88c665a`](https://github.com/ora-space/cloud/commit/88c665a61ab169240f42328c3a4f74491ab673c0) 的直接测试与 2026-10-26 的 cluster Compose 真实栈验收（真实 Controller / Node / Sandbox、官方 Claude 插件与真实模型，任务不声明产物）登记，18 项义务全部 `Covered`。verdict-and-artifacts 的证据随该 ADR 的实现另行登记，状态以该用例为准。[任务对话准入 ADR](../../decisions/cloud/scheduled-task/20261027-task-conversation-admission.md)已批准为 `approved`，核心用例同批建立（[task-conversation-admission](scheduled-task/task-conversation-admission.md)），证据随实现合入后登记。
+[Cloud Scheduled Task 根决策](../../decisions/cloud/scheduled-task/0-cloud-owned-scheduled-prompt-runs.md)已按最终实现同步为 `implemented`；核心用例见 [admission-and-session-bounds](scheduled-task/admission-and-session-bounds.md)。[Cloud Scheduled Run verdict 与产物 ADR](../../decisions/cloud/scheduled-task/20261022-run-verdict-and-artifacts.md)经 owner 批准为 `approved`，核心用例同批建立（[verdict-and-artifacts](scheduled-task/verdict-and-artifacts.md)）。根决策的存储与调度 worker、公开 API 与 Web 管理面已随 [cloud#111](https://github.com/ora-space/cloud/pull/111) 合入 main，worker/API 领域测试随后续 PR 合入；admission-and-session-bounds 按 cloud main [`88c665a`](https://github.com/ora-space/cloud/commit/88c665a61ab169240f42328c3a4f74491ab673c0) 的直接测试与 2026-10-26 的 cluster Compose 真实栈验收（真实 Controller / Node / Sandbox、官方 Claude 插件与真实模型，任务不声明产物）登记，18 项义务全部 `Covered`。verdict-and-artifacts 的证据随该 ADR 的实现另行登记，状态以该用例为准。[任务对话准入 ADR](../../decisions/cloud/scheduled-task/20261027-task-conversation-admission.md)已随 [cloud#193](https://github.com/ora-space/cloud/pull/193) 实现并同步为 `implemented`；[task-conversation-admission](scheduled-task/task-conversation-admission.md) 按 cloud main [`09982ab`](https://github.com/ora-space/cloud/commit/09982ab350886b028cea8e0ed74a9a0abed7a43b) 的直接测试登记，8 项义务中 5 项 `Covered`、3 项 `Partial`（拒绝后暂停点与失败消息不变、对话恢复后的下一次接纳，以及两条入口在同一状态上的联合验证）。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
