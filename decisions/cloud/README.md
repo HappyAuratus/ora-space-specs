@@ -36,6 +36,12 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 [交付执行结算与未受理证明](issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
 为 `approved`：确定 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。
 
+## 成员加入来源与链接预检
+
+[成员加入来源与私有链接预检](tenancy/20261027-member-entry-provenance-and-link-preview.md)为 `approved`：
+确立受限只读匿名预检、空操作不消费邀请、真实资格变更时同事务记录来源；不代表已实现。
+验证义务见[tenancy 核心用例](../../test-cases/cloud/tenancy/member-entry-provenance-and-link-preview.md)。
+
 ## 多人协作运行时控制
 
 使用权限、独占准入、停止/强停、控制交付和插件维护五份 ADR 的后端规则为 `implemented`。
