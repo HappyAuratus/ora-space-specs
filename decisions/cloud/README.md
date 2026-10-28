@@ -12,6 +12,7 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `api-boundary` | 公开与内部 HTTP API、OpenAPI、分页、错误契约和输入边界 |
 | `identity-access` | 外部身份映射、服务与用户凭据、认证上下文和访问判定 |
 | `tenancy` | Tenant、Membership、角色、管理员保护和 owner 隔离 |
+| `squad` | [人机编组根决策](squad/0-workspace-scoped-human-agent-squads.md) approved，尚待实现；加入事务归 tenancy，执行另行决策 |
 | `project` | Project 聚合、Repository 意图、凭据引用和 Project 级资源状态 |
 | `workspace` | Workspace 业务身份、归属和生命周期意图：协作 Space（`collab_workspaces`）与运行时工作区（`workspaces`）两类聚合 |
 | `operation` | 持久操作、幂等、版本、重试、状态转换和恢复证据 |
@@ -35,6 +36,14 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 
 [交付执行结算与未受理证明](issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
 为 `approved`：确定 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。
+
+## 小队与定向加入
+
+[小队根决策](squad/0-workspace-scoped-human-agent-squads.md)与
+[tenancy 定向加入后续决策](tenancy/20261027-squad-targeted-joining-and-inviter-revocation.md)
+均为 approved，尚待产品实现及直接验证。规则覆盖独立编组、原子加入、空操作不消费、匿名预检分级、
+来源区分及撤权；不开放生产 Team 执行。核心用例见[小队](../../test-cases/cloud/squad/README.md)与
+[定向加入](../../test-cases/cloud/tenancy/targeted-joining-and-revocation.md)，新增义务均为 Missing。
 
 ## 多人协作运行时控制
 

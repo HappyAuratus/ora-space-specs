@@ -6,6 +6,15 @@
 占位目录只用于稳定领域路径，不表示已有决策或测试证据。核心用例必须按业务风险组织，并使用
 `Covered`、`Partial` 或 `Missing` 如实标记直接证据。
 
+## 已批准的小队与定向加入
+
+小队编组及 tenancy 后续 ADR 均为 approved，尚待实现；新增验证义务均为 Missing。
+
+| 领域 | 用例 | 主要风险 |
+| --- | --- | --- |
+| squad | [编组与生命周期](squad/membership-and-lifecycle.md) | 跨租户编组、权限扩大、leader 失效、撤权/归档竞争、mock 与隐式执行 |
+| tenancy | [定向加入与撤权](tenancy/targeted-joining-and-revocation.md) | 部分加入、空操作消费、来源混写、匿名泄露、失权复活、升级旧写入者 |
+
 ## IssueRun 残留恢复
 
 | 领域 | 核心用例 | 重点风险 |
