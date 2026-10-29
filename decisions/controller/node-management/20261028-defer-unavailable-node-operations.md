@@ -6,13 +6,16 @@ status: proposed
 
 云端 Controller 遇到不可用的目标 Node 时，最多保留 2 秒握手宽限，随后以
 `retry_wait/node_unavailable` 结束本轮，让出全局普通 operation 处理位置。Cloud 持久保存连续不可推进次数，
-从 5 秒开始倍增退避，上限 60 秒。已经登记的 clone 每轮最多等待 5 秒，下一轮继续查询同一执行；
-从该执行登记起超过 30 分钟仍无结果时，进入 `blocked/clone_result_unknown`，保留执行及其恢复责任。
+从 5 秒开始倍增退避，上限 60 秒。已经登记的 clone 每轮最多等待 5 秒，以 1 秒再领取间隔继续查询同一执行；
+从该执行登记起超过 30 分钟仍无结果时，进入 `blocked/clone_result_timeout`；晚到的原执行已知结果由 Cloud
+自动接管并继续推进或按原失败预算处理。Node 报告的 Unknown 仍是 `blocked/clone_result_unknown`。
 
-本 ADR 处于 `proposed`，参数和契约增量待 owner 评审，尚未实现。涉及 Cloud 的 operation 持久延后与
-Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。领取顺序以
-[specs#95 D3](https://github.com/ora-space/specs/pull/95) 为前提，原样继承，不在此另定排序。
-该 PR 尚未合入本文的 specs main 基线 `5580476`；本文不宣称轮转已在 main 实现。
+本 ADR 处于 `proposed`，方向、参数和 `clone_result_pending` 命名已获 owner 接受，尚未实现。
+涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
+D1/D2 在当前 `created_at,id` 排序下即可修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
+A 每轮只占用 worker 最多 2 秒的本地等待。本文的决策同时适用于当前排序与
+[specs#95 D3](https://github.com/ora-space/specs/pull/95) 轮转；轮转落地后原样叠加，不是本文的实施前提。
+该 PR 尚未合入本文的 specs main 基线 `5580476`；本文不宣称轮转已在 main 实现，也不另定排序。
 本次只提出补充决策，不提交产品代码、迁移或核心测试用例，也不执行部署复现。
 
 ## 背景与约束
@@ -53,10 +56,10 @@ clone 阶段使 Node 不可用，再由租户 B 创建 Project。没有工作流
 | [会话重建决策](20260926-rebuild-sessions-from-live-sandbox-list.md)：新 epoch 按 Cloud 存活沙盒列表重建会话 | 继承，不变；延后不移除存活沙盒的会话，不停止后台重连 |
 | Controller 根 D3：结束或延后当前普通 operation 后才领取下一项 | 继承串行处理；明确 Node 不可用与 clone 未返回时的短轮次（D1、D3） |
 | specs#95 D1：Node 暂时不可达保留原操作，按有限原因延后 | 继承，不变；`node_unavailable` 不设次数耗尽或等待过久的失败终态（D2） |
-| specs#95 D3：每次真正交出操作写 `last_claimed_at`，按 `COALESCE(last_claimed_at,created_at),created_at,id` 轮转 | 继承，不变；该字段不作为退避次数或 clone 总窗口的起点 |
-| 快照 clone ADR D2：旧的创建时间排序 | 领取顺序的变更仅由 specs#95 D3 承担；本文依赖它，不重复修改 |
+| specs#95 D3：每次真正交出操作写 `last_claimed_at`，按 `COALESCE(last_claimed_at,created_at),created_at,id` 轮转 | 落地后原样叠加，不是本文的实施前提；该字段不作为退避次数或 clone 总窗口的起点 |
+| 快照 clone ADR D2：当前 `created_at,id` 排序 | 继承，不变；D1/D2 通过未来的 retry_at 排除等待项，即可让其他可运行项被领取，不等待轮转落地 |
 | Operation 根 D2：已知 clone 失败的三次预算与 5/10 秒退避 | 继承，不变；Node 不可用轮次与等待原执行均不新增 clone 尝试 |
-| [最小 clone 契约](../../node/repository/20260918-minimal-clone-execution-contract.md) D6：查询原执行，未知不自动重跑或删除 | 继承，不变；D3 的总窗口只结束自动等待，不制造 Node 终态 |
+| [最小 clone 契约](../../node/repository/20260918-minimal-clone-execution-contract.md) D6：查询原执行，未知不自动重跑或删除 | 继承，不变；D3 的 timeout 与 Node Unknown 区分，前者晚到的已知结果自动接管，不制造 Node 终态 |
 | lease、epoch、operation version、execution 身份、真实结果接管与恢复规则 | 继承，不变；所有写入继续受原围栏保护，旧 epoch 先对账 |
 | [安全停止与 force-stop](../../cloud/operation/20260927-safe-stop-and-administrative-force-stop.md) | 继承，不变；不改独立的 force-stop 路径、idle 或终止证据 |
 
@@ -99,7 +102,8 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 - Controller 重启、重新领取、epoch 换手、手动 retry 或无进度的连接恢复都不清零。
 - Cloud 接受一次真实的步骤推进或 operation 完成时，在同一推进事务清零；只领取、刷新心跳或收到 pending
   不算成功推进。其他延后原因既不增加此计数，也不以它计算自己的退避。
-- 未到 `retry_at` 的 operation 不参与领取；到期后仍按 specs#95 D3，不插入优先队列。
+- 未到 `retry_at` 的 operation 不参与领取；到期后按当时的领取顺序参与：当前为 `created_at,id`，
+  specs#95 D3 落地后为其轮转顺序。两者均不插入优先队列，也不把轮转作为延后生效的条件。
 - 不因次数多或不可用持续太久进入 `failed`；保留原 operation、冻结输入、资源和未知执行。
   若已有 clone 执行，其结果等待总窗口另按 D3 判断，达到窗口只进入 `blocked`。
 - 此计数独立于持久 clone execution 数。一次 Node 失联、一次让出 worker 都不消耗真实已知失败的三次预算。
@@ -121,30 +125,43 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 | 窗口内观察 | 处理 |
 | --- | --- |
 | Node 暂时不可用，2 秒宽限已尽 | 按 D1/D2 延后；执行仍是原执行 |
-| Node 连接正常，5 秒已尽但结果尚未到达 | `retry_wait/clone_result_pending`，Cloud 保存 5 秒后的 `retry_at`，结束本轮 |
-| 原执行的总结果窗口已尽，仍无可接管结果 | `blocked/clone_result_unknown`，不自动领取或重派 |
+| Node 连接正常，5 秒已尽但结果尚未到达 | `retry_wait/clone_result_pending`，Cloud 保存 1 秒后的 `retry_at`，结束本轮 |
+| 原执行的总结果窗口已尽，仍无可接管结果 | `blocked/clone_result_timeout`，不再普通领取或重派；保留晚到已知结果的自动接管 |
+| `clone_result_timeout` 后原执行的成功结果到达 | Cloud 自动接管并推进，无需人工 retry |
+| `clone_result_timeout` 后原执行的已知失败到达 | Cloud 自动接管，按 `clone_failed` 的三次尝试预算继续，无需人工 retry |
+| Node 报告 Unknown | 按 clone 契约 D6 保持 `blocked/clone_result_unknown`，不由 timeout 的恢复机制自动解除 |
 | 更早已有足够证据按现有契约判为未知、失败或成功 | 继续原分类与接管规则；新窗口不推迟现有 unresolved 处理 |
 
 `clone_result_pending` 是本提案新增的有限延后原因，明确表示“继续等原执行”，不表示 Node 已失败或执行
 已经 Unknown。需要同步扩展 Cloud 的允许原因、内部契约和 Controller 映射；不能用 `clone_failed` 或
 `clone_result_unknown` 冒充普通轮次到期，也不应把正常 pending 伪装成通用 `external_failure`。
-它使用固定 5 秒调度间隔，不增加或清除 D2 的 Node 不可用计数，不创建新的 clone execution。
+它使用固定 **1 秒再领取间隔**，不增加或清除 D2 的 Node 不可用计数，不创建新的 clone execution。
+该间隔不能为 0：在当前 `created_at,id` 排序下，最老的 pending clone 会立即再被领取，持续占用下一轮，
+B 就无法进入；未来 1 秒的 `retry_at` 让 A 暂时离开可领取集合。5 秒本轮等待窗口保持不变。
 
 **总结果窗口为 30 分钟（1800 秒），起点是 Cloud 首次登记当前 clone execution 的持久 `created_at`。**
-该时间代表派发前的执行登记，不是 operation 创建时间或实际 Git 开始时间。Cloud 按此时间判断窗口并
+总窗口使用墙钟经过时间。该时间代表派发前的执行登记，不是 operation 创建时间或实际 Git 开始时间。Cloud 按此时间判断窗口并
 在内部快照提供起点或派生截止；Controller 不从本进程启动时间重建起点。排队、断线、退避、重启和
 重新领取都计入经过时间，不暂停、不续期。仅经真实已知失败、依原三次预算创建的新 execution 才有新起点。
 
-每次恢复先按原身份查询并接管已经存在的结果，再判断是否仍无结果且超出窗口；Cloud 在持久化 blocked
-时重新核验，避免把并发到达的已知结果覆盖成未知。没有新证据时，超时只意味着自动等待结束：
+每次恢复先按原身份查询并接管已经存在的结果，再判断是否仍无结果且超出窗口；Cloud 在持久化
+`blocked/clone_result_timeout` 时重新核验，避免把并发到达的已知结果覆盖成超时。该原因是新增的有限原因，
+与 `clone_result_unknown` 分别持久保存；Cloud 允许原因、内部契约和 Controller 映射须同步扩展。
+没有新证据时，超时只意味着不再占用普通 worker 等待：
 不发送新的 `CloneRepository`，不改变 execution/Node/输入，不伪造失败，不清理目录或终止 Node。
-晚到结果与显式恢复仍使用原执行及原接管规则；手动 retry 不能重置该截止或生成替代执行。
+
+`clone_result_timeout` 不关闭原执行的结果交付或接管。原执行的真实已知结果晚到时，Cloud 的结果接管路径
+自动识别 timeout 原因并继续处理，不依赖 blocked operation 再被普通领取，也不要求人工 retry：
+成功按原规则推进；已知失败按 `clone_failed` 的三次预算及 5/10 秒退避处理，预算耗尽则按原规则失败。
+接管继续核验原执行身份与原有围栏，清除的是 timeout 阻塞，不重置执行尝试次数或篡改历史结果。
+Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unknown`；不能仅因经过 30 分钟或重新连接，
+套用 timeout 的自动恢复分支。手动 retry 也不能重置原执行截止或生成替代执行。
 
 选择 5 秒本轮窗口，是为了比 2 秒握手宽限多留一次短结果交付机会，同时避免一个健康连接的无结果执行
 长期占住 worker。30 分钟给一次最长 20 分钟的网络 Git 命令留出 10 分钟结果接管余量，依据是
 [最小 clone 契约 D8](../../node/repository/20260918-minimal-clone-execution-contract.md#d8网络-git-采用独立且有上限的预算)。
 但网络命令可多次发生；它不是完整 clone 最长耗时的证明。慢 clone 可能仍在执行而 operation 已 blocked，
-因此保留原执行及晚到结果是必要条件。这两个窗口是待评审政策，不是 #698 的测量结论。
+因此保留原执行并自动接管晚到已知结果是必要条件。这两个窗口已获 owner 接受，不是 #698 的测量结论。
 
 ## 不变量
 
@@ -154,32 +171,40 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 4. Cloud 持有退避次数、下次领取时间和总结果窗口依据，Controller 重启或换手不重置它们。
 5. 已知结果接管先于未知判断；等待到期不证明 Node 已结束、资源空闲或可以删除。
 6. lease、epoch、version fencing、对账、恢复与 force-stop 继续遵守原契约。
+7. 本文不依赖领取轮转；未来的 retry_at 在当前排序与 specs#95 D3 排序下都排除尚未到期的等待项。
+8. `clone_result_timeout` 后原执行的晚到已知结果由 Cloud 自动接管：成功推进，失败沿原三次预算处理，
+   无需人工步骤；Node Unknown 仍是 `blocked/clone_result_unknown`，不因 timeout 恢复机制解除。
 
 ## 为什么不是这些替代方案
 
 | 方案 | 取舍与否决理由 |
 | --- | --- |
-| 只实施 specs#95 D3 轮转 | 能在有限集合里轮转，但 operation 在本轮占住 60 秒期间，新建项的 created_at 仍晚于它的 last_claimed_at；它到期后可再先领取。有 N 条时，新项仍可能多等约 N×60 秒；必须同时缩短轮内等待 |
+| 只实施 specs#95 D3 轮转 | 能在有限集合里轮转，但 operation 在本轮占住 60 秒期间，新建项的 created_at 仍晚于它的 last_claimed_at；它到期后可再先领取。有 N 条时，新项仍可能多等约 N×60 秒。D1/D2 在当前排序下即可缩短占用并排除未到期项，不等待轮转合并；轮转落地后叠加 |
 | Controller 计算退避，Cloud 只存结果 | 若次数只在 Controller 内存，重启或换手就丢失；即使 Cloud 保存次数，算法仍随 Controller 版本变化，次数递增与 retry_at 的决策分开。由 Cloud 统一计算可沿用已知 clone 失败的权威边界 |
 | 增加并行 worker | 可提高吞吐，但改变当前领取/版本竞争边界，需要另定所有权与并发安全；也不能单独限制每个无结果执行的等待。本提案保留单 worker |
 | 立即零宽限延后 | 最快释放位置，但会把刚好正在完成的正常握手全部推到下一轮；2 秒是显式、有限的折中 |
+| `clone_result_pending` 以 0 秒再领取 | 没有额外结果等待，但在创建时间排序下最老项会立即再领，B 无法进入；选择未来 1 秒让出领取机会 |
 | 总窗口到期视作 clone_failed 并重新 clone | 无需人工处理，但未知执行可能仍写原目录，会产生第二次副作用，违反 clone 契约 D6 |
 
 ## 后果与兼容性
 
 - 不可用项每轮本地等待从 60 秒降至最多 2 秒；连接着但无结果的 clone 每轮最多等 5 秒。
   N 条不可用项仍可能带来约 N×2 秒加 RPC/调度开销，本文不承诺零排队或按租户配额公平。
-- 慢启动会跨轮完成；失联恢复可能多等至多 60 秒退避加排队。结果恰在让出之后到达，也可能多等下一次领取。
-- Cloud 增加持久计数和有限原因，产生更多短轮次与状态写入；换来 worker 能持续服务其他租户。
-- 30 分钟到期的 blocked 需要现有恢复路径继续核对；它不是 Node 失败、物理终止或清理授权。
+- 慢启动会跨轮完成；失联恢复可能多等至多 60 秒退避加排队。健康 clone 的结果在让出之后到达时，
+  可能增加约最多 1 秒加排队时间，才能在下一次领取后推进。
+- Cloud 增加持久计数和有限原因，分轮等待产生更多 claim 和 defer 写入；换来 worker 能服务其他租户。
+- N 条慢 clone 同时在途时，新 operation 可能先等待约 N×5 秒的轮内占用，再加 RPC 与调度排队开销；
+  本文不把这一估算当作严格的租户级延迟上界。
+- 30 分钟到期的 `blocked/clone_result_timeout` 自动接管原执行晚到的已知结果，不需要人工步骤；
+  Node Unknown 的 `blocked/clone_result_unknown` 仍保留。两者都不是物理终止或清理授权。
 - 产品实现应先部署能接受新原因及持有计数的 Cloud，再部署使用它的 Controller。旧 Controller 的 60 秒
   等待不会被 Cloud 退避单独修复；不把混合版本视为完成本 ADR 的行为。
 
 ## 本决策未解决的问题
 
-- owner 需确认 2 秒、60 秒、5 秒、30 分钟这组政策值，以及 `clone_result_pending` 的内部原因命名。
-  正常握手和大仓库端到端耗时分布尚无本提案的测量，不能据此宣称参数最优。
-- specs#95/cloud#74 的后续合并与迁移顺序由对应 owner 协调；本文只依赖 D3，不接管其其他领取结算工作。
+- 正常握手和大仓库端到端耗时分布尚无本提案的测量，不能据此宣称参数最优；已接受的政策值和
+  `clone_result_pending` 命名不再作为待确认事项，timeout 后晚到已知结果的恢复不留给人工处理。
+- specs#95/cloud#74 的后续合并与迁移顺序由对应 owner 协调；本文可独立实施，不接管其其他领取结算工作。
 - 租户配额、多 worker、其他长 Substrate/插件调用的调度，以及未知执行的物理回收，均不在本提案内。
 
 ## 落地顺序与验证
@@ -187,22 +212,27 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 以下是获批后的实施和验证义务，本次文档 PR 不执行这些操作。按本仓库 ADR 生命周期，`proposed` 阶段
 不新增核心测试用例；状态变为 `approved` 时，再按最终条文维护对应 Controller/Cloud 核心用例与索引。
 
-1. **Cloud 契约和状态**：在 specs#95 D3 的领取前提下，追加持久计数迁移，接收新的 pending 原因，原子计算
-   D2 的 retry_at，按原 execution 的 created_at 判断总窗口。完成条件是持久计数、重复/陈旧调用、回滚和
-   已知结果竞争的直接测试通过；不改变 clone 的三次已知失败预算。
+1. **Cloud 契约和状态**：在当前 `created_at,id` 排序下追加持久计数迁移，接收 pending/timeout 原因，原子计算
+   D2 的 retry_at、pending 的未来 1 秒 retry_at，并按原 execution 的 created_at 墙钟时间判断总窗口。
+   结果接管路径须能直接恢复 timeout 操作，不依赖它被再次普通领取。完成条件是持久计数、重复/陈旧调用、
+   回滚、已知结果竞争及晚到结果自动恢复的直接测试通过；不改变 clone 的三次已知失败预算。
 2. **Controller 轮次**：为 Node 就绪、clone 断连与 connected/pending 等待实现 D1/D3；每次领取继续使用
    最新快照、先对账、再推进。完成条件是同一 worker 能在短轮次后处理另一租户，并保持原执行身份。
 3. **单元与集成测试**：以受控时钟测试边界，使用真实 Cloud 持久事务和 Rust Controller 的联合测试覆盖
-   下表；单元替身结果不能替代跨进程持久恢复证据。去掉对应修复时，每项核心断言须失败。
+   下表，先验证当前排序；specs#95 D3 落地后在轮转排序下复用这些场景，不把其合并作为本修复验收前置。
+   单元替身结果不能替代跨进程持久恢复证据。去掉对应修复时，每项核心断言须失败。
 
 | 场景 | 必须成立；去掉修复后的失败点 |
 | --- | --- |
-| A 的 Node 始终未就绪，B 在 A 本轮期间创建 | 2 秒宽限后 A 进入 retry_wait，B 获得 worker；旧实现仍等 60 秒 |
+| 当前创建时间排序下 A 的 Node 始终未就绪，B 在 A 本轮期间创建 | 2 秒宽限后 A 进入未来 retry_at 的 retry_wait，被排除后 B 获得 worker，不依赖 D3 轮转；旧实现仍等 60 秒 |
 | Node 在宽限前完成握手；以及反复连接/断开却一直不能推进 | 前者继续推进；后者仍在同一 2 秒预算后让出，不被连接事件续期 |
 | 连续不可用、Controller 重启/epoch 换手、手动 retry | Cloud 次数和 5/10/20/40/60/60 秒序列保持；旧实现或 Controller 内存计数会回到固定 5 秒 |
 | defer 事务回滚、RPC 重放或旧 version/epoch；随后真实推进 | 回滚不改次数/时间，重放不多计，陈旧写入拒绝；成功推进清零；不影响 clone execution 数 |
-| Node 连接正常且永远不返回结果，B 有可推进工作 | 5 秒后 A 以 pending 原因让出；重领查询同一 execution，派发次数保持一次；旧循环不结束 |
-| 原执行登记后 30 分钟边界、跨重启/退避，或已有晚到结果 | 窗口前只分轮等；到期仍无结果才 blocked；已有结果先接管；不新派发、不删除、不计为 clone_failed |
+| 当前排序下 Node 连接正常且永远不返回结果，B 有可推进工作 | 5 秒后 A 以 pending 原因让出，retry_at 是未来 1 秒；此时 B 可被领取，重领仍查询同一 execution、派发一次；旧循环不结束，间隔为 0 则 A 立即再领而 B 无法进入 |
+| 原执行登记后 30 分钟墙钟边界、跨重启/退避，或超时提交前已有结果 | 窗口前只分轮等；到期仍无结果才 blocked/clone_result_timeout；已有结果先接管；不新派发、不删除、不以到期消耗 clone_failed 预算 |
+| clone_result_timeout 后原 execution 的成功结果晚到 | Cloud 自动接管并推进，无人工 retry，也不依赖 blocked 项再领取；execution 身份和派发次数不变；缺少自动恢复时操作会留在 blocked |
+| clone_result_timeout 后原 execution 的已知失败晚到 | Cloud 自动接管并沿 clone_failed 三次预算处理，前两次 5/10 秒退避、第三次 failed，无人工 retry、不清零次数；缺少自动恢复时仍停在 blocked |
+| Node 报告 Unknown，随后跨过 30 分钟或重新连接 | 保持 blocked/clone_result_unknown，不改成 timeout、不自动解除、不重派；混用超时恢复分支会使本断言失败 |
 | 一次真正 clone 失败与多次 pending/node_unavailable 交错 | 只有真实新 execution 消耗三次预算；已知失败仍走原 5/10 秒及第三次 failed，未知不自动重试 |
 
 4. **沿 #698 方法做修复前后部署复现**：固定每组 Cloud/Controller/Node/cluster 版本，每个场景用新隔离环境
@@ -211,11 +241,13 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
    完成耗时，以及 A 每轮占用时间、Cloud 次数/retry_at、clone execution 身份和结果。并列展示修复前、修复后
    与各自无故障基线；保留 #698 的 173.5/168.6 秒和 52.0/66.5 秒作为历史对照，不将其当作新版本固定门槛。
 5. **多条不可用 operation**：至少三个不同 Project 的旧操作同时等待失联 Node，再创建健康租户 B 的 Project，
-   并在旧项轮次期间加入另一健康项。检查所有旧项每轮宽限、Cloud 退避、D3 领取机会及健康项的后续推进，
-   比较同版本无故障与旧实现。必须没有每条旧项 60 秒的阻塞；报告实际排队时间，不用“最终成功”替代延迟证据。
+   并在旧项轮次期间加入另一健康项。先在当前排序检查所有旧项每轮宽限、Cloud 退避与健康项的后续推进，
+   比较同版本无故障与旧实现；轮转落地后再复用场景，不阻塞当前修复。必须没有每条旧项 60 秒的阻塞；
+   报告实际排队时间，不用“最终成功”替代延迟证据。
 6. **连接正常但无结果**：让原 clone 保持会话与心跳但不交付结果，观察跨轮执行身份及 B 推进；以原执行
-   注入晚到真实结果，另一路验证总窗口到期。不能用断连测试替代本场景，也不能把人工预置截止时间的测试
-   冒充真实 30 分钟部署等待。部署验收若未覆盖这一路，证据保持未覆盖，不宣称完整实现。
+   分别注入 timeout 后晚到的成功和已知失败，验证无人工步骤自动恢复；另一路报告 Node Unknown，验证仍然
+   blocked/clone_result_unknown。不能用断连测试替代本场景，也不能把人工预置截止时间的测试冒充真实
+   30 分钟部署等待。部署验收若未覆盖这一路，证据保持未覆盖，不宣称完整实现。
 
 本 ADR 的实施完成条件是 Cloud/Controller 两侧直接测试和上述联合路径有可定位证据，再按最终行为改为
 `implemented`。保持不变的行为：force-stop、lease、epoch、执行身份与恢复规则。改变的行为：普通 operation
