@@ -6,6 +6,16 @@
 占位目录只用于稳定领域路径，不表示已有决策或测试证据。核心用例必须按业务风险组织，并使用
 `Covered`、`Partial` 或 `Missing` 如实标记直接证据。
 
+## 不可用 Node 延后与 clone 分轮等待
+
+对应[Controller 决策](../../decisions/controller/node-management/20261028-defer-unavailable-node-operations.md)为
+`approved`，产品实现尚未完成；跨层义务保留在同一份 Controller 核心用例，不复制 Cloud 用例，新增证据全部为 `Missing`。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| operation / controller-integration（跨层引用） | [Cloud 持久退避与有限原因](../controller/node-management/20261028-defer-unavailable-node-operations.md#cloud-persists-backoff-counts-and-bounded-reasons) | 计数或 retry_at 重启丢失、部分提交、重放多计、原因混淆、迁移改写旧身份与误耗三次预算 |
+| operation / controller-integration（跨层引用） | [总窗口](../controller/node-management/20261028-defer-unavailable-node-operations.md#the-total-result-window-uses-durable-registration-wall-clock-time)、[晚到成功](../controller/node-management/20261028-defer-unavailable-node-operations.md#a-late-known-success-automatically-recovers-a-timed-out-operation)、[晚到失败](../controller/node-management/20261028-defer-unavailable-node-operations.md#a-late-known-failure-follows-the-existing-clone-failed-budget)、[Node Unknown](../controller/node-management/20261028-defer-unavailable-node-operations.md#a-node-reported-unknown-remains-blocked) | 截止续期、超时覆盖已知结果、blocked 无人接管、失败预算重置、Unknown 被自动解除 |
+
 ## 已批准的成员加入来源与链接预检
 
 | 领域 | 核心用例 | 重点风险 |
