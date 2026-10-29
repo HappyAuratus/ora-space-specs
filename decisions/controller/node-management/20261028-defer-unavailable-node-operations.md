@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 不可用时结束本轮并延后：Cloud 保存退避次数，clone 分轮等待同一执行
@@ -10,13 +10,14 @@ status: proposed
 从该执行登记起超过 30 分钟仍无结果时，进入 `blocked/clone_result_timeout`；晚到的原执行已知结果由 Cloud
 自动接管并继续推进或按原失败预算处理。Node 报告的 Unknown 仍是 `blocked/clone_result_unknown`。
 
-本 ADR 处于 `proposed`，方向、参数和 `clone_result_pending` 命名已获 owner 接受，尚未实现。
+本 ADR 处于 `approved`，决策内容已获 owner 接受，Cloud 与 Controller 的产品实现尚未完成。
 涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
 D1/D2 在当前 `created_at,id` 排序下即可修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
 A 每轮只占用 worker 最多 2 秒的本地等待。本文的决策同时适用于当前排序与
 [specs#95 D3](https://github.com/ora-space/specs/pull/95) 轮转；轮转落地后原样叠加，不是本文的实施前提。
 该 PR 尚未合入本文的 specs main 基线 `5580476`；本文不宣称轮转已在 main 实现，也不另定排序。
-本次只提出补充决策，不提交产品代码、迁移或核心测试用例，也不执行部署复现。
+对应的验证义务登记在[不可用 Node 延后与 clone 分轮等待核心用例](../../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
+新增义务均为 `Missing`；批准本决策不代表产品已实现或部署复现已通过。
 
 ## 背景与约束
 
@@ -78,7 +79,7 @@ quiesce 如需等待目标 Node 就绪，也使用同一宽限；它的停止派
 4. 让出的是普通 operation worker，不是放弃 Controller 的全局 lease。会话重连与心跳继续独立运行。
    Cloud 不可达或 fence 失效时按既有控制连接与租约恢复规则退出，不虚报延后已经提交。
 
-2 秒是本提案的调度政策：允许正在完成的握手跨过短暂连接竞争，同时把每条不可用 operation 的本地等待
+2 秒是本决策的调度政策：允许正在完成的握手跨过短暂连接竞争，同时把每条不可用 operation 的本地等待
 从 60 秒限到 2 秒。它不是 Node 冷启动必须完成的期限；启动更慢只会跨轮继续等待。
 该值尚无延迟分布实测支撑，不承诺 2 秒足以覆盖所有正常握手，也不包含 Cloud RPC 的网络耗时。
 
@@ -132,7 +133,7 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 | Node 报告 Unknown | 按 clone 契约 D6 保持 `blocked/clone_result_unknown`，不由 timeout 的恢复机制自动解除 |
 | 更早已有足够证据按现有契约判为未知、失败或成功 | 继续原分类与接管规则；新窗口不推迟现有 unresolved 处理 |
 
-`clone_result_pending` 是本提案新增的有限延后原因，明确表示“继续等原执行”，不表示 Node 已失败或执行
+`clone_result_pending` 是本决策新增的有限延后原因，明确表示“继续等原执行”，不表示 Node 已失败或执行
 已经 Unknown。需要同步扩展 Cloud 的允许原因、内部契约和 Controller 映射；不能用 `clone_failed` 或
 `clone_result_unknown` 冒充普通轮次到期，也不应把正常 pending 伪装成通用 `external_failure`。
 它使用固定 **1 秒再领取间隔**，不增加或清除 D2 的 Node 不可用计数，不创建新的 clone execution。
@@ -181,7 +182,7 @@ Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unkno
 | --- | --- |
 | 只实施 specs#95 D3 轮转 | 能在有限集合里轮转，但 operation 在本轮占住 60 秒期间，新建项的 created_at 仍晚于它的 last_claimed_at；它到期后可再先领取。有 N 条时，新项仍可能多等约 N×60 秒。D1/D2 在当前排序下即可缩短占用并排除未到期项，不等待轮转合并；轮转落地后叠加 |
 | Controller 计算退避，Cloud 只存结果 | 若次数只在 Controller 内存，重启或换手就丢失；即使 Cloud 保存次数，算法仍随 Controller 版本变化，次数递增与 retry_at 的决策分开。由 Cloud 统一计算可沿用已知 clone 失败的权威边界 |
-| 增加并行 worker | 可提高吞吐，但改变当前领取/版本竞争边界，需要另定所有权与并发安全；也不能单独限制每个无结果执行的等待。本提案保留单 worker |
+| 增加并行 worker | 可提高吞吐，但改变当前领取/版本竞争边界，需要另定所有权与并发安全；也不能单独限制每个无结果执行的等待。本决策保留单 worker |
 | 立即零宽限延后 | 最快释放位置，但会把刚好正在完成的正常握手全部推到下一轮；2 秒是显式、有限的折中 |
 | `clone_result_pending` 以 0 秒再领取 | 没有额外结果等待，但在创建时间排序下最老项会立即再领，B 无法进入；选择未来 1 秒让出领取机会 |
 | 总窗口到期视作 clone_failed 并重新 clone | 无需人工处理，但未知执行可能仍写原目录，会产生第二次副作用，违反 clone 契约 D6 |
@@ -202,15 +203,16 @@ Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unkno
 
 ## 本决策未解决的问题
 
-- 正常握手和大仓库端到端耗时分布尚无本提案的测量，不能据此宣称参数最优；已接受的政策值和
+- 正常握手和大仓库端到端耗时分布尚无本决策的测量，不能据此宣称参数最优；已接受的政策值和
   `clone_result_pending` 命名不再作为待确认事项，timeout 后晚到已知结果的恢复不留给人工处理。
 - specs#95/cloud#74 的后续合并与迁移顺序由对应 owner 协调；本文可独立实施，不接管其其他领取结算工作。
-- 租户配额、多 worker、其他长 Substrate/插件调用的调度，以及未知执行的物理回收，均不在本提案内。
+- 租户配额、多 worker、其他长 Substrate/插件调用的调度，以及未知执行的物理回收，均不在本决策内。
 
 ## 落地顺序与验证
 
-以下是获批后的实施和验证义务，本次文档 PR 不执行这些操作。按本仓库 ADR 生命周期，`proposed` 阶段
-不新增核心测试用例；状态变为 `approved` 时，再按最终条文维护对应 Controller/Cloud 核心用例与索引。
+以下是已批准的实施和验证义务，产品实现和运行验证尚未完成。
+[核心用例](../../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)按最终决策逐项登记，
+同时承担 Controller 轮次、Cloud 持久状态与跨进程结果接管义务；当前证据全部为 `Missing`。
 
 1. **Cloud 契约和状态**：在当前 `created_at,id` 排序下追加持久计数迁移，接收 pending/timeout 原因，原子计算
    D2 的 retry_at、pending 的未来 1 秒 retry_at，并按原 execution 的 created_at 墙钟时间判断总窗口。

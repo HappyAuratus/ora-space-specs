@@ -34,6 +34,11 @@ Controller 的调度与恢复策略放在 `specs/decisions/controller/`，Node �
 Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在拥有业务不变量的一侧，并从其他
 层引用，不复制成多份权威规则。
 
+[不可用 Node 延后与 clone 分轮等待](../controller/node-management/20261028-defer-unavailable-node-operations.md)
+为 `approved`，尚未实现。Cloud 持有不可用退避次数及 pending/timeout/Unknown 有限原因，并自动接管 timeout 后
+原执行晚到的已知结果；这些跨层义务统一登记在[Controller 核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
+当前全部为 `Missing`。本处只导航，不另建重复的 Cloud 决策或用例。
+
 [交付执行结算与未受理证明](issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
 为 `approved`：确定 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。
 

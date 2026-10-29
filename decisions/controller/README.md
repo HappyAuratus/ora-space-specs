@@ -31,3 +31,9 @@ Node 的实际文件、Git、Agent、Plugin 和资源操作放在 `specs/decisio
 为 `approved`：它修改 `node-management` 根决策 D5 和 `session` 根决策 D4/D5 的未完成执行判定，
 仅在原身份未受理证明经 Cloud 持久接管后解除对应责任；其余 quiesce 与派发账本规则继续适用。
 
+[不可用 Node 延后与 clone 分轮等待](node-management/20261028-defer-unavailable-node-operations.md)
+为 `approved`，尚未实现：Controller 缩短轮内等待，Cloud 持久保存退避次数与有限原因，并自动接管超时后
+原执行晚到的已知结果；当前创建时间排序即可实施，不依赖领取轮转合并。
+直接验证义务见[对应核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
+新增义务全部为 `Missing`，不以批准状态代替实现或部署证据。
+
