@@ -9,8 +9,7 @@
 ## 不可用 Node 延后与 clone 分轮等待
 
 对应[Controller 决策](../../decisions/controller/node-management/20261028-defer-unavailable-node-operations.md)为
-`implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 最终 PR head [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)。
-本规格 PR 须等 Desktop #750 先合入并补其 merge commit，不把候选 head 说成 main 已落地。
+`implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 合入版本 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head `65fc457`）。
 跨层义务保留在同一份 Controller 核心用例，不复制 Cloud 用例；直接测试与部署实际覆盖按项标为
 `Covered`、`Partial`、`Missing`，实现状态不消除缺口。受控联合测试和部署/真实 30 分钟等待分别说明，
 第 17 项的多项排队义务要求不同 Project 各自的 Workspace Node 同时失联，旧项持续循环时健康 B/C 真实排队并推进；

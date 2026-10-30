@@ -32,8 +32,7 @@ Node 的实际文件、Git、Agent、Plugin 和资源操作放在 `specs/decisio
 仅在原身份未受理证明经 Cloud 持久接管后解除对应责任；其余 quiesce 与派发账本规则继续适用。
 
 [不可用 Node 延后与 clone 分轮等待](node-management/20261028-defer-unavailable-node-operations.md)
-为 `implemented`：实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 最终 PR head [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)；
-本规格 PR 须等 Desktop #750 先合入，并补其 merge commit，不把 PR head 说成 main 已落地。
+为 `implemented`：实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 合入版本 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head `65fc457`）。
 Controller 缩短轮内等待，Cloud 持久保存退避次数与有限原因，并自动接管超时后
 原执行晚到的已知结果；当前创建时间排序即可实施，不依赖领取轮转合并。
 直接验证义务见[对应核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，

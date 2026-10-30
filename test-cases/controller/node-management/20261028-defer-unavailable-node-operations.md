@@ -6,11 +6,11 @@
 [`1cfaed3`](https://github.com/ora-space/cloud/commit/1cfaed320d653f0f2689e165f98cf3c705f3dcfa)；
 Controller 实现与直接测试以 [desktop#750](https://github.com/ora-space/desktop/pull/750) 的
 [`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c) 为审阅基线。
-本规格登记 PR 必须等该 Desktop PR 先合入，随后补充其 merge commit；PR head 不表示 Desktop main 已落地。
+该 Desktop PR 已合入 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)。
 ADR 的实现状态与验证覆盖分别登记，仍未覆盖的完整分支保留 `Partial` 或 `Missing`。
 以下分别列出直接测试覆盖与缺口，不能用 PR 全绿或历史 #698 数据代替完整义务。
 
-最终 PR head 为 [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)。本轮多失联项复用由 `9078570` 构建的镜像并保留 revision 标签；两提交仅 `#[cfg(test)]` 夹具变化，生产运行源码与版本输入未变。前期部署与测试报告仍按其实际 `9078570` 基线保留，不声称镜像由新 head 重建。
+合入时的最终 PR head 为 [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)。本轮多失联项复用由 `9078570` 构建的镜像并保留 revision 标签；两提交仅 `#[cfg(test)]` 夹具变化，生产运行源码与版本输入未变。前期部署与测试报告仍按其实际 `9078570` 基线保留，不声称镜像由新 head 重建。
 
 证据入口（`文件:测试名` 中的文件缩写均指以下固定版本）：
 
@@ -404,7 +404,7 @@ ADR D3、不变量 2–8、后果与兼容性、落地顺序与验证第 6 项�
 
 ## 证据位置与保留缺口
 
-- 固定产品与工具：Cloud #206 merge `1cfaed3`、Desktop #750 最终 PR head `65fc457`（合入后补 merge commit）、Cluster `562351d`。E-T/E-P/E-K/E-C 保留实际 `9078570` 基线；E-M 复用其生产源码相同的镜像并保留原 revision 标签。本规格 PR 须等 Desktop #750 先合入。
+- 固定产品与工具：Cloud #206 merge `1cfaed3`、Desktop #750 merge `df694c8`（最终 PR head `65fc457`）、Cluster `562351d`。E-T/E-P/E-K/E-C 保留实际 `9078570` 基线；E-M 复用其生产源码相同的镜像并保留原 revision 标签。
 - E-T 为测试范围摘要；48 个 lib 测试及 6 个联合场景、79.83 秒的运行结果转述自 PR750，本轮未重跑。SHA-256 标识该摘要文件，不冒充原始测试日志摘要。
 - E-D 为部署总报告；E-P/E-K/E-C 分别对应 `p/`、`k/`、`c/` 的 case-report.json 及同目录安全时间线。初次 C 捕获漏过快速重试的记录保留在 E-D，未冒充 30 分钟通过。
 - E-M 为三个不同 Project 各自 Node 失联、健康 B/C 的新部署证据，取代旧版同 Node 限制。

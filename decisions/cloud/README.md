@@ -35,8 +35,7 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 层引用，不复制成多份权威规则。
 
 [不可用 Node 延后与 clone 分轮等待](../controller/node-management/20261028-defer-unavailable-node-operations.md)
-为 `implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 最终 PR head [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)。
-本规格 PR 须等 Desktop #750 先合入并补其 merge commit，不把候选 head 说成 main 已落地。
+为 `implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 合入版本 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head `65fc457`）。
 Cloud 持有不可用退避次数及 pending/timeout/Unknown 有限原因，并自动接管 timeout 后
 原执行晚到的已知结果；这些跨层义务统一登记在[Controller 核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
 按直接测试和部署实际覆盖分别标记 `Covered`、`Partial`、`Missing`，实现状态不消除缺口；

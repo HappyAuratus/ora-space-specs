@@ -13,11 +13,10 @@ status: implemented
 本 ADR 为 `implemented`：本文规则已在下列固定版本实现，测试与部署覆盖仍按核心用例逐项登记，
 `implemented` 不表示全部验证义务均为 `Covered`。Cloud 实现已随 [cloud#206](https://github.com/ora-space/cloud/pull/206) 合入
 [`1cfaed3`](https://github.com/ora-space/cloud/commit/1cfaed320d653f0f2689e165f98cf3c705f3dcfa)，
-Controller 实现与联合测试以 [desktop#750](https://github.com/ora-space/desktop/pull/750) 的
-[`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a) 最终 PR head 为基线。
+Controller 实现与联合测试已随 [desktop#750](https://github.com/ora-space/desktop/pull/750) 合入
+[`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)）。
 前期部署镜像构建于 [`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c)，仍保留该 revision 标签；
 其生产源码与最终 head 相同，差异仅为 process-runtime `observations.rs` 的 `#[cfg(test)]` 测试夹具，不改变运行行为。
-本规格 PR 须在 Desktop #750 先合入后合入，并补充其 merge commit；此处不把候选 head 说成 main 已落地。
 本决策涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
 D1/D2 在本候选仍使用的 `created_at,id` 排序下修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
 A 每轮只占用 worker 最多 2 秒的本地等待。本文规则也适用于
@@ -269,7 +268,7 @@ Desktop 合并版本和部署覆盖按实际证据登记，不删除未覆盖义
    blocked/clone_result_unknown。不能用断连测试替代本场景，也不能把人工预置截止时间的测试冒充真实
    30 分钟部署等待。部署验收若未覆盖这一路，证据保持未覆盖，不宣称完整实现。
 
-本 ADR 按上述固定实现版本登记为 `implemented`；本规格 PR 合入前须先合入 Controller PR，并补充其 merge commit。
+本 ADR 按上述固定实现版本登记为 `implemented`；Controller 实现已随 desktop#750 合入 `df694c8`。
 Cloud/Controller 两侧直接测试与上述联合路径的实际证据、未覆盖分支及获接受的偏差继续逐项登记，不以
 调老时间的联合测试冒充真实部署总窗口。最终运行附件位置与部署版本在核心用例的“证据位置与保留缺口”
 登记，未提供时不填写虚构路径或摘要值。保持不变的行为：force-stop、lease、epoch、执行身份与恢复规则。改变的行为：普通 operation
