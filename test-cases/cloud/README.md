@@ -9,7 +9,11 @@
 ## 不可用 Node 延后与 clone 分轮等待
 
 对应[Controller 决策](../../decisions/controller/node-management/20261028-defer-unavailable-node-operations.md)为
-`approved`，产品实现尚未完成；跨层义务保留在同一份 Controller 核心用例，不复制 Cloud 用例，新增证据全部为 `Missing`。
+`implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 PR head `9078570`。
+本规格 PR 须等 Desktop #750 先合入并补其 merge commit，不把候选 head 说成 main 已落地。
+跨层义务保留在同一份 Controller 核心用例，不复制 Cloud 用例；直接测试与部署实际覆盖按项标为
+`Covered`、`Partial`、`Missing`，实现状态不消除缺口。受控联合测试和部署/真实 30 分钟等待分别说明，
+blocked/node_unavailable 无界 retrySeconds 保留为独立后续问题。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

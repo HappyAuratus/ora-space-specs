@@ -1,9 +1,28 @@
 # 不可用 Node 延后与 clone 分轮等待
 
-依据[已批准的不可用 Node 延后决策](../../../decisions/controller/node-management/20261028-defer-unavailable-node-operations.md)
-（`approved`，下称“ADR”）。本文件镜像该 ADR 的领域和文件名，同时登记 Controller 轮次、Cloud 持久计数、
-有限原因、结果接管与跨进程验证义务。产品实现尚未完成，以下每项新增义务均为 `Missing`，尚无直接测试或
-部署证据；所需直接证据是待完成的验证，不是已存在的测试函数。历史 #698 数据不能替代新决策的证据。
+依据[不可用 Node 延后决策](../../../decisions/controller/node-management/20261028-defer-unavailable-node-operations.md)
+（`implemented`，下称“ADR”）。本文件镜像该 ADR 的领域和文件名，同时登记 Controller 轮次、Cloud 持久计数、
+有限原因、结果接管与跨进程验证义务。Cloud 实现已落在
+[`1cfaed3`](https://github.com/ora-space/cloud/commit/1cfaed320d653f0f2689e165f98cf3c705f3dcfa)；
+Controller 实现与直接测试以 [desktop#750](https://github.com/ora-space/desktop/pull/750) 的
+[`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c) 为审阅基线。
+本规格登记 PR 必须等该 Desktop PR 先合入，随后补充其 merge commit；PR head 不表示 Desktop main 已落地。
+ADR 的实现状态与验证覆盖分别登记，仍未覆盖的完整分支保留 `Partial` 或 `Missing`。
+以下分别列出直接测试覆盖与缺口，不能用 PR 全绿或历史 #698 数据代替完整义务。
+
+证据入口（`文件:测试名` 中的文件缩写均指以下固定版本）：
+
+- **C-db**：[Cloud `internal/core/operation_wait_db_test.go`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/operation_wait_db_test.go)。
+- **C-review**：[Cloud `internal/core/operation_wait_review_test.go`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/operation_wait_review_test.go)。
+- **C-migration**：[Cloud `internal/core/operation_wait_migration_test.go`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/operation_wait_migration_test.go)。
+- **C-codec**：[Cloud `internal/controlgrpc/operation_wait_codec_test.go`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/controlgrpc/operation_wait_codec_test.go)。
+- **D-wait**：[Desktop `apps/ora-controller/src/cloud/operations/wait.rs`](https://github.com/ora-space/desktop/blob/9078570ad26b644bd5e91d80d310815ebd1e1f0c/apps/ora-controller/src/cloud/operations/wait.rs)。
+- **D-joint**：[Desktop `apps/ora-controller/tests/workspaces/short_rounds_joint.rs:production_worker_yields_and_delivers_original_late_results_to_persistent_go_cloud`](https://github.com/ora-space/desktop/blob/9078570ad26b644bd5e91d80d310815ebd1e1f0c/apps/ora-controller/tests/workspaces/short_rounds_joint.rs)，由 [Cloud `internal/controlgrpc/short_rounds_joint_test.go:TestShortRoundsJointServer`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/controlgrpc/short_rounds_joint_test.go) 提供真实 gRPC/Store/PostgreSQL 边界。
+
+D-joint 使用真实 Rust 普通 worker 和协议 Node 替身；夹具预置步骤，并用 `/expire` 将原 execution 的
+`created_at` 调老至 1801 秒。它证明受控跨进程状态和原结果交付，不是完整 Project 创建、真实 Git、
+不修改 operation 行的部署复现或真实 30 分钟等待。PR750 报告 48 个 lib 测试及 6 个联合场景通过；
+各项状态仍由直接断言的范围决定。部署记录及最终运行附件位置见文末，未提供的分支保留缺口。
 
 ## Unavailable Nodes Yield The Ordinary Worker Within The Handshake Grace
 
@@ -31,11 +50,11 @@ A 执行 node 就绪检查、clone 等待或 quiesce 的 Node 就绪检查；Nod
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 零等待与有限宽限 | 受控时钟分别证明已就绪立即推进、无目标立即延后、宽限内就绪正常推进、不可用最多等 2 秒且连接抖动不续期 | Missing |
-| 当前排序下让出处理位置 | Rust Controller 与持久 Cloud 联合路径中，在 A 本轮创建 B；断言未来 retry_at 排除 A、B 被领取，且没有 60 秒等待 | Missing |
-| quiesce 只缩短就绪等待 | 验证同一 2 秒宽限，既有停止派发、pending/idle 与 Cloud 接受条件保持原样 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 零等待与有限宽限 | 受控时钟分别证明已就绪立即推进、无目标立即延后、宽限内就绪正常推进、不可用最多等 2 秒且连接抖动不续期 | Partial | `D-wait:handshake_grace_is_shared_and_cannot_renew` 断言同轮 2 秒截止不续期；D-joint `unavailable` 断言生产 worker 不足 4 秒延后。已就绪零等待、无目标零等待、宽限内握手及真实连接抖动尚无完整直接断言 |
+| 当前排序下让出处理位置 | Rust Controller 与持久 Cloud 联合路径中，在 A 本轮创建 B；断言未来 retry_at 排除 A、B 被领取，且没有 60 秒等待 | Covered | D-joint `unavailable` 在 A running 后创建 B，断言 A 未来 retry_at、B 成功且 A 无 60 秒等待；`C-db:TestOperationWaitPendingYieldsAndKeepsExecution` 直接断言 B 被领取。B 是预置 stop operation，部署 Project 延迟另见后文 |
+| quiesce 只缩短就绪等待 | 验证同一 2 秒宽限，既有停止派发、pending/idle 与 Cloud 接受条件保持原样 | Partial | D-joint `quiesce` 断言有限等待、无 idle/terminated 伪证据且 B 推进；正常停止派发、pending→idle 与完整 Cloud 接受条件未在该联合路径全部覆盖 |
 
 ### 决策依据
 
@@ -68,12 +87,12 @@ Controller 覆盖 Cloud 退避、部分提交、重放多计、陈旧写入被�
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 持久次数与恢复 | 真实持久事务及跨进程恢复断言完整退避序列、上限、重启/换手/手动 retry 后保持、仅真实推进清零 | Missing |
-| 原子提交与围栏 | 注入 defer 回滚、响应重放和陈旧 epoch/version，断言次数与时间共同回滚、重放不多计、陈旧写入拒绝 | Missing |
-| 有限原因与迁移边界 | 新库和升级路径及内部契约往返测试证明四种原因不混淆、旧次数为 0、旧身份与结果保留、无内部身份泄漏 | Missing |
-| 不消耗已知失败预算 | 不可用与其他等待原因交错后，断言执行行数及已知 clone 三次预算不因这些轮次变化，不因不可用次数进入 failed | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 持久次数与恢复 | 真实持久事务及跨进程恢复断言完整退避序列、上限、重启/换手/手动 retry 后保持、仅真实推进清零 | Partial | `C-db:TestOperationWaitBackoffPersistsAndResetsOnAdvance` 覆盖 5/10/20/40/60/60、Store 重建、手动 retry 和推进清零；`TestOperationWaitReplayFenceAndRollback` 覆盖换 epoch；`TestOperationWaitCompletionResetsCounter` / `TestOperationWaitCounterClampsBeforeExponent` 覆盖完成清零及长期封顶。尚非真实 Cloud/Controller 进程重启后的完整序列 |
+| 原子提交与围栏 | 注入 defer 回滚、响应重放和陈旧 epoch/version，断言次数与时间共同回滚、重放不多计、陈旧写入拒绝 | Covered | `C-db:TestOperationWaitReplayFenceAndRollback` 直接断言 submission 重放相同、旧 version/epoch 拒绝、注入回滚后计数与时间不部分提交、新 epoch 保留计数 |
+| 有限原因与迁移边界 | 新库和升级路径及内部契约往返测试证明四种原因不混淆、旧次数为 0、旧身份与结果保留、无内部身份泄漏 | Partial | `C-codec:TestOperationWaitSnapshotFieldsRoundTrip` 覆盖四原因、计数与 createdAt 往返；`C-migration:TestOperationWaitMigrationPreservesLegacyExecutionAndDefaults` 覆盖 0073→0074、重复应用、旧次数 0、Node/结果保持及负值拒绝；C-db 新库 fixture 和 public retry 不泄漏计数；`C-review:TestOperationWaitPendingRejectsNonCloneStep` / `TestOperationWaitPendingRequiresExecution` 覆盖错误步骤/缺执行拒绝。全部旧资源绑定与全部内部身份未逐字段断言；blocked/node_unavailable 参数边界见文末 |
+| 不消耗已知失败预算 | 不可用与其他等待原因交错后，断言执行行数及已知 clone 三次预算不因这些轮次变化，不因不可用次数进入 failed | Covered | `C-db:TestOperationWaitPendingYieldsAndKeepsExecution` 断言多轮仍一条原执行及 pending 不改计数；`TestOperationWaitLateFailureKeepsThreeAttemptBudget` 交错 unavailable/pending/timeout，仅真实失败消耗三次预算 |
 
 ### 决策依据
 
@@ -105,10 +124,10 @@ pending 再领取间隔为 0 或 5 秒，轮内窗口无限延长，把 pending 
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 5 秒轮次与未来 1 秒 | 受控时钟和联合领取序列证明 5 秒到期让出、1 秒后才可再领、B 获得一次机会；把间隔改成 0 时最老项立即再领，断言失败 | Missing |
-| 原执行与早到结果 | 跨多轮、重启和连接抖动断言派发一次、输入/Node/执行身份不变，早到已知结果即时接管，D2 计数不因 pending 改变 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 5 秒轮次与未来 1 秒 | 受控时钟和联合领取序列证明 5 秒到期让出、1 秒后才可再领、B 获得一次机会；把间隔改成 0 时最老项立即再领，断言失败 | Covered | `D-wait:clone_window_uses_monotonic_time` 断言 4999/5000ms；D-joint `pending` 断言不足 7 秒让出、retry_remaining 为正且≤1.1 秒、B 成功；`C-db:TestOperationWaitPendingYieldsAndKeepsExecution` 断言 1 秒延后及立即 claim 得 B。未执行改为 0 的变异运行，现有断言会拒绝 A 立即再领 |
+| 原执行与早到结果 | 跨多轮、重启和连接抖动断言派发一次、输入/Node/执行身份不变，早到已知结果即时接管，D2 计数不因 pending 改变 | Partial | D-joint `pending`/`late_success`/`late_failure` 断言跨轮 executions 深相等且派发一次；`C-db:TestOperationWaitPendingYieldsAndKeepsExecution` 覆盖三轮原执行与计数。尚未直接覆盖真实进程重启/连接抖动后的保持，及 5 秒内早到结果的立即接管时间 |
 
 ### 决策依据
 
@@ -140,10 +159,10 @@ ADR D3，不变量 2、3、4、7；同样适用于 specs#95 D3 后续轮转，�
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 持久墙钟边界 | 受控时钟及跨重启恢复分别断言 1800 秒前后分类、所有等待计入、不因手动 retry 续期、新已知失败执行独立起算 | Missing |
-| 超时与结果竞争 | 在结果接管/timeout 提交交界处构造并发，断言已有已知结果不被超时覆盖，执行记录与资源均保留且不新增派发 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 持久墙钟边界 | 受控时钟及跨重启恢复分别断言 1800 秒前后分类、所有等待计入、不因手动 retry 续期、新已知失败执行独立起算 | Partial | `D-wait:total_window_uses_registration_wall_clock_at_the_exact_boundary` 覆盖 1799.999/1800 秒；`C-db:TestOperationWaitTimeoutBoundaryAndKnownResultRace` 覆盖 Cloud 登记时间判定及 blocked 不领取；`C-review:TestOperationWaitUnavailableExpiredExecutionPreservesCounter` 覆盖到期不增计数。手动 retry、真实重启/退避组合及新执行独立起算尚未全部直接覆盖；调老时间不是实际等满 30 分钟；E-C 补充未调时钟的真实 1801.26 秒边界及原结果随后提交，其他恢复组合仍保留缺口 |
+| 超时与结果竞争 | 在结果接管/timeout 提交交界处构造并发，断言已有已知结果不被超时覆盖，执行记录与资源均保留且不新增派发 | Partial | `C-db:TestOperationWaitTimeoutBoundaryAndKnownResultRace` 在旧观察后先提交结果，再提交旧 timeout，断言已知结果不被覆盖；`C-review:TestOperationWaitRefusedKnownResultTakeoverPreservesRound` 断言接管拒绝时完整 operation/execution 保持。尚无屏障控制的真实并发交错及全部资源/派发联合断言 |
 
 ### 决策依据
 
@@ -174,9 +193,9 @@ Cloud 按原 execution 身份与围栏自动接管成功、解除 timeout 阻塞
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 晚到成功自动推进 | 真实 Cloud 与 Rust Controller 结果交付联合测试先进入 timeout，再送达原成功；禁止人工 retry 和普通重领，断言自动推进、原 execution 与派发次数保持 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 晚到成功自动推进 | 真实 Cloud 与 Rust Controller 结果交付联合测试先进入 timeout，再送达原成功；禁止人工 retry 和普通重领，断言自动推进、原 execution 与派发次数保持 | Covered | D-joint `late_success` 先 timeout 再经原 Node 消息交付成功，无 retry 即 succeeded，仍原执行一条且派发一次；`C-db:TestOperationWaitLateSuccessAndUnknownIsolation/clone_result_timeout` 断言断连/心跳过期仍自动恢复。联合时间由夹具调老 |
 
 ### 决策依据
 
@@ -207,9 +226,9 @@ operation 为 `blocked/clone_result_timeout`，当前原执行分别是同一 op
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 晚到失败自动恢复与次数上限 | 持久 Cloud 与真实结果交付测试覆盖第 1/2/3 次 timeout 后晚到失败，断言自动进入原 5/10 秒退避或第三次 failed，无人工 retry、不重置次数 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 晚到失败自动恢复与次数上限 | 持久 Cloud 与真实结果交付测试覆盖第 1/2/3 次 timeout 后晚到失败，断言自动进入原 5/10 秒退避或第三次 failed，无人工 retry、不重置次数 | Partial | `C-db:TestOperationWaitLateFailureKeepsThreeAttemptBudget` 覆盖第 1/2/3 次晚到失败、5/10 秒或 failed 及执行行数；D-joint `late_failure` 覆盖首次 timeout 后真实 Rust→gRPC 原结果交付且派发一次。第 2/3 次尚未在该联合交付路径覆盖；E-C late-result-detail.md 补充真实 1800 秒后首次晚到 clone_failed、约 5 秒退避、第二次执行成功；第 2/3 次真实部署分支仍未覆盖 |
 
 ### 决策依据
 
@@ -239,9 +258,9 @@ Node 为原 execution 报告 Unknown，Cloud 已按 clone 契约 D6 记录 `bloc
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| Unknown 不走 timeout 恢复 | Node 报告真实 Unknown 后覆盖墙钟到期、重连和重启，断言原因仍是 clone_result_unknown、保持 blocked、无新派发或删除 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| Unknown 不走 timeout 恢复 | Node 报告真实 Unknown 后覆盖墙钟到期、重连和重启，断言原因仍是 clone_result_unknown、保持 blocked、无新派发或删除 | Partial | `D-wait:fresh_unknown_cannot_be_reclassified_as_timeout`；D-joint `unknown_at_deadline` 由协议 Node 回 Unknown，到期仍 blocked/clone_result_unknown 且原执行一条；`C-db:TestOperationWaitLateSuccessAndUnknownIsolation/clone_result_unknown` 覆盖过期与 Store 重建后不领取。真实断线重连与 Controller 进程重启尚未在该 Unknown 联合路径覆盖 |
 
 ### 决策依据
 
@@ -272,9 +291,9 @@ ADR D3、不变量 5、6、8；clone 契约 D6；owner 要求的 Unknown 保持�
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 围栏、对账与强停保持 | 联合故障测试覆盖旧 epoch/version、租约丢失、恢复先对账和普通项等待时的独立 force-stop；直接断言原身份及证据边界保持 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 围栏、对账与强停保持 | 联合故障测试覆盖旧 epoch/version、租约丢失、恢复先对账和普通项等待时的独立 force-stop；直接断言原身份及证据边界保持 | Partial | `C-db:TestOperationWaitReplayFenceAndRollback` 覆盖旧 epoch/version；Desktop `apps/ora-controller/tests/workspaces/force_stop.rs:force_stop_progresses_while_an_ordinary_operation_is_waiting`、`force_stop_preserves_all_cloud_effect_targets_and_evidence`、`absence_and_unavailable_nodes_are_not_termination_confirmation` 覆盖既有独立强停规则，但使用替身 Cloud/受阻 effect。尚非短轮次联合路径同时覆盖租约丢失、先对账和完整强停证据 |
 
 ### 决策依据
 
@@ -306,9 +325,9 @@ A 每轮占用、次数/retry_at、原 execution 身份与结果。修复后不�
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 两种故障的前后对照 | 当前创建时间排序下分别完成上述部署路径，提供固定版本、真实时间线和各自无故障基线，区分正常准备耗时；后续轮转采用同一场景 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 两种故障的前后对照 | 当前创建时间排序下分别完成上述部署路径，提供固定版本、真实时间线和各自无故障基线，区分正常准备耗时；后续轮转采用同一场景 | Covered | 部署 E-P/E-K：P 基线/B 为 54.66/55.85 秒，K 为 43.34/57.43 秒；K 在故障后 61 秒建 B。两租户及 B 后续 Workspace 均推进，原 clone 各一条；次数、retry_at、轮次占用和历史对照见 E-D。首次领取为采样上下界，快速步骤的版本跳跃原样保留，不声称逐事务完整日志或严格延迟保证 |
 
 ### 决策依据
 
@@ -339,9 +358,9 @@ ADR 背景、D1/D2、落地顺序与验证第 4 项；#698 的历史数据仅作
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 多失联项的真实排队时间 | 上述部署场景中各项领取、延后、退避和健康项完整推进的时间线及对照；轮转落地后复用场景 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 多失联项的真实排队时间 | 上述部署场景中各项领取、延后、退避和健康项完整推进的时间线及对照；轮转落地后复用场景 | Missing | 本轮 Missing：所要求的不同 Project 共用同一不可用 Node 没有公开构造路径。Cloud `internal/core/public.go:createProject` 为每个 Project 分配独立 main Workspace；Cluster `sandbox-server/internal/lifecycle/effects.go:NodeID` 固定为 workspace-<workspaceID>，Cloud `workspace_clone.go:245–267` 围栏只接受该 Workspace 的当前 Node。未通过改配置/行或改用三个不同 Node 替代；D-joint 的单 A/B 不能覆盖本项 |
 
 ### 决策依据
 
@@ -373,10 +392,44 @@ claim/defer 写入与多条慢 clone 约 N×5 秒轮内占用的实际观察，�
 
 ### 验证义务与证据
 
-| 义务 | 所需直接证据 | 状态 |
-| --- | --- | --- |
-| 持续连接下的跨轮与结果恢复 | 真实 Cloud/Rust Controller/Node 联合记录覆盖持续会话、B 推进、同一执行多轮、真实总窗口及晚到结果自动恢复/Unknown 阻塞的各分支；受控时钟测试单独标明范围 | Missing |
+| 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
+| --- | --- | --- | --- |
+| 持续连接下的跨轮与结果恢复 | 真实 Cloud/Rust Controller/Node 联合记录覆盖持续会话、B 推进、同一执行多轮、真实总窗口及晚到结果自动恢复/Unknown 阻塞的各分支；受控时钟测试单独标明范围 | Partial | 部署 E-C：Node 保持 ['connected']，同原 execution/Node 与两条安全 input ref，B 在 60.80 秒完成且后续 Workspace 推进；记录 178 个延后/阻塞轮次。真实 1801.26 秒观察到 clone_result_timeout；原结果 clone_failed 于登记后 1802.71 秒提交。原结果提交前只有一条业务执行；晚到 clone_failed 接管后按原预算生成第二次执行并成功（见 E-C late-result-detail.md），不是 pending 重派；业务执行身份不等于网络帧发送次数。完整 input 的直接深相等由 D-joint 支持，部署只投影两条安全 ref。第 2/3 次晚到失败、真实晚到成功/Unknown、多慢 clone 排队及真实重启组合仍未覆盖；D-joint 的调老时钟路径单独保留范围 |
 
 ### 决策依据
 
 ADR D3、不变量 2–8、后果与兼容性、落地顺序与验证第 6 项。
+
+## 证据位置与保留缺口
+
+- 固定产品与工具：Cloud #206 merge `1cfaed3`、Desktop #750 PR head `9078570`（合入后补 merge commit）、Cluster `562351d`。本规格 PR 须等 Desktop #750 先合入。
+- E-T 为测试范围摘要；48 个 lib 测试及 6 个联合场景、79.83 秒的运行结果转述自 PR750，本轮未重跑。SHA-256 标识该摘要文件，不冒充原始测试日志摘要。
+- E-D 为部署总报告；E-P/E-K/E-C 分别对应 `p/`、`k/`、`c/` 的 case-report.json 及同目录安全时间线。初次 C 捕获漏过快速重试的记录保留在 E-D，未冒充 30 分钟通过。
+- 以下文件位于生成候选的 cluster 工作区，未提交。路径均相对 cluster 仓库根目录；SHA-256 从保存的安全报告文件一次计算，没有增加运行判定门槛或重算比对。
+
+| 证据 | cluster 相对位置（未提交） | SHA-256 |
+| --- | --- | --- |
+| E-T | `.acceptance/landing803/test-evidence.md` | `ad335076d6626c125ff5f8b10f122ca36ee73228d343abea7b382f04f605893c` |
+| E-D | `.acceptance/landing803/cleanup-summary.json` | `a111a0f3d4e796bd7e9bc387f29372f326f9984d898cdd8302a0bab9c9657c48` |
+| E-P | `.acceptance/landing803/p/case-report.json` | `ffe76ab72276b009054267050c9fc26c670467789a42dc264773d80ddc350c07` |
+| E-P | `.acceptance/landing803/p/operation-rounds.jsonl` | `0aa4dccdceb412235a278169766ae244237d5bb113c6a32290a6e525dd238a1e` |
+| E-P | `.acceptance/landing803/p/hol2-operations.jsonl` | `621fae1a35bac5597135132a4c81b8ff834c1c00e88638216d1bdc74d5121430` |
+| E-P | `.acceptance/landing803/p/hol2-controller-safe.json` | `7683ee5893cb6706c7cf691c62155ceb5de65863d6f26edd74e5eb0904eaa188` |
+| E-K | `.acceptance/landing803/k/case-report.json` | `73fb3c5a0a2a70187bd89e3918429bf2e20d13a8e1c4a7a592da872229844886` |
+| E-K | `.acceptance/landing803/k/operation-rounds.jsonl` | `822d252d506be59950b81daf69e81c15ea02e62ac227cc50240caf71f8be7246` |
+| E-K | `.acceptance/landing803/k/hol2-operations.jsonl` | `2744f329038d55c82c40f607d80ad7f7cfff3d74ada5f9889005bcfe74080ba4` |
+| E-K | `.acceptance/landing803/k/hol2-controller-safe.json` | `591de96afee5a4a02003a072ccad60e3e23fca6bddc0b8b7c9d5490a4a23b53d` |
+| E-C | `.acceptance/landing803/c/case-report.json` | `3320f933344b32c8674d1a5c5b0a4f530b559734e050225f7f1bb8068ac6e905` |
+| E-C | `.acceptance/landing803/c/operation-rounds.jsonl` | `bf1f109a4e763263432f91dd6b054e524966cbd890f19b1d7a8eedf0ba7e8b9a` |
+| E-C | `.acceptance/landing803/c/hol2-operations.jsonl` | `9e1451edbbf06b1825d897f230b6deed5726da93c6e578ec384fed9e2341b8ee` |
+| E-C | `.acceptance/landing803/c/hol2-controller-safe.json` | `694f78f31f95b3edd0af3020e5be91ac83124bdc676891dff65576f73c44ed8b` |
+| E-D | `.acceptance/landing803/deployment-report.md` | `10e5aa298b6489502d2c1e3e68fb4fba63a7c5ad3dad6c764930f68bf13ccc00` |
+| E-C | `.acceptance/landing803/c/late-result-detail.md` | `6e69f506a31242e6664df2cd64b135a91aeaa5d3d96f6430b09953e60ba92acb` |
+
+多 Project 共用 Node 的构造限制：Cloud [`public.go:676–745`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/public.go#L676-L745)、
+Cluster [`effects.go:18–57`](https://github.com/ora-space/cluster/blob/562351d/sandbox-server/internal/lifecycle/effects.go#L18-L57)、
+Cloud [`workspace_clone.go:245–267`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/workspace_clone.go#L245-L267)。
+该部署项继续 Missing，不用 N×2 秒估算或单 A/B 的组件/联合测试替代。
+
+已知独立后续边界：Cloud `internal/core/control.go:operationCommand` 对 `node_unavailable` 豁免 `retrySeconds` 的 1..3600 校验，只有 `state=retry_wait` 进入 Cloud 计算退避。
+`blocked/node_unavailable` 仍可能落入通用更新并使用调用方的无界 delay，所列测试未覆盖该组合。有限原因白名单不等于所有原因/状态/参数组合均已封闭；本 ADR 的正常 Controller 路径不会据此获得新的 blocked 延后语义。
