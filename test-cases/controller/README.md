@@ -5,5 +5,5 @@
 
 | 领域 | 核心用例 | 验证义务与证据状态 |
 | --- | --- | --- |
-| node-management | [不可用 Node 延后与 clone 分轮等待](node-management/20261028-defer-unavailable-node-operations.md) | ADR 为 implemented；实现基线 Cloud 1cfaed3、Desktop #750 PR head 9078570，本规格 PR 须等 Desktop 先合入并补 merge commit。18 项按直接测试与部署实际覆盖分别标为 Covered/Partial/Missing；实现状态不消除缺口，调老时间的联合测试不替代真实 30 分钟等待，保留 blocked/node_unavailable 无界 retrySeconds 后续问题 |
+| node-management | [不可用 Node 延后与 clone 分轮等待](node-management/20261028-defer-unavailable-node-operations.md) | ADR 为 implemented；实现基线 Cloud 1cfaed3、Desktop #750 最终 PR head [65fc457](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)，本规格 PR 须等 Desktop 先合入并补 merge commit。18 项按直接测试与部署实际覆盖分别标为 Covered/Partial/Missing；第 17 项要求不同 Project 各自的 Workspace Node 同时失联、旧项持续循环时健康 B/C 真实排队并推进。实现状态不消除缺口，调老时间的联合测试不替代真实 30 分钟等待，保留 blocked/node_unavailable 无界 retrySeconds 后续问题；当前 18 项为 7 Covered / 11 Partial / 0 Missing |
 

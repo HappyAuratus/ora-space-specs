@@ -14,7 +14,9 @@ status: implemented
 `implemented` 不表示全部验证义务均为 `Covered`。Cloud 实现已随 [cloud#206](https://github.com/ora-space/cloud/pull/206) 合入
 [`1cfaed3`](https://github.com/ora-space/cloud/commit/1cfaed320d653f0f2689e165f98cf3c705f3dcfa)，
 Controller 实现与联合测试以 [desktop#750](https://github.com/ora-space/desktop/pull/750) 的
-[`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c) PR head 为基线。
+[`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a) 最终 PR head 为基线。
+前期部署镜像构建于 [`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c)，仍保留该 revision 标签；
+其生产源码与最终 head 相同，差异仅为 process-runtime `observations.rs` 的 `#[cfg(test)]` 测试夹具，不改变运行行为。
 本规格 PR 须在 Desktop #750 先合入后合入，并补充其 merge commit；此处不把候选 head 说成 main 已落地。
 本决策涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
 D1/D2 在本候选仍使用的 `created_at,id` 排序下修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
@@ -256,8 +258,10 @@ Desktop 合并版本和部署覆盖按实际证据登记，不删除未覆盖义
    阶段暂停 Node、以及 SIGKILL 并在 Node 消失 61 秒后创建 B。记录 B 创建到首次领取、各轮领取/延后/推进、
    完成耗时，以及 A 每轮占用时间、Cloud 次数/retry_at、clone execution 身份和结果。并列展示修复前、修复后
    与各自无故障基线；保留 #698 的 173.5/168.6 秒和 52.0/66.5 秒作为历史对照，不将其当作新版本固定门槛。
-5. **多条不可用 operation**：至少三个不同 Project 的旧操作同时等待失联 Node，再创建健康租户 B 的 Project，
-   并在旧项轮次期间加入另一健康项。先在当前排序检查所有旧项每轮宽限、Cloud 退避与健康项的后续推进，
+5. **多条不可用 operation**：至少三个不同 Project 各有自己的 Workspace Node，这些 Node 同时失联，
+   各自的旧操作持续经历领取与延后轮次。旧项循环仍在进行时，创建健康租户 B 的 Project，再在旧项轮次期间
+   加入健康租户 C 的 Project；B/C 必须真实进入同一普通 operation 队列并获得推进。先在当前排序检查所有旧项
+   每轮宽限、Cloud 退避与 B/C 的后续推进，
    比较同版本无故障与旧实现；轮转落地后再复用场景，不阻塞当前修复。必须没有每条旧项 60 秒的阻塞；
    报告实际排队时间，不用“最终成功”替代延迟证据。
 6. **连接正常但无结果**：让原 clone 保持会话与心跳但不交付结果，观察跨轮执行身份及 B 推进；以原执行

@@ -10,6 +10,8 @@ Controller 实现与直接测试以 [desktop#750](https://github.com/ora-space/d
 ADR 的实现状态与验证覆盖分别登记，仍未覆盖的完整分支保留 `Partial` 或 `Missing`。
 以下分别列出直接测试覆盖与缺口，不能用 PR 全绿或历史 #698 数据代替完整义务。
 
+最终 PR head 为 [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)。本轮多失联项复用由 `9078570` 构建的镜像并保留 revision 标签；两提交仅 `#[cfg(test)]` 夹具变化，生产运行源码与版本输入未变。前期部署与测试报告仍按其实际 `9078570` 基线保留，不声称镜像由新 head 重建。
+
 证据入口（`文件:测试名` 中的文件缩写均指以下固定版本）：
 
 - **C-db**：[Cloud `internal/core/operation_wait_db_test.go`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/operation_wait_db_test.go)。
@@ -341,11 +343,11 @@ ADR 背景、D1/D2、落地顺序与验证第 4 项；#698 的历史数据仅作
 
 ### 前置状态
 
-至少三个不同 Project 的旧 operation 同时等待不可用 Node，另有健康租户；使用固定版本与新隔离环境。
+至少三个不同 Project 的旧 operation 各自等待本 Project 不可用的 Workspace Node，三条旧项同时位于全局队列，另有健康租户；使用固定版本与新隔离环境。
 
 ### 触发
 
-创建健康租户 B 的 Project，并在旧项轮次期间再加入另一健康项。
+旧项持续循环时创建健康租户 B 的 Project，并在旧项执行轮次内加入健康租户 C 的 Project。
 
 ### 必须成立
 
@@ -360,7 +362,7 @@ ADR 背景、D1/D2、落地顺序与验证第 4 项；#698 的历史数据仅作
 
 | 义务 | 所需直接证据 | 状态 | 代表性证据与边界 |
 | --- | --- | --- | --- |
-| 多失联项的真实排队时间 | 上述部署场景中各项领取、延后、退避和健康项完整推进的时间线及对照；轮转落地后复用场景 | Missing | 本轮 Missing：所要求的不同 Project 共用同一不可用 Node 没有公开构造路径。Cloud `internal/core/public.go:createProject` 为每个 Project 分配独立 main Workspace；Cluster `sandbox-server/internal/lifecycle/effects.go:NodeID` 固定为 workspace-<workspaceID>，Cloud `workspace_clone.go:245–267` 围栏只接受该 Workspace 的当前 Node。未通过改配置/行或改用三个不同 Node 替代；D-joint 的单 A/B 不能覆盖本项 |
+| 多失联项的真实排队时间 | 上述部署场景中各项领取、延后、退避和健康项完整推进的时间线及对照；轮转落地后复用场景 | Covered | 部署 E-M：三个不同租户/Project 各自的 Workspace Node 被 SIGKILL，旧操作同时循环，各完成 4 个不可用轮次；观测领取→延后为 2.007–3.024 秒（含 RPC），次数 1/2/3/4，退避约 5/10/20/40 秒，无约 60 秒占用。同栈基线 50.52 秒；B 首次领取 0–0.46 秒、完成 47.50 秒；C 首次领取 13.67–14.16 秒、完成 99.21 秒。C 的 DB 创建时刻落在旧项 running→defer 区间，POST 返回后仍采到同版本 running。逐轮 hold/counter/retry_at 和健康项后续排队段见 E-M；首次领取是采样界限，快速步骤漏版本不补造，不把总耗时差全部当作排队或租户延迟保证 |
 
 ### 决策依据
 
@@ -402,9 +404,10 @@ ADR D3、不变量 2–8、后果与兼容性、落地顺序与验证第 6 项�
 
 ## 证据位置与保留缺口
 
-- 固定产品与工具：Cloud #206 merge `1cfaed3`、Desktop #750 PR head `9078570`（合入后补 merge commit）、Cluster `562351d`。本规格 PR 须等 Desktop #750 先合入。
+- 固定产品与工具：Cloud #206 merge `1cfaed3`、Desktop #750 最终 PR head `65fc457`（合入后补 merge commit）、Cluster `562351d`。E-T/E-P/E-K/E-C 保留实际 `9078570` 基线；E-M 复用其生产源码相同的镜像并保留原 revision 标签。本规格 PR 须等 Desktop #750 先合入。
 - E-T 为测试范围摘要；48 个 lib 测试及 6 个联合场景、79.83 秒的运行结果转述自 PR750，本轮未重跑。SHA-256 标识该摘要文件，不冒充原始测试日志摘要。
 - E-D 为部署总报告；E-P/E-K/E-C 分别对应 `p/`、`k/`、`c/` 的 case-report.json 及同目录安全时间线。初次 C 捕获漏过快速重试的记录保留在 E-D，未冒充 30 分钟通过。
+- E-M 为三个不同 Project 各自 Node 失联、健康 B/C 的新部署证据，取代旧版同 Node 限制。
 - 以下文件位于生成候选的 cluster 工作区，未提交。路径均相对 cluster 仓库根目录；SHA-256 从保存的安全报告文件一次计算，没有增加运行判定门槛或重算比对。
 
 | 证据 | cluster 相对位置（未提交） | SHA-256 |
@@ -425,11 +428,15 @@ ADR D3、不变量 2–8、后果与兼容性、落地顺序与验证第 6 项�
 | E-C | `.acceptance/landing803/c/hol2-controller-safe.json` | `694f78f31f95b3edd0af3020e5be91ac83124bdc676891dff65576f73c44ed8b` |
 | E-D | `.acceptance/landing803/deployment-report.md` | `10e5aa298b6489502d2c1e3e68fb4fba63a7c5ad3dad6c764930f68bf13ccc00` |
 | E-C | `.acceptance/landing803/c/late-result-detail.md` | `6e69f506a31242e6664df2cd64b135a91aeaa5d3d96f6430b09953e60ba92acb` |
+| E-M | `.acceptance/landing803/multiple-unavailable/report.md` | `5a9667825287018801a5f02019420102893e2b8bdfe304bb4856b6ac8ee60d0c` |
+| E-M | `.acceptance/landing803/multiple-unavailable/case-report.json` | `21043825cb71e4bbfad18049620438c6b2aa03d0811d1cfc2b9d8a87ed432714` |
+| E-M | `.acceptance/landing803/multiple-unavailable/cleanup.json` | `c6c466ba496228f71fe4c1f7a804d766bca38d38fdea27d1363a332619337dd3` |
+| E-M | `.acceptance/landing803/multiple-unavailable/candidate-note.md` | `9c01648c4b1fd46517785bd774fc8619400231b4a5f76c44bc6ac23d4fb2a1c6` |
+| E-M | `.acceptance/landing803/multiple-unavailable/operations.jsonl` | `100f8ef63a0b2a78979eda6ea6e7c65581f61dd19404913f73e3d7ff3da62dfb` |
+| E-M | `.acceptance/landing803/multiple-unavailable/rounds.jsonl` | `8f2eac989412d9a2798e29f5192af7757914f8de5af762257609363163e482cd` |
+| E-M | `.acceptance/landing803/multiple-unavailable/controller-safe.json` | `461aa3b6e228ec592a0a04a5475b7864f3e2218cd6297892052ac714b703aecd` |
 
-多 Project 共用 Node 的构造限制：Cloud [`public.go:676–745`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/public.go#L676-L745)、
-Cluster [`effects.go:18–57`](https://github.com/ora-space/cluster/blob/562351d/sandbox-server/internal/lifecycle/effects.go#L18-L57)、
-Cloud [`workspace_clone.go:245–267`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/workspace_clone.go#L245-L267)。
-该部署项继续 Missing，不用 N×2 秒估算或单 A/B 的组件/联合测试替代。
+多失联项的拓扑：每个 Project 使用各自的 Workspace Node，不要求多个 Project 共用一个 Node。E-M 已提供这一拓扑的直接部署时间线；E-D 旧报告中的“同 Node 无法构造”对应旧场景定义，不再构成本义务的限制。旧报告和摘要保持原样。
 
 已知独立后续边界：Cloud `internal/core/control.go:operationCommand` 对 `node_unavailable` 豁免 `retrySeconds` 的 1..3600 校验，只有 `state=retry_wait` 进入 Cloud 计算退避。
 `blocked/node_unavailable` 仍可能落入通用更新并使用调用方的无界 delay，所列测试未覆盖该组合。有限原因白名单不等于所有原因/状态/参数组合均已封闭；本 ADR 的正常 Controller 路径不会据此获得新的 blocked 延后语义。
