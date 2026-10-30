@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 不可用时结束本轮并延后：Cloud 保存退避次数，clone 分轮等待同一执行
@@ -10,14 +10,19 @@ status: approved
 从该执行登记起超过 30 分钟仍无结果时，进入 `blocked/clone_result_timeout`；晚到的原执行已知结果由 Cloud
 自动接管并继续推进或按原失败预算处理。Node 报告的 Unknown 仍是 `blocked/clone_result_unknown`。
 
-本 ADR 处于 `approved`，决策内容已获 owner 接受，Cloud 与 Controller 的产品实现尚未完成。
-涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
-D1/D2 在当前 `created_at,id` 排序下即可修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
-A 每轮只占用 worker 最多 2 秒的本地等待。本文的决策同时适用于当前排序与
-[specs#95 D3](https://github.com/ora-space/specs/pull/95) 轮转；轮转落地后原样叠加，不是本文的实施前提。
-该 PR 尚未合入本文的 specs main 基线 `5580476`；本文不宣称轮转已在 main 实现，也不另定排序。
+本 ADR 为 `implemented`：本文规则已在下列固定版本实现，测试与部署覆盖仍按核心用例逐项登记，
+`implemented` 不表示全部验证义务均为 `Covered`。Cloud 实现已随 [cloud#206](https://github.com/ora-space/cloud/pull/206) 合入
+[`1cfaed3`](https://github.com/ora-space/cloud/commit/1cfaed320d653f0f2689e165f98cf3c705f3dcfa)，
+Controller 实现与联合测试已随 [desktop#750](https://github.com/ora-space/desktop/pull/750) 合入
+[`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head [`65fc457`](https://github.com/ora-space/desktop/commit/65fc45714bdcdbcc71f2eb9263b963ab54c6a26a)）。
+前期部署镜像构建于 [`9078570`](https://github.com/ora-space/desktop/commit/9078570ad26b644bd5e91d80d310815ebd1e1f0c)，仍保留该 revision 标签；
+其生产源码与最终 head 相同，差异仅为 process-runtime `observations.rs` 的 `#[cfg(test)]` 测试夹具，不改变运行行为。
+本决策涉及 Cloud 的 operation 持久延后与 Rust Controller 的普通 operation 驱动；不改变 Node 的 Git 执行期限。
+D1/D2 在本候选仍使用的 `created_at,id` 排序下修复 #698：A 延后且 `retry_at` 在未来时不再参与领取，B 可以被领取，
+A 每轮只占用 worker 最多 2 秒的本地等待。本文规则也适用于
+[specs#95 D3](https://github.com/ora-space/specs/pull/95) 的轮转约定，但不依赖它，也不宣称本候选已实现轮转。
 对应的验证义务登记在[不可用 Node 延后与 clone 分轮等待核心用例](../../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
-新增义务均为 `Missing`；批准本决策不代表产品已实现或部署复现已通过。
+逐项区分直接测试、部署记录与未覆盖分支；ADR 状态或 PR 测试通过不替代各项覆盖证据，`Partial`/`Missing` 继续保留。
 
 ## 背景与约束
 
@@ -33,7 +38,7 @@ clone 阶段使 Node 不可用，再由租户 B 创建 Project。没有工作流
 两次 B 最终均成功；准备总耗时包含快照、插件等正常步骤，不能把全部差值归因于 Node 故障。
 多条失联 operation 同时存在时的影响，以及“连接着但不返回结果”的 clone，尚不能由这两次复现证明。
 
-当前 main 的相关代码仍有同一行为，代码引用基线为 cloud `975336f`、desktop `cab59a3c`：
+批准本决策时的历史代码仍有同一行为，代码引用基线为 cloud `975336f`、desktop `cab59a3c`：
 
 | 事实 | 当前代码依据 |
 | --- | --- |
@@ -113,8 +118,10 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 也把恢复后的额外调度等待限制在最多一个 60 秒退避周期加排队时间。选择 60 而非 120 秒，是为了减少
 恢复延迟；它不是已测得的最优参数，不承诺租户级延迟上界。本文不引入 jitter 或新的配置面。
 
-此规则需要 Cloud 的 operation 持久列及追加迁移，并在必要的内部快照中传递恢复所需状态；不向公开 API
-暴露内部身份。迁移文件号在产品 PR 时取当时下一个可用号，合并前按 main 顺延，不在 ADR 预占。
+此规则由 Cloud 的 operation 持久列及追加迁移
+[`0074_node_unavailable_attempts.sql`](https://github.com/ora-space/cloud/blob/1cfaed320d653f0f2689e165f98cf3c705f3dcfa/internal/core/migrations/0074_node_unavailable_attempts.sql)
+承载，并在内部快照中传递恢复所需的计数与执行登记时间；不向公开 API 暴露内部身份。
+该列为非负 `bigint NOT NULL DEFAULT 0`，退避计算先限制指数，持久次数到 bigint 上限后饱和。
 旧行次数为 0，不从 `version` 或历史错误猜造次数；已有 clone 执行、结果、epoch 与资源绑定不改写。
 
 ### D3：clone 每轮等 5 秒，最多自动等待同一执行 30 分钟
@@ -134,7 +141,7 @@ Cloud 决定等待时间，Controller 提交原因，不通过自己给出的秒
 | 更早已有足够证据按现有契约判为未知、失败或成功 | 继续原分类与接管规则；新窗口不推迟现有 unresolved 处理 |
 
 `clone_result_pending` 是本决策新增的有限延后原因，明确表示“继续等原执行”，不表示 Node 已失败或执行
-已经 Unknown。需要同步扩展 Cloud 的允许原因、内部契约和 Controller 映射；不能用 `clone_failed` 或
+已经 Unknown。Cloud 的允许原因、内部契约和 Controller 映射已同步扩展；不能用 `clone_failed` 或
 `clone_result_unknown` 冒充普通轮次到期，也不应把正常 pending 伪装成通用 `external_failure`。
 它使用固定 **1 秒再领取间隔**，不增加或清除 D2 的 Node 不可用计数，不创建新的 clone execution。
 该间隔不能为 0：在当前 `created_at,id` 排序下，最老的 pending clone 会立即再被领取，持续占用下一轮，
@@ -147,7 +154,7 @@ B 就无法进入；未来 1 秒的 `retry_at` 让 A 暂时离开可领取集合
 
 每次恢复先按原身份查询并接管已经存在的结果，再判断是否仍无结果且超出窗口；Cloud 在持久化
 `blocked/clone_result_timeout` 时重新核验，避免把并发到达的已知结果覆盖成超时。该原因是新增的有限原因，
-与 `clone_result_unknown` 分别持久保存；Cloud 允许原因、内部契约和 Controller 映射须同步扩展。
+与 `clone_result_unknown` 分别持久保存；Cloud 允许原因、内部契约和 Controller 映射已同步扩展。
 没有新证据时，超时只意味着不再占用普通 worker 等待：
 不发送新的 `CloneRepository`，不改变 execution/Node/输入，不伪造失败，不清理目录或终止 Node。
 
@@ -205,14 +212,22 @@ Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unkno
 
 - 正常握手和大仓库端到端耗时分布尚无本决策的测量，不能据此宣称参数最优；已接受的政策值和
   `clone_result_pending` 命名不再作为待确认事项，timeout 后晚到已知结果的恢复不留给人工处理。
-- specs#95/cloud#74 的后续合并与迁移顺序由对应 owner 协调；本文可独立实施，不接管其其他领取结算工作。
+- specs#95/cloud#74 的领取轮转与迁移协调属于对应 owner 的范围；本文不依赖轮转，也不接管其其他领取结算工作。
 - 租户配额、多 worker、其他长 Substrate/插件调用的调度，以及未知执行的物理回收，均不在本决策内。
+- Cloud 已实现正常 `retry_wait/node_unavailable` 的服务端退避，但 `blocked/node_unavailable` 的参数边界仍有
+  独立后续问题：`operationCommand` 对该原因豁免 `retrySeconds` 的 1..3600 校验，blocked 请求可能落入通用
+  更新并使用调用方 delay。有限原因白名单不等于所有原因/状态/参数组合均已封闭；本决策不赋予正常
+  Controller 路径新的 blocked 延后语义，也不宣称该组合已修复或验证。
 
 ## 落地顺序与验证
 
-以下是已批准的实施和验证义务，产品实现和运行验证尚未完成。
+以下保留原批准的实施与验证义务；Cloud `1cfaed3` 与 Controller PR head `9078570` 已实现本文行为，
+Desktop 合并版本和部署覆盖按实际证据登记，不删除未覆盖义务或以状态代替验证。
 [核心用例](../../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)按最终决策逐项登记，
-同时承担 Controller 轮次、Cloud 持久状态与跨进程结果接管义务；当前证据全部为 `Missing`。
+同时承担 Controller 轮次、Cloud 持久状态与跨进程结果接管义务，已分别标为 `Covered`、`Partial` 或 `Missing`。
+源码证据以 cloud `1cfaed3`、desktop `9078570` 为基线，直接入口见该核心用例的固定源码链接。
+受控联合测试使用真实 Rust worker、Go gRPC/Store 与 PostgreSQL，Node 为协议替身；夹具预置步骤并调老
+原 execution 的 `created_at`，不能替代真实 30 分钟等待、真实 Git 或下述部署故障时间线。
 
 1. **Cloud 契约和状态**：在当前 `created_at,id` 排序下追加持久计数迁移，接收 pending/timeout 原因，原子计算
    D2 的 retry_at、pending 的未来 1 秒 retry_at，并按原 execution 的 created_at 墙钟时间判断总窗口。
@@ -242,8 +257,10 @@ Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unkno
    阶段暂停 Node、以及 SIGKILL 并在 Node 消失 61 秒后创建 B。记录 B 创建到首次领取、各轮领取/延后/推进、
    完成耗时，以及 A 每轮占用时间、Cloud 次数/retry_at、clone execution 身份和结果。并列展示修复前、修复后
    与各自无故障基线；保留 #698 的 173.5/168.6 秒和 52.0/66.5 秒作为历史对照，不将其当作新版本固定门槛。
-5. **多条不可用 operation**：至少三个不同 Project 的旧操作同时等待失联 Node，再创建健康租户 B 的 Project，
-   并在旧项轮次期间加入另一健康项。先在当前排序检查所有旧项每轮宽限、Cloud 退避与健康项的后续推进，
+5. **多条不可用 operation**：至少三个不同 Project 各有自己的 Workspace Node，这些 Node 同时失联，
+   各自的旧操作持续经历领取与延后轮次。旧项循环仍在进行时，创建健康租户 B 的 Project，再在旧项轮次期间
+   加入健康租户 C 的 Project；B/C 必须真实进入同一普通 operation 队列并获得推进。先在当前排序检查所有旧项
+   每轮宽限、Cloud 退避与 B/C 的后续推进，
    比较同版本无故障与旧实现；轮转落地后再复用场景，不阻塞当前修复。必须没有每条旧项 60 秒的阻塞；
    报告实际排队时间，不用“最终成功”替代延迟证据。
 6. **连接正常但无结果**：让原 clone 保持会话与心跳但不交付结果，观察跨轮执行身份及 B 推进；以原执行
@@ -251,6 +268,8 @@ Node 报告的 Unknown 仍按 clone 契约 D6 保持 `blocked/clone_result_unkno
    blocked/clone_result_unknown。不能用断连测试替代本场景，也不能把人工预置截止时间的测试冒充真实
    30 分钟部署等待。部署验收若未覆盖这一路，证据保持未覆盖，不宣称完整实现。
 
-本 ADR 的实施完成条件是 Cloud/Controller 两侧直接测试和上述联合路径有可定位证据，再按最终行为改为
-`implemented`。保持不变的行为：force-stop、lease、epoch、执行身份与恢复规则。改变的行为：普通 operation
+本 ADR 按上述固定实现版本登记为 `implemented`；Controller 实现已随 desktop#750 合入 `df694c8`。
+Cloud/Controller 两侧直接测试与上述联合路径的实际证据、未覆盖分支及获接受的偏差继续逐项登记，不以
+调老时间的联合测试冒充真实部署总窗口。最终运行附件位置与部署版本在核心用例的“证据位置与保留缺口”
+登记，未提供时不填写虚构路径或摘要值。保持不变的行为：force-stop、lease、epoch、执行身份与恢复规则。改变的行为：普通 operation
 不再因不可用 Node 或尚无结果的 clone 长时间占用处理位置，退避与总窗口依据由 Cloud 持久持有。

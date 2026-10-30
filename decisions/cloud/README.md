@@ -35,9 +35,13 @@ Plugin 和本地执行职责放在 `specs/decisions/node/`。跨层决策放在�
 层引用，不复制成多份权威规则。
 
 [不可用 Node 延后与 clone 分轮等待](../controller/node-management/20261028-defer-unavailable-node-operations.md)
-为 `approved`，尚未实现。Cloud 持有不可用退避次数及 pending/timeout/Unknown 有限原因，并自动接管 timeout 后
+为 `implemented`；实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 合入版本 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head `65fc457`）。
+Cloud 持有不可用退避次数及 pending/timeout/Unknown 有限原因，并自动接管 timeout 后
 原执行晚到的已知结果；这些跨层义务统一登记在[Controller 核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
-当前全部为 `Missing`。本处只导航，不另建重复的 Cloud 决策或用例。
+按直接测试和部署实际覆盖分别标记 `Covered`、`Partial`、`Missing`，实现状态不消除缺口；
+多项排队验证要求不同 Project 各自的 Workspace Node 同时失联，旧项持续循环时健康 B/C 真实排队并推进；
+blocked/node_unavailable 无界 retrySeconds 保留为独立后续问题。
+本处只导航，不另建重复的 Cloud 决策或用例。
 
 [交付执行结算与未受理证明](issue-run/20261026-delivery-execution-settlement-and-non-acceptance.md)
 为 `approved`：确定 Cloud 业务结算与 Node 原身份输入围栏的分工；不表示已经实现或部署。

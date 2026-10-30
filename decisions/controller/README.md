@@ -32,8 +32,11 @@ Node 的实际文件、Git、Agent、Plugin 和资源操作放在 `specs/decisio
 仅在原身份未受理证明经 Cloud 持久接管后解除对应责任；其余 quiesce 与派发账本规则继续适用。
 
 [不可用 Node 延后与 clone 分轮等待](node-management/20261028-defer-unavailable-node-operations.md)
-为 `approved`，尚未实现：Controller 缩短轮内等待，Cloud 持久保存退避次数与有限原因，并自动接管超时后
+为 `implemented`：实现基线为 Cloud #206 合入版本 `1cfaed3` 与 Controller #750 合入版本 [`df694c8`](https://github.com/ora-space/desktop/commit/df694c8836fc70b1c789cc7e8e523d4d5b1b6c66)（最终 PR head `65fc457`）。
+Controller 缩短轮内等待，Cloud 持久保存退避次数与有限原因，并自动接管超时后
 原执行晚到的已知结果；当前创建时间排序即可实施，不依赖领取轮转合并。
 直接验证义务见[对应核心用例](../../test-cases/controller/node-management/20261028-defer-unavailable-node-operations.md)，
-新增义务全部为 `Missing`，不以批准状态代替实现或部署证据。
+按直接测试与部署实际覆盖分别标记 `Covered`、`Partial`、`Missing`；实现状态不消除缺口，受控联合测试调老
+执行时间，不替代部署或真实 30 分钟证据。多项排队验证要求不同 Project 各自的 Workspace Node 同时失联，
+以及旧项持续循环时健康 B/C 的真实排队与推进。blocked/node_unavailable 无界 retrySeconds 保留为独立后续问题。
 
