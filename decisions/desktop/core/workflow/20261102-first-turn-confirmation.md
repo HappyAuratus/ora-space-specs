@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 交互式节点首轮停靠：首次自动回合需显式确认，异常停靠与等待参与分开显示
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `proposed`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例按 specs 规则在 `approved` 后补，本稿不登记测试文件或证据状态。
+本决策为 `approved`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 
@@ -96,6 +96,8 @@ provisional 快照不写 `turn_unconfirmed`：本轮尚未收敛，`turn_unknown
 provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`confirmInitialTurn` 不能跳过修复，也不能把一个尚未收敛的回合直接当成已确认。
 
 校验顺序固定为：
+
+判定使用的**有效 blocker 集合** = 快照 blockers + `prepare` 复算出的输出契约/文件 blockers；下表第 5–10 行都基于这个集合，`confirmInitialTurn` 不能越过集合里的任何非 `turn_unconfirmed` 项。
 
 | 顺序 | 检查 | 结果 |
 | --- | --- | --- |
@@ -268,7 +270,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 
 ## 落地顺序
 
-1. **ADR 评审到 `approved`**：本运行只交付 `proposed` 稿；owner/reviewer 确认 D1–D7、审计形状与 UI 两态后，改 `status: approved`，并在 specs 的 `test-cases/desktop/core/workflow/` 镜像目录补核心用例。**本稿不写核心测试用例**，也不登记测试函数或证据状态。
+1. **ADR 评审到 `approved`**：已完成；核心用例见 `test-cases/desktop/core/workflow/first-turn-confirmation.md`，证据状态在落地运行补齐。
 2. **契约与后端**：`crates/contracts` 增加 `turn_unconfirmed` blocker kind 与 `confirmInitialTurn` 请求字段；backend 的 park 函数接收 `turnOrigin` 与 `stopCause`，快照写入三个新字段并计算 `parkKind`；完成路径按 D2 的优先级实现确认分支，按 D3 写 `completion_forced.stop_cause`。不改数据库 schema，不迁移既有 run。
 3. **投影与界面**：`packages/workflow-runtime` 与 app-shell 解析新字段并透出 `needsConfirmation` / `parkKind` / `stopCause`；步骤卡片按 D5 增加确认、异常原因与 force 入口；右下角按钮只对 `ready` 启用；act card 改用 `parkKind`；中英文案同步。同步 `docs/workflows/workflow-runs.md` 与 `.zh.md` 的 interactive nodes / recovery 说明。
 4. **产品 PR rebase 与改造**：把 `ora-space/desktop#748` 从 `cab59a3c` rebase 到最新 main，按本 ADR 把原来的「`turn_unconfirmed` + force」改成「显式确认 + 普通完成」，并加异常停靠的徽标、原因与 force 审计；PR 描述的 `Refs` 更新到承接的产品运行 issue。只有 ADR `approved` 后才转正送审。
@@ -286,7 +288,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - **首轮确认不是回答**：用户仍可在 agent 提问后点「确认并完成」跳过回答，这是显式选择，不是自动误判。卡片文案必须把「确认」和「继续当前步骤」的差别说清楚，否则只是把误点从底部按钮移到卡片。
 - **provisional 的短暂分类**：provisional 期间显示「等待参与」，修复后可能变成 `abnormal`。这是 #385 已有的 provisional 语义，本决策不改变；如果用户在这段时间点完成，后端会先修复再判定，失败时返回 blockers。
 - **区域与 Cloud 不在范围**：`Loop`/`Iteration` 区域内的 interactive 仍按既有边界处理；Cloud 不执行 interactive Agent，不新增发布门禁。
-- **不维护核心测试用例**：本稿是 `proposed`，按 specs 规则不写 test-cases；`approved` 后补首轮确认、异常分类、审计形状、旧快照兼容与 UI 入口的用例，落地运行再补证据状态。
+- **核心测试用例**：首轮确认、异常分类、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态按实现与落地运行补齐。
 
 验收：
 

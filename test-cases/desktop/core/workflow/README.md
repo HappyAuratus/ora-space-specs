@@ -43,6 +43,7 @@ while-Loop 已实现独立轮池、上限两策略与早退清理；普通执行
 | [prompt-inactivity.md](prompt-inactivity.md) | 静默持续等待、冻结策略、会话隔离与取消清理 |
 | [interactive-node-completion.md](interactive-node-completion.md) | 交互式节点完成门禁、park 快照与 turn key、force 审计、cleanup 修复与区域边界 |
 | [interactive-deliverable-contract.md](interactive-deliverable-contract.md) | 产出物声明的文件判定、路径与 glob 边界、基线缺失降级、不支持字段与版本拒绝 |
+| [first-turn-confirmation.md](first-turn-confirmation.md) | 首轮自动回合显式确认、异常停靠与等待参与分离、普通确认与 force 审计、旧快照兼容 |
 
 根决策“后果与后续边界”中的预留项（并行迭代、嵌套循环、Code 沙箱、远程子工作流细节）
 不登记核心用例：它们尚未构成系统承诺，待各自后续 ADR 批准后随其义务登记。节点级错误策略的
