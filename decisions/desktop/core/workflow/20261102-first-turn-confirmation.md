@@ -105,7 +105,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 | 2 | run 不是 `Running`、节点不是 `Pending`、completion claim 不持有 | `workflow_node_not_awaiting_input`；两个字段都不能越过 |
 | 3 | turn key 与快照不一致 | `WorkflowNodeTurnChanged`；前端刷新运行后重试 |
 | 4 | `outputDigest` 与快照不一致 | `WorkflowNodeOutputChanged`；前端刷新运行后重试 |
-| 5 | 快照 blockers 为空 | 普通完成，不写 `completion_forced` |
+| 5 | 有效 blocker 集合为空 | 普通完成，不写 `completion_forced` |
 | 6 | 仅有 `turn_unconfirmed` 且 `confirmInitialTurn` | 普通完成，不写 `completion_forced` |
 | 7 | 仅有 `turn_unconfirmed` 且 `force` 或没有确认 | `WorkflowNodeIncomplete`，列出 `turn_unconfirmed` |
 | 8 | blockers 只含非 `turn_unconfirmed` 的 blocker 且 `force` | 强制完成，写 `completion_forced` |
