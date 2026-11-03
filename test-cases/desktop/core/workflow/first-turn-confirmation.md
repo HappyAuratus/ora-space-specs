@@ -1,6 +1,6 @@
 # 首轮确认与异常停靠
 
-本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，证据状态按当前实现标注；人类回合超时/断流/崩溃只有单测，保留 `Partial`。
+本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，证据状态按当前实现标注；人类回合超时/断流/崩溃、升级快照兼容与 ready 时 force 审计仍有证据缺口，保留 `Partial`。
 
 ## First Automatic Turn Awaits Explicit Confirmation
 
@@ -70,8 +70,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；e2e `a_stopped_opening_turn_waits_for_the_user` | `Covered` |
-| 异常默认不可推进、只能 force | `force_cannot_stand_in_for_confirmation`、`confirmation_cannot_lift_other_blockers`；人类回合超时/断流/崩溃没有 park 级 e2e | `Partial` |
+| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；e2e `a_stopped_opening_turn_waits_for_the_user`。人类回合的静默超时/断流/崩溃只有快照与 cleanup 单测，没有 park 级 e2e | `Partial` |
+| 异常默认不可推进、只能 force | `blocked_turn_returns_every_blocker_with_its_detail`；前端 `requires confirmation before force-completing an abnormal stop` | `Covered` |
 
 ### 决策依据
 
@@ -141,7 +141,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| force 审计形状与覆盖范围 | `a_stopped_opening_turn_keeps_only_its_own_blocker`、e2e `a_user_stop_parks_as_awaiting_participation` | `Covered` |
+| force 审计形状与覆盖范围（`blockers` / `stop_cause` / `without_turn` / `output_source`，与完成同一 payload） | `forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`、`a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
+| 快照已 ready 时 `force` 按普通完成处理、不写空审计 | 没有直接 `force` 用例；`confirmation_is_a_noop_on_a_ready_snapshot` 只覆盖确认路径 | `Partial` |
 | 互斥请求返回 `invalid_request` | `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
 
 ### 决策依据
@@ -177,9 +178,49 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 旧快照不追溯、物化默认 human | `a_provisional_park_stays_with_the_user`、`a_ready_turn_has_no_park_kind`、`human_turn_after_the_first_reply_is_ready` | `Partial` |
-| 旧客户端请求被正确拒绝 | `force_cannot_stand_in_for_confirmation`；旧客户端/旧快照的专门回归测试尚未补 | `Partial` |
+| 旧快照不追溯、物化默认 human | `a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`、`a_legacy_node_with_a_settled_turn_completes_on_its_turn_window`；前端 `keeps old snapshots and unknown enum values on the legacy projection`、`keeps the ordinary completion entry for a node parked without a snapshot`。已有 `payload.completion` 但缺 `turnOrigin` 的升级快照（代码按 `turn_origin.unwrap_or(TurnOrigin::Human)` 处理）没有直接回归测试 | `Partial` |
+| 旧客户端请求被正确拒绝 | e2e `the_opening_turn_completes_only_by_explicit_confirmation`（同一用例中不带 `confirmInitialTurn` 的普通完成与 force 都被拒） | `Covered` |
 
 ### 决策依据
 
 [首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md) D7。
+
+## UI Entries Share The Park Classification
+
+### 风险
+
+步骤卡片、右下角按钮与 Theater act card 各自推导暂停状态：首轮未确认被当成可普通推进，用户主动停止被显示成异常，或旧快照被追溯标成异常停靠。
+
+### 前置状态
+
+- 读取投影给出 `needsConfirmation` / `parkKind` / `stopCause`，或快照是 provisional / legacy（缺字段或无快照）。
+
+### 触发
+
+读取运行投影；渲染步骤卡片、右下角按钮与 Theater act card。
+
+### 必须成立
+
+- 投影透出 `needsConfirmation` / `parkKind` / `stopCause`；前端读取投影值，不按 blockers 重新推导。
+- 首轮停靠的卡片只给「确认并完成」+「继续当前步骤」，确认请求带 `confirmInitialTurn` 且不带 `force`；右下角按钮禁用。
+- 用户主动停止显示「等待参与」，异常停靠显示「异常停靠」并只给继续或 force（二次确认）；act card 读同一个 `parkKind`。
+- 右下角完成按钮只对 `ready` 启用；确认与 force 只从步骤卡片发起。
+- legacy 快照与无快照节点保留普通完成入口和 legacy 徽标，不追溯改成异常。
+
+### 禁止结果
+
+- 组件各自推导暂停状态；首轮未确认可以普通推进；用户停止被显示成异常；legacy 快照被追溯标成异常。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据 | 状态 |
+| --- | --- | --- |
+| 投影透出确认与停靠分类，前端读取投影值 | `workflow-runs.test.ts` 的 `keeps the unconfirmed opening turn awaiting confirmation on both sides`、`does not ask for confirmation on a provisional or multi-blocker snapshot`；`run-node-completion.test.ts` 的 `reads the projected needsConfirmation flag instead of re-deriving blockers` | `Covered` |
+| 步骤卡片按分类给出主/次操作，首轮确认不写 force | `run-node-session-chat.test.tsx` 的 `shows a ready step card that completes without force and names the next step`、`keeps the opening step awaiting confirmation instead of offering to advance`、`confirms the opening step with confirmInitialTurn and without force`、`sends the unconfirmed scoped turn when continuing the opening step`、`keeps a user-stopped turn awaiting input instead of reading as an abnormal stop`、`sends a scoped turn that does not frame a user stop as a system failure`、`requires confirmation before force-completing an abnormal stop` | `Covered` |
+| 右下角按钮只对 `ready` 启用 | `run-node-session-chat.test.tsx` 的 `disables the bottom-right completion action while blockers remain`、`disables the complete button while the agent is responding` | `Covered` |
+| act card 读 `parkKind` 而不是 paused 启发式 | `run-theater-act-card.test.tsx` 的 `shows the backend's abnormal park classification instead of the paused heuristic`、`shows a user stop as awaiting input, not as an abnormal stop`、`keeps an unconfirmed opening turn out of the paused badge`、`never labels the unconfirmed opening turn as an abnormal stop` | `Covered` |
+| legacy 投影与无快照节点保留旧入口 | `workflow-runs.test.ts` 的 `keeps old snapshots and unknown enum values on the legacy projection`、`leaves completion absent on older node runs without a snapshot`；`run-node-session-chat.test.tsx` 的 `keeps the ordinary completion entry for a node parked without a snapshot` | `Covered` |
+
+### 决策依据
+
+[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md) D5、不变量 11、12。

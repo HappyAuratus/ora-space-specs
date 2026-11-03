@@ -6,7 +6,7 @@ status: implemented
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），与 approved 方案一致；唯一边界是人类回合的静默超时/断流/崩溃只有单测、没有 park 级 e2e，核心用例对应证据标 `Partial`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
+本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），与批准方案一致。证据边界有三处：旧快照兼容（已有 `payload.completion` 但缺 `turnOrigin` 的升级快照没有直接回归测试）、人类回合的静默超时/断流/崩溃只有单测而没有 park 级 e2e、快照已 ready 时 `force` 不写空审计没有直接测试；核心用例对这三项标 `Partial`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 
@@ -270,25 +270,25 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 
 ## 落地顺序
 
-1. **ADR 评审到 `approved`**：已完成；核心用例见 `test-cases/desktop/core/workflow/first-turn-confirmation.md`，证据状态在落地运行补齐。
+1. **决策评审**：核心用例见 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；本 ADR 已标记为 `implemented`，证据状态按最终实现标注。
 2. **契约与后端**：`crates/contracts` 增加 `turn_unconfirmed` blocker kind 与 `confirmInitialTurn` 请求字段；backend 的 park 函数接收 `turnOrigin` 与 `stopCause`，快照写入三个新字段并计算 `parkKind`；完成路径按 D2 的优先级实现确认分支，按 D3 写 `completion_forced.stop_cause`。不改数据库 schema，不迁移既有 run。
-3. **投影与界面**：`packages/workflow-runtime` 与 app-shell 解析新字段并透出 `needsConfirmation` / `parkKind` / `stopCause`；步骤卡片按 D5 增加确认、异常原因与 force 入口；右下角按钮只对 `ready` 启用；act card 改用 `parkKind`；中英文案同步。同步 `docs/workflows/workflow-runs.md` 与 `.zh.md` 的 interactive nodes / recovery 说明。
-4. **产品 PR rebase 与改造**：把 `ora-space/desktop#748` 从 `cab59a3c` rebase 到最新 main，按本 ADR 把原来的「`turn_unconfirmed` + force」改成「显式确认 + 普通完成」，并加异常停靠的徽标、原因与 force 审计；PR 描述的 `Refs` 更新到承接的产品运行 issue。只有 ADR `approved` 后才转正送审。
-5. **落地运行**：产品 PR 合并后开落地运行，把本 ADR 改为 `implemented`，按最终实现同步正文、删除已失效的推测，并把核心用例的证据状态补齐；specs 的状态 PR 在产品 PR 合并后再合并。
+3. **投影与界面**：`packages/workflow-runtime` 与 app-shell 解析新字段并透出 `needsConfirmation` / `parkKind` / `stopCause`；步骤卡片按 D5 增加确认、异常原因与 force 入口；右下角按钮只对 `ready` 启用；act card 改用 `parkKind`；中英文案同步；`docs/workflows/workflow-runs.md` 与 `.zh.md` 的 interactive nodes / recovery 说明已同步。
+4. **产品 PR**：`ora-space/desktop#751` 从 `cab59a3c` 改造并合并（merge `12c29e51`），把原来的「`turn_unconfirmed` + force」改成「显式确认 + 普通完成」，并加入异常停靠的徽标、原因与 force 审计。
+5. **状态同步**：本 ADR 已改为 `implemented`，正文按最终实现同步并删除已失效的推测，核心用例证据按实现标注。
 
 ## 风险、未解决问题与验收
 
 - **最大的已知限制在 #427，不在本决策**：用户回复后 agent 再次提问，快照仍是 `EndTurn` + 无 blocker，界面仍可能同时显示「等待参与」和「完成并进入下一步」。本决策只把首轮的这个盲点关掉；后续回合必须由 #427 的显式完成信号解决，不能用本 ADR 的确认字段冒充。
-- **首轮 origin 依赖调用点**：任何新的 park 入口如果忘记传 `turnOrigin`，首轮 gate 就会丢失。落地时把 `turnOrigin` 设为 park 函数的必填参数（不设默认值），并让 executor 与 cleanup 两个入口显式传入；这是本决策最需要代码审查盯住的点。
-- **超时原因依赖 prompt 结束路径**：如果超时路径没有把 `prompt_timed_out` 传到 park，新快照会按 `turn_stopped` + 未知 cause 保守判成 `abnormal`。这比误显示成「等待参与」安全，但会把用户主动停止误标成异常；落地时必须把 cancel 来源（用户停止 / 静默超时）随 owning prompt 的结束原因传入，而不是在 UI 或投影里猜。
+- **首轮 origin 依赖调用点**：任何新的 park 入口如果忘记传 `turnOrigin`，首轮 gate 就会丢失。实现中 `turnOrigin` 是 park 函数的必填参数（不设默认值），executor 与 cleanup 两个入口都显式传入；新增 park 入口时同样不能省略。
+- **超时原因依赖 prompt 结束路径**：如果超时路径没有把 `prompt_timed_out` 传到 park，新快照会按 `turn_stopped` + 未知 cause 保守判成 `abnormal`。这比误显示成「等待参与」安全，但会把用户主动停止误标成异常；实现把 cancel 来源（用户停止 / 静默超时）随 owning prompt 的结束原因传入 park，而不是在 UI 或投影里猜。
 - **旧快照与旧客户端**：升级前停靠的节点可能保留原来的误判窗口；旧客户端不带 `confirmInitialTurn` 无法完成首轮停靠。desktop 同版本发布可接受，Cloud 不执行 interactive Agent；其他客户端需要补字段。旧快照的徽标沿用 legacy，不追溯改成「异常停靠」。
-- **`parkKind` 可能和 blockers 漂移**：如果某条路径只写 blockers 不写 `parkKind`，或手工改 payload，投影会显示缺失分类。落地时把分类计算收敛到唯一的快照函数，所有写入路径共用；读取端对缺失字段走 legacy，不猜。
+- **`parkKind` 可能和 blockers 漂移**：如果某条路径只写 blockers 不写 `parkKind`，或手工改 payload，投影会显示缺失分类。实现把分类计算收敛到唯一的快照函数，所有写入路径共用；读取端对缺失字段走 legacy，不猜。
 - **结构化/输出失败归入「异常停靠」**：它们不是 stop reason 异常，但也不是「等待参与」；徽标统一为「异常停靠」，原因文案分别说明「结构化输出不符合」/「没有输出」。如果产品希望单独做「输出不符合」第三态，应另开决策，不在本 ADR 临时加第三类。
 - **用户主动停止仍可 force**：这符合 #728 的矩阵（用户停止：等待参与，否，需继续或 force），但审计会记录 `stop_cause: user_stopped`。需要避免把「force 只给异常」误读成「用户停止不能 force」；本决策的准确表述是「force 只给非确认类 blocker」。
 - **首轮确认不是回答**：用户仍可在 agent 提问后点「确认并完成」跳过回答，这是显式选择，不是自动误判。卡片文案必须把「确认」和「继续当前步骤」的差别说清楚，否则只是把误点从底部按钮移到卡片。
 - **provisional 的短暂分类**：provisional 期间显示「等待参与」，修复后可能变成 `abnormal`。这是 #385 已有的 provisional 语义，本决策不改变；如果用户在这段时间点完成，后端会先修复再判定，失败时返回 blockers。
 - **区域与 Cloud 不在范围**：`Loop`/`Iteration` 区域内的 interactive 仍按既有边界处理；Cloud 不执行 interactive Agent，不新增发布门禁。
-- **核心测试用例**：首轮确认、异常分类、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态按实现与落地运行补齐。
+- **核心测试用例**：首轮确认、异常分类、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态已按实现标注，仍缺直接证据的边界保留 `Partial`。
 
 验收：
 
@@ -301,4 +301,4 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - 步骤卡片：首轮确认只给「确认并完成」+「继续当前步骤」；异常停靠只给「继续当前步骤」+「仍然完成」；用户停止保持「等待参与」；右下角按钮只对 ready 启用。
 - 投影与 act card 使用同一 `parkKind`；旧快照缺字段时走 legacy，不追溯加 `turn_unconfirmed`；不读历史、不跑 schema、不做批量回填。
 - 非交互节点、正常人类完成、Cloud 与区域 interactive 行为不变；数据库无 schema 变更，冻结图不变。
-- 核心测试用例在 `approved` 后补，落地运行按最终实现补证据。
+- 核心测试用例已按最终实现补充证据；仍缺直接证据的边界在用例中标 `Partial`。
