@@ -26,7 +26,7 @@ e2e 覆盖的是「重启 → 停止 → 完成」路径，与记录 2 的「停
 
 - 无 `force` 时返回 `WorkflowNodeIncomplete`，blockers 对应 `turn_stopped` / `turn_truncated` / `turn_refused` / `turn_unknown`，不调度下一节点。
 - `force` 二次确认后可以完成，payload 记录 `completion_forced` 与 blockers 快照；结构化失败时不写 `structured_output`。
-- 只有 `EndTurn` 的正常路径与现有行为一致。
+- 只有人类回合的 `EndTurn` 正常路径与现有行为一致；workflow 自动发起的首轮 `EndTurn` 现在写 `turn_unconfirmed`，不再直接 ready（见[首轮确认与异常停靠](first-turn-confirmation.md)）。
 
 ### 禁止结果
 
@@ -37,8 +37,8 @@ e2e 覆盖的是「重启 → 停止 → 完成」路径，与记录 2 的「停
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 五种非 `EndTurn` 终态各自阻塞完成 | `ora_backend::workflow::run::completion_snapshot::tests::non_end_turns_are_blocked_by_kind`；`workflow::run::interactive::completion_tests::blocked_turn_returns_every_blocker_with_its_detail` | `Covered` |
-| force 只覆盖 blockers，并记录审计 | `workflow::run::interactive::completion_tests::forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`；`workflow::run::operations::tests::a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
-| `EndTurn` 正常路径不回归 | `workflow::run::completion_snapshot::tests::completed_turn_is_ready`；`workflow::run::interactive::completion_tests::an_existing_ready_snapshot_is_not_rewritten` | `Covered` |
+| force 只覆盖非确认类 blockers，并记录审计（`turn_unconfirmed` 除外，审计含 `stop_cause`） | `workflow::run::interactive::completion_tests::forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`、`force_cannot_stand_in_for_confirmation`；`workflow::run::operations::tests::a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
+| `EndTurn` 正常路径不回归（仅人类回合；首轮自动回合见 `first-turn-confirmation.md`） | `workflow::run::completion_snapshot::tests::completed_turn_is_ready`；`workflow::run::interactive::completion_tests::an_existing_ready_snapshot_is_not_rewritten` | `Covered` |
 
 ### 决策依据
 
@@ -250,7 +250,7 @@ cleanup；之后的 `prepare`。
 
 - 状态/claim 不满足 → `workflow_node_not_awaiting_input`；`force` 不能越过。
 - turn key 不一致 → `WorkflowNodeTurnChanged`；digest 不一致 → `WorkflowNodeOutputChanged`。
-- 只有 blockers 可被 `force` 覆盖；`completion_forced` 记录 blockers 快照。
+- 只有非确认类 blockers 可被 `force` 覆盖；`turn_unconfirmed` 由 `confirmInitialTurn` 解除；`completion_forced` 记录 blockers 快照与 `stop_cause`。
 - 结构化失败时 force 不写 `structured_output`，raw output 仍保存。
 
 ### 禁止结果
