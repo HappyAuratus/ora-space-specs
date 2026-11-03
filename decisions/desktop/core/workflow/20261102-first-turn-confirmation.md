@@ -1,12 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 交互式节点首轮停靠：首次自动回合需显式确认，异常停靠与等待参与分开显示
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `approved`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
+本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），与 approved 方案一致；唯一边界是人类回合的静默超时/断流/崩溃只有单测、没有 park 级 e2e，核心用例对应证据标 `Partial`。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 

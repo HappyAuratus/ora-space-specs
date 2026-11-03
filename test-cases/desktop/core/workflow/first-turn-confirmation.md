@@ -1,6 +1,6 @@
 # 首轮确认与异常停靠
 
-本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现尚未落地，证据状态按现状记为 `Missing`，落地运行补齐。
+本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，证据状态按当前实现标注；人类回合超时/断流/崩溃只有单测，保留 `Partial`。
 
 ## First Automatic Turn Awaits Explicit Confirmation
 
@@ -33,8 +33,8 @@ workflow 自动发起的首轮以 `EndTurn` 正常结束，但 agent 实际上�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 首轮自动 park 写 `turn_unconfirmed` 且不 ready | 待实现运行补快照/投影测试 | `Missing` |
-| 未确认完成被拒、确认完成成功且无 force 审计 | 待实现运行补完成路径测试 | `Missing` |
+| 首轮自动 park 写 `turn_unconfirmed` 且不 ready | `workflow_initial_turn_is_not_confirmed_complete`、`the_opening_turn_parks_as_awaiting_user_confirmation`；e2e `the_opening_turn_completes_only_by_explicit_confirmation` | `Covered` |
+| 未确认完成被拒、确认完成成功且无 force 审计 | `confirming_the_opening_turn_completes_without_a_forced_audit`、`force_cannot_stand_in_for_confirmation`、`confirmation_is_a_noop_on_a_ready_snapshot` | `Covered` |
 
 ### 决策依据
 
@@ -70,8 +70,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 异常与用户停止的 `parkKind` / `stopCause` 分类 | 待实现运行补 park/投影测试 | `Missing` |
-| 异常默认不可推进、只能 force | 待实现运行补完成/UI 测试 | `Missing` |
+| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；e2e `a_stopped_opening_turn_waits_for_the_user` | `Covered` |
+| 异常默认不可推进、只能 force | `force_cannot_stand_in_for_confirmation`、`confirmation_cannot_lift_other_blockers`；人类回合超时/断流/崩溃没有 park 级 e2e | `Partial` |
 
 ### 决策依据
 
@@ -105,8 +105,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 确认完成不写 `completion_forced` | 待实现运行补 payload 测试 | `Missing` |
-| 确认不越过其他 blocker | 待实现运行补优先级测试 | `Missing` |
+| 确认完成不写 `completion_forced` | `confirming_the_opening_turn_completes_without_a_forced_audit` | `Covered` |
+| 确认不越过其他 blocker | `confirmation_cannot_lift_other_blockers`、`force_cannot_stand_in_for_confirmation` | `Covered` |
 
 ### 决策依据
 
@@ -141,8 +141,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| force 审计形状与覆盖范围 | 待实现运行补完成路径测试 | `Missing` |
-| 互斥请求返回 `invalid_request` | 待实现运行补请求校验测试 | `Missing` |
+| force 审计形状与覆盖范围 | `a_stopped_opening_turn_keeps_only_its_own_blocker`、e2e `a_user_stop_parks_as_awaiting_participation` | `Covered` |
+| 互斥请求返回 `invalid_request` | `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
 
 ### 决策依据
 
@@ -177,8 +177,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 旧快照不追溯、物化默认 human | 待实现运行补兼容测试 | `Missing` |
-| 旧客户端请求被正确拒绝 | 待实现运行补请求测试 | `Missing` |
+| 旧快照不追溯、物化默认 human | `a_provisional_park_stays_with_the_user`、`a_ready_turn_has_no_park_kind`、`human_turn_after_the_first_reply_is_ready` | `Partial` |
+| 旧客户端请求被正确拒绝 | `force_cannot_stand_in_for_confirmation`；旧客户端/旧快照的专门回归测试尚未补 | `Partial` |
 
 ### 决策依据
 
