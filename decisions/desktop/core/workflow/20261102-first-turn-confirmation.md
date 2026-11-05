@@ -60,7 +60,8 @@ park 函数新增一个必填的 `turnOrigin` 输入（`stopCause` 按 D4 同时
 | `MaxTokens` / `MaxTurnRequests` | `[turn_truncated]` | `abnormal` | 继续或 force |
 | `Refusal` | `[turn_refused]` | `abnormal` | 继续或 force |
 | 会话崩溃 / 流断开（回合已以 `Cancelled` 收敛） | `[turn_stopped]` | `abnormal` | 继续或 force |
-| 未知 stop reason、无 `TurnEnded`、历史不可读 | `[turn_unknown]` | `abnormal` | 继续或 force |
+| 未知 stop reason（非 provisional） | `[turn_unknown]` | `abnormal` | 继续或 force |
+| 无 `TurnEnded` / 历史不可读 | `[turn_unknown]` | `awaiting_user`（provisional，见末行） | 修复后再判定 |
 | provisional（本轮仍在收尾） | `[turn_unknown]` | `awaiting_user`（暂时） | 卡片按 `turnOrigin` 确认或普通完成，修复后再判定 |
 
 用户主动停止与 prompt 静默超时的区分依赖 `stopCause`。新快照必须记录这个原因；无法判定时按 D4 保守归入 `abnormal`，不能默认成用户主动停止。
