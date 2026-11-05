@@ -1,6 +1,6 @@
 # 首轮确认与异常停靠
 
-本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，证据状态按当前实现标注；人类回合超时/断流/崩溃、升级快照兼容与 ready 时 force 审计仍有证据缺口，保留 `Partial`。
+本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，park 级集成证据由 desktop#755 补；仍缺真实 e2e（超时窗口、fake agent 静默、crash 注入、stream drop 同步点），已在分类义务里写明。
 
 ## First Automatic Turn Awaits Explicit Confirmation
 
@@ -70,7 +70,7 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；e2e `a_stopped_opening_turn_waits_for_the_user`。人类回合的静默超时/断流/崩溃只有快照与 cleanup 单测，没有 park 级 e2e | `Partial` |
+| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`。三类 cause 无 e2e：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点 | `Covered` |
 | 异常默认不可推进、只能 force | `blocked_turn_returns_every_blocker_with_its_detail`；前端 `requires confirmation before force-completing an abnormal stop` | `Covered` |
 
 ### 决策依据
@@ -142,7 +142,7 @@ park 与读取投影。
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | force 审计形状与覆盖范围（`blockers` / `stop_cause` / `without_turn` / `output_source`，与完成同一 payload） | `forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`、`a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
-| 快照已 ready 时 `force` 按普通完成处理、不写空审计 | 没有直接 `force` 用例；`confirmation_is_a_noop_on_a_ready_snapshot` 只覆盖确认路径 | `Partial` |
+| 快照已 ready 时 `force` 按普通完成处理、不写空审计 | `ready_force_does_not_write_an_empty_audit`（公开 `complete_node(force: true)`，断言无 `completion_forced` 且快照不变） | `Covered` |
 | 互斥请求返回 `invalid_request` | `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
 
 ### 决策依据
@@ -178,7 +178,7 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 旧快照不追溯、物化默认 human | `a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`、`a_legacy_node_with_a_settled_turn_completes_on_its_turn_window`；前端 `keeps old snapshots and unknown enum values on the legacy projection`、`keeps the ordinary completion entry for a node parked without a snapshot`。已有 `payload.completion` 但缺 `turnOrigin` 的升级快照（代码按 `turn_origin.unwrap_or(TurnOrigin::Human)` 处理）没有直接回归测试 | `Partial` |
+| 旧快照不追溯、物化默认 human | `a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`、`a_legacy_node_with_a_settled_turn_completes_on_its_turn_window`、`legacy_snapshot_without_turn_origin_defaults_to_human`（缺 `turnOrigin` 默认 Human，且不加 `turn_unconfirmed`）；前端 `keeps old snapshots and unknown enum values on the legacy projection`、`keeps the ordinary completion entry for a node parked without a snapshot` | `Covered` |
 | 旧客户端请求被正确拒绝 | e2e `the_opening_turn_completes_only_by_explicit_confirmation`（同一用例中不带 `confirmInitialTurn` 的普通完成与 force 都被拒） | `Covered` |
 
 ### 决策依据
