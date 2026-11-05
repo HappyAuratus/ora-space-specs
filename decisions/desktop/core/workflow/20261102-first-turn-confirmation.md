@@ -56,10 +56,11 @@ park 函数新增一个必填的 `turnOrigin` 输入（`stopCause` 按 D4 同时
 | `EndTurn`，`Text` 空输出 | `[output_missing]` | `abnormal` | 继续或 force |
 | `EndTurn`，`Structured` 校验失败 | `[structured_invalid]` | `abnormal` | 继续或 force |
 | 用户主动停止（`Cancelled`） | `[turn_stopped]` | `awaiting_user` | 继续或 force |
-| prompt 静默超时 | `[turn_stopped]` 或 `[turn_unknown]` | `abnormal` | 继续或 force |
+| prompt 静默超时 | `[turn_stopped]`；boundary 未落盘时按 provisional 记 `[turn_unknown]` | `abnormal`；provisional 暂时 `awaiting_user` | 继续或 force；provisional 见本表末行 |
 | `MaxTokens` / `MaxTurnRequests` | `[turn_truncated]` | `abnormal` | 继续或 force |
 | `Refusal` | `[turn_refused]` | `abnormal` | 继续或 force |
-| 未知 stop reason、无 `TurnEnded`、会话崩溃 | `[turn_unknown]` | `abnormal` | 继续或 force |
+| 会话崩溃 / 流断开（回合已以 `Cancelled` 收敛） | `[turn_stopped]` | `abnormal` | 继续或 force |
+| 未知 stop reason、无 `TurnEnded`、历史不可读 | `[turn_unknown]` | `abnormal` | 继续或 force |
 | provisional（本轮仍在收尾） | `[turn_unknown]` | `awaiting_user`（暂时） | 卡片按 `turnOrigin` 确认或普通完成，修复后再判定 |
 
 用户主动停止与 prompt 静默超时的区分依赖 `stopCause`。新快照必须记录这个原因；无法判定时按 D4 保守归入 `abnormal`，不能默认成用户主动停止。
@@ -140,7 +141,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 ```
 
 - `blockers` 是本次完成实际覆盖的有效 blocker 列表：已存快照 blockers，加上 `prepare` 复算出的输出契约/文件 blockers（如有）。它只含结构化字段，不含用户文本。
-- `stop_cause` 是停靠原因，取值 `user_stopped`、`prompt_timed_out`、`stream_dropped`、`session_crashed`、`unknown`，不适用时为 `null`。它区分 blocker kind 无法单独表达的异常来源：`turn_stopped` 是用户主动停止还是 prompt 静默超时，`turn_unknown` 是会话崩溃、流断开还是无法判定。
+- `stop_cause` 是停靠原因，取值 `user_stopped`、`prompt_timed_out`、`stream_dropped`、`session_crashed`、`unknown`，不适用时为 `null`。它区分 blocker kind 无法单独表达的异常来源：`turn_stopped` 覆盖用户主动停止、prompt 静默超时，以及已以 `Cancelled` 收敛的会话崩溃/流断开；`turn_unknown` 只用于没有可用 `TurnEnded`、历史不可读或 stop reason 未知的回合。
 - `without_turn` / `output_source` 沿用 #385；结构化失败时 force 仍不写 `structured_output`。
 - `completion_forced` 与完成仍在同一个事务提交；审计不能后写，也不能只写审计不完成。
 - `force` 覆盖用户主动停止的 blocker 时，审计写 `stop_cause: "user_stopped"`。这不是把用户停止归为异常，而是记录「用户选择带着一个未正常结束的回合推进」；界面仍按 `awaiting_user` 显示。
@@ -164,7 +165,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 | 输出截断 | `turn_truncated` | `null` | `abnormal` |
 | 拒答 | `turn_refused` | `null` | `abnormal` |
 | 会话崩溃 / 流断开（回合已以 `Cancelled` 收敛） | `turn_stopped` | `session_crashed` / `stream_dropped` | `abnormal` |
-| 未知 stop reason / 无 `TurnEnded` / 历史不可读 | `turn_unknown` | `unknown` / 记录到的实际原因 | `abnormal` |
+| 未知 stop reason / 无 `TurnEnded` / 历史不可读（非 provisional） | `turn_unknown` | `unknown` / 记录到的实际原因 | `abnormal` |
 | 结构化输出不符合 | `structured_invalid` | `null` | `abnormal` |
 | `Text` 输出缺失 | `output_missing` | `null` | `abnormal` |
 | provisional（本轮仍在收尾） | `turn_unknown` | 记录实际原因 | `awaiting_user`（暂时） |
@@ -175,7 +176,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 
 用户主动停止与 prompt 静默超时必须分开，因为两者都可能以 `Cancelled` 结束、都写 `turn_stopped`。本决策不新增 `turn_timed_out` blocker，也不改变 stop reason 的映射；超时是「停靠原因」，不是 ACP stop reason，由 `stopCause` 表达。这样 blocker 的语义保持稳定，审计还能区分「用户自己停的」与「系统等超时了」。静默策略本身不变：`wait` 不会产生超时，只有节点配置为 `timeout` 且窗口到期时才可能记录 `prompt_timed_out`。
 
-活跃回合被系统结束时，runtime 会先把本回合写成 `TurnEnded { stop_reason: Cancelled }`；只要这份 boundary 在 cleanup 的等待窗口内收敛，静默超时、流断开和会话崩溃的 park blocker 就是 `turn_stopped`，再由 `stopCause` 区分具体来源。`turn_unknown` 只表示没有可用的 `TurnEnded`（boundary 未收敛、历史不可读或 stop reason 未知），不是这些异常的默认 blocker；如果崩溃/断流发生在 boundary 落盘之前，park 仍会是 `turn_unknown`。两者都归 `abnormal`：`turn_stopped` 依靠 `stopCause` 与用户主动停止区分，`turn_unknown` 无法归因时保守按异常处理。这个差异只描述 blocker 的事实来源，不改变实现或分类规则。
+活跃回合被系统结束时，runtime 会先把本回合写成 `TurnEnded { stop_reason: Cancelled }`；只要这份 boundary 在 cleanup 的等待窗口内收敛，静默超时、流断开和会话崩溃的 park blocker 就是 `turn_stopped`，再由 `stopCause` 区分具体来源。拿不到可用 `TurnEnded` 时不会得到 `turn_stopped` 的 abnormal 停靠：`end_human_turn` 在等待窗口内没有等到 `TurnEnded`，会写 `provisional: true` 且带 `turn_not_settled` 的快照，`park_kind()` 对 provisional 返回 `awaiting_user`；`settle_snapshot` 在 `turnKey` 为空时保留原快照，不把这次未收敛当成新的异常 blocker。`turn_unknown` 仍表示没有可用 boundary 或无法归因（boundary 未落盘、历史不可读、stop reason 未知），但它只在非 provisional 的停靠里归 `abnormal`。这个差异只描述 blocker 的事实来源和 provisional 的等待语义，不改变实现或分类规则。
 
 如果新快照的 `turn_stopped` 没有可用的 `stopCause`，按 `abnormal` 处理，不能假设是用户主动停止；`turn_unknown` 同理。旧快照没有 `parkKind` / `stopCause` 时走 D7 的 legacy 展示，不强行归类。
 
@@ -290,7 +291,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - **首轮确认不是回答**：用户仍可在 agent 提问后点「确认并完成」跳过回答，这是显式选择，不是自动误判。卡片文案必须把「确认」和「继续当前步骤」的差别说清楚，否则只是把误点从底部按钮移到卡片。
 - **provisional 的短暂分类**：provisional 期间显示「等待参与」，修复后可能变成 `abnormal`。这是 #385 已有的 provisional 语义，本决策不改变；如果用户在这段时间点完成，后端会先修复再判定，失败时返回 blockers。
 - **区域与 Cloud 不在范围**：`Loop`/`Iteration` 区域内的 interactive 仍按既有边界处理；Cloud 不执行 interactive Agent，不新增发布门禁。
-- **核心测试用例**：首轮确认、异常分类与归因、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态已按实现标注为 `Covered`，剩余边界（`WorkflowSessionTurns::prompt` 的真实 host 接线与真实 e2e）写在对应验证义务里，不再保留 `Partial`。
+- **核心测试用例**：首轮确认、异常分类与归因、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态按实际证据标注：归因链路为 `Covered`，`WorkflowSessionTurns::prompt` 的真实 host 接线与跨 crate e2e 保留 `Partial`。
 
 验收：
 
@@ -303,4 +304,4 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - 步骤卡片：首轮确认只给「确认并完成」+「继续当前步骤」；异常停靠只给「继续当前步骤」+「仍然完成」；用户停止保持「等待参与」；右下角按钮只对 ready 启用。
 - 投影与 act card 使用同一 `parkKind`；旧快照缺字段时走 legacy，不追溯加 `turn_unconfirmed`；不读历史、不跑 schema、不做批量回填。
 - 非交互节点、正常人类完成、Cloud 与区域 interactive 行为不变；数据库无 schema 变更，冻结图不变。
-- 核心测试用例已按最终实现补充证据，验证义务均为 `Covered`；剩余边界（真实 host 接线与真实 e2e）写在用例的对应义务里，不标 `Partial`。
+- 核心测试用例已按最终实现补充证据；归因链路为 `Covered`，`WorkflowSessionTurns::prompt` 真实 host 接线与跨 crate e2e 保留 `Partial`。
