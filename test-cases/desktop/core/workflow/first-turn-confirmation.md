@@ -70,7 +70,8 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 异常与用户停止的 `parkKind` / `stopCause` 分类 | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`。三类 cause 无 e2e：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点 | `Covered` |
+| 异常与用户停止的 `parkKind` / `stopCause` 分类（拿到 `stopCause` 后） | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`。三类 cause 无 e2e：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点 | `Covered` |
+| 归因并传到 park：runtime 的 `PromptEndReport` 经 `StopCause::of_prompt_end` 写进快照 | `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream`。边界：`WorkflowSessionTurns::prompt` 需要真实 host，无跨 crate e2e | `Covered` |
 | 异常默认不可推进、只能 force | `blocked_turn_returns_every_blocker_with_its_detail`；前端 `requires confirmation before force-completing an abnormal stop` | `Covered` |
 
 ### 决策依据
