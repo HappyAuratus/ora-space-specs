@@ -6,7 +6,7 @@ status: implemented
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），与批准方案一致。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。剩余边界是 `WorkflowSessionTurns::prompt` 的真实 host 接线与真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）；旧快照兼容与 ready 时 force 已有直接回归测试。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
+本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），按批准方案落地；D1、D4 已按最终实现更正，偏离见 D4 末段「与批准版本的偏离」。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。剩余边界是 `WorkflowSessionTurns::prompt` 的真实 host 接线与真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）；旧快照兼容与 ready 时 force 已有直接回归测试。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 
@@ -56,12 +56,10 @@ park 函数新增一个必填的 `turnOrigin` 输入（`stopCause` 按 D4 同时
 | `EndTurn`，`Text` 空输出 | `[output_missing]` | `abnormal` | 继续或 force |
 | `EndTurn`，`Structured` 校验失败 | `[structured_invalid]` | `abnormal` | 继续或 force |
 | 用户主动停止（`Cancelled`） | `[turn_stopped]` | `awaiting_user` | 继续或 force |
-| prompt 静默超时 | `[turn_stopped]`；boundary 未落盘时按 provisional 记 `[turn_unknown]` | `abnormal`；provisional 暂时 `awaiting_user` | 继续或 force；provisional 见本表末行 |
+| prompt 静默超时耗尽、会话崩溃（prompt 流返回错误）、流结束但没有 stop reason | 不停靠 | — | 节点失败，走既有失败/重试语义（见 D4） |
 | `MaxTokens` / `MaxTurnRequests` | `[turn_truncated]` | `abnormal` | 继续或 force |
 | `Refusal` | `[turn_refused]` | `abnormal` | 继续或 force |
-| 会话崩溃 / 流断开（回合已以 `Cancelled` 收敛） | `[turn_stopped]` | `abnormal` | 继续或 force |
-| 未知 stop reason（非 provisional） | `[turn_unknown]` | `abnormal` | 继续或 force |
-| 无 `TurnEnded` / 历史不可读 | `[turn_unknown]` | `awaiting_user`（provisional，见末行） | 修复后再判定 |
+| 未知 stop reason、无 `TurnEnded`、历史不可读、历史完整性缺口（均非 provisional） | `[turn_unknown]` | `abnormal` | 继续或 force |
 | provisional（本轮仍在收尾） | `[turn_unknown]` | `awaiting_user`（暂时） | 卡片按 `turnOrigin` 确认或普通完成，修复后再判定 |
 
 用户主动停止与 prompt 静默超时的区分依赖 `stopCause`。新快照必须记录这个原因；无法判定时按 D4 保守归入 `abnormal`，不能默认成用户主动停止。
@@ -166,7 +164,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 | 输出截断 | `turn_truncated` | `null` | `abnormal` |
 | 拒答 | `turn_refused` | `null` | `abnormal` |
 | 会话崩溃 / 流断开（回合已以 `Cancelled` 收敛） | `turn_stopped` | `session_crashed` / `stream_dropped` | `abnormal` |
-| 未知 stop reason / 无 `TurnEnded` / 历史不可读（非 provisional） | `turn_unknown` | `unknown` / 记录到的实际原因 | `abnormal` |
+| 未知 stop reason / 无 `TurnEnded` / 历史不可读 / 历史完整性缺口（非 provisional） | `turn_unknown` | `unknown` / 记录到的实际原因 | `abnormal` |
 | 结构化输出不符合 | `structured_invalid` | `null` | `abnormal` |
 | `Text` 输出缺失 | `output_missing` | `null` | `abnormal` |
 | provisional（本轮仍在收尾） | `turn_unknown` | 记录实际原因 | `awaiting_user`（暂时） |
@@ -177,7 +175,17 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 
 用户主动停止与 prompt 静默超时必须分开，因为两者都可能以 `Cancelled` 结束、都写 `turn_stopped`。本决策不新增 `turn_timed_out` blocker，也不改变 stop reason 的映射；超时是「停靠原因」，不是 ACP stop reason，由 `stopCause` 表达。这样 blocker 的语义保持稳定，审计还能区分「用户自己停的」与「系统等超时了」。静默策略本身不变：`wait` 不会产生超时，只有节点配置为 `timeout` 且窗口到期时才可能记录 `prompt_timed_out`。
 
-活跃回合被系统结束时，runtime 会先把本回合写成 `TurnEnded { stop_reason: Cancelled }`；只要这份 boundary 在 cleanup 的等待窗口内收敛，静默超时、流断开和会话崩溃的 park blocker 就是 `turn_stopped`，再由 `stopCause` 区分具体来源。拿不到可用 `TurnEnded` 时不会得到 `turn_stopped` 的 abnormal 停靠：`end_human_turn` 在等待窗口内没有等到 `TurnEnded`，会写 `provisional: true` 且带 `turn_not_settled` 的快照，`park_kind()` 对 provisional 返回 `awaiting_user`；`settle_snapshot` 在 `turnKey` 为空时保留原快照，不把这次未收敛当成新的异常 blocker。`turn_unknown` 仍表示没有可用 boundary 或无法归因（boundary 未落盘、历史不可读、stop reason 未知），但它只在非 provisional 的停靠里归 `abnormal`。这个差异只描述 blocker 的事实来源和 provisional 的等待语义，不改变实现或分类规则。
+上表的 blocker 按停靠路径有两种来源。
+
+人类回合由 cleanup（`end_human_turn`）停靠。活跃回合被系统结束时，runtime 会先把本回合写成 `TurnEnded { stop_reason: Cancelled }`；只要这份 boundary 在 cleanup 的等待窗口内收敛，静默超时、流断开和会话崩溃的 park blocker 就是 `turn_stopped`，再由 `stopCause` 区分具体来源。等待窗口内拿不到 `TurnEnded` 时写 `provisional: true` 且带 `turn_not_settled` 的快照，历史读不出来时写带 `history_unavailable` 的 provisional 快照，两者的 `turn_unknown` 都因 provisional 暂归 `awaiting_user`；`settle_snapshot` 在新推导的 `turnKey` 为空时保留原快照，不把这次未收敛当成新的异常 blocker。
+
+自动首轮（`park_first_interactive_turn`）只在收到 prompt 的 `Completed` 后停靠。静默超时耗尽和会话崩溃让 prompt 流返回错误，流结束却没有 stop reason 时报 `SessionEndedWithoutStopReason`，这些情况都让节点失败，不进入上表；流断开同样不会走到首轮停靠。收到 `Completed` 后只读一次历史、不等待，也不写 provisional，所以无 `TurnEnded` 或历史不可读直接得到非 provisional 的 `turn_unknown`，归 `abnormal`。
+
+**与批准版本的偏离**：以下三处按最终实现更正，实现未改。
+
+1. 批准版把会话崩溃、流断开写成 `turn_unknown`，静默超时写成「`turn_stopped` 或 `turn_unknown`」。实际在人类回合里，这些结束先以 `Cancelled` 收敛，blocker 是 `turn_stopped`。两者同归 `abnormal`，差别只在 force 审计记录的 blocker kind，来源仍由 `stopCause` 区分。
+2. 批准版 D1 把自动首轮的静默超时、会话崩溃写成 `abnormal` 停靠。实际这两种情况让节点失败，不停靠，用户也就没有「继续或 force」的入口。
+3. 批准版把无 `TurnEnded`、历史不可读一律归 `abnormal`。实际只有自动首轮如此；人类回合写 provisional，暂归 `awaiting_user`，等修复后再判定。
 
 如果新快照的 `turn_stopped` 没有可用的 `stopCause`，按 `abnormal` 处理，不能假设是用户主动停止；`turn_unknown` 同理。旧快照没有 `parkKind` / `stopCause` 时走 D7 的 legacy 展示，不强行归类。
 
