@@ -115,7 +115,8 @@
 ### 必须成立
 
 - 返回与输入同序的逐文档结果：成功带 `workflow_id` 与发布版本，失败带原因（无效 JSON、未声明
-  名称、图不可执行、名称冲突，以及创建或发布环节自身的失败）。
+  名称、图不可执行，以及创建或发布环节自身的失败）。本地导入的名称冲突仍逐文档失败；市场自动导入
+  的冲突与已处理路径按下面的生命周期用例区分跳过结果。
 - 一份失败不改变其余文档的结果，也不移除投递它的包。
 - 一份成功的文档产生一份工作流与一个已发布快照；名称冲突不改名、不覆盖。
 - 发布版本按 文档自述 `version` → 文件名词干 → 工作流标题（词干为空时）的优先级取；不可寻址的
@@ -137,9 +138,9 @@
 | 每份文档各建一份工作流并发布一个快照 | `ora_application::workflow::import::tests::imports_each_document_and_publishes_a_snapshot`; `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` | `Covered` |
 | 一份坏文档独立失败而不影响同批其余文档 | `ora_application::workflow::import::tests::reports_one_bad_document_without_stopping_the_batch` | `Covered` |
 | 未声明名称与不可执行图被拒绝 | `ora_application::workflow::import::tests::refuses_documents_without_a_name`; `ora_application::workflow::import::tests::refuses_documents_whose_graph_cannot_execute` | `Covered` |
-| 名称冲突逐文档失败，不改名也不覆盖 | `ora_application::workflow::import::tests::refuses_a_duplicate_workflow_name` | `Covered` |
+| 本地导入名称冲突逐文档失败，不改名也不覆盖 | `ora_application::workflow::import::tests::refuses_a_duplicate_workflow_name` | `Covered` |
 | 发布版本按优先级派生，不可寻址的候选不被采用、也不被清洗 | `ora_application::workflow::import::tests::derives_publish_versions_in_precedence_order` | `Covered` |
-| 安装结局与导入结局分别返回，导入失败不移除包 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 同一次响应里同时给出 `outcome` 与逐文档结果 | `Covered` |
+| 本地导入的安装结局与导入结局分别返回，导入失败不移除包 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 同一次响应里同时给出 `outcome` 与逐文档结果 | `Covered` |
 
 「回落自动版本」那一支的直接证据在发布处理器一侧：`ora_application::workflow::tests::publish_uses_the_injected_clock_for_automatic_versions` 与 `…::publish_retries_automatic_versions_that_collide_at_the_same_clock_value`。导入侧只断言派生函数对不可寻址候选返回 `None`，还没有一条端到端的「词干不可寻址 → 文档导入成功且拿到自动版本」测试。
 
@@ -147,6 +148,8 @@
 
 - Workflow 插件类别根决策 D4。
 - Workflow 插件类别根决策不变量 4。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D2、D4：市场同名冲突持久跳过，安装与逐文档结果分开呈现。
 - [cloud/plugin-marketplace 后续决策](../../../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md) D5：
   安装成功、接管成功、发布可用、执行可用是四个可以分别判断的事实。
 
@@ -154,22 +157,32 @@
 
 ### 风险
 
-如果副本随包卸载被删除、或被包升级覆盖，用户对副本的编辑会静默丢失；用户也会因为怕丢数据而不敢改
-导入进来的工作流。
+如果副本随包卸载被删除、或被包升级覆盖，用户对副本的编辑会静默丢失。若用「市场不导入」保护副本，
+安装后又没有可用工作流；若升级每次重导，改名会产生重复副本，删除后会自动恢复，历史同名工作流还会
+反复触发失败提示。
 
 ### 前置状态
 
-- 已经从某个 workflow 包导入了一份工作流，用户可能编辑、改名或归档它。
-- 随后显式卸载该插件，或安装该插件的新版本。
+- 一个市场 workflow 包或包含 workflow 成员的 pack，包内有多份文档。
+- 已导入副本可能被用户编辑、改名、归档或删除；来源记录可能为已导入或因同名冲突跳过。
+- 旧版已安装包尚无来源记录，工作流库可能有历史本地导入或用户自建的同名文档。
+- 新版本既含旧路径（内容可变化），也含新增路径；两个来源可使用相同 identifier 与文档路径。
 
 ### 触发
 
-卸载插件；或以更高版本重新安装同一插件。
+市场首次安装、升级、pack 成员安装；导入后卸载重装；删除副本或冲突对象后再次升级或重装。
 
 ### 必须成立
 
 - 卸载插件不删除、不改写已导入的工作流与它的既有快照。
-- 市场安装与升级路径不读取包内文档，因此不会覆盖用户副本。
+- 市场首次安装导入包内文档；升级仅处理未记录路径；pack 按成员各自身份与安装结果导入。
+- 来源键为 `(source_namespace, identifier, document_path)`，不含版本、内容散列或工作流名称。
+  同路径的新内容仍跳过，新增路径独立导入，不同来源不共享记录。
+- 已导入或因同名冲突跳过的来源记录跨升级、卸载重装与用户删除保留，不重复导入、不覆盖、不改名；
+  用户主动删除副本后不自动恢复，删除冲突对象后也不重试已记为冲突跳过的路径。
+- 旧安装首次升级补导入无冲突文档；已有同名工作流保留，来源记为冲突跳过并只报告一次，之后不再
+  重复报失败。不凭名称将历史本地导入或自建工作流认作市场来源。
+- 本地 `.orax` 导入继续显式逐文档处理，重复同名仍失败，不使用市场来源记录跳过。
 - 副本可编辑、可改名、可归档；没有任何路径把它当作插件拥有的只读对象。
 - 副本的身份与命名空间与插件无关（`local` 用户数据），插件身份不出现在工作流行的身份里。
 
@@ -177,6 +190,9 @@
 
 - 卸载时删除或归档导入的工作流。
 - 升级时按包内内容覆盖或新建同名副本。
+- 因副本改名、归档或删除而重导旧路径；因包版本变化或卸载而清除来源记录。
+- 把所有 pack 成员的文档记在 pack 身份下，或把一个来源的记录用于另一个来源。
+- 每次升级重复报告已记录的名称冲突，或仅凭名称给历史工作流补记成功来源。
 - 把导入的工作流标成插件拥有、只读，或随插件卸载隐藏。
 
 ### 验证义务与证据
@@ -184,12 +200,75 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 卸载只清理插件 Skill 投影与 agent 声明，不触碰工作流 | 实现路径为 `PluginHost::uninstall`（`remove_plugin_skills` 与 `replace_agent_effect_declaration`），尚无「导入后卸载仍可读」的直接测试 | `Partial` |
-| 升级/市场安装路径不导入文档，因此不会覆盖用户副本 | 文档只在本地 `.orax` 导入路径被读取（`PluginHost::import` → `workflow_import.handle`），尚无升级路径的直接测试 | `Partial` |
+| 市场首次安装导入全部可用文档；pack 按成员身份导入 | 尚无已合并的市场安装与 pack 自动导入直接测试；本地导入测试不证明该义务 | `Missing` |
+| 升级只增不改：同路径变更跳过、新路径导入，用户编辑、改名和归档保持不变 | 尚无升级路径的直接测试 | `Missing` |
+| 来源键隔离不同 namespace 的同名插件，且跨版本稳定 | 尚无来源持久化与身份隔离的直接测试 | `Missing` |
+| 旧安装首次升级补导入；历史本地导入及自建同名保留，冲突只报告一次 | 尚无旧安装与重复升级的直接测试 | `Missing` |
+| 来源记录跨卸载重装、重启和用户删除保留，已删除副本不恢复，已消失冲突不重试 | 尚无跨生命周期的直接测试 | `Missing` |
+| 本地导入不受市场来源记录抑制，同名仍失败 | 既有 `refuses_a_duplicate_workflow_name` 只证明同名拒绝，尚无与市场来源记录共存的直接测试 | `Partial` |
 | 导入副本是 `local` 命名空间的普通工作流，插件身份不进入它的身份 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 断言插件 id 为 `local/ora.workflows` | `Covered` |
 
 ### 决策依据
 
-- Workflow 插件类别根决策 D5、D6 与不变量 5、6。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D1–D3 与不变量 1–3：市场触发范围、来源幂等与重试。
+- Workflow 插件类别根决策 D5 的用户数据生命周期、D6 与不变量 5、6；市场不导入的旧触发限制由上述后续决策修改。
 - [registry 决策](../../../../../decisions/desktop/plugin/registry/20260831-source-derived-namespace.md)：
   `workflows` 与 `agents` 的 namespace 恒为 `local`，插件不向它们贡献任何行。
 - [cloud/plugin-marketplace 后续决策](../../../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md) D1、D5。
+
+## Retrying Marketplace Documents Must Preserve Completed Imports
+
+### 风险
+
+插件安装成功不等于文档全部导入成功。创建副本和记录来源之间发生失败，可能留下无法恢复的半成品，
+或让重试创建重复副本；把所有失败都记为已处理则会永久丢失本可重试的文档。
+
+### 前置状态
+
+- 单包或 pack 成员的文档混有有效文档、同名冲突、非法文档或暂时无法读写的文档。
+- 插件安装可成功，文档创建、发布快照或保存来源时可失败或中断；已有成功与冲突跳过记录。
+
+### 触发
+
+执行市场安装或升级；在文档提交的边界注入失败或中断；安装成功后修复失败条件，从已安装的 workflow
+插件卡片触发「重试导入失败的文档」，包括重启后重试；升级也重新处理无终态来源记录的路径。
+
+### 必须成立
+
+- `InstallPluginResponse` 与 `UpdatePluginResponse` 分别报告安装结局和逐文档结局，pack 结果可定位
+  成员插件及文档路径；前端成功提示附导入摘要，区分已导入、跳过、首次冲突与其他失败。
+- 文档失败不撤销成功安装，不中断其他文档；未成功安装的成员不创建副本，成功成员不被其他成员的
+  文档失败回滚。
+- 一份成功文档的工作流、首个已发布快照与来源记录原子提交或等价一致；中断恢复不会重复创建副本，
+  不留下来源已成功但没有副本的状态。用户之后主动删除副本不属于提交不一致。
+- 名称冲突持久记为冲突跳过；其他失败不写终态来源记录，修复条件后仍可重试。
+- 已安装的 workflow 插件卡片（包括 pack 的 workflow 成员卡片）提供「重试导入失败的文档」动作，
+  不要求卸载或等待新版本；动作返回并展示逐文档结果与摘要。
+- 卡片动作与升级都只处理没有终态来源记录的路径，跳过已成功与冲突跳过项；不要求先存在失败记录，
+  不通过覆盖用户数据来恢复。
+
+### 禁止结果
+
+- 把插件安装成功当成全部文档成功，或只在日志里留下文档失败。
+- 安装成功后因为插件已存在而永远无法重试失败文档。
+- 创建成功而来源记录丢失导致重试生成副本；发布失败留下妨碍重试的同名半成品。
+- 给其他失败写终态来源记录导致永久跳过，或整批回滚已成功文档。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 安装与升级响应包含逐文档结果，pack 成员可归因，前端提示反映部分失败 | 尚无市场契约与前端摘要的直接测试；本地导入响应测试不证明此义务 | `Missing` |
+| 单包及 pack 文档失败彼此隔离，安装失败不创建对应副本 | 既有本地导入批处理测试只覆盖局部规则，尚无市场及 pack 故障路径直接测试 | `Partial` |
+| 创建、发布和来源记录在失败、中断与重试后保持一致 | 尚无各提交边界故障注入与恢复的直接测试 | `Missing` |
+| 安装成功后可重试其他失败，跨重启跳过成功及冲突项 | 尚无安装已存在时重试和来源持久化的直接测试 | `Missing` |
+| 已安装 workflow 插件卡片的「重试导入失败的文档」动作只处理无终态记录路径，展示逐文档结果；pack 成员同样可触发 | 尚无卡片动作、请求与结果展示的直接测试 | `Missing` |
+| 升级顺带重试此前失败且无终态记录的路径，已成功和冲突跳过项保持不变 | 尚无升级重试路径的直接测试 | `Missing` |
+
+### 决策依据
+
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D1–D4 与不变量 3–5。
+- [Workflow 插件类别根决策](../../../../../decisions/desktop/plugin/category/workflow/0-workflow-package-format.md)
+  D4 的逐文档独立与首次发布规则。
