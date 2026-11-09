@@ -148,6 +148,8 @@
 
 - Workflow 插件类别根决策 D4。
 - Workflow 插件类别根决策不变量 4。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D2、D4：市场同名冲突持久跳过，安装与逐文档结果分开呈现。
 - [cloud/plugin-marketplace 后续决策](../../../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md) D5：
   安装成功、接管成功、发布可用、执行可用是四个可以分别判断的事实。
 
@@ -208,7 +210,9 @@
 
 ### 决策依据
 
-- Workflow 插件类别根决策 D5、D6 与不变量 5–8。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D1–D3 与不变量 1–3：市场触发范围、来源幂等与重试。
+- Workflow 插件类别根决策 D5 的用户数据生命周期、D6 与不变量 5、6；市场不导入的旧触发限制由上述后续决策修改。
 - [registry 决策](../../../../../decisions/desktop/plugin/registry/20260831-source-derived-namespace.md)：
   `workflows` 与 `agents` 的 namespace 恒为 `local`，插件不向它们贡献任何行。
 - [cloud/plugin-marketplace 后续决策](../../../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md) D1、D5。
@@ -227,7 +231,8 @@
 
 ### 触发
 
-执行市场安装或升级；在文档提交的边界注入失败或中断；安装成功后修复失败条件并重试，包括重启后重试。
+执行市场安装或升级；在文档提交的边界注入失败或中断；安装成功后修复失败条件，从已安装的 workflow
+插件卡片触发「重试导入失败的文档」，包括重启后重试；升级也重新处理无终态来源记录的路径。
 
 ### 必须成立
 
@@ -238,8 +243,10 @@
 - 一份成功文档的工作流、首个已发布快照与来源记录原子提交或等价一致；中断恢复不会重复创建副本，
   不留下来源已成功但没有副本的状态。用户之后主动删除副本不属于提交不一致。
 - 名称冲突持久记为冲突跳过；其他失败不写终态来源记录，修复条件后仍可重试。
-- 包已安装的情况下仍有可用的文档重试路径；重试跳过已成功与冲突跳过项，只重新处理没有终态记录
-  的路径，不要求通过覆盖用户数据来恢复。
+- 已安装的 workflow 插件卡片（包括 pack 的 workflow 成员卡片）提供「重试导入失败的文档」动作，
+  不要求卸载或等待新版本；动作返回并展示逐文档结果与摘要。
+- 卡片动作与升级都只处理没有终态来源记录的路径，跳过已成功与冲突跳过项；不要求先存在失败记录，
+  不通过覆盖用户数据来恢复。
 
 ### 禁止结果
 
@@ -256,7 +263,12 @@
 | 单包及 pack 文档失败彼此隔离，安装失败不创建对应副本 | 既有本地导入批处理测试只覆盖局部规则，尚无市场及 pack 故障路径直接测试 | `Partial` |
 | 创建、发布和来源记录在失败、中断与重试后保持一致 | 尚无各提交边界故障注入与恢复的直接测试 | `Missing` |
 | 安装成功后可重试其他失败，跨重启跳过成功及冲突项 | 尚无安装已存在时重试和来源持久化的直接测试 | `Missing` |
+| 已安装 workflow 插件卡片的「重试导入失败的文档」动作只处理无终态记录路径，展示逐文档结果；pack 成员同样可触发 | 尚无卡片动作、请求与结果展示的直接测试 | `Missing` |
+| 升级顺带重试此前失败且无终态记录的路径，已成功和冲突跳过项保持不变 | 尚无升级重试路径的直接测试 | `Missing` |
 
 ### 决策依据
 
-- [Workflow 插件类别根决策](../../../../../decisions/desktop/plugin/category/workflow/0-workflow-package-format.md) D4、D5 与不变量 4、7、8。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D1–D4 与不变量 3–5。
+- [Workflow 插件类别根决策](../../../../../decisions/desktop/plugin/category/workflow/0-workflow-package-format.md)
+  D4 的逐文档独立与首次发布规则。
