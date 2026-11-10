@@ -77,7 +77,7 @@ Selection 过滤，再从当前 installed snapshot 中解析静态有效且配�
 接收、Server 已连接或工具可用。
 
 `Host Session Capability` 是 Host 在 ACP 发送边界附加的会话能力（例如 workflow 完成工具）；它不属于
-插件 MCP，不进入 `Explicit` 集合或 `Effective MCP Set`，授权来自节点冻结策略与一次性 token。
+插件 MCP，不进入 `Explicit` 集合或 `Effective MCP Set`，授权来自节点冻结策略与仅在单个 attempt 内有效的 token。
 
 `Desired Session MCP Revision` 是 Effective MCP Set 的 secret-free 内容身份，绑定成员的 canonical
 Plugin ID、精确 package version 与 Configuration revision。它用于合并变化通知并判断 Live Session

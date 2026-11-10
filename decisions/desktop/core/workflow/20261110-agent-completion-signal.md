@@ -58,7 +58,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 ```
 
 - 快照同时记录 `completionPolicy: "agent" | "end_turn"`，由节点冻结图在 park 时写入；投影按这个字段判断新语义，不能靠 `agentSignal` 是否存在判断 legacy。
-- 首轮组合：先按首轮 ADR 的规则判定精确 stop blocker；没有更精确 blocker 时加 `turn_unconfirmed`，然后再按策略加 `agent_signal_pending`（无信号）或 `agent_confirmation_pending`（有信号未确认）。正常等待信号/确认时 `parkKind = awaiting_user`，不归异常；`turn_unconfirmed` 仍不与 `turn_stopped`/`turn_truncated` 等精确 blocker 共存，异常停靠也不叠加信号 blocker。
+- 首轮组合：先按首轮 ADR 的规则判定精确 stop blocker。只有本轮正常结束（没有 `turn_stopped`、`turn_truncated`、`turn_refused`、`turn_unknown`、`structured_invalid`、`output_missing` 等精确 blocker）时，才加 `turn_unconfirmed`，然后再按策略加 `agent_signal_pending`（无信号）或 `agent_confirmation_pending`（有信号未确认）；正常等待信号/确认时 `parkKind = awaiting_user`。有精确 blocker 的停靠（包括首轮用户主动停止的 `turn_stopped` + `user_stopped`）优先按原有规则处理，不叠加信号 blocker，卡片仍可继续或 force。
 
 门禁按两个独立 blocker 区分：
 
@@ -87,13 +87,14 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 | --- | --- | --- | --- |
 | `parkKind = abnormal` | 异常停靠 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | provisional | 等待参与 | 继续当前步骤 | 无（等修复） |
-| 首轮无信号（`turn_unconfirmed` + `agent_signal_pending`） | 等待参与 | 继续当前步骤 | 无（force 被 `turn_unconfirmed` 拦截，不显示） |
+| 首轮正常结束且无信号（`turn_unconfirmed` + `agent_signal_pending`） | 等待参与 | 继续当前步骤 | 无（force 被 `turn_unconfirmed` 拦截，不显示） |
+| 首轮用户主动停止（`turn_stopped` + `user_stopped`，无 `turn_unconfirmed`） | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | 首轮有信号 | 等待确认 | 确认并完成（同时带两个确认字段） | 继续当前步骤 |
 | 非首轮无信号 | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | 非首轮有信号、待确认 | 等待确认 | 确认并完成 | 继续当前步骤 |
 | `completionSignal: end_turn` legacy | 按 #385/首轮 ADR | 原行为 | 原行为 |
 
-- 展示动作与后端可执行条件一致：首轮无信号不显示 force，因为 `turn_unconfirmed` 必须显式确认；有信号时主操作是确认，不是普通完成。
+- 展示动作与后端可执行条件一致：首轮正常结束且无信号不显示 force（`turn_unconfirmed` 必须显式确认）；首轮用户主动停止仍按既有规则可 force；有信号时主操作是确认，不是普通完成。
 
 ### D6：requester 由服务端按可信绑定生成，请求不携带
 
@@ -102,7 +103,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
   - agent 信号 + 人工确认：`requester: "agent"`，`confirmation: { "by": "human", "at": ... }`；
   - agent 信号 + 自动接受：`requester: "agent"`，`confirmation: { "by": "auto", "at": ... }`；
   - force 且无信号：`requester: "human"`，`completion_forced: { "by": "human", ... }`；
-  - force 且已有信号、用户选择强制推进：`requester: "agent"`，保留 `agentSignal`，`confirmation: null`，`completion_forced: { "by": "human", "blockers": [agent_confirmation_pending] }`；`confirmation: null` 明确表示用户没有点确认，而是强制推进；
+  - force 且已有信号、用户选择强制推进：`requester: "agent"`，保留 `agentSignal`，`confirmation: null`；`completion_forced` 记录实际覆盖的完整有效 blocker 集合（快照 blockers + `prepare` 复算的输出契约/文件 blockers）与已有 `stop_cause`，不能只写 `agent_confirmation_pending`；`confirmation: null` 明确表示用户没有点确认，而是强制推进；
   - legacy/普通完成：`requester: "human"`。
 - `agentSignal` 保存信号身份（`signalId`、`turnKey`、`requestedAt`）；`completion_forced` 沿用首轮 ADR D3 的形状并增加 `by`。
 - attempt token 绑定发起时的 session 与 attempt；`requester: "agent"` 只由 token 对应的已接受 attempt 推导，客户端不可构造。
@@ -121,8 +122,8 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 2. 有有效信号但未确认时，普通完成返回 `agent_confirmation_pending`；`confirmAgentCompletion` 必须携带匹配的 `signalId` 并绑定用户所见的 turn。
 3. 信号只对 owning session、token 绑定的 attempt 和该 attempt 结算出的当前 turn 生效；旧 attempt、其他 session、非 interactive 节点一律拒绝，不改变状态。
 4. 信号与确认都不绕过状态/claim、turn key、`outputDigest`、输出契约或文件 blockers。
-5. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 `agent_signal_pending` / `agent_confirmation_pending` 时写审计，但不能覆盖 `turn_unconfirmed`。
-6. 首轮 gate 与信号同时适用：首轮无信号只提供继续；首轮有信号时一次确认同时解除两个 gate。
+5. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 blocker 时写审计，记录实际覆盖的完整有效 blocker 集合与 `stop_cause`，但不能覆盖 `turn_unconfirmed`。
+6. 首轮 gate 与信号只在正常结束时叠加：仍有 `turn_unconfirmed` 的首轮无信号只提供继续；首轮用户主动停止等有精确 blocker 的情况按原有规则（继续或 force），不叠加信号 blocker。
 7. 自动接受只在轮次正常结算后走同一门禁，首轮和异常停靠不自动接受，且不写 `completion_forced`。
 8. host 完成工具是独立宿主能力，不进入 `SessionMcpSelection`，不改变插件 MCP 白名单；`completionSignal: end_turn` 和升级前冻结图不注入。
 9. `requester` 由服务端根据信号/确认/force 路径生成，客户端不能自称 `Agent`。
@@ -160,8 +161,9 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 - 工具调用绑定发起 attempt；同一 turn 的 park 快照带 `agentSignal`，卡片显示「确认并完成」；确认后完成，payload 为 `requester: agent` + `confirmation.by: human`，无 `completion_forced`。
 - 无信号普通完成返回 `agent_signal_pending`；有信号未确认返回 `agent_confirmation_pending`；`confirmInitialTurn` 不能替代 agent 确认。
 - 首轮有信号时一次确认同时带 `confirmInitialTurn` 与 `confirmAgentCompletion`；首轮无信号只提供继续。
+- 首轮用户主动停止（`turn_stopped` + `user_stopped`）：卡片提供继续或 force，不叠加信号 blocker，也不要求 `turn_unconfirmed`。
 - 重复调用幂等；旧 attempt、其他 session、非 interactive 节点、park 后调用都被拒绝且不改变状态。
 - 自动接受只在正常结算且非首轮时生效，走同一门禁，记录 `confirmation.by: auto`。
-- force 且已有信号时，payload 为 `requester: agent`、保留 `agentSignal`、`confirmation: null`、`completion_forced` 记录 `agent_confirmation_pending`。
+- force 且已有信号时，payload 为 `requester: agent`、保留 `agentSignal`、`confirmation: null`；`completion_forced` 记录实际覆盖的完整 blocker 集合与 `stop_cause`。
 - 新策略缺信号的快照仍投影为 `agent_signal_pending`；缺 `completionPolicy` 的旧快照走 legacy，不互相回退。
 - `completionSignal: end_turn` 的节点、升级前冻结图与旧快照行为不变；空 `Explicit` 仍不注入任何插件 MCP，host 完成工具不改变该语义。
