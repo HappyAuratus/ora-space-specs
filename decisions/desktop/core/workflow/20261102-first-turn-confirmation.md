@@ -6,7 +6,7 @@ status: implemented
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把停靠路径上的超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），按批准方案落地；D1、D4 已按最终实现更正，偏离见 D4 末段「与批准版本的偏离」。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。剩余边界是 `WorkflowSessionTurns::prompt` 的真实 host 接线与真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）；旧快照兼容与 ready 时 force 已有直接回归测试。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
+本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），按批准方案落地；D1、D4 已按最终实现更正，偏离见 D4 末段「与批准版本的偏离」。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。剩余边界是异常 cause 的真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）；`Sessions::prompt → WorkflowSessionTurns::prompt` 的正常 host 接线已由 e2e 覆盖，旧快照兼容与 ready 时 force 已有直接回归测试。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 
@@ -17,7 +17,7 @@ status: implemented
 | #385 D1：只有本轮 `EndTurn` 且无 blocker 才能完成；交互式节点对所有 terminal stop reason 停靠 | 修改 | 增加「workflow 自动发起首轮」维度：首轮 `EndTurn` 且没有更精确 blocker 时写 `turn_unconfirmed`，不自动 ready；人类回合仍是 `EndTurn` + 无 blocker 即 ready（D1） |
 | #385 D2：用 `{ userSeq, endedSeq }` 唯一标识本轮，最终文本取 `(attemptStart, endedSeq]` | 继承，不变 | 普通确认与 force 仍先比对 turn key 与 `outputDigest`；不新增回合身份或文本来源 |
 | #385 D3：首轮与人类 cleanup 共用同一个 park 函数，快照与 `Running → Pending` 同事务提交 | 继承，不变 | 仍是同一个函数、同一个 `Immediate` guarded UPDATE；快照增加 `turnOrigin` / `stopCause` / `parkKind` 三个字段，origin 由调用点传入（D1、D4、D7） |
-| #385 D4：人类 cleanup 先等 actor 收敛，超时写 provisional，`prepare` 修复 | 继承，不变 | provisional 修复保留原 `turnOrigin` / `stopCause`，按修复后的 blockers 重算 `parkKind`；修复出 `EndTurn` 时才可能加 `turn_unconfirmed` |
+| #385 D4：人类 cleanup 先等 actor 收敛，超时写 provisional，`prepare` 修复 | 继承，不变 | provisional 只由人类回合产生；修复保留原 `turnOrigin` / `stopCause`，按修复后的 blockers 重算 `parkKind`，不补 `turn_unconfirmed` |
 | #385 D5：`completeWorkflowNode` 按状态 → turn key → digest → blockers 的优先级校验，`force` 只覆盖 blockers | 继承，并扩展 | 原有 1–4 顺序不变；增加请求形状检查与确认分支；`force` 不再覆盖 `turn_unconfirmed`，它由 `confirmInitialTurn` 处理（D2、D3） |
 | #385 D6：会话消息不被拦截，每个 workflow 人类回合注入步骤边界 | 继承，不变 | 确认和强制都是界面动作，不新增或改写任何用户消息；首轮自动回合仍沿用既有 handoff |
 | #385 D7：当前步骤卡片与右下角按钮两个显式入口推进，徽标区分「等待参与」与「已暂停」 | 修改 | 拆成 `awaiting_user` 与 `abnormal` 两态；首轮确认走卡片，右下角按钮只对 `ready` 启用；异常停靠显示原因且只能继续或 force（D4、D5） |
@@ -65,7 +65,7 @@ park 函数新增一个必填的 `turnOrigin` 输入（`stopCause` 按 D4 同时
 
 `turn_unconfirmed` 是 blocker，`ready` 仍按「blockers 为空且非 provisional」推导，因此首轮正常结束也是 ready = false。人类回复之后的回合仍按 #385 的规则：`EndTurn` + 无 blocker 即 ready，正常显示「完成并进入下一步」。首轮 gate 是**每个 node run 的一次性 gate**：用户回复后，新的快照 `turnOrigin` 为 `human`，旧的首轮快照被替换，gate 不再适用；用户也可以从卡片继续当前步骤，同样会开启人类回合。
 
-provisional 快照不写 `turn_unconfirmed`：本轮尚未收敛，`turn_unknown` 是更精确的 blocker。但快照记录 `turnOrigin`，`prepare` 修复出 `EndTurn` 后仍按 `workflow` 重新加上 `turn_unconfirmed`；修复出超时、截断等则只保留对应 blocker。
+provisional 快照只由人类回合的 cleanup 产生，自动首轮不写 provisional：首轮要么在收到 `Completed` 后以非 provisional 快照停靠，要么直接让节点失败。provisional 修复保留快照的 `turnOrigin`（`human`），不补 `turn_unconfirmed`；修复出超时、截断等只保留对应 blocker。
 
 选择只拦首轮，是因为首轮是唯一一个用户没有参与发起的回合：workflow 自己发出 prompt，agent 的「回答」与「反问」在没有显式完成信号时不可区分。把每次正常完成都变成确认会显著增加摩擦，也会和 #427 的 agent 自报完成重复。首轮确认的代价只是一次显式点击，却能把原来的一次点击跳过变成一个有明确语义的决定。
 
@@ -92,7 +92,7 @@ provisional 快照不写 `turn_unconfirmed`：本轮尚未收敛，`turn_unknown
 - 快照含非 `turn_unconfirmed` 的 blocker 时，`confirmInitialTurn` 不能完成，返回 `WorkflowNodeIncomplete`；错误只列出请求尚未满足的 blocker，已经被确认解除的 `turn_unconfirmed` 不再出现在列表里。
 - 如果修复后的快照变成超时、截断等异常 blocker，确认请求得到同一个 `WorkflowNodeIncomplete`，用户仍需继续或 force。
 
-provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`confirmInitialTurn` 不能跳过修复，也不能把一个尚未收敛的回合直接当成已确认。
+provisional 快照只属于人类回合，先按 #385 D4 的既有路径修复，再按上表判定；修复后是普通的人类回合，`confirmInitialTurn` 不能跳过修复，也不会把一个尚未收敛的回合直接当成已确认。
 
 校验顺序固定为：
 
@@ -207,7 +207,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 | `needsConfirmation`（首轮正常结束） | 等待参与 | 确认并完成：`<next>`（`confirmInitialTurn: true`） | 继续当前步骤 | 禁用 |
 | `awaiting_user`（用户主动停止） | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） | 禁用 |
 | `abnormal`（停靠时的超时/截断/拒答/未知/崩溃/输出不符合） | 异常停靠 | 继续当前步骤 | 仍然完成（force，二次确认） | 禁用 |
-| provisional | 等待参与 | 完成或确认（按 `turnOrigin`，见下） | 继续当前步骤 / 仍然完成（force） | 禁用 |
+| provisional | 等待参与 | 完成（provisional 只属于人类回合） | 继续当前步骤 / 仍然完成（force） | 禁用 |
 | 旧快照缺少 `parkKind` / 无快照 | 已暂停或状态未知（legacy） | 沿用现有 legacy 完成入口 | 继续当前步骤 / force | 沿用现有行为 |
 
 - 首轮确认不使用通用的「完成当前节点」入口，也不使用右下角按钮：右下角按钮只对 `ready` 启用。原因是它没有「确认首轮」的上下文，重复使用会把新 gate 又变回一次无差别点击；步骤卡片把「确认并完成」与「继续当前步骤」并列，用户能看清自己是在推进还是在补充。
@@ -215,7 +215,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - `abnormal` 与用户主动停止都不提供普通完成按钮；主操作是继续，次操作才是 force。force 仍走现有二次确认对话框，审计写 D3 的形状。
 - 用户主动停止虽然只能 force 推进，但徽标仍是「等待参与」，原因是用户自己停了本轮，界面应该邀请他继续或选择推进，而不是把用户动作显示成系统异常。
 - 「继续当前步骤」的提示文案按 `parkKind` 与 blocker 生成：`turn_unconfirmed` 说「首轮结果尚未确认」，用户主动停止说「你已停止本轮」，异常停靠说「上一轮异常结束：<原因>」；不能把首轮未确认写成异常，也不能把用户停止写成系统失败。
-- provisional 的卡片按 `turnOrigin` 选择动作：`workflow` 时主操作是「确认并完成」并发送 `confirmInitialTurn: true`，`human` 时是普通「完成并进入下一步」；后端会先修复快照，修复出异常 blocker 时返回 `WorkflowNodeIncomplete`，卡片随后切换为 `abnormal`。同时保留「仍然完成」作为修复失败时的兜底。provisional 始终显示「等待参与」和「本轮仍在收尾」，避免在尚未收敛时把可能正常的回合标成异常。
+- provisional 只出现在人类回合，卡片主操作是普通「完成并进入下一步」；后端会先修复快照，修复出异常 blocker 时返回 `WorkflowNodeIncomplete`，卡片随后切换为 `abnormal`。同时保留「仍然完成」作为修复失败时的兜底。provisional 始终显示「等待参与」和「本轮仍在收尾」，避免在尚未收敛时把可能正常的回合标成异常。
 - 旧快照缺少新字段时保留 legacy 路径：无快照的 `Pending` 节点仍显示「状态未知」，完成后由 `prepare` 物化；已有快照但缺 `parkKind` 的节点沿用「已暂停」而不是新「异常停靠」，直到下一次 park 或 `prepare` 修复写入新字段。legacy 路径不追溯加 `turn_unconfirmed`。
 - Theater act card 优先读 `parkKind`：有它时不再使用「`awaiting_input` 且 `ready !== true` 且非 provisional 就是 paused」的启发式；`awaiting_user` → 「等待参与」，`abnormal` → 「异常停靠」；缺省时沿用 legacy 启发式。act card 只显示徽标，具体原因留在步骤卡片，避免两处文案分叉。
 - 卡片仍只保留当前步骤一张，不按轮次累加；不新增第二个主操作。`WorkflowNodeTurnChanged` / `WorkflowNodeOutputChanged` 仍让前端刷新运行后重试；`invalid_request` 视为客户端请求错误，不改变卡片状态。
@@ -234,7 +234,7 @@ provisional 快照先按 #385 D4 的既有路径修复，再按上表判定；`c
 - 新字段只写入 `payload.completion`，数据库不改 schema、不迁移既有 run、不改冻结图字段或本地文件布局。
 - 本决策上线后新产生的 park 快照总是带 `turnOrigin` 与 `parkKind`；无法判定停靠原因时 `stopCause` 为 `unknown`，`parkKind` 保守取 `abnormal`。
 - 升级前已停靠的快照没有 `turnOrigin` / `parkKind` / `stopCause`：保持 legacy 行为，不追溯加 `turn_unconfirmed`，不追溯改徽标；用户仍可按 #385 的规则完成或 force。`prepare` 只在修复 provisional 或物化无快照节点时按新形状重写；物化时没有 origin 的证据，按 `human` 处理，避免把历史停靠误判成首轮自动回合。
-- 同一 `userSeq` 的 provisional 修复保留原 `turnOrigin` / `stopCause`，只重算本轮事实与 blockers；修复出 `EndTurn` 且 origin 为 `workflow` 时才补 `turn_unconfirmed`，修复出异常时只保留异常 blocker。修复不改变已经离开 `Pending` 的节点。
+- 同一 `userSeq` 的 provisional 修复保留原 `turnOrigin` / `stopCause`，只重算本轮事实与 blockers；provisional 只属于人类回合，修复出 `EndTurn` 不补 `turn_unconfirmed`，修复出异常时只保留异常 blocker。修复不改变已经离开 `Pending` 的节点。
 - 新 blocker kind `turn_unconfirmed` 是 wire 契约的增量。旧客户端不认识它时必须按阻塞处理；投影若采用未知 kind 归一策略，应归一到 `turn_unknown`，不能因为不认识而读成 ready。wire 枚举的穷举匹配必须在编译期或契约测试中更新，不能靠默认分支漏掉。
 - 旧客户端不带 `confirmInitialTurn`：首轮停靠会得到 `WorkflowNodeIncomplete`，无法完成。desktop 的界面与 backend 同版本发布，不存在长期混用；Cloud 不执行 interactive Agent；未来 CLI 或其他客户端若要确认首轮，必须补发该字段。这是有意的兼容性代价，不是迁移遗漏。
 - 不做 `Pending` 节点的批量回填，也不在读取投影里为了补字段去读历史；升级前停靠的节点可能仍保留原来的误判窗口，直到下一次 park 或 `prepare` 物化。这与 #385「投影不读历史、修复只在 prepare」的边界一致。
