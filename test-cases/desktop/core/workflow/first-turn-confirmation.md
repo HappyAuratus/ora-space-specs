@@ -1,6 +1,6 @@
 # 首轮确认与异常停靠
 
-本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，park 级集成证据由 desktop#755 补；仍缺真实 e2e（超时窗口、fake agent 静默、crash 注入、stream drop 同步点），已在分类义务里写明。
+本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，park 级集成证据由 desktop#755 补；`Sessions::prompt → WorkflowSessionTurns::prompt` 的正常 host 接线已由 e2e 覆盖，异常 cause（超时、崩溃、stream drop）的真实 e2e 仍缺，作为边界记录在分类义务里。
 
 ## First Automatic Turn Awaits Explicit Confirmation
 
@@ -72,8 +72,9 @@ park 与读取投影。
 | --- | --- | --- |
 | 异常与用户停止的 `parkKind` / `stopCause` 分类（拿到 `stopCause` 后） | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`。三类 cause 无 e2e：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点 | `Covered` |
 | 归因（`PromptEndReport` → `StopCause` → park 快照） | `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` | `Covered` |
-| `WorkflowSessionTurns::prompt` 真实 host 接线 + 跨 crate e2e | 无直接测试：`WorkflowSessionTurns::prompt` 需要真实 host，现有证据只覆盖 report→`StopCause`→park 段与 runtime 的 end-cause 段，未跨 crate 串联；真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）同样缺失 | `Partial` |
-| 自动首轮静默超时耗尽、会话崩溃不停靠，节点失败 | runtime 段：`the_prompt_reports_who_ended_the_turn`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 断言 prompt 流返回错误；未驱动 `drive_agent_node` 串联到节点失败 | `Partial` |
+| `Sessions::prompt → WorkflowSessionTurns::prompt` 真实 host 接线 | e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart`、`a_plain_conversation_saying_continue_does_not_advance_a_node` 通过 `backend.sessions().prompt(...)` 走真实 host，覆盖 workflow 人类回合的 admission、步骤边界与停靠 | `Covered` |
+| 异常 cause（超时、崩溃、stream drop）的跨 crate e2e | 无直接测试。边界：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点；park 级集成已覆盖 `StopCause → 快照`，但未跨 crate 串联 | `Partial` |
+| 自动首轮静默超时耗尽、会话崩溃不停靠，节点失败 | runtime 段：`the_prompt_reports_who_ended_the_turn`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 断言 prompt 流返回错误；驱动 `drive_agent_node` 到节点失败的串联证据需要 fake agent 的静默/崩溃模式，按边界保留 | `Partial` |
 | 异常默认不可推进、只能 force | `blocked_turn_returns_every_blocker_with_its_detail`；前端 `requires confirmation before force-completing an abnormal stop` | `Covered` |
 
 ### 决策依据
