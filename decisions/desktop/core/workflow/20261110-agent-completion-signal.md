@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 交互式节点：agent 显式完成信号驱动可完成，人工确认后推进
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是把提问当成完成。本决策给交互式 agent 节点增加一个由 host 提供的显式完成信号：workflow 节点会话额外获得一个只在该会话可用的完成工具，agent 认为本步骤完成时调用它；host 把「当前 turn 的完成请求」绑定到发起它的 attempt，只有该 attempt 结算出的当前 turn 有被接受的请求时节点才可完成，人仍在步骤卡片上确认（或按节点配置自动接受）。没有信号时 `EndTurn` 不再让节点 ready；首轮 gate、异常停靠与 `force` 的既有语义继续适用。
 
-本决策是 `proposed`，只定义 host 侧契约与行为，不定义 agent 插件如何实现工具调用；`Loop`/`Iteration` 区域、非交互节点、Cloud 与既有 workflow 包格式不在范围内。
+本决策是 `approved`，只定义 host 侧契约与行为，不定义 agent 插件如何实现工具调用；`Loop`/`Iteration` 区域、非交互节点、Cloud 与既有 workflow 包格式不在范围内。核心测试用例见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
 
 ## 继承与修改
 
@@ -18,6 +18,7 @@ status: proposed
 | #385 D1：只有本轮 `EndTurn` 且无 blocker 才能完成 | 修改 | 对 `completionSignal: agent` 的节点，还要求当前 turn 有被接受的 agent 请求并完成人工确认 |
 | #385 D5：完成校验按状态 → turn key → digest → blockers | 扩展 | 增加「当前 turn 的 agent 请求 / 确认」校验与 `confirmAgentCompletion`；`force` 规则按 D3 |
 | 首轮 ADR D1：自动首轮写 `turn_unconfirmed` | 修改 | 首轮 gate 仍只在没有更精确 stop blocker 时加 `turn_unconfirmed`；之后再叠加信号 blocker，正常等待信号/确认时 `parkKind = awaiting_user`；有信号的首轮要同时确认两个 gate |
+| 首轮 ADR D2：`force` 与 `confirmInitialTurn` 不能同时为 true | 修改 | 首轮正常结束且无信号时允许两者同时出现：`confirmInitialTurn` 解除 `turn_unconfirmed`，`force` 覆盖信号 blocker；没有可覆盖项时仍返回 `invalid_request` |
 | 首轮 ADR D6：`#427` 定义 agent 请求的 requester、权限、幂等与审计 | 落实 | 本决策定义宿主能力、attempt 绑定、确认与审计；不复用 `confirmInitialTurn` 冒充 agent 请求 |
 | #728 方向 2：只有 agent 显式完成信号能让回合变成「可完成」 | 采纳 | 信号缺失时节点保持「等待参与」；`force` 是显式人工兜底，见 D3 |
 
@@ -70,7 +71,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 - `confirmAgentCompletion` 是对象 `{ "signalId": "..." }`，不是 bool；后端校验 `signalId` 与快照一致、`turnKey` 与用户所见一致。不匹配返回 `WorkflowNodeSignalChanged`（前端刷新运行后重试），旧确认不能落到下一轮信号上。
 - 首轮同时有 `turn_unconfirmed` 与 agent 信号时，确认请求必须同时带 `confirmInitialTurn: true` 和 `confirmAgentCompletion`；只带一个会被另一个 blocker 拒绝。
-- `force` 可以覆盖 `agent_signal_pending` / `agent_confirmation_pending` 并写强制审计，但不能覆盖 `turn_unconfirmed`。因此首轮无信号时没有可执行的 force，卡片只提供继续。
+- `force` 可以覆盖 `agent_signal_pending` / `agent_confirmation_pending` 并写强制审计，但不能单独覆盖 `turn_unconfirmed`。首轮正常结束且无信号时，允许同一请求同时带 `confirmInitialTurn: true` 和 `force: true`：前者解除 `turn_unconfirmed`，后者覆盖 `agent_signal_pending` 并按 D6 写 `requester: "human"` 与完整 blocker 审计；没有可被 force 覆盖的 blocker 时仍返回 `invalid_request`。`confirmInitialTurn` 必须由人显式发送，首轮必须人工确认这一原则不变。
 - `ready` 仍由「blockers 为空且非 provisional」推导；信号与确认通过 blocker 表达，不另造 ready 旁路。
 
 ### D4：自动接受在同一轮结算后走同一完成门禁
@@ -87,14 +88,14 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 | --- | --- | --- | --- |
 | `parkKind = abnormal` | 异常停靠 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | provisional | 等待参与 | 继续当前步骤 | 无（等修复） |
-| 首轮正常结束且无信号（`turn_unconfirmed` + `agent_signal_pending`） | 等待参与 | 继续当前步骤 | 无（force 被 `turn_unconfirmed` 拦截，不显示） |
+| 首轮正常结束且无信号（`turn_unconfirmed` + `agent_signal_pending`） | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认，同时带 `confirmInitialTurn`） |
 | 首轮用户主动停止（`turn_stopped` + `user_stopped`，无 `turn_unconfirmed`） | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | 首轮有信号 | 等待确认 | 确认并完成（同时带两个确认字段） | 继续当前步骤 |
 | 非首轮无信号 | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
 | 非首轮有信号、待确认 | 等待确认 | 确认并完成 | 继续当前步骤 |
 | `completionSignal: end_turn` legacy | 按 #385/首轮 ADR | 原行为 | 原行为 |
 
-- 展示动作与后端可执行条件一致：首轮正常结束且无信号不显示 force（`turn_unconfirmed` 必须显式确认）；首轮用户主动停止仍按既有规则可 force；有信号时主操作是确认，不是普通完成。
+- 展示动作与后端可执行条件一致：首轮正常结束且无信号时，force 与 `confirmInitialTurn` 一起发送（`turn_unconfirmed` 仍必须人工确认）；首轮用户主动停止按既有规则可 force；有信号时主操作是确认，不是普通完成。
 
 ### D6：requester 由服务端按可信绑定生成，请求不携带
 
@@ -103,6 +104,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
   - agent 信号 + 人工确认：`requester: "agent"`，`confirmation: { "by": "human", "at": ... }`；
   - agent 信号 + 自动接受：`requester: "agent"`，`confirmation: { "by": "auto", "at": ... }`；
   - force 且无信号：`requester: "human"`，`completion_forced: { "by": "human", ... }`；
+  - 首轮正常结束且无信号、`confirmInitialTurn` + `force` 同时出现：`requester: "human"`，`confirmation: null`；`turn_unconfirmed` 由 confirm 解除，不写进 forced blockers；`completion_forced` 记录实际覆盖的 `agent_signal_pending` 与 `prepare` 复算的 blockers、`stop_cause`；
   - force 且已有信号、用户选择强制推进：`requester: "agent"`，保留 `agentSignal`，`confirmation: null`；`completion_forced` 记录实际覆盖的完整有效 blocker 集合（快照 blockers + `prepare` 复算的输出契约/文件 blockers）与已有 `stop_cause`，不能只写 `agent_confirmation_pending`；`confirmation: null` 明确表示用户没有点确认，而是强制推进；
   - legacy/普通完成：`requester: "human"`。
 - `agentSignal` 保存信号身份（`signalId`、`turnKey`、`requestedAt`）；`completion_forced` 沿用首轮 ADR D3 的形状并增加 `by`。
@@ -122,8 +124,8 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 2. 有有效信号但未确认时，普通完成返回 `agent_confirmation_pending`；`confirmAgentCompletion` 必须携带匹配的 `signalId` 并绑定用户所见的 turn。
 3. 信号只对 owning session、token 绑定的 attempt 和该 attempt 结算出的当前 turn 生效；旧 attempt、其他 session、非 interactive 节点一律拒绝，不改变状态。
 4. 信号与确认都不绕过状态/claim、turn key、`outputDigest`、输出契约或文件 blockers。
-5. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 blocker 时写审计，记录实际覆盖的完整有效 blocker 集合与 `stop_cause`，但不能覆盖 `turn_unconfirmed`。
-6. 首轮 gate 与信号只在正常结束时叠加：仍有 `turn_unconfirmed` 的首轮无信号只提供继续；首轮用户主动停止等有精确 blocker 的情况按原有规则（继续或 force），不叠加信号 blocker。
+5. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 blocker 时写审计，记录实际覆盖的完整有效 blocker 集合与 `stop_cause`。force 不能单独覆盖 `turn_unconfirmed`；首轮正常结束且无信号时允许 `confirmInitialTurn` + `force` 同请求，confirm 解除 `turn_unconfirmed`，force 覆盖信号 blocker。
+6. 首轮 gate 与信号只在正常结束时叠加：仍有 `turn_unconfirmed` 的首轮无信号主操作为继续，次操作允许 `confirmInitialTurn` + `force`；首轮用户主动停止等有精确 blocker 的情况按原有规则（继续或 force），不叠加信号 blocker。
 7. 自动接受只在轮次正常结算后走同一门禁，首轮和异常停靠不自动接受，且不写 `completion_forced`。
 8. host 完成工具是独立宿主能力，不进入 `SessionMcpSelection`，不改变插件 MCP 白名单；`completionSignal: end_turn` 和升级前冻结图不注入。
 9. `requester` 由服务端根据信号/确认/force 路径生成，客户端不能自称 `Agent`。
@@ -142,7 +144,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 ## 落地顺序与完成条件
 
-1. **ADR 评审**：本决策从 `proposed` 评审到 `approved`；完成条件：owner 确认信号载体、确认绑定、自动接受与兼容默认；生效点：无运行时行为。
+1. **ADR 评审**：本决策已 `approved`；核心用例已按本决策补充，证据为 `Missing` / `Partial`。完成条件：owner 批准并合并本 ADR；生效点：无运行时行为。
 2. **契约**：`NodeCompletionRequester` 增加 `Agent`（仅服务端使用）；节点配置增加 `completionSignal` / `autoAcceptAgentCompletion`；完成请求增加 `confirmAgentCompletion` 对象并移除客户端 `requester`；新增 `agent_signal_pending` / `agent_confirmation_pending` blocker 与 `WorkflowNodeSignalChanged`。完成条件：contracts 与 TS 绑定同步、契约测试更新；生效点：类型可用，行为未切换。
 3. **host 能力与门禁**：注入完成 MCP server、token、attempt 绑定、park 信号绑定、双 blocker 门禁、确认校验、自动接受。完成条件：单测 + backend 集成测试覆盖 D1–D4；生效点：只接线，默认仍为 `end_turn`，不向用户启用 `agent`。
 4. **前端**：步骤卡片按 D5 矩阵展示确认/继续/force；节点配置暴露两项配置；中英文案同步。完成条件：前端用例覆盖矩阵与确认请求；生效点：与阶段 3 同版本发布、编辑器默认切到 `agent` 后，后端门禁与确认界面在同一点生效；分阶段发布时不能只上后端。
@@ -151,7 +153,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 ## 风险、未决问题与验收
 
 - **宿主能力可见性**：OpenCode 共享进程可能让完成工具在撤销后仍可见；host server 只认 token 与绑定，越权调用必须被拒绝。
-- **agent 不调用工具**：没有信号时节点不可普通完成；非首轮可用 force 兜底，首轮必须人工确认。是否按 agent 能力自动降级留给后续决策。
+- **agent 不调用工具**：没有信号时节点不可普通完成；非首轮可用 force 兜底；首轮正常结束且无信号时可用 `confirmInitialTurn` + `force`（人工确认后强制推进），用户主动停止等其它首轮情况按既有规则继续或 force。是否按 agent 能力自动降级留给后续决策。
 - **attempt 时序**：工具调用可能早于/晚于 turn 结束；park 必须绑定结算 attempt，晚到请求丢弃。
 - **确认绑定**：只用 bool 无法防止旧确认落到新信号上，所以用 `signalId` + `turnKey` 双重校验。
 - **自动接受**：只在轮次结算后触发，首轮/异常不自动，避免绕过人工确认或异常门禁。
@@ -160,7 +162,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 - 工具调用绑定发起 attempt；同一 turn 的 park 快照带 `agentSignal`，卡片显示「确认并完成」；确认后完成，payload 为 `requester: agent` + `confirmation.by: human`，无 `completion_forced`。
 - 无信号普通完成返回 `agent_signal_pending`；有信号未确认返回 `agent_confirmation_pending`；`confirmInitialTurn` 不能替代 agent 确认。
-- 首轮有信号时一次确认同时带 `confirmInitialTurn` 与 `confirmAgentCompletion`；首轮无信号只提供继续。
+- 首轮有信号时一次确认同时带 `confirmInitialTurn` 与 `confirmAgentCompletion`；首轮正常结束且无信号时主操作继续，次操作 `confirmInitialTurn` + `force` 可完成（`requester: human`，`completion_forced` 记录 `agent_signal_pending` 与 `stop_cause`），单独 force 仍被拒。
 - 首轮用户主动停止（`turn_stopped` + `user_stopped`）：卡片提供继续或 force，不叠加信号 blocker，也不要求 `turn_unconfirmed`。
 - 重复调用幂等；旧 attempt、其他 session、非 interactive 节点、park 后调用都被拒绝且不改变状态。
 - 自动接受只在正常结算且非首轮时生效，走同一门禁，记录 `confirmation.by: auto`。
