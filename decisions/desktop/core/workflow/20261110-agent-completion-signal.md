@@ -4,111 +4,122 @@ status: proposed
 
 # 交互式节点：agent 显式完成信号驱动可完成，人工确认后推进
 
-交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是把提问当成完成。本决策给交互式 agent 节点增加一个由 host 提供的显式完成信号：workflow 节点会话额外获得一个只在该会话可用的完成工具，agent 认为本步骤完成时调用它；host 把「当前 turn 的完成请求」写进完成快照，只有当前 turn 的请求被接受后节点才可完成，人仍在步骤卡片上确认（或按节点配置自动接受）。没有信号时 `EndTurn` 不再让节点 ready；首轮 gate、异常停靠与 `force` 的既有语义继续适用。
+交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是把提问当成完成。本决策给交互式 agent 节点增加一个由 host 提供的显式完成信号：workflow 节点会话额外获得一个只在该会话可用的完成工具，agent 认为本步骤完成时调用它；host 把「当前 turn 的完成请求」绑定到发起它的 attempt，只有该 attempt 结算出的当前 turn 有被接受的请求时节点才可完成，人仍在步骤卡片上确认（或按节点配置自动接受）。没有信号时 `EndTurn` 不再让节点 ready；首轮 gate、异常停靠与 `force` 的既有语义继续适用。
 
 本决策是 `proposed`，只定义 host 侧契约与行为，不定义 agent 插件如何实现工具调用；`Loop`/`Iteration` 区域、非交互节点、Cloud 与既有 workflow 包格式不在范围内。
 
 ## 继承与修改
 
-继承[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）、[首轮确认与异常停靠](20261102-first-turn-confirmation.md)与[交互式节点产出物声明](20261023-interactive-deliverable-contract.md)。
+继承[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）、[首轮确认与异常停靠](20261102-first-turn-confirmation.md)、[交互式节点产出物声明](20261023-interactive-deliverable-contract.md)与[工作流显式选择 MCP](../agent/session/mcp/20260912-workflow-explicit-selection.md)（下称 MCP ADR）。
 
 | 前序约定 | 处理 | 当前规则 |
 | --- | --- | --- |
-| #385 D1：只有本轮 `EndTurn` 且无 blocker 才能完成 | 修改 | 对 `completionSignal: agent` 的节点，还要求当前 turn 的 agent 完成请求；人仍可继续对话或 force |
-| #385 D5：完成校验按状态 → turn key → digest → blockers | 扩展 | 增加「当前 turn 的 agent 请求」校验与 `confirmAgentCompletion` 请求字段；`force` 仍只覆盖非确认类 blocker |
-| 首轮 ADR D1：自动首轮写 `turn_unconfirmed` | 继承 | 首轮 gate 继续适用；agent 请求与 `turn_unconfirmed` 同时存在时，一次人工确认解除两者 |
-| 首轮 ADR D6：`#427` 定义 agent 请求的 requester、权限、幂等与审计 | 落实 | 本决策定义信号载体、请求生命周期、确认与审计；不复用 `confirmInitialTurn` 冒充 agent 请求 |
-| #728 方向 2：只有 agent 显式完成信号能让回合变成「可完成」 | 采纳 | 信号缺失时节点保持「等待参与」，不显示普通完成 |
-| 产出物声明 D2–D4：文件 blockers 在 `prepare` 按现场 workspace 判定 | 继承 | 信号不能越过文件 blockers；补齐文件后仍需确认 |
+| MCP ADR D1/D4：冻结的 `Explicit` 集合是插件 MCP 的完整白名单，空集合不注入任何插件 MCP | 修改边界，不修改白名单 | `Explicit` 仍只描述插件 MCP；host 完成工具是独立的宿主能力，不进入该集合，也不改变空集合的含义 |
+| #385 D1：只有本轮 `EndTurn` 且无 blocker 才能完成 | 修改 | 对 `completionSignal: agent` 的节点，还要求当前 turn 有被接受的 agent 请求并完成人工确认 |
+| #385 D5：完成校验按状态 → turn key → digest → blockers | 扩展 | 增加「当前 turn 的 agent 请求 / 确认」校验与 `confirmAgentCompletion`；`force` 规则按 D3 |
+| 首轮 ADR D1：自动首轮写 `turn_unconfirmed` | 继承 | 首轮 gate 继续适用；有信号的首轮要同时确认 `turn_unconfirmed` 与 agent 请求 |
+| 首轮 ADR D6：`#427` 定义 agent 请求的 requester、权限、幂等与审计 | 落实 | 本决策定义宿主能力、attempt 绑定、确认与审计；不复用 `confirmInitialTurn` 冒充 agent 请求 |
+| #728 方向 2：只有 agent 显式完成信号能让回合变成「可完成」 | 采纳 | 信号缺失时节点保持「等待参与」；`force` 是显式人工兜底，见 D3 |
 
 ## 决策
 
-### D1：完成信号由 host 注入的 MCP 工具承载
+### D1：完成工具是独立的宿主能力，不修改插件 MCP 白名单
 
-workflow 执行器为每个 interactive agent 节点会话额外注入一个 host 提供的 MCP server（本地 loopback HTTP，带一次性 session token），暴露一个工具：
+workflow 执行器为每个 interactive agent 节点会话额外注入一个 host 提供的 MCP server（本地 loopback HTTP，带一次性 session token），暴露：
 
 ```text
 ora_complete_workflow_step()
-  -> { "accepted": true }
+  -> { "accepted": true, "signalId": "..." }
 ```
 
-- 工具只在 interactive agent 节点会话中注入；非交互节点、普通对话会话、Cloud 执行不注入。
-- 工具调用由 host 的 MCP server 接收，按 token 解析出 session，再解析出该 session 绑定的 `WorkflowNodeRun`；只接受当前处于 `Running` 且绑定该 session 的交互节点。
-- 工具不读写用户文件、不执行命令，只记录「当前 turn 的完成请求」，与 agent 是否真的产出无关；是否推进仍由完成后校验决定。
-- 信号是显式协议调用，不解析 assistant 文本，不做语义推断。
-- 节点配置新增 `completionSignal: "agent" | "end_turn"`，默认 `agent`。`end_turn` 是遗留模式，只有显式配置或升级前冻结的图才使用。
+- 它**不是插件 MCP**：不进入冻结图的 `mcps`、不进入 `SessionMcpSelection::Explicit`、不出现在插件目录，也不改变「空 `Explicit` 表示不注入任何插件 MCP」的语义。MCP ADR 的白名单继续只约束插件 MCP；本决策在 ACP 发送边界追加一个 host-owned 能力。
+- **启用条件**：节点是 interactive agent、冻结图的 `completionSignal: agent`、且节点处于 `Pending` 或 `Running`。`completionSignal: end_turn` 的遗留节点、非交互节点和普通对话不注入。
+- **授权来源**：节点冻结图的完成策略 + host 签发的 session token；用户 MCP 配置不能添加或移除它，插件也不能声明它。
+- **创建/恢复/刷新**：`session/new` 与 `session/load` 时按「节点绑定 + 冻结图策略」重新推导并注入；绑定缺失或损坏时不注入（fail closed），不扩大权限。Agent 替换或 provider 重建时签发新 token、旧 token 失效。
+- **撤销**：节点离开 `Pending`/`Running`（完成、失败、取消）、运行结束或 Session 停止时作废 token；之后到达的调用返回 `not_awaiting`。OpenCode 的进程级 MCP 注册表可能仍让工具在进程内可见，这是 provider 一致性缺口；host server 只认 token 与当前绑定，不假设可见性等于授权。
+- 工具不读写用户文件、不执行命令，只记录完成意图；是否推进仍由完成门禁决定。
 
-工具调用不阻塞 turn；agent 可以在调用后继续输出，也可以在调用后直接结束本轮。
+### D2：请求绑定到发起它的 attempt，park 只接受同一 attempt
 
-### D2：`ready` 只由当前 turn 的已接受请求驱动
+- host 为每个 workflow prompt attempt 分配 `attemptId`；MCP server 按 token 找到 session 后，向 workflow 运行时查询**当前活动 attempt**，只接受活动 attempt 的调用。没有活动 attempt、节点不在 `Running` 或 session 不匹配时返回结构化错误，不改变状态。
+- 接受的请求持久化为 `(nodeRunId, attemptId, sessionId, requestedAt, signalId)`，在最终 `turnKey` 生成前只按 attempt 保存。
+- park 时用刚结算的 attempt 绑定快照的 `turnKey`；只有 `request.attemptId` 与该 attempt 一致才算当前 turn 的有效信号，其它请求按 `stale_attempt` 丢弃。下一轮或用户继续对话产生新 attempt，旧请求不能复用。
+- 同一 attempt 的重复调用幂等，返回同一个 `signalId`。
+- attempt 失败、崩溃、超时或取消时丢弃未绑定的请求，不写入完成快照。
 
-完成快照新增：
+### D3：缺信号与待确认是两个状态，确认绑定到用户所见的 turn
+
+快照增加：
 
 ```json
-"agentSignal": { "turnKey": { "userSeq": 3, "endedSeq": 4 }, "requestedAt": "..." }
+"agentSignal": { "signalId": "...", "turnKey": { "userSeq": 3, "endedSeq": 4 }, "requestedAt": "..." }
 ```
 
-- 对 `completionSignal: agent` 的节点，`ready` 额外要求 `agentSignal.turnKey` 等于当前快照的 `turnKey`；没有信号或信号属于旧 turn 时 `ready = false`。
-- `turnKey` 在 turn 结算后才确定；工具在 turn 进行中收到的请求先记为待绑定，park 时绑定到刚结算的 turn。turn 结算后到达的旧请求按 `stale_turn` 丢弃，不能用于下一轮。
-- 缺少当前 turn 信号时，普通完成返回 `WorkflowNodeIncomplete`，blocker 为新增的 `agent_completion_pending`；`confirmInitialTurn` 不能解除它。
-- `agent_completion_pending` 允许 `force` 覆盖并写强制审计，作为 agent 不调用工具时的唯一人工出口；这与首轮 `turn_unconfirmed` 不同——后者必须显式确认。
-- 信号只证明「agent 认为完成」，不替代 turn key、digest、输出契约与文件 blockers 的校验。
+门禁按两个独立 blocker 区分：
 
-### D3：人工确认与可配置的自动接受
+| 状态 | blocker | 普通完成 | `confirmAgentCompletion` |
+| --- | --- | --- | --- |
+| 当前 turn 没有有效信号 | `agent_signal_pending` | 拒绝 | 拒绝（没有可确认的信号） |
+| 有有效信号、尚未确认 | `agent_confirmation_pending` | 拒绝 | 接受（同时解除该 blocker） |
+| 有有效信号且已确认 | 无 | 正常完成 | 幂等无操作 |
 
-步骤卡片按信号状态展示：
+- `confirmAgentCompletion` 是对象 `{ "signalId": "..." }`，不是 bool；后端校验 `signalId` 与快照一致、`turnKey` 与用户所见一致。不匹配返回 `WorkflowNodeSignalChanged`（前端刷新运行后重试），旧确认不能落到下一轮信号上。
+- 首轮同时有 `turn_unconfirmed` 与 agent 信号时，确认请求必须同时带 `confirmInitialTurn: true` 和 `confirmAgentCompletion`；只带一个会被另一个 blocker 拒绝。
+- `force` 可以覆盖 `agent_signal_pending` / `agent_confirmation_pending` 并写强制审计，但不能覆盖 `turn_unconfirmed`。因此首轮无信号时没有可执行的 force，卡片只提供继续。
+- `ready` 仍由「blockers 为空且非 provisional」推导；信号与确认通过 blocker 表达，不另造 ready 旁路。
+
+### D4：自动接受在同一轮结算后走同一完成门禁
+
+- 工具在 `Running` 期间只记录意图；自动接受**不在 turn 进行中完成节点**，而是等本轮 park 后由 host 触发一次内部完成请求（携带 `confirmAgentCompletion`），走与人工确认完全相同的门禁。
+- 自动接受只在节点配置 `autoAcceptAgentCompletion: true` 且本轮已正常结算、无 `turn_unconfirmed`、无异常 blocker 时生效；`confirmation.by = "auto"`。
+- 首轮仍保留人工 `confirmInitialTurn`：首轮不自动接受；人工确认时一次完成。
+- `parkKind = abnormal` 时自动接受不执行；用户仍需继续或 force。
+- 自动接受失败（例如门禁拒绝）只记录日志并保持 `Pending`，不重试，也不写 `completion_forced`。
+
+### D5：卡片动作按「异常 → 首轮 → 信号」的顺序判定
 
 | 状态 | 徽标 | 主操作 | 次操作 |
 | --- | --- | --- | --- |
-| 有当前 turn 信号 | 等待确认 | 确认并完成（`confirmAgentCompletion: true`） | 继续当前步骤 |
-| 无信号 | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
-| 首轮且无信号 | 等待参与 | 继续当前步骤 | 仍然完成（force） |
-| 首轮且有信号 | 等待确认 | 确认并完成（同时带 `confirmInitialTurn: true`） | 继续当前步骤 |
+| `parkKind = abnormal` | 异常停靠 | 继续当前步骤 | 仍然完成（force，二次确认） |
+| provisional | 等待参与 | 继续当前步骤 | 无（等修复） |
+| 首轮无信号（`turn_unconfirmed` + `agent_signal_pending`） | 等待参与 | 继续当前步骤 | 无（force 被 `turn_unconfirmed` 拦截，不显示） |
+| 首轮有信号 | 等待确认 | 确认并完成（同时带两个确认字段） | 继续当前步骤 |
+| 非首轮无信号 | 等待参与 | 继续当前步骤 | 仍然完成（force，二次确认） |
+| 非首轮有信号、待确认 | 等待确认 | 确认并完成 | 继续当前步骤 |
+| `completionSignal: end_turn` legacy | 按 #385/首轮 ADR | 原行为 | 原行为 |
 
-- 人工确认是一次普通完成，不写 `completion_forced`；payload 记录 `confirmation: { by: "human", at }`。
-- 请求字段新增可选 `confirmAgentCompletion: bool`，只解除 `agent_completion_pending`；与 `force` 同时为 true 返回 `invalid_request`，与首次确认字段可以同时出现。
-- 节点配置 `autoAcceptAgentCompletion: false` 默认；为 true 时，已接受的信号直接完成节点，`confirmation.by = "auto"`，仍不做 force 审计。
-- 重复确认幂等；确认时信号已被新 turn 覆盖则返回 `WorkflowNodeTurnChanged`。
+- 展示动作与后端可执行条件一致：首轮无信号不显示 force，因为 `turn_unconfirmed` 必须显式确认；有信号时主操作是确认，不是普通完成。
 
-### D4：请求生命周期、幂等与并发
+### D6：requester 由服务端按可信绑定生成，请求不携带
 
-- 每个 `(node_run, turn)` 只接受第一个请求；重复调用返回 `accepted: true` 且不改变快照。
-- 非绑定 session、非 interactive 节点、节点不在 `Running`、turn 已结束后调用，返回结构化错误，不改变任何状态。
-- 请求在 turn 结束前到达、park 发生于同一 turn 时绑定；park 后到达的请求属于旧 turn，返回 `stale_turn`。
-- 请求后用户继续对话：新 turn 没有信号，节点仍不可完成；旧信号不跨 turn 复用。
-- 节点崩溃/超时/取消导致失败清理时，丢弃未绑定的请求；不写入完成快照。
+- `CompleteWorkflowNodeRequest.requester` 不再作为客户端输入：客户端不能声称 `Agent`；实现时移除该字段，或只接受 `Human` 并忽略。
+- 服务端按路径写 payload：
+  - agent 信号 + 人工确认：`requester: "agent"`，`confirmation: { "by": "human", "at": ... }`；
+  - agent 信号 + 自动接受：`requester: "agent"`，`confirmation: { "by": "auto", "at": ... }`；
+  - force 且无信号：`requester: "human"`，`completion_forced: { "by": "human", ... }`；
+  - legacy/普通完成：`requester: "human"`。
+- `agentSignal` 保存信号身份（`signalId`、`turnKey`、`requestedAt`）；`completion_forced` 沿用首轮 ADR D3 的形状并增加 `by`。
+- 会话 token 只证明「来自该 session」，不能单独证明是 agent 发起；`requester: "agent"` 只由已接受的 `attempt` 绑定推导，客户端不可构造。
 
-### D5：审计与 payload
+### D7：兼容与迁移
 
-完成后的 `payload.completion` 增加：
-
-```json
-"agentSignal": { "turnKey": { "userSeq": 3, "endedSeq": 4 }, "requestedAt": "..." },
-"confirmation": { "by": "human", "at": "..." }
-```
-
-- `completion_forced` 只在 `force` 实际覆盖 blocker 时出现，形状沿用首轮 ADR D3；`agent_completion_pending` 被 force 覆盖时记录在 `blockers`。
-- 不新增 `completion_confirmed` 一类第二个审计键；`confirmation` 只描述本次确认的来源。
-- 不记录工具调用的原始文本或用户自由文本。
-
-### D6：兼容与迁移
-
-- 升级前冻结的图没有 `completionSignal` 字段：按 `end_turn` 遗留语义执行，不追溯改变已停靠节点。
-- 升级后新建或重新保存的交互节点默认 `agent`；编辑器在节点配置中明示，允许显式改回 `end_turn`。
+- 升级前冻结的图没有 `completionSignal` 字段：按 `end_turn` 遗留语义执行，不注入完成工具，不追溯改变已停靠节点。
+- 升级后新建或重新保存的交互节点默认 `agent`；编辑器明示，允许显式改回 `end_turn`。
 - 旧快照没有 `agentSignal`：读取投影按 legacy 处理；`prepare` 只在新语义节点上重新物化。
-- 不支持工具调用的 agent：节点不会 ready，用户可以继续对话或 force；不在本决策内做 agent 探测或自动降级。是否给这类 agent 一个显式开关由后续决策处理。
-- `completionSignal` 是 wire 契约的增量；旧客户端不认识它时按 `end_turn` 处理，不能因为不认识而误开新语义。
+- host 完成工具不影响插件 MCP 白名单；`Explicit` 为空、插件缺失、刷新失败等 MCP 错误仍按 MCP ADR 失败，不会因为 host 工具而放宽。
+- 不支持工具调用的 agent：节点不会 ready，用户可以继续对话，或在非首轮 force；不在本决策内做能力探测或自动降级。
 
 ## 不变量
 
-1. `completionSignal: agent` 的节点，没有当前 turn 的已接受请求时 `ready = false`，普通完成返回 `WorkflowNodeIncomplete`。
-2. 信号只对 owning session 的当前 turn 生效；旧 turn、其他 session、非 interactive 节点一律拒绝，不改变状态。
-3. 信号不绕过状态/claim、turn key、`outputDigest`、输出契约或文件 blockers。
-4. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 `agent_completion_pending` 时按既有形状写审计。
-5. 首轮 gate 与信号同时适用；一次确认可以同时解除 `turn_unconfirmed` 与 `agent_completion_pending` 中的可解除部分。
-6. 自动接受只在节点显式配置时启用，并记录 `confirmation.by = "auto"`。
-7. 重复请求幂等；park 之后的请求返回 `stale_turn`。
-8. `completionSignal: end_turn` 的节点与升级前冻结图保持 #385 语义不变。
+1. `completionSignal: agent` 的节点，当前 turn 没有与结算 attempt 一致的有效信号时 `ready = false`，普通完成返回 `agent_signal_pending`。
+2. 有有效信号但未确认时，普通完成返回 `agent_confirmation_pending`；`confirmAgentCompletion` 必须携带匹配的 `signalId` 并绑定用户所见的 turn。
+3. 信号只对 owning session、活动 attempt 和该 attempt 结算出的当前 turn 生效；旧 attempt、其他 session、非 interactive 节点一律拒绝，不改变状态。
+4. 信号与确认都不绕过状态/claim、turn key、`outputDigest`、输出契约或文件 blockers。
+5. 人工确认是普通完成，不写 `completion_forced`；force 覆盖 `agent_signal_pending` / `agent_confirmation_pending` 时写审计，但不能覆盖 `turn_unconfirmed`。
+6. 首轮 gate 与信号同时适用：首轮无信号只提供继续；首轮有信号时一次确认同时解除两个 gate。
+7. 自动接受只在轮次正常结算后走同一门禁，首轮和异常停靠不自动接受，且不写 `completion_forced`。
+8. host 完成工具是独立宿主能力，不进入 `SessionMcpSelection`，不改变插件 MCP 白名单；`completionSignal: end_turn` 和升级前冻结图不注入。
+9. `requester` 由服务端根据信号/确认/force 路径生成，客户端不能自称 `Agent`。
 
 ## 为什么不是这些替代方案
 
@@ -119,28 +130,29 @@ ora_complete_workflow_step()
 | 自定义 ACP session update | 需要每个 agent 插件实现新的协议消息，存量 agent 不支持；无法跨 agent |
 | CLI 命令 | agent 需要拿到 run/node 上下文、凭据和可执行路径，权限面最大；沙盒与出网边界复杂 |
 | 继续只靠 `EndTurn`，用文案提示 | 不解决「提问回合被当成完成」的误判，只是把问题留给用户点击 |
+| 把完成工具并入节点 `mcps` 白名单 | 会让用户以为它是可配置插件 MCP，破坏「空集合不注入任何插件 MCP」和「安装不等于授权」；它应由节点完成策略授权 |
 
-## 落地顺序
+## 落地顺序与完成条件
 
-1. **ADR 评审**：本决策从 `proposed` 评审到 `approved`，同步核心用例。
-2. **契约**：`NodeCompletionRequester` 增加 `Agent`；节点配置增加 `completionSignal` / `autoAcceptAgentCompletion`；完成请求增加 `confirmAgentCompletion`；新增 blocker kind `agent_completion_pending`。
-3. **后端**：workflow 会话注入完成 MCP server 与 token；工具调用绑定 session→node→turn；完成快照/投影/`prepare` 支持 `agentSignal` 与 `confirmation`；完成门禁与 force 审计按本决策。
-4. **前端**：步骤卡片按信号状态展示确认/继续/force；节点配置暴露 `completionSignal` 与自动接受；中英文案同步。
-5. **验证**：MCP 工具调用、重复/跨 turn/非绑定拒绝、首轮组合、force 覆盖、自动接受、legacy 节点与旧快照、崩溃清理。
+1. **ADR 评审**：本决策从 `proposed` 评审到 `approved`；完成条件：owner 确认信号载体、确认绑定、自动接受与兼容默认；生效点：无运行时行为。
+2. **契约**：`NodeCompletionRequester` 增加 `Agent`（仅服务端使用）；节点配置增加 `completionSignal` / `autoAcceptAgentCompletion`；完成请求增加 `confirmAgentCompletion` 对象并移除客户端 `requester`；新增 `agent_signal_pending` / `agent_confirmation_pending` blocker 与 `WorkflowNodeSignalChanged`。完成条件：contracts 与 TS 绑定同步、契约测试更新；生效点：类型可用，行为未切换。
+3. **host 能力与门禁**：注入完成 MCP server、token、attempt 绑定、park 信号绑定、双 blocker 门禁、确认校验、自动接受。完成条件：单测 + backend 集成测试覆盖 D1–D4；生效点：新图（`agent`）启用新语义，`end_turn` 与旧快照保持原行为。
+4. **前端**：步骤卡片按 D5 矩阵展示确认/继续/force；节点配置暴露两项配置；中英文案同步。完成条件：前端用例覆盖矩阵与确认请求；生效点：界面动作与后端可执行条件一致。
+5. **验证与兼容**：覆盖 frozen graph、恢复/刷新/撤销、OpenCode 共享进程可见性、崩溃清理。完成条件：核心用例证据按实际测试标注；不提升未覆盖项。
 
 ## 风险、未决问题与验收
 
-- **工具注入面**：需要 host 运行一个本地 MCP server 并给每个会话发 token；权限校验必须只认 token 绑定的 session，不能让同一台机器的其他进程冒充。
-- **agent 不调用工具**：没有信号时节点不可普通完成，只能继续或 force；这是有意的安全默认，但会让不遵守提示词的 agent 体验变差。是否按 agent 能力自动降级留给后续决策。
-- **信号时序**：工具调用可能早于/晚于 turn 结束；park 必须把请求绑定到刚结算的 turn，晚到的旧请求丢弃。
-- **与首轮 gate 的组合**：首轮有信号时仍要 `confirmInitialTurn`；一次确认同时带两个字段，错误优先级要固定（形状检查 → 状态/claim → turn key → digest → blockers）。
-- **兼容**：升级前冻结图保持 `end_turn`，不追溯；编辑器默认 `agent` 会让新图获得新语义。
+- **宿主能力可见性**：OpenCode 共享进程可能让完成工具在撤销后仍可见；host server 只认 token 与绑定，越权调用必须被拒绝。
+- **agent 不调用工具**：没有信号时节点不可普通完成；非首轮可用 force 兜底，首轮必须人工确认。是否按 agent 能力自动降级留给后续决策。
+- **attempt 时序**：工具调用可能早于/晚于 turn 结束；park 必须绑定结算 attempt，晚到请求丢弃。
+- **确认绑定**：只用 bool 无法防止旧确认落到新信号上，所以用 `signalId` + `turnKey` 双重校验。
+- **自动接受**：只在轮次结算后触发，首轮/异常不自动，避免绕过人工确认或异常门禁。
 
 验收：
 
-- 调用完成工具后，当前 turn 的 park 快照带 `agentSignal`，卡片显示「确认并完成」；确认后节点完成，payload 记录 requester=Agent 与 confirmation.by=human，无 `completion_forced`。
-- 不调用工具时（`completionSignal: agent`），普通完成返回 `agent_completion_pending`；`confirmInitialTurn` 不能解除；force 可以覆盖并写审计。
-- 重复调用幂等；旧 turn、其他 session、非 interactive 节点、park 后的请求都被拒绝且不改变状态。
-- 首轮有信号时，确认同时带 `confirmInitialTurn`；没有信号时首轮仍按原 gate 等待确认。
-- 自动接受配置下，信号直接完成并记录 `confirmation.by = "auto"`。
-- `completionSignal: end_turn` 的节点、升级前冻结图与旧快照行为不变。
+- 工具调用绑定发起 attempt；同一 turn 的 park 快照带 `agentSignal`，卡片显示「确认并完成」；确认后完成，payload 为 `requester: agent` + `confirmation.by: human`，无 `completion_forced`。
+- 无信号普通完成返回 `agent_signal_pending`；有信号未确认返回 `agent_confirmation_pending`；`confirmInitialTurn` 不能替代 agent 确认。
+- 首轮有信号时一次确认同时带 `confirmInitialTurn` 与 `confirmAgentCompletion`；首轮无信号只提供继续。
+- 重复调用幂等；旧 attempt、其他 session、非 interactive 节点、park 后调用都被拒绝且不改变状态。
+- 自动接受只在正常结算且非首轮时生效，走同一门禁，记录 `confirmation.by: auto`。
+- `completionSignal: end_turn` 的节点、升级前冻结图与旧快照行为不变；空 `Explicit` 仍不注入任何插件 MCP，host 完成工具不改变该语义。
