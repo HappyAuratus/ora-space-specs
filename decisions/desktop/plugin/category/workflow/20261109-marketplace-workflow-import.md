@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Workflow 市场安装即导入、升级按来源路径只增不改
@@ -8,10 +8,10 @@ status: approved
 改名和删除的选择。已安装的 workflow 插件卡片提供「重试导入失败的文档」动作，升级也重试尚无终态
 来源记录的路径。插件安装结局与逐文档导入结局分别呈现。
 
-本决策为 `approved`，上述市场行为尚待实现与直接验证；前序
-[Workflow 插件类别根决策](0-workflow-package-format.md)保留 `implemented`，其包格式和本地导入
-仍是已实现的承诺。本决策只改变 desktop 的市场导入语义，不改变 Cloud 的取包、结果与运行契约，
-不承担启动时全量回填旧安装的义务。旧安装在首次升级时按 D2 补导入。
+本决策为 `implemented`：上述市场行为已在 desktop 落地，是当前的系统承诺，不再是待实现的计划；
+前序 [Workflow 插件类别根决策](0-workflow-package-format.md)保留 `implemented`，其包格式和本地
+导入仍是它自己的承诺。本决策只改变 desktop 的市场导入语义，不改变 Cloud 的取包、结果与运行
+契约，也不承担启动时全量回填旧安装的义务：旧安装在首次升级时按 D2 补导入。
 
 ## 继承与修改
 
@@ -109,11 +109,12 @@ Plugin ID，`document_path` 是包内路径 `assets/workflows/<文件名>.json`�
 
 ## 落地与验收
 
-先确认来源状态与触发语义，再实现市场导入、卡片重试入口及响应展示；实现通过直接验证后将本决策
-更新为 `implemented`，根决策保留原状态。核心验证义务见
-[Workflow 插件包与文档导入](../../../../../test-cases/desktop/plugin/category/workflow/workflow-package-and-import.md)。
-旧安装升级、冲突一次性提示、跨生命周期保留、卡片重试与升级重试、提交边界故障恢复需要分别证明，
-不能用本地导入测试替代市场路径的证据。
+市场导入、终态来源记录、卡片重试入口与逐文档结果呈现已在 desktop 落地，根决策保留自己的
+`implemented`。核心验证义务与当前证据状态见
+[Workflow 插件包与文档导入](../../../../../test-cases/desktop/plugin/category/workflow/workflow-package-and-import.md)：
+首次安装导入、升级只增不改、同名冲突只报告一次、跨卸载重装与用户删除保留、卡片重试都有市场路径
+的直接测试；提交边界故障恢复目前只有数据库事务层的直接证据，旧安装首次升级补导入、pack 成员
+安装失败不创建副本仍缺直接断言。本地导入的测试不能替代市场路径的证据。
 
 ## 本决策未解决的问题
 

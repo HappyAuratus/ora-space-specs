@@ -87,8 +87,8 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 发现阶段不解析文档内容，坏文档不影响包的发现结果 | `ora_plugin_manager::tests::discovers_workflow_package_documents` 用内容为 `{}` 的文档（不构成工作流文档）证明枚举阶段不解析内容；尚无一份「有效包内混入非法文档」后仍导入其余文档的显式断言 | `Partial` |
-| 文档内容错误在导入阶段逐文档报告 | `ora_application::workflow::import::tests::reports_one_bad_document_without_stopping_the_batch`; `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` | `Covered` |
+| 发现阶段不解析文档内容，坏文档不影响包的发现结果 | `ora_plugin_manager::tests::discovers_workflow_package_documents` 用内容为 `{}` 的文档证明枚举阶段不解析内容；`crates/backend` 的 `retry_workflow_import_reconsiders_only_unrecorded_paths` 在市场包里混入 `{ not json` 与一份有效文档，安装仍然成功，坏文档只在逐文档结果里失败 | `Covered` |
+| 文档内容错误在导入阶段逐文档报告 | `ora_application::workflow::import::tests::reports_one_bad_document_without_stopping_the_batch`; `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin`; `crates/backend` 的 `retry_workflow_import_reconsiders_only_unrecorded_paths` | `Covered` |
 
 ### 决策依据
 
@@ -199,13 +199,14 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 卸载只清理插件 Skill 投影与 agent 声明，不触碰工作流 | 实现路径为 `PluginHost::uninstall`（`remove_plugin_skills` 与 `replace_agent_effect_declaration`），尚无「导入后卸载仍可读」的直接测试 | `Partial` |
-| 市场首次安装导入全部可用文档；pack 按成员身份导入 | 尚无已合并的市场安装与 pack 自动导入直接测试；本地导入测试不证明该义务 | `Missing` |
-| 升级只增不改：同路径变更跳过、新路径导入，用户编辑、改名和归档保持不变 | 尚无升级路径的直接测试 | `Missing` |
-| 来源键隔离不同 namespace 的同名插件，且跨版本稳定 | 尚无来源持久化与身份隔离的直接测试 | `Missing` |
-| 旧安装首次升级补导入；历史本地导入及自建同名保留，冲突只报告一次 | 尚无旧安装与重复升级的直接测试 | `Missing` |
-| 来源记录跨卸载重装、重启和用户删除保留，已删除副本不恢复，已消失冲突不重试 | 尚无跨生命周期的直接测试 | `Missing` |
-| 本地导入不受市场来源记录抑制，同名仍失败 | 既有 `refuses_a_duplicate_workflow_name` 只证明同名拒绝，尚无与市场来源记录共存的直接测试 | `Partial` |
+| 卸载只清理插件 Skill 投影与 agent 声明，不触碰工作流 | `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again` 走过卸载与重装，重装后工作流库里仍有卸载前导入的副本；Skill 投影与 agent 声明的清理范围仍由 `PluginHost::uninstall` 的实现路径保证 | `Partial` |
+| 市场首次安装导入全部可用文档；pack 按成员身份导入 | `crates/backend` 的 `marketplace_install_imports_workflow_documents`; `crates/backend` 的 `pack_install_imports_workflow_documents_of_its_members` | `Covered` |
+| 升级只增不改：同路径内容变更跳过，新版本新增的路径独立导入 | `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` | `Covered` |
+| 用户对副本的编辑、改名和归档在升级后保持不变 | `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` 断言升级不重写已交付副本的图；改名与归档仍无直接断言 | `Partial` |
+| 来源键隔离不同 namespace 的同名插件，且跨版本稳定 | `crates/db` 的 `commits_the_copy_and_its_record_together` 与 `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` 证明同一来源路径跨版本只认一次；不同 namespace 使用相同 identifier 的隔离仍无直接断言 | `Partial` |
+| 旧安装首次升级补导入；历史本地导入及自建同名保留，冲突只报告一次 | `crates/backend` 的 `marketplace_install_reports_a_name_conflict_once` 证明冲突只报告一次，用户的工作流保留名字与 id；「旧安装没有来源记录时的首次升级补导入」仍无直接断言 | `Partial` |
+| 来源记录跨卸载重装、重启和用户删除保留，已删除副本不恢复，已消失冲突不重试 | `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again`; `crates/backend` 的 `a_deleted_workflow_is_not_resurrected_by_an_upgrade_or_retry`; `crates/db` 的 `a_record_survives_the_workflow_delete_and_a_later_reinstall`；进程重启后的读取仍无直接断言 | `Partial` |
+| 本地导入不受市场来源记录抑制，同名仍失败 | `crates/backend` 的 `importing_the_same_document_name_twice_refuses_the_second_import` 证明本地导入仍按同名拒绝；与市场来源记录共存的场景仍无直接断言 | `Partial` |
 | 导入副本是 `local` 命名空间的普通工作流，插件身份不进入它的身份 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 断言插件 id 为 `local/ora.workflows` | `Covered` |
 
 ### 决策依据
@@ -259,12 +260,16 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 安装与升级响应包含逐文档结果，pack 成员可归因，前端提示反映部分失败 | 尚无市场契约与前端摘要的直接测试；本地导入响应测试不证明此义务 | `Missing` |
-| 单包及 pack 文档失败彼此隔离，安装失败不创建对应副本 | 既有本地导入批处理测试只覆盖局部规则，尚无市场及 pack 故障路径直接测试 | `Partial` |
-| 创建、发布和来源记录在失败、中断与重试后保持一致 | 尚无各提交边界故障注入与恢复的直接测试 | `Missing` |
-| 安装成功后可重试其他失败，跨重启跳过成功及冲突项 | 尚无安装已存在时重试和来源持久化的直接测试 | `Missing` |
-| 已安装 workflow 插件卡片的「重试导入失败的文档」动作只处理无终态记录路径，展示逐文档结果；pack 成员同样可触发 | 尚无卡片动作、请求与结果展示的直接测试 | `Missing` |
-| 升级顺带重试此前失败且无终态记录的路径，已成功和冲突跳过项保持不变 | 尚无升级重试路径的直接测试 | `Missing` |
+| 安装与升级响应逐文档返回，pack 成员可归因 | `crates/backend` 的 `marketplace_install_imports_workflow_documents`; `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents`; `crates/backend` 的 `pack_install_imports_workflow_documents_of_its_members` | `Covered` |
+| 前端安装提示附导入摘要，能区分已导入、跳过、首次冲突与其他失败 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `reports the workflow documents a marketplace install imported` 只断言已导入计数；失败与跳过计数由卡片重试用例断言，安装与升级提示本身仍无直接断言 | `Partial` |
+| 单包及 pack 文档失败彼此隔离，安装失败不创建对应副本 | `crates/backend` 的 `retry_workflow_import_reconsiders_only_unrecorded_paths` 证明一份非法文档不阻断同批其余文档且安装仍成功；pack 成员安装失败不创建副本仍无文档侧直接断言 | `Partial` |
+| 创建、发布和来源记录在失败、中断与重试后保持一致 | `crates/db` 的 `commits_the_copy_and_its_record_together`; `crates/db` 的 `a_failed_commit_leaves_neither_a_copy_nor_a_record`; 迁移约束见 `crates/db` 的 `keeps_one_terminal_state_per_source_path`；发布失败与进程中断的端到端注入仍无直接断言 | `Partial` |
+| 安装成功后可重试其他失败，并跳过已成功与冲突跳过项 | `crates/backend` 的 `retry_workflow_import_reconsiders_only_unrecorded_paths` 在修复文档后重试，只导入失败路径；重启后的重试仍无直接断言 | `Partial` |
+| 已安装 workflow 插件卡片的「重试导入失败的文档」动作只处理无终态记录路径，展示逐文档结果 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `retries failed workflow document imports from the installed card`; `crates/backend` 的 `retry_workflow_import_reconsiders_only_unrecorded_paths` | `Covered` |
+| 升级顺带重试此前失败且无终态记录的路径，已成功和冲突跳过项保持不变 | `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` 覆盖升级跳过已处理路径与导入新增路径；「升级重试此前失败的路径」仍无直接断言 | `Partial` |
+
+pack 的 workflow 成员卡片与单包卡片是同一个已安装卡片组件，按 `kind = workflow` 触发同一条
+`retryWorkflowImport` 路径，因此没有单独针对 pack 的断言。
 
 ### 决策依据
 
