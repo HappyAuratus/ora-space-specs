@@ -211,3 +211,12 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、断开或失联不中断、Agent 越过隔离、Key 和凭据进 Node、令牌不可吊销、全局锁回归、迁移乱序、演示路径被新路径破坏 |
+
+## 多机执行层根决策
+
+[多机执行层根决策](../../decisions/cloud/execution-host/0-host-relayed-control-and-pinned-projects.md)为 `approved`，尚待实现。
+证据按 cloud `ad324c77` 的 `v2-server/` 登记，7 项汇总为 0 Covered / 2 Partial / 5 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| execution-host | [多机执行层](execution-host/host-relayed-control-and-pinned-projects.md) | 帧被改写或串路、单路积压拖垮整机、断开后执行或令牌仍存活、重放改写业务记录、项目同时在两台机器、重连误留或误删资源、令牌跨项目或随容器停止后仍有效 |
