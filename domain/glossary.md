@@ -436,8 +436,9 @@ _Avoid_: mTLS client certificate, SPIFFE identity
 
 ### Project Token
 
-`Project Token`（项目令牌）是 Cloud 为一个项目的 Node 签发、可吊销的令牌，只能访问该项目的 Git、
-模型代理和插件包。它不是模型 Key，也不是外部仓库凭据。
+`Project Token`（项目令牌）是 Cloud 每次启动一个项目的 Node 容器时签发的 bearer 令牌，只能访问该项目的
+Git 和模型授权；容器停止或通道断开时立即吊销。它不是模型 Key，也不是外部仓库凭据，也不是客户端证书。
+规则见[多机执行层根决策](../decisions/cloud/execution-host/0-host-relayed-control-and-pinned-projects.md) D6。
 _Avoid_: model key, repository credential
 
 ### Interrupted Execution
