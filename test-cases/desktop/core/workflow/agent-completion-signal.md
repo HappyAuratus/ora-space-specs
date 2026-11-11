@@ -130,7 +130,8 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 ### 必须成立
 
-- 场景 A：主操作继续；同一请求带 `confirmInitialTurn: true` + `force: true` 时完成，`requester: human`，`completion_forced` 记录 `agent_signal_pending` 与 `stop_cause`；单独 `force` 仍返回 `invalid_request`；
+- 场景 A：主操作继续；次操作「仍然完成」走二次确认，并同时发送 `confirmInitialTurn: true` + `force: true`；完成时 `requester: human`，`completion_forced` 记录 `agent_signal_pending`、`prepare` 复算出的 blockers 与 `stop_cause`，排除由 confirm 解除的 `turn_unconfirmed`；
+- 场景 A 只带 `force` 是合法请求形状，但返回 `WorkflowNodeIncomplete` 并列出未解除的 `turn_unconfirmed`，不推进、不写审计；`invalid_request` 只用于例外之外的组合请求（没有 `turn_unconfirmed`，或没有可被 force 覆盖的 blocker）；
 - 场景 B：确认请求必须同时带 `confirmInitialTurn` 与 `confirmAgentCompletion`，只带一个被另一个 blocker 拒绝；
 - 两种场景都不改变「首轮必须人工确认」的语义。
 
@@ -142,7 +143,10 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 首轮无信号时 `confirmInitialTurn` + `force` 可完成，单独 force 被拒 | 无实现，暂无直接测试 | `Missing` |
+| 单独 `force` 返回 `WorkflowNodeIncomplete`（含 `turn_unconfirmed`），不推进、不写审计 | 无实现，暂无直接测试 | `Missing` |
+| 场景 A 卡片次操作二次确认并同时发送 `confirmInitialTurn` + `force` | 无实现，暂无直接测试 | `Missing` |
+| 组合请求审计：`requester: human`、`confirmation: null`、`stop_cause`，`blockers` 恰含 `agent_signal_pending` 与 `prepare` 复算的文件 blocker，排除 `turn_unconfirmed` | 无实现，暂无直接测试 | `Missing` |
+| 例外之外（没有 `turn_unconfirmed`，或没有可被 force 覆盖的 blocker）返回 `invalid_request` | 无实现，暂无直接测试 | `Missing` |
 | 首轮有信号时两个确认字段缺一不可 | 无实现，暂无直接测试 | `Missing` |
 
 ### 决策依据
@@ -178,7 +182,10 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 首轮用户停止不叠加信号 blocker，继续/force 可用 | 现有 e2e `a_stopped_opening_turn_waits_for_the_user` 覆盖 legacy 语义，未覆盖 agent 策略 | `Partial` |
+| 首轮用户停止的停靠分类与 blocker（`turn_stopped` + `user_stopped`，无 `turn_unconfirmed`） | 现有 e2e `a_stopped_opening_turn_waits_for_the_user`（legacy 语义，未覆盖 agent 策略） | `Partial` |
+| 卡片「继续」动作可用 | 无直接测试 | `Missing` |
+| 卡片 force 二次确认与发送 | 无直接测试 | `Missing` |
+| force 审计：`blockers` 含 `turn_stopped`、`stop_cause = user_stopped` | 无直接测试 | `Missing` |
 
 ### 决策依据
 

@@ -135,7 +135,7 @@ park 与读取投影。
 - 实际覆盖至少一个 blocker 时才写 `completion_forced`；
 - 审计包含 `blockers`、`stop_cause`、`without_turn`、`output_source`；
 - 快照已 ready 时按普通完成处理，不写空审计；
-- `force && confirmInitialTurn` 返回 `invalid_request`。
+- `force && confirmInitialTurn` 在例外之外返回 `invalid_request`；首轮正常结束且无信号的组合请求例外见 [agent completion signal 用例](agent-completion-signal.md)。
 
 ### 禁止结果
 
@@ -147,7 +147,7 @@ park 与读取投影。
 | --- | --- | --- |
 | force 审计形状与覆盖范围（`blockers` / `stop_cause` / `without_turn` / `output_source`，与完成同一 payload） | `forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message`、`a_forced_completion_records_its_audit_in_the_completed_payload` | `Covered` |
 | 快照已 ready 时 `force` 按普通完成处理、不写空审计 | `ready_force_does_not_write_an_empty_audit`（公开 `complete_node(force: true)`，断言无 `completion_forced` 且快照不变） | `Covered` |
-| 互斥请求返回 `invalid_request` | `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
+| 互斥请求在例外之外返回 `invalid_request`（首轮无信号的组合请求例外见 [agent completion signal 用例](agent-completion-signal.md)） | `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
 
 ### 决策依据
 
@@ -206,7 +206,7 @@ park 与读取投影。
 ### 必须成立
 
 - 投影透出 `needsConfirmation` / `parkKind` / `stopCause`；前端读取投影值，不按 blockers 重新推导。
-- 首轮停靠的卡片只给「确认并完成」+「继续当前步骤」，确认请求带 `confirmInitialTurn` 且不带 `force`；右下角按钮禁用。
+- 首轮有信号的卡片给「确认并完成」+「继续当前步骤」，确认请求带 `confirmInitialTurn` 且不带 `force`；首轮正常结束且无信号时主操作继续、次操作带 `confirmInitialTurn` + `force`（例外见 [agent completion signal 用例](agent-completion-signal.md)）；右下角按钮禁用。
 - 用户主动停止显示「等待参与」，异常停靠显示「异常停靠」并只给继续或 force（二次确认）；act card 读同一个 `parkKind`。
 - 右下角完成按钮只对 `ready` 启用；确认与 force 只从步骤卡片发起。
 - legacy 快照与无快照节点保留普通完成入口和 legacy 徽标，不追溯改成异常。

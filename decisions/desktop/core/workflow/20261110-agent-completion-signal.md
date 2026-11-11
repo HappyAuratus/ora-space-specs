@@ -71,7 +71,8 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 - `confirmAgentCompletion` 是对象 `{ "signalId": "..." }`，不是 bool；后端校验 `signalId` 与快照一致、`turnKey` 与用户所见一致。不匹配返回 `WorkflowNodeSignalChanged`（前端刷新运行后重试），旧确认不能落到下一轮信号上。
 - 首轮同时有 `turn_unconfirmed` 与 agent 信号时，确认请求必须同时带 `confirmInitialTurn: true` 和 `confirmAgentCompletion`；只带一个会被另一个 blocker 拒绝。
-- `force` 可以覆盖 `agent_signal_pending` / `agent_confirmation_pending` 并写强制审计，但不能单独覆盖 `turn_unconfirmed`。首轮正常结束且无信号时，允许同一请求同时带 `confirmInitialTurn: true` 和 `force: true`：前者解除 `turn_unconfirmed`，后者覆盖 `agent_signal_pending` 并按 D6 写 `requester: "human"` 与完整 blocker 审计；没有可被 force 覆盖的 blocker 时仍返回 `invalid_request`。`confirmInitialTurn` 必须由人显式发送，首轮必须人工确认这一原则不变。
+- `force` 可以覆盖 `agent_signal_pending` / `agent_confirmation_pending` 并写强制审计，但单独使用时不能覆盖 `turn_unconfirmed`：首轮正常结束且无信号时只带 `force` 仍返回 `WorkflowNodeIncomplete`，列出 `turn_unconfirmed`，不推进、不写审计。
+- 例外：首轮正常结束且无信号时，允许同一请求同时带 `confirmInitialTurn: true` 和 `force: true`——confirm 解除 `turn_unconfirmed`，force 覆盖 `agent_signal_pending` 及 `prepare` 复算出的 blockers，按 D6 写 `requester: "human"` 与完整审计；由 confirm 解除的 `turn_unconfirmed` 不进入 forced blockers。该组合只在快照确有 `turn_unconfirmed` 且至少有一个非 `turn_unconfirmed` 的 blocker 可被 force 覆盖时成立，否则返回 `invalid_request`。`confirmInitialTurn` 必须由人显式发送，首轮必须人工确认这一原则不变。
 - `ready` 仍由「blockers 为空且非 provisional」推导；信号与确认通过 blocker 表达，不另造 ready 旁路。
 
 ### D4：自动接受在同一轮结算后走同一完成门禁
@@ -116,7 +117,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 - 升级后新建或重新保存的交互节点默认 `agent`；编辑器明示，允许显式改回 `end_turn`。
 - 旧快照没有 `completionPolicy`：按 legacy 读取；`agent` 策略的新快照即使缺 `agentSignal` 也按 `agent_signal_pending` 处理，不能回退成 legacy。`prepare` 按节点冻结策略重新物化并写入 `completionPolicy`；升级前已停靠节点在下次 park/prepare 前保持 legacy。
 - host 完成工具不影响插件 MCP 白名单；`Explicit` 为空、插件缺失、刷新失败等 MCP 错误仍按 MCP ADR 失败，不会因为 host 工具而放宽。
-- 不支持工具调用的 agent：节点不会 ready，用户可以继续对话，或在非首轮 force；不在本决策内做能力探测或自动降级。
+- 不支持工具调用的 agent：节点不会 ready；用户可以继续对话，首轮正常结束且无信号时可用 `confirmInitialTurn` + `force` 二次确认推进，非首轮可用 force 兜底；不在本决策内做能力探测或自动降级。
 
 ## 不变量
 
