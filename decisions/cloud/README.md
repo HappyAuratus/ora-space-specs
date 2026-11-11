@@ -18,12 +18,10 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `operation` | 持久操作、幂等、版本、重试、状态转换和恢复证据 |
 | `execution-admission` | Access、Execution Ticket、准入关闭、idle 证据和活动保护 |
 | `controller-integration` | Controller lease、内部快照、effect plan、epoch fencing 和接管边界 |
-| `execution-host` | 多机执行层：执行宿主的连接与转发、项目在机器上的放置、断开即中断、宿主令牌与项目令牌；[根决策](execution-host/0-host-relayed-control-and-pinned-projects.md) approved（尚待实现） |
-| `node-container` | Node 容器：宿主直接调 Docker、容器布局与加固、两种出网模式、镜像与资源上限；[根决策](node-container/0-host-managed-docker-and-two-egress-modes.md) approved（尚待实现） |
-| `project-git` | 项目 Git：内嵌 Git server 与 ref 规则、推送事件、Node 的项目副本与 origin、每轮交付、外部同步与推回、外部仓库令牌；[根决策](project-git/0-embedded-git-server-and-in-process-external-sync.md) approved（尚待实现） |
-| `model-proxy` | 模型接入：Cloud 进程内的模型代理、部署配置文件里的模型连接、按 Agent 会话签发的临时令牌、发送前登记的计量；[根决策](model-proxy/0-in-process-model-proxy-with-deployment-connections.md) proposed（待评审） |
+| `project-git` | 项目仓库：外部仓库的绑定、Cloud 进程内拉取与手动同步、当前快照、私有仓库令牌；[根决策](project-git/0-external-repository-pull-and-encrypted-token.md) proposed（待评审） |
+| `model-proxy` | 模型接入：Cloud 进程内的模型代理、部署级模型连接、按 Agent 会话签发的临时令牌；[根决策](model-proxy/0-in-process-model-proxy-with-deployment-connections.md) proposed（待评审） |
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
-| `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界；[单进程、企业内网多机、崩溃即中断的根决策](lifecycle/0-single-process-cloud-on-enterprise-intranet.md) approved（尚待实现），是 phase3 基座的根决策 |
+| `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界；[单进程、第一版单机、崩溃即中断的根决策](lifecycle/0-single-process-cloud-on-enterprise-intranet.md) approved，是 phase3 基座的根决策 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
 | `issue-collaboration` | Issue 上的协作交互：`@` 目标与模式、评论/交互/运行的关系、Timeline、Workflow 发起表单与 Confirm 边界 |
 | `issue-run` | Issue 上 @Agent 的运行编排：运行 Workspace、阶段状态机、取消、交付与释放 |
