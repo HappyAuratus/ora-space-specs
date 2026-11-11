@@ -68,11 +68,16 @@ Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的
 ## Session MCP
 
 `Session MCP Selection` 是一次 Agent Session 的 MCP 选择策略。普通聊天使用 `Automatic` 自动发现；
-工作流使用冻结节点配置生成 `Explicit` 完整插件 ID 集合，空集合表示不注入 MCP。
+工作流使用冻结节点配置生成 `Explicit` 完整插件 ID 集合，空集合表示不注入任何插件 MCP。host 提供的
+会话能力（如 workflow 完成工具）不属于 `Session MCP Selection`，也不进入 `Effective MCP Set`；
+它作为独立的宿主能力在 ACP 发送边界附加，授权来自节点策略。
 
 `Effective MCP Set` 是一次 Agent session setup 或 refresh 必须完整选择的 MCP 集合，先由 Session MCP
 Selection 过滤，再从当前 installed snapshot 中解析静态有效且配置完整的 MCP 插件。它不表示 Agent 已
 接收、Server 已连接或工具可用。
+
+`Host Session Capability` 是 Host 在 ACP 发送边界附加的会话能力（例如 workflow 完成工具）；它不属于
+插件 MCP，不进入 `Explicit` 集合或 `Effective MCP Set`，授权来自节点冻结策略与仅在单个 attempt 内有效的 token。
 
 `Desired Session MCP Revision` 是 Effective MCP Set 的 secret-free 内容身份，绑定成员的 canonical
 Plugin ID、精确 package version 与 Configuration revision。它用于合并变化通知并判断 Live Session
