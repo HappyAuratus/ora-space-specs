@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 项目 Git：Git server 内嵌在 Cloud 进程里并在推送完成时发事件，Node 用项目令牌从 origin 直接拉取和推送，每轮结束交付一次，外部仓库的同步、推回和凭据都在 Cloud 进程内，取代 v1 的 git-server、repo-executor 和 credential-store
@@ -13,14 +13,15 @@ Git server 的 `origin`，Agent 自己 `git fetch`、`git push`，`ora-git` 退�
 计算。外部仓库的拉取（webhook 加手动同步）和推回（用户显式发起、只快进）都在 Cloud 进程里执行；外部仓库令牌每个项目
 一个，用部署密钥加密后存在 PostgreSQL，不进 Node。
 
-本 ADR 处于 `proposed`：等待 owner 评审，尚未实现；它是新建领域 `cloud/project-git` 的根决策。前提是
+本 ADR 处于 `approved`：owner 已评审通过，尚未实现；它是新建领域 `cloud/project-git` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）、
 [多机执行层根决策](../execution-host/0-host-relayed-control-and-pinned-projects.md)（下称“A2”）和
 [Node 容器根决策](../node-container/0-host-managed-docker-and-two-egress-modes.md)（下称“A3”）。依据是 circus #1043 的
 Q3 结论（G1–G6），以及 owner 在 #1072 定下的六点：origin 直推、每轮结束交付、交付 ref 到达才进待验收、对话也交付、
 推回结果不明时标中断、每个项目一个团队令牌。读取的代码版本为 cloud `80e9c9f1`（`v2-server/internal/projectrepos`、
 `nodeservices`、`workspacefs`、`taskrun`，以及 v1 的 `internal/gitserver`、`internal/repoexec`）、desktop `dcff8afe`
-（`apps/ora-node`、`apps/ora-git`、`crates/node-protocol`）、cluster `0b8d913`。
+（`apps/ora-node`、`apps/ora-git`、`crates/node-protocol`）、cluster `0b8d913`。核心测试用例见
+[项目 Git 用例](../../../test-cases/cloud/project-git/embedded-git-server-and-external-sync.md)。
 
 范围与兼容性边界：
 
