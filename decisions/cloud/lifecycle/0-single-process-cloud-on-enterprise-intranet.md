@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Cloud 收为单进程：由 v2-server 演进而来，部署在企业内网、Node 分布在多台机器上，崩溃和断开都按中断处理，取代 v1 的服务拆分与"恰好一次续跑"
@@ -12,10 +12,11 @@ Cloud 只有一个进程，Node 跑在多台机器的容器里，每台机器一
 中断，不续跑，由业务层重做或对账；基础设施层不再承诺"每一步恰好执行一次、在任何一点崩溃都能续上"。
 安全底线有两条：Agent 执行的代码碰不到 Cloud 的数据库、其他项目和凭据；模型 Key 不进沙盒。
 
-本 ADR 处于 `proposed`，供 owner 评审；它是 `cloud/lifecycle` 的根决策，也是 phase3 基座（circus #1043）的根决策，
+本 ADR 处于 `approved`：owner 已评审通过，尚未实现；它是 `cloud/lifecycle` 的根决策，也是 phase3 基座（circus #1043）的根决策，
 后续 A2–A6（多机执行层、容器隔离与出网、Git server、模型接入、企业登录）都以它为前提。依据是 circus #1043 的结论与
 Q1–Q3 评论、#1023 的实测数据、#1017 的阶段划分，读取的代码版本为 cloud `ad324c77`（`v2-server/`）、cluster `0b8d913`、
-desktop `f8e8deec`。
+desktop `f8e8deec`。核心测试用例见
+[Cloud 单进程用例](../../../test-cases/cloud/lifecycle/single-process-cloud.md)。
 
 范围与兼容性边界：
 
@@ -187,6 +188,9 @@ Cloud 进程里，这时整个部署只有 Cloud、PostgreSQL 和 Node 容器。
 下表列出将被取代的 v1 ADR。"标记时机"之前，它们继续描述 v1 的行为，状态不变；到时由承接的 task 标为
 `superseded`，并按 specs 的规则同步核心测试用例。
 
+v1 业务领域的 ADR 不逐份挑出仍成立的规则继承：#1043 已定不回头给 v2-server 的行为补文档，逐份继承等于再做一遍
+这件事。它们在 v1 退役时整体标为 `superseded`，理由写"由 v2-server 和正式契约取代"。
+
 | 组 | v1 ADR | 取代者或放弃理由 | 承接 | 标记时机 |
 | --- | --- | --- | --- | --- |
 | 服务拆分与 Controller | [`controller/`](../../controller/README.md) 下全部（api-boundary、lifecycle、node-management、persistence、plugin、session） | A2：宿主转发 Node 协议帧，不做领取、租约和意图登记 | A2 #1046 | I11 #1061 删除 ora-controller 时 |
@@ -197,7 +201,7 @@ Cloud 进程里，这时整个部署只有 Cloud、PostgreSQL 和 Node 容器。
 | 模型接入 | [`cloud/model-access/`](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) 全部；[`node/agent-runtime/20261010-run-scoped-model-proxy.md`](../../node/agent-runtime/20261010-run-scoped-model-proxy.md)；[`cluster/sandbox-server/20261010-model-client-identity-replaces-shared-model-key-injection.md`](../../cluster/sandbox-server/20261010-model-client-identity-replaces-shared-model-key-injection.md) | A5：Cloud 进程内代理，部署级模型连接，按会话签发临时令牌 | A5 #1049 | I11 #1061 删除 model-gateway 时 |
 | 登录 | [`cloud/identity-access/0-gateway-mediated-external-identity.md`](../identity-access/0-gateway-mediated-external-identity.md)、[`20260923-huawei-global-id-alias.md`](../identity-access/20260923-huawei-global-id-alias.md)、[`20261019-deployment-bound-desktop-sessions.md`](../identity-access/20261019-deployment-bound-desktop-sessions.md) | A6：登录收进 Cloud 进程；IDaaS 的身份映射规则多半继承 | A6 #1050 | I11 #1061 删除 v1 gateway 时 |
 | 全局串行锁 | 写在 [`cloud/workspace/0-collab-space-boundary.md`](../workspace/0-collab-space-boundary.md)、[`cloud/api-boundary/0-space-api-and-event-stream.md`](../api-boundary/0-space-api-and-event-stream.md)、[`cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md`](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md) 里，没有单独的 ADR | 本文 D5：不用全局锁 | 随所在 ADR 一起处理（见下一行） | 同下 |
-| v1 业务领域 | `cloud/` 下其余目录：api-boundary、execution-admission、issue-collaboration、issue-run、persistence、plugin-marketplace、project（除上面列出的）、scheduled-task、squad、tenancy、thread、workflow、workspace | 待定，见"本决策未解决的问题"第 1 条 | #1062 | I11 #1061 之前由 #1062 逐个领域定 |
+| v1 业务领域 | `cloud/` 下其余目录：api-boundary、execution-admission、issue-collaboration、issue-run、persistence、plugin-marketplace、project（除上面列出的）、scheduled-task、squad、tenancy、thread、workflow、workspace | 放弃，不逐份继承：v2-server 各自另有实现，API 以 v2-server 和 #1029 的正式契约为准（D6）；仍要成立的规则由以后改动该领域时的新 ADR 写明 | #1062 按领域执行 | I11 #1061 删除 v1 时整体标记 |
 | Node 进程宿主 | [`node/process/`](../../node/process/README.md) 下 architecture、control、io、lifecycle、persistence、protocol、recovery、upgrade、integration | #1033 的 O5：退役 host/guardian，改为 ora-process 加 ora-reaper | #1033 的 O5 ADR task（待 @ObsisMc 开出） | O5 ADR approved 后 |
 
 **不被取代、继续有效的**：
@@ -234,14 +238,10 @@ Cloud 进程里，这时整个部署只有 Cloud、PostgreSQL 和 Node 容器。
 
 ## 本决策未解决的问题
 
-1. **v1 业务领域 ADR 的去向。**`cloud/` 下的业务领域（tenancy、squad、thread、workflow、scheduled-task、issue-* 等）
-   描述的是 v1 Cloud 的行为，v2-server 各自另有实现，API 以 v2-server 为基准。它们是在 v1 退役时整体标为
-   `superseded`（理由：由 v2-server 和 #1029 的正式契约取代），还是逐份判断其中仍成立的规则并继承到新 ADR，留给
-   #1062 按领域决定，最迟在 I11 #1061 删除 v1 之前定完。
-2. **Cloud 本身的高可用。**本文接受 Cloud 是单点（D1）。如果以后需要多副本，要另写决策，至少回答执行归属、
+1. **Cloud 本身的高可用。**本文接受 Cloud 是单点（D1）。如果以后需要多副本，要另写决策，至少回答执行归属、
    事件广播和 Git 仓库存储三件事。
-3. **断线续传。**宿主断开即中断（D3）；需要续传时由 A2 的后续决策处理。
-4. **A2–A6 的目录。**由各 ADR task 在 `decisions/cloud/` 下选择叶子目录，作为各自领域的根决策，引用本文。
+2. **断线续传。**宿主断开即中断（D3）；需要续传时由 A2 的后续决策处理。
+3. **A2–A6 的目录。**由各 ADR task 在 `decisions/cloud/` 下选择叶子目录，作为各自领域的根决策，引用本文。
 
 ## 落地顺序
 
