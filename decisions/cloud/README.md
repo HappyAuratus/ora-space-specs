@@ -19,7 +19,7 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `execution-admission` | Access、Execution Ticket、准入关闭、idle 证据和活动保护 |
 | `controller-integration` | Controller lease、内部快照、effect plan、epoch fencing 和接管边界 |
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
-| `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界 |
+| `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界；[单进程、企业内网多机、崩溃即中断的根决策](lifecycle/0-single-process-cloud-on-enterprise-intranet.md) proposed，是 phase3 基座的根决策 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
 | `issue-collaboration` | Issue 上的协作交互：`@` 目标与模式、评论/交互/运行的关系、Timeline、Workflow 发起表单与 Confirm 边界 |
 | `issue-run` | Issue 上 @Agent 的运行编排：运行 Workspace、阶段状态机、取消、交付与释放 |
