@@ -220,3 +220,12 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | execution-host | [多机执行层](execution-host/host-relayed-control-and-pinned-projects.md) | 帧被改写或串路、单路积压拖垮整机、断开后执行或令牌仍存活、重放改写业务记录、项目同时在两台机器、重连误留或误删资源、令牌跨项目或随容器停止后仍有效 |
+
+## Node 容器根决策
+
+[Node 容器根决策](../../decisions/cloud/node-container/0-host-managed-docker-and-two-egress-modes.md)为 `approved`，尚待实现。
+截至 cloud `ad324c77` 还没有容器和宿主，7 项汇总为 0 Covered / 0 Partial / 7 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| node-container | [Node 容器](node-container/host-managed-docker-and-two-egress-modes.md) | 工作负载读到管理状态或碰到 Docker、restricted 放行多余地址、open 放行内网、跨项目容器互通、规则缺失时容器在跑、Key 或凭据进容器、按 tag 启动或没有资源上限 |
