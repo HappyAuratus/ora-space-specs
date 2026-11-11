@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 模型接入：模型代理在 Cloud 进程里，模型连接是部署级的、来自环境变量，Key 只在进程内存，Node 为每个 Agent 会话申请临时令牌；取代 v1 的 model-gateway 和个人模型连接
@@ -10,12 +10,13 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 认证头和模型。这些都是 v2-server 现在的做法，本文把它们定为第一版的承诺，不新增机制。第一版没有个人或团队的模型
 连接，没有限流和配额，也不对用量计量作承诺。
 
-本 ADR 处于 `proposed`：等待 owner 评审；它是领域 `cloud/model-proxy` 的根决策。前提是
+本 ADR 处于 `approved`：owner 已评审通过；它是领域 `cloud/model-proxy` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）。依据是 circus #1043 的
 结论 4、#1023 第四节的 O2 加 O3。2026-11-11 owner 在 circus #1073 把第一版收窄，本文据此重写：原先的部署配置文件
 （多上游、企业 CA）、代理挪到 Cloud 入口、用项目令牌申请授权和计量承诺都已删除。读取的代码版本为 cloud `80e9c9f1`
 （`v2-server/internal/nodeservices`、`executionruntime`、`agentruntime`）、desktop `dcff8afe`（`apps/ora-node` 的
-`model_proxy`）。
+`model_proxy`）。核心测试用例见
+[模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md)。
 
 范围与兼容性边界：
 
