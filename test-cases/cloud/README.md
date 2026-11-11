@@ -229,3 +229,12 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | node-container | [Node 容器](node-container/host-managed-docker-and-two-egress-modes.md) | 工作负载读到管理状态或碰到 Docker、restricted 放行多余地址、open 放行内网、跨项目容器互通、规则缺失时容器在跑、Key 或凭据进容器、按 tag 启动或没有资源上限 |
+
+## 项目 Git 根决策
+
+[项目 Git 根决策](../../decisions/cloud/project-git/0-embedded-git-server-and-in-process-external-sync.md)为 `approved`，尚待实现。
+截至 cloud `80e9c9f1`、desktop `dcff8afe` 还没有内嵌 Git server、交付和外部同步，11 项汇总为 0 Covered / 0 Partial / 11 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| project-git | [项目 Git](project-git/embedded-git-server-and-external-sync.md) | 令牌跨项目、违规推送被部分写入、事件丢失后交付不登记、待验收却没有成果、迟到的推送改写已结束的执行、变更视图读 Node 目录、会话目录基准不符或交付被改道、webhook 内容左右同步、外部地址指向内网、推回覆盖或重推、外部仓库令牌泄露 |
