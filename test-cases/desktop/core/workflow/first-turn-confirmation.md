@@ -11,7 +11,8 @@ workflow 自动发起的首轮以 `EndTurn` 正常结束，但 agent 实际上�
 ### 前置状态
 
 - 交互式 Agent 节点由 workflow 自动发起首轮；
-- 本轮 `EndTurn`、历史完整、输出契约通过、没有其他 blocker。
+- 本轮 `EndTurn`、历史完整、输出契约通过、没有其他 blocker；
+- 节点策略为 `completionSignal: end_turn` 或升级前 legacy；`agent` 策略的首轮组合见 [agent completion signal 用例](agent-completion-signal.md)。
 
 ### 触发
 
@@ -20,10 +21,10 @@ workflow 自动发起的首轮以 `EndTurn` 正常结束，但 agent 实际上�
 ### 必须成立
 
 - 快照写入 `turnOrigin = "workflow"` 与 `turn_unconfirmed`，`ready = false`；
-- 步骤卡片显示「确认并完成」+「继续当前步骤」，右下角按钮禁用；
+- 在 `end_turn`/legacy 下，步骤卡片显示「确认并完成」+「继续当前步骤」，右下角按钮禁用；`agent` 策略的卡片分支见新用例；
 - 不带 `confirmInitialTurn` 的完成返回 `WorkflowNodeIncomplete`，列出 `turn_unconfirmed`；
-- 带 `confirmInitialTurn` 的完成成功，且不写 `completion_forced`；
-- 只带 `force` 被拒绝。
+- 在 `end_turn`/legacy 下，带 `confirmInitialTurn` 的完成成功，且不写 `completion_forced`；
+- 在 `end_turn`/legacy 下，只带 `force` 被拒绝。
 
 ### 禁止结果
 
@@ -206,7 +207,7 @@ park 与读取投影。
 ### 必须成立
 
 - 投影透出 `needsConfirmation` / `parkKind` / `stopCause`；前端读取投影值，不按 blockers 重新推导。
-- 首轮有信号的卡片给「确认并完成」+「继续当前步骤」，确认请求带 `confirmInitialTurn` 且不带 `force`；首轮正常结束且无信号时主操作继续、次操作带 `confirmInitialTurn` + `force`（例外见 [agent completion signal 用例](agent-completion-signal.md)）；右下角按钮禁用。
+- `end_turn`/legacy 首轮卡片给「确认并完成」+「继续当前步骤」，确认请求带 `confirmInitialTurn` 且不带 `force`；`agent` 策略首轮由 [agent completion signal 用例](agent-completion-signal.md)覆盖（有信号时 `confirmInitialTurn` + `confirmAgentCompletion`；无信号时主操作继续、次操作 `confirmInitialTurn` + `force`），对应 UI 义务为 `Missing`；右下角按钮禁用。
 - 用户主动停止显示「等待参与」，异常停靠显示「异常停靠」并只给继续或 force（二次确认）；act card 读同一个 `parkKind`。
 - 右下角完成按钮只对 `ready` 启用；确认与 force 只从步骤卡片发起。
 - legacy 快照与无快照节点保留普通完成入口和 legacy 徽标，不追溯改成异常。
@@ -220,7 +221,8 @@ park 与读取投影。
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 投影透出确认与停靠分类，前端读取投影值 | `workflow-runs.test.ts` 的 `keeps the unconfirmed opening turn awaiting confirmation on both sides`、`does not ask for confirmation on a provisional or multi-blocker snapshot`；`run-node-completion.test.ts` 的 `reads the projected needsConfirmation flag instead of re-deriving blockers` | `Covered` |
-| 步骤卡片按分类给出主/次操作，首轮确认不写 force | `run-node-session-chat.test.tsx` 的 `shows a ready step card that completes without force and names the next step`、`keeps the opening step awaiting confirmation instead of offering to advance`、`confirms the opening step with confirmInitialTurn and without force`、`sends the unconfirmed scoped turn when continuing the opening step`、`keeps a user-stopped turn awaiting input instead of reading as an abnormal stop`、`sends a scoped turn that does not frame a user stop as a system failure`、`requires confirmation before force-completing an abnormal stop` | `Covered` |
+| `end_turn`/legacy 步骤卡片按分类给出主/次操作，首轮确认不写 force | `run-node-session-chat.test.tsx` 的 `shows a ready step card that completes without force and names the next step`、`keeps the opening step awaiting confirmation instead of offering to advance`、`confirms the opening step with confirmInitialTurn and without force`、`sends the unconfirmed scoped turn when continuing the opening step`、`keeps a user-stopped turn awaiting input instead of reading as an abnormal stop`、`sends a scoped turn that does not frame a user stop as a system failure`、`requires confirmation before force-completing an abnormal stop` | `Covered` |
+| `agent` 策略首轮卡片：有信号时双确认、无信号时 confirm + force | 见 [agent completion signal 用例](agent-completion-signal.md) 的 `Missing` 义务 | `Missing` |
 | 右下角按钮只对 `ready` 启用 | `run-node-session-chat.test.tsx` 的 `disables the bottom-right completion action while blockers remain`、`disables the complete button while the agent is responding`、`completes the node when the button is clicked while awaiting input` | `Covered` |
 | act card 读 `parkKind` 而不是 paused 启发式 | `run-theater-act-card.test.tsx` 的 `shows the backend's abnormal park classification instead of the paused heuristic`、`shows a user stop as awaiting input, not as an abnormal stop`、`keeps an unconfirmed opening turn out of the paused badge`、`never labels the unconfirmed opening turn as an abnormal stop` | `Covered` |
 | legacy 投影与无快照节点保留旧入口 | `workflow-runs.test.ts` 的 `keeps old snapshots and unknown enum values on the legacy projection`、`leaves completion absent on older node runs without a snapshot`；`run-node-session-chat.test.tsx` 的 `keeps the ordinary completion entry for a node parked without a snapshot`；`run-theater-act-card.test.tsx` 的 `labels a parked interactive turn as paused without printing the raw stop reason` | `Covered` |
