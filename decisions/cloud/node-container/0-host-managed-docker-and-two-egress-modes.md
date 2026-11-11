@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 容器隔离与出网：执行宿主直接调 Docker，一个项目一个加固容器，出网分 restricted 和 open 两种模式，取代 sandbox-server
@@ -12,11 +12,12 @@ status: proposed
 另外放行公网，但内网地址照样拒绝。项目就是信任边界：同一个项目里的会话共用一个容器。镜像按 digest 固定，Agent CLI 打进
 镜像；每个容器默认带内存、CPU 和进程数上限。
 
-本 ADR 处于 `proposed`，供 owner 评审，是新建领域 `cloud/node-container` 的根决策。前提是
+本 ADR 处于 `approved`：owner 已评审通过（2026-11-11，circus #1071 列出的 9 点全部同意），尚未实现；它是新建领域 `cloud/node-container` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）和
 [多机执行层根决策](../execution-host/0-host-relayed-control-and-pinned-projects.md)（下称“A2”），依据是 circus #1043 的
 Q2 结论。读取的版本为 cluster `0b8d913`（`docs/sandbox/sandbox-server.md`）、cloud `ad324c77`（`v2-server/internal/node`）、
-desktop `dcff8afe`（`ora-node` 的配置）。
+desktop `dcff8afe`（`ora-node` 的配置）。核心测试用例见
+[Node 容器用例](../../../test-cases/cloud/node-container/host-managed-docker-and-two-egress-modes.md)。
 
 范围与兼容性边界：
 
