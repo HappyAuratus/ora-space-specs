@@ -417,3 +417,31 @@ _Avoid_: direct process exit, business success
 `Best-effort Cleanup Complete`（尽力清理完成）表示承诺的跟踪与清理已经完成，仍不能排除未跟踪
 残留。它不同于已确认静止，也不由重试次数或等待期限到达自动产生。
 _Avoid_: Confirmed Quiescence, cleanup timeout
+
+## Cloud Deployment
+
+正式 Cloud 的部署形态见 [Cloud 单进程根决策](../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)。
+
+### Execution Host
+
+`Execution Host`（执行宿主）是运行 Node 容器的每台机器上的一个程序：主动连上 Cloud，转发本机
+Node 的协议帧，起停 Node 容器并上报容量和存活。它不建数据库，不做意图登记、证据接管和租约；单机
+部署时以内嵌模式跑在 Cloud 进程里。
+_Avoid_: Process Host, Desktop 原生宿主, ora-controller
+
+### Host Token
+
+`Host Token`（宿主令牌）是管理员在 Cloud 上为一台机器签发、可吊销的令牌，执行宿主凭它连上 Cloud。
+_Avoid_: mTLS client certificate, SPIFFE identity
+
+### Project Token
+
+`Project Token`（项目令牌）是 Cloud 为一个项目的 Node 签发、可吊销的令牌，只能访问该项目的 Git、
+模型代理和插件包。它不是模型 Key，也不是外部仓库凭据。
+_Avoid_: model key, repository credential
+
+### Interrupted Execution
+
+`Interrupted Execution`（中断）是执行因 Cloud 重启、执行宿主断开、机器失联或 Node 退出而结束的终态。
+基础设施层不自动重放或续跑被中断的执行，由业务层决定重做或对账。
+_Avoid_: retry_wait, parked operation, failed
