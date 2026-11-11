@@ -205,9 +205,26 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## Cloud 单进程根决策
 
 [Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，7 项汇总为 1 Covered / 3 Partial / 3 Missing。项目仓库和模型接入两份
-根决策还是 `proposed`，评审通过后再补各自的核心用例。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，7 项汇总为 1 Covered / 3 Partial / 3 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、全局锁回归、迁移乱序、运行超过 24 小时后失效 |
+
+## 项目仓库根决策
+
+[项目仓库根决策](../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)为 `approved`，手动同步和
+私有仓库令牌尚待实现。证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，4 项汇总为 0 Covered / 2 Partial / 2 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| project-git | [项目仓库](project-git/external-repository-pull.md) | 地址夹带凭据或非 https、当前快照指向不完整的提交、同步改动已有会话的基准、同一项目并行同步、令牌泄露或被挪用 |
+
+## 模型接入根决策
+
+[模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `approved`。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，5 项汇总为 2 Covered / 2 Partial / 1 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| model-proxy | [模型接入](model-proxy/in-process-model-proxy.md) | Key 或上游信息泄露、未登记或跨项目的执行拿到令牌、会话结束后请求继续、Agent 换模型或夹带认证头、运行超过 24 小时后模型访问失效 |
