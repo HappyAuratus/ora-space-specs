@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 多机执行层：每台机器一个执行宿主转发 Node 控制帧，Node 用项目令牌直连 Cloud 的数据服务，项目固定在一台机器上，断开即中断，取代 v1 的 Controller 领取与租约
@@ -11,10 +11,11 @@ HTTPS 入口，不经过宿主。一个项目固定在一台机器上；宿主�
 Cloud 标为中断，宿主停掉本机的 Node 容器，不续传。宿主不建数据库，不做意图登记、证据接管和租约；它重新连上后报告
 本机的容器，由 Cloud 对照记录决定留下哪些。单机部署时，宿主以内嵌模式跑在 Cloud 进程里，走同一套接口。
 
-本 ADR 处于 `proposed`，供 owner 评审，是新建领域 `cloud/execution-host` 的根决策。前提是
+本 ADR 处于 `approved`：owner 已评审通过，尚未实现；它是新建领域 `cloud/execution-host` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”），依据是 circus #1043
 的 Q1 结论，以及 #1065 里 owner 定下的"Node 改为用项目令牌"。读取的代码版本为 cloud `ad324c77`
-（`v2-server/internal/node`、`internal/nodeservices`）、desktop `dcff8afe`（`apps/ora-node`、`crates/node-protocol`）。
+（`v2-server/internal/node`、`internal/nodeservices`）、desktop `dcff8afe`（`apps/ora-node`、`crates/node-protocol`）。核心测试用例见
+[多机执行层用例](../../../test-cases/cloud/execution-host/host-relayed-control-and-pinned-projects.md)。
 
 范围与兼容性边界：
 
@@ -22,8 +23,9 @@ Cloud 标为中断，宿主停掉本机的 Node 容器，不续传。宿主不�
   控制协议不变。
 - **不在本文**：容器的用户、文件布局、网络规则和资源上限由 A3（circus #1047）规定；Git server 的读写范围由 A4（#1048）
   规定；模型代理的临时令牌由 A5（#1049）规定。本文只定它们共用的项目令牌，以及令牌怎么交到 Node 手里。
-- **演示约束**：继承 A1 D7。演示结束前，`task v2:demo` 走的"后端直接拉起本地 Node 子进程 + 本机配套服务"路径不动；
-  Node 在这段时间同时支持旧的客户端证书配置和新的令牌配置（D7）。
+- **演示约束**：继承 A1 D7，只改凭据这一处。演示结束前，`task v2:demo` 仍走"后端直接拉起本地 Node 子进程 + 本机配套服务"
+  的路径，但本机配套服务和 Node 之间也改用项目令牌，不再签发客户端证书（D7，owner 2026-11-11 定）。这是 A1 D7"新路径不改变
+  演示路径"的一处例外：凭据只有一种形态，Node 就不用同时维护两套配置。
 - **不做数据迁移**：Node 的数据目录不是权威数据（A1 D3），项目换机器时在新机器上重建，不搬旧数据。
 
 ## 现状与继承
@@ -35,7 +37,7 @@ Cloud 标为中断，宿主停掉本机的 Node 容器，不续传。宿主不�
 | A1 D3：宿主断开、机器失联、Node 退出都按中断处理，不续跑 | 继承，并规定两端各自的动作和重连后的对照规则（D3、D5） |
 | A1 D4 第 4 条：项目是信任边界，一个项目一个 Node 容器 | 继承。调度以项目为单位（D4） |
 | v2-server `internal/node`：Cloud 扮演 Node 协议的 Controller 侧，Unix socket、长度分帧、Hello 握手、双向心跳、显式事件 ACK；连接断开不重拨，由业务层记中断 | 继承，不变。Cloud 仍跑这一套，只是帧经宿主转发（D1、D2） |
-| v2-server `internal/nodeservices`：每个 Node 一套本机 loopback 服务，自签 CA 和 24 小时客户端证书，Git 和模型授权要求 mTLS，插件下载无认证 | 修改。服务改由 Cloud 入口统一提供，认证改为项目令牌，插件包改为签名 URL（D6、D7） |
+| v2-server `internal/nodeservices`：每个 Node 一套本机 loopback 服务，自签 CA 和 24 小时客户端证书，Git 和模型授权要求 mTLS，插件下载无认证 | 修改。认证改为项目令牌，演示路径的本机服务也一样（D7）；多机部署时服务改由 Cloud 入口统一提供，插件包改为签名 URL（D6） |
 | desktop `ora-node` 的 `git_access`、`model_proxy`：只接受 CA、客户端证书和私钥，模型客户端只在启动时读一次证书 | 修改。增加令牌配置，每次请求重新读令牌文件（D7） |
 | [Node 协议](../../node/protocol/0-controller-node-protocol.md)：Hello、执行、事件、`EventAck`、重放 | 继承，不变。重放来的、已被 Cloud 结束的执行的事件，Cloud 确认后丢弃（D3） |
 
@@ -149,8 +151,9 @@ desktop 的 `ora-node` 做以下修改（实现由新开的 desktop task 承接�
 - 模型授权：Node 申请会话级临时令牌时，请求头带上项目令牌；每次申请前重新读令牌文件。Agent 拿到的仍然只是
   临时令牌（A5）。
 - 令牌文件读不到或格式不对时，这次请求失败，错误码不含令牌内容。
-- **过渡**：演示结束前，原来的客户端证书配置继续支持，两种配置二选一；v2 演示路径继续用证书。I10（#1060）切换后
-  删除证书配置。
+- **不保留证书配置**：Node 只支持令牌这一种形态。演示路径也一起切换：v2-server 的本机配套服务改为签发项目令牌、
+  校验 bearer 请求头，服务端证书仍是本机自签，Node 信任配置给它的 CA；同时把 `prepare-node.sh` 固定的 desktop 版本
+  推到包含本修改的提交。v2-server 的切换和固定版本的推进必须在同一个 PR 里，因为新版本的 Node 不再接受证书配置。
 
 为什么改 Node 而不是保留客户端证书：保留证书要在 Cloud 入口做客户端证书认证，企业的反向代理就得透传 TLS；吊销要靠
 Cloud 自己维护的名单；模型客户端只在启动时读证书，轮换就得重启容器。令牌在这三点上都更简单，代价是 desktop 多一个
@@ -194,7 +197,7 @@ Agent 工作分支和交付 ref（A4）。
 | Cloud 主动调用每台机器上宿主的 HTTP API | 实现最简单，不需要长连接 | Cloud 要能访问每台机器，企业内网常常不满足；Node 的事件流是持续推送，还得再开回调或轮询（#1043 Q1 选项 b） |
 | Node 直接用 TLS 拨 Cloud，不要宿主 | 少一个程序 | 要改 Node 的传输层；起停容器仍然需要每台机器上有一个程序；每个 Node 都要穿防火墙（#1043 Q1 D1） |
 | 数据服务也经宿主代理 | Node 的认证可以不改，跨机器只需宿主令牌 | 宿主成为 Git 和模型流量的瓶颈，还要替每个项目做授权，等于把一部分 Cloud 搬进宿主（D1） |
-| 保留客户端证书作为项目凭据，Node 不改 | 不改 desktop | Cloud 入口要做客户端证书认证，反向代理要透传 TLS；吊销要自建名单；模型客户端轮换证书要重启容器（D7） |
+| 保留客户端证书作为项目凭据，Node 不改 | 不改 desktop，演示路径不用动 | Cloud 入口要做客户端证书认证，反向代理要透传 TLS；吊销要自建名单；模型客户端轮换证书要重启容器（D7） |
 | 宿主断开后容器继续跑，重连后续上 | 网络抖动不打断执行 | 需要宿主缓存帧和执行状态，正是 v1 Controller 变重的原因；断开期间的副作用无人认领（D3） |
 | 每次执行都挑最空的机器 | 负载更均匀 | 每次都要重新 clone 和安装 Agent，抵消预热的收益（D4） |
 
@@ -206,11 +209,12 @@ Agent 工作分支和交付 ref（A4）。
 
 ## 落地顺序
 
-1. **本 ADR approved 后**：开 desktop task，按 D7 让 Node 支持令牌配置，同时保留证书配置。完成条件：两种配置各有测试，
-   v2 演示路径不受影响。
+1. **Node 改用项目令牌**（circus #1066）：desktop 按 D7 修改 Node；v2-server 的本机配套服务改为项目令牌，并推进固定的
+   desktop 版本。完成条件：令牌经请求头送出、不进 checkout 和日志、替换文件后下一次请求用新令牌，各有测试；
+   `task v2:demo` 一条命令照常起来，演示场景可用。
 2. **I4（#1054）宿主与 Cloud 接入**：先做内嵌模式，再做远程宿主；默认关闭，演示路径不变（A1 D7）。完成条件：内嵌模式下
    跑通一次对话；远程模式下验证 D3 的断开、D4 的宽限期和 D5 的对照。
 3. **A3、A4、A5 的实现接上项目令牌**：I5（#1055）把令牌写进容器，I6（#1056）的 Git server 和 I8（#1058）的模型代理
    按令牌授权。
-4. **I10（#1060）**：演示切到内嵌宿主后，删除 Node 的证书配置和 v2-server 的本机配套服务。从这一步开始，所有 Node 都经宿主。
+4. **I10（#1060）**：演示切到内嵌宿主后，删除 v2-server 的本机配套服务。从这一步开始，所有 Node 都经宿主。
 5. **I11（#1061）**：删除 ora-controller，按上一节标记 v1 ADR。

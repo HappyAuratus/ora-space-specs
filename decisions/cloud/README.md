@@ -18,7 +18,7 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `operation` | 持久操作、幂等、版本、重试、状态转换和恢复证据 |
 | `execution-admission` | Access、Execution Ticket、准入关闭、idle 证据和活动保护 |
 | `controller-integration` | Controller lease、内部快照、effect plan、epoch fencing 和接管边界 |
-| `execution-host` | 多机执行层：执行宿主的连接与转发、项目在机器上的放置、断开即中断、宿主令牌与项目令牌；[根决策](execution-host/0-host-relayed-control-and-pinned-projects.md) proposed |
+| `execution-host` | 多机执行层：执行宿主的连接与转发、项目在机器上的放置、断开即中断、宿主令牌与项目令牌；[根决策](execution-host/0-host-relayed-control-and-pinned-projects.md) approved（尚待实现） |
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界；[单进程、企业内网多机、崩溃即中断的根决策](lifecycle/0-single-process-cloud-on-enterprise-intranet.md) approved（尚待实现），是 phase3 基座的根决策 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |
