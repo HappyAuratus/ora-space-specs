@@ -201,3 +201,13 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 - cluster 3ce153f：完整 Go race、格式/vet、真实公共 TLS Git 夹具及八组真实 Compose 验收通过。cluster 没有对应的 CI check-run，不能把本机结果写成 CI 通过。
 
 这些门禁不补齐受控凭据解析/重绑或完整 UI、故障/升级矩阵，也不能替代各后续 ADR 的独立验证；各用例证据继续按义务标记 Covered、Partial、Missing。
+
+## Cloud 单进程根决策
+
+[Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`，尚待实现。
+证据按 cloud `ad324c77` 的 `v2-server/` 登记，9 项汇总为 1 Covered / 3 Partial / 5 Missing；执行宿主、容器、Git server
+和企业登录相关的义务由 A2–A6 各自的核心用例细化。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、断开或失联不中断、Agent 越过隔离、Key 和凭据进 Node、令牌不可吊销、全局锁回归、迁移乱序、演示路径被新路径破坏 |
