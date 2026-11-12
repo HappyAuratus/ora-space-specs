@@ -1,6 +1,6 @@
 # 首轮确认与异常停靠
 
-本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，park 级集成证据由 desktop#755 补；`Sessions::prompt → WorkflowSessionTurns::prompt` 的正常 host 接线已由 e2e 覆盖，异常 cause（超时、崩溃、stream drop）的真实 e2e 仍缺，作为边界记录在分类义务里。
+本文件是[首轮确认与异常停靠决策](../../../../decisions/desktop/core/workflow/20261102-first-turn-confirmation.md)的核心用例。实现随 desktop#751 合入，park 级集成证据由 desktop#755 补；`Sessions::prompt → WorkflowSessionTurns::prompt` 的正常 host 接线已有 e2e；[desktop#763](https://github.com/ora-space/desktop/pull/763) 补充了三类异常的[人类回合跨 crate e2e](https://github.com/ora-space/desktop/blob/8307f484bacb4dd727d0d1a2ce44f75e23e2bbe5/e2e/tests/desktop/core/session/tests/abnormal_human_turn.rs) 与[自动交互式首轮失败 e2e](https://github.com/ora-space/desktop/blob/8307f484bacb4dd727d0d1a2ce44f75e23e2bbe5/e2e/tests/desktop/core/session/tests/abnormal_first_turn.rs)。owner stream drop 与 provider 崩溃的区别及测试控制边界见异常分类义务。
 
 ## First Automatic Turn Awaits Explicit Confirmation
 
@@ -71,12 +71,14 @@ park 与读取投影。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 异常与用户停止的 `parkKind` / `stopCause` 分类（拿到 `stopCause` 后） | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`。三类 cause 无 e2e：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点 | `Covered` |
+| 异常与用户停止的 `parkKind` / `stopCause` 分类（拿到 `stopCause` 后） | `a_user_stopped_turn_parks_as_awaiting_user`、`a_user_stop_parks_as_awaiting_participation`、`a_timed_out_turn_parks_as_abnormal`、`an_unattributed_stop_parks_as_abnormal`、`other_blocked_turns_park_as_abnormal`；`silent_timeout_stream_drop_and_session_crash_park_as_abnormal_with_their_cause`（park 级集成：真实 history + SQLite + `end_human_turn`）；e2e `a_stopped_opening_turn_waits_for_the_user`；三类异常的真实串联见下方跨 crate e2e 义务 | `Covered` |
 | 归因（`PromptEndReport` → `StopCause` → park 快照） | `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` | `Covered` |
 | `Sessions::prompt → WorkflowSessionTurns::prompt` 真实 host 接线 | e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart`、`a_plain_conversation_saying_continue_does_not_advance_a_node` 通过 `backend.sessions().prompt(...)` 走真实 host，覆盖 workflow 人类回合的 admission、步骤边界与停靠 | `Covered` |
-| 异常 cause（超时、崩溃、stream drop）的跨 crate e2e | 无直接测试。边界：超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点；park 级集成已覆盖 `StopCause → 快照`，但未跨 crate 串联 | `Partial` |
-| 自动首轮静默超时耗尽、会话崩溃不停靠，节点失败 | runtime 段：`the_prompt_reports_who_ended_the_turn`、`a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 断言 prompt 流返回错误；驱动 `drive_agent_node` 到节点失败的串联证据需要 fake agent 的静默/崩溃模式，按边界保留 | `Partial` |
+| 异常 cause（静默超时、provider 崩溃、owner stream drop）的跨 crate e2e | `a_timed_out_human_turn_parks_as_abnormal_with_prompt_timed_out`、`a_crashed_human_turn_parks_as_abnormal_with_session_crashed`、`a_dropped_human_prompt_stream_parks_as_abnormal_with_stream_dropped`：经真实 `Sessions::prompt`、runtime、history 与 SQLite，断言 `abnormal`、准确 `stopCause` 及默认完成被拒 | `Covered` |
+| 自动交互式首轮静默超时耗尽、会话崩溃或 owning stream 提前结束时不停靠，节点失败 | `a_silent_workflow_first_turn_exhausts_inactivity_and_fails_the_node`、`a_crashed_workflow_first_turn_fails_the_node_without_parking`、`a_workflow_first_turn_without_a_terminal_event_fails_the_node`：发布并启动冻结 `interactive: true` 的真实 workflow，经 `drive_agent_node` 断言节点失败、无 completion 停靠快照且后继未执行 | `Covered` |
 | 异常默认不可推进、只能 force | `blocked_turn_returns_every_blocker_with_its_detail`；前端 `requires confirmation before force-completing an abnormal stop` | `Covered` |
+
+证据边界：静默用例按 Backend 实例缩短四个 inactivity 窗口，仍断言初次发送及全部三次重发，生产窗口与策略保持原值。fake provider 收到含本次唯一 marker 的 prompt 后写 journal，再静默或退出；owner drop 在 journal 握手后取消真实 prompt 流。自动首轮由仅 `test-support` 的 executor 控制对它持有的流调用 `cancel_and_wait()`，随后走无 `Completed` EOF 的既有失败分支；该证据证明 owning consumer 放弃流，不把 provider transport 断开复用为 `stream_dropped`。
 
 ### 决策依据
 
