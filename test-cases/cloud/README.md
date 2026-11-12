@@ -228,3 +228,13 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | model-proxy | [模型接入](model-proxy/in-process-model-proxy.md) | Key 或上游信息泄露、未登记或跨项目的执行拿到令牌、会话结束后请求继续、Agent 换模型或夹带认证头、运行超过 24 小时后模型访问失效 |
+
+## 登录与会话根决策
+
+[登录与会话根决策](../../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)为 `approved`，
+IDaaS 登录、邀请链接、移出成员和 desktop 令牌尚待实现。证据按 cloud `0ca0a9a0` 的 `v2-server/` 登记，10 项汇总为
+0 Covered / 3 Partial / 7 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| login | [登录与会话](login/login-and-sessions.md) | 部署版开着邮箱登录、IDaaS 凭据落库或进日志、同一个人两个账号、登录即入队、邀请链接被重复使用、管理员来源不可信、移出后仍能访问、会话令牌明文落库、desktop 令牌未经确认签发、停用后会话仍可用 |
