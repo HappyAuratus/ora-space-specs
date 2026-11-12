@@ -144,7 +144,8 @@ Cloud 内嵌的 Git server 的同名 ref `refs/ora/deliveries/<projectId>/<deliv
 5. 同步不读、不删、不改交付 ref。
 6. 任务只在这一轮的交付结果为 `delivered` 或 `empty` 之后进入待验收。
 7. 变更视图和 patch 下载只读交付，不读工作目录；对话的交付只有对话的主人能读。
-8. Node 和 Agent 不能向 Cloud 的镜像写入任何 ref。
+8. Node 和 Agent 不能经 Cloud 提供的任何入口向镜像写入 ref。第一版不隔离（A1 D2），Agent 作为同一个系统用户在磁盘上
+   改动镜像不在这条承诺之内。
 
 ## 为什么不是这些替代方案
 
