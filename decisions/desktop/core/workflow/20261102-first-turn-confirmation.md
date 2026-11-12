@@ -6,7 +6,7 @@ status: implemented
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 也可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是同时显示「等待参与」和「完成并进入下一步」，点击后跳过用户回答。本决策给 workflow 自动发起的首轮 park 增加 `turn_unconfirmed` blocker：首轮正常结束也不再自动 ready，用户通过新增的 `confirmInitialTurn` 请求字段完成一次普通推进，不记 `completion_forced`。`force` 与 `completion_forced` 只用于覆盖非确认类 blocker；同时把停靠路径上的超时、截断、拒答、未知、会话崩溃等异常停靠与用户主动停止、agent 等待确认分开显示，异常停靠默认不可无确认推进，只能继续或显式强制完成。
 
-本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），按批准方案落地；D1、D4 已按最终实现更正，偏离见 D4 末段「与批准版本的偏离」。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。剩余边界是异常 cause 的真实 e2e（超时窗口 45–120s、fake agent 无静默模式、crash 无杀进程入口、stream drop 缺调度同步点）；`Sessions::prompt → WorkflowSessionTurns::prompt` 的正常 host 接线已由 e2e 覆盖，旧快照兼容与 ready 时 force 已有直接回归测试。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
+本决策为 `implemented`。实现随 [desktop#751](https://github.com/ora-space/desktop/pull/751) 合并（merge `12c29e51`），按批准方案落地；D1、D4 已按最终实现更正，偏离见 D4 末段「与批准版本的偏离」。人类回合的静默超时/断流/崩溃已有 park 级集成测试（真实 history + SQLite + `end_human_turn`），归因链路已由 `a_workflow_turn_records_the_reported_end_cause_in_its_parked_snapshot` 与 `a_provider_crash_reports_session_crashed_rather_than_a_dropped_stream` 覆盖：runtime 的 `PromptEndReport` 经 `StopCause` 写入 park 快照。人类回合三类异常 cause 与自动交互式首轮失败已由 [desktop#763](https://github.com/ora-space/desktop/pull/763) 的跨 crate e2e 覆盖：人类回合经 `Sessions::prompt → WorkflowSessionTurns::prompt` 写入异常快照，自动首轮经 `drive_agent_node` 失败且不产生停靠快照；`stream_dropped` 指 owning consumer 放弃流，与 provider 连接丢失的 `session_crashed` 分开。具体测试边界见核心用例；旧快照兼容与 ready 时 force 保持已有直接回归证据。它修改[交互式节点完成契约](20261021-interactive-node-completion.md)（下称 #385 ADR）的 D1、不变量 1 与 D7，并扩展 D5 的请求字段/错误优先级以及不变量 9、12 的审计表述；其余决策与不变量继承。影响面包括 `crates/contracts` 的完成请求与 blocker kind、backend 的 park/完成路径、`packages/workflow-runtime` 的完成投影，以及 app-shell 的步骤卡片、右下角按钮和 Theater act card 徽标；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常人类回合的 `EndTurn` 完成行为、非交互节点、Cloud 与 `Loop`/`Iteration` 区域内的 interactive 行为保持不变。升级前已停靠且缺少新字段的快照不追溯加 `turn_unconfirmed`；旧客户端不带 `confirmInitialTurn` 时无法完成首轮停靠，必须升级。核心测试用例见[首轮确认与异常停靠用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md)。
 
 ## 继承与修改
 
@@ -178,6 +178,8 @@ provisional 快照只属于人类回合，先按 #385 D4 的既有路径修复�
 
 人类回合由 cleanup（`end_human_turn`）停靠。活跃回合被系统结束时，runtime 会先把本回合写成 `TurnEnded { stop_reason: Cancelled }`；只要这份 boundary 在 cleanup 的等待窗口内收敛，静默超时、流断开和会话崩溃的 park blocker 就是 `turn_stopped`，再由 `stopCause` 区分具体来源。等待窗口内拿不到 `TurnEnded` 时写 `provisional: true` 且带 `turn_not_settled` 的快照，历史读不出来时写带 `history_unavailable` 的 provisional 快照，两者的 `turn_unknown` 都因 provisional 暂归 `awaiting_user`；`settle_snapshot` 在新推导的 `turnKey` 为空时保留原快照，不把这次未收敛当成新的异常 blocker。
 
+`stream_dropped` 表示 owning consumer 放弃 prompt 事件流；provider 连接丢失归为 `session_crashed`。人类回合的两条路径都由 runtime 结束归因写入快照；自动首轮的 owning stream 提前结束且没有 `Completed` 时按节点失败处理。代表性跨 crate 证据与 owner EOF 故障注入边界见[异常分类核心用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md#abnormal-parking-is-distinct-from-awaiting-user)。
+
 自动首轮（`park_first_interactive_turn`）只在收到 prompt 的 `Completed` 后停靠。静默超时耗尽和会话崩溃让 prompt 流返回错误，流结束却没有 stop reason 时报 `SessionEndedWithoutStopReason`，这些情况都让节点失败，不进入上表；流断开同样不会走到首轮停靠。收到 `Completed` 后只读一次历史、不等待，也不写 provisional，所以无 `TurnEnded` 或历史不可读直接得到非 provisional 的 `turn_unknown`，归 `abnormal`。
 
 **与批准版本的偏离**：以下三处按最终实现更正，实现未改。
@@ -192,7 +194,7 @@ provisional 快照只属于人类回合，先按 #385 D4 的既有路径修复�
 
 ### D5：读取投影、步骤卡片与右下角按钮共用同一分类
 
-读取投影继续只解析 `payload.completion`，不读会话历史、不跑 schema、不做修复。新增/透出：
+读取投影继续只解析 `payload.completion`，不读会话历史、不跑 schema、不做修复。三类异常 cause 从人类 prompt 写入该快照的跨 crate 证据见[异常分类核心用例](../../../../test-cases/desktop/core/workflow/first-turn-confirmation.md#abnormal-parking-is-distinct-from-awaiting-user)。新增/透出：
 
 - `turnOrigin`、`stopCause`、`parkKind`：有则透出，旧快照缺省；
 - `needsConfirmation`：当且仅当快照非 provisional、blockers 恰好是 `[turn_unconfirmed]`；
@@ -299,7 +301,7 @@ provisional 快照只属于人类回合，先按 #385 D4 的既有路径修复�
 - **首轮确认不是回答**：用户仍可在 agent 提问后点「确认并完成」跳过回答，这是显式选择，不是自动误判。卡片文案必须把「确认」和「继续当前步骤」的差别说清楚，否则只是把误点从底部按钮移到卡片。
 - **provisional 的短暂分类**：provisional 期间显示「等待参与」，修复后可能变成 `abnormal`。这是 #385 已有的 provisional 语义，本决策不改变；如果用户在这段时间点完成，后端会先修复再判定，失败时返回 blockers。
 - **区域与 Cloud 不在范围**：`Loop`/`Iteration` 区域内的 interactive 仍按既有边界处理；Cloud 不执行 interactive Agent，不新增发布门禁。
-- **核心测试用例**：首轮确认、异常分类与归因、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态按实际证据标注：归因链路为 `Covered`，`WorkflowSessionTurns::prompt` 的真实 host 接线与跨 crate e2e 保留 `Partial`。
+- **核心测试用例**：首轮确认、异常分类与归因、审计形状、旧快照兼容与 UI 入口已登记在 `test-cases/desktop/core/workflow/first-turn-confirmation.md`；证据状态按实际证据标注：归因链路、真实 host 接线、人类三类异常 cause 的跨 crate e2e 与自动交互式首轮异常失败均为 `Covered`，故障注入边界见该核心用例。
 
 验收：
 
@@ -312,4 +314,4 @@ provisional 快照只属于人类回合，先按 #385 D4 的既有路径修复�
 - 步骤卡片：首轮确认只给「确认并完成」+「继续当前步骤」；异常停靠只给「继续当前步骤」+「仍然完成」；用户停止保持「等待参与」；右下角按钮只对 ready 启用。
 - 投影与 act card 使用同一 `parkKind`；旧快照缺字段时走 legacy，不追溯加 `turn_unconfirmed`；不读历史、不跑 schema、不做批量回填。
 - 非交互节点、正常人类完成、Cloud 与区域 interactive 行为不变；数据库无 schema 变更，冻结图不变。
-- 核心测试用例已按最终实现补充证据；归因链路为 `Covered`，`WorkflowSessionTurns::prompt` 真实 host 接线与跨 crate e2e 保留 `Partial`。
+- 核心测试用例已按最终实现补充证据；归因链路、真实 host 接线、人类三类异常 cause 的跨 crate e2e 与自动交互式首轮异常失败均为 `Covered`，故障注入边界见该核心用例。
