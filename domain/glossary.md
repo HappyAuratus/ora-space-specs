@@ -432,3 +432,11 @@ _Avoid_: Confirmed Quiescence, cleanup timeout
 `Interrupted Execution`（中断）是执行因 Cloud 重启或 Node 退出而结束的终态。
 基础设施层不自动重放或续跑被中断的执行，由业务层决定重做或对账。
 _Avoid_: retry_wait, parked operation, failed
+
+### Turn Delivery
+
+`Turn Delivery`（回合交付）是 Agent 每一轮结束时，Cloud 把工作目录相对会话起点做成的一个提交，挂在项目镜像里只新建的
+交付 ref 上，并在 PostgreSQL 记一条结果为 `delivered`、`empty` 或 `failed` 的记录。变更视图、验收和 patch 下载读它。
+它不是 v1 的 Revision：不经 Node 上传、不进对象存储、不承载会话历史。见
+[回合交付](../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md)。
+_Avoid_: Revision, delivery settlement

@@ -4,6 +4,8 @@ status: approved
 
 # Cloud 是一个进程：由 v2-server 演进而来，第一版单机部署、Node 是本地子进程，崩溃按中断处理，取代 v1 的服务拆分与"恰好一次续跑"
 
+> 历史决策：D3 里“Agent 的改动只存在于 Node 的工作目录里，第一版不交付”由[回合交付](../project-git/20261112-single-machine-turn-delivery.md)修改：每轮结束由 Cloud 交付到项目镜像，仍不推送到外部仓库。其余决策不变。
+
 正式 Cloud 不再是 v1 那套由 server、gateway、model-gateway、credential-store、git-server、repo-executor、
 ora-controller、sandbox-server 组成的分布式系统，而是由 `ora-space/cloud` 的 `v2-server` 演进出的**一个 Cloud 进程**，
 加上一个 PostgreSQL 和 Cloud 自己的数据卷。第一版部署在一台机器上：每个项目一个 Node，作为 Cloud 的本地子进程运行，
