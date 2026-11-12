@@ -205,7 +205,7 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## Cloud 单进程根决策
 
 [Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，7 项汇总为 1 Covered / 3 Partial / 3 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`），7 项汇总为 2 Covered / 3 Partial / 2 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -223,7 +223,7 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## 模型接入根决策
 
 [模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，5 项汇总为 2 Covered / 2 Partial / 1 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`），5 项汇总为 3 Covered / 2 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
