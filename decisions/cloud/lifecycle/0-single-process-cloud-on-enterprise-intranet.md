@@ -16,7 +16,7 @@ Agent 的改动不推送到任何地方。Cloud 重启或 Node 退出时，没�
 2026-11-11 owner 在 circus #1073 把第一版的范围收窄为单机、不隔离，本文据此重写：原先关于多机、执行宿主、容器、
 令牌体系和"新旧路径并行"的内容已删除，同时删除了两份尚未被使用的后续根决策（多机执行层、Node 容器），
 多机和隔离到时重新写决策。依据是 circus #1043 的结论、#1023 的实测数据、#1017 的阶段划分，读取的代码版本为
-cloud `80e9c9f1`（`v2-server/`）。核心测试用例见
+cloud `80e9c9f1`（`v2-server/`）。2026-11-12 随 A6 修订了登录（D1、D6）、租户授权（D4）和离线部署（D2、D6）的说法。核心测试用例见
 [Cloud 单进程用例](../../../test-cases/cloud/lifecycle/single-process-cloud.md)。
 
 范围与兼容性边界：
@@ -24,7 +24,7 @@ cloud `80e9c9f1`（`v2-server/`）。核心测试用例见
 - **涉及**：`ora-space/cloud` 的 `v2-server/`（成为正式 Cloud）。desktop 的 Node 不改。
 - **不在本文**：外部仓库的拉取和令牌见[项目仓库根决策](../project-git/0-external-repository-pull-and-encrypted-token.md)
   （下称“A4”）；模型接入见[模型接入根决策](../model-proxy/0-in-process-model-proxy-with-deployment-connections.md)
-  （下称“A5”）；登录由 A6（circus #1050）规定，第一版只接 OAuth。desktop 连接 cloud 的正式契约由 phase2 的 #1029 承担。
+  （下称“A5”）；登录见[登录根决策](../login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)（下称“A6”）：部署版只走华为 IDaaS，开发版用无密码邮箱。desktop 连接 cloud 的正式契约由 phase2 的 #1029 承担。
 - **不承担数据迁移**：v1 Cloud 的数据库、对象存储和仓库不迁到新 Cloud。
 - 本文不立刻把任何 v1 ADR 标为 `superseded`。v1 组件退役时，由承接的 task 按“[被取代的 v1 决策](#被取代的-v1-决策)”
   一节逐份标记。
@@ -59,7 +59,7 @@ v1 各服务的去向：
 | v1 服务 | 去向 | 规则由谁定 |
 | --- | --- | --- |
 | server（cloud core） | 退役；业务能力按需补进 v2-server，API 以 v2-server 为基准（#1017） | #1029（契约）、#1062（积压改写） |
-| gateway | 收进 Cloud 进程：第一版只接 OAuth 登录 | A6 #1050 |
+| gateway | 收进 Cloud 进程：部署版华为 IDaaS，开发版无密码邮箱 | A6 |
 | model-gateway | 收进 Cloud 进程：进程内模型代理 | A5 |
 | credential-store、git-credential-ora | 收进 Cloud 进程：外部仓库令牌加密存 PostgreSQL | A4 |
 | repo-executor | 收进 Cloud 进程：外部仓库由 Cloud 拉取；第一版不推回 | A4 |
@@ -81,7 +81,8 @@ v1 各服务的去向：
 - **不做的**：多机、执行宿主、容器、出网规则、宿主令牌和项目令牌。
 - **长期运行**：部署要能连续运行，不因 Cloud 内部签发的凭据有固定有效期而失效。现在本机服务的自签证书 24 小时过期
   且不轮换，由 circus #1074 修。
-- **运维**：备份 PostgreSQL 和 Cloud 数据卷。离线部署包等运维项在第一次部署之后按需要再定。
+- **运维**：备份 PostgreSQL 和 Cloud 数据卷。第一次内网部署之前由 circus #1059 准备：部署版启动不清空数据，
+  v2-server 托管前端构建产物，在外网准备离线资源，插件市场走内网 Git；HTTPS 由谁终止也在 #1059 定。
 
 为什么先单机：多机需要宿主程序、放置、失联处理和一套令牌；隔离需要容器镜像和网络规则。它们解决的问题在第一次部署时
 还不存在。先部署，再按实际遇到的规模和信任要求设计。
@@ -112,7 +113,9 @@ v1 各服务的去向：
 1. **模型 Key 不下发给 Node。**Key 只由 Cloud 进程内的代理加到上游请求上，Node 和 Agent 只拿到按会话签发、可吊销的
    临时令牌（A5）。
 2. **外部仓库令牌不下发给 Node。**外部仓库只由 Cloud 访问（A4）。
-3. **租户隔离**：每个 API 都按租户作用域和成员身份授权；I3 #1053 统一审计一遍现有接口。
+3. **租户隔离**：每个租户 API 经同一个入口判定成员身份：一个判定函数、一个路由中间件，非成员一律 `404`，
+   只有 owner 能做的操作在路由表上声明，后台任务开始执行时用同一个判定；业务 SQL 只按 `tenant_id` 过滤，
+   不再各自核对成员。由 I3 #1053 实现，路由表测试兜底。
 
 这两条"不下发"在第一版只说明 Cloud 不主动交出去：因为不隔离（D2），同机的 Agent 在技术上仍可能读到 Cloud 的环境和
 文件。它们的意义是保住接缝，隔离做好之后不用再改凭据的走法（D7）。
@@ -136,8 +139,9 @@ v1 各服务的去向：
 
 | # | 保证 | v2-server 现状 | 决策 | 实现 |
 | --- | --- | --- | --- | --- |
-| 1 | 登录：接入 OAuth | 只有邮箱登录，仅用于演示 | A6 #1050 | I2 #1052 |
-| 2 | 租户之间的数据隔离 | 已有租户作用域和成员校验 | 本文 D4 | I3 #1053 |
+| 1 | 登录：部署版华为 IDaaS，开发版无密码邮箱 | 只有邮箱登录，仅用于演示 | A6 | I2 #1052 |
+| 2 | 租户之间的数据隔离：统一入口判定成员身份 | 各 handler 在 SQL 里各自核对，条件不一致 | 本文 D4 | I3 #1053 |
+| 8 | 第一次内网部署：部署版启动、托管前端、离线资源 | 演示形态，每次启动清空 | 本文 D2 | #1059 |
 | 3 | 外部仓库：拉取、手动同步、私有仓库 | 建项目时 clone 一次，只支持公开仓库 | A4 | I7 #1057 |
 | 4 | 模型接入：Key 不下发给 Node | 已有 | A5 | 已有 |
 | 5 | 数据库迁移和升级 | 启动时建表 | 本文 D5 | I1 #1051 |
@@ -145,7 +149,7 @@ v1 各服务的去向：
 | 7 | 连续运行超过 24 小时 | 本机服务证书 24 小时过期 | 本文 D2 | #1074 |
 
 第一版不做、以后需要时再写决策的：多机、Agent 执行隔离、Git server 与交付、推回外部仓库、个人或团队的模型连接、
-用量计量与配额、离线部署包。
+用量计量与配额。
 
 ### D7：为多机和隔离保留的接缝
 
@@ -179,7 +183,7 @@ v1 业务领域的 ADR 不逐份挑出仍成立的规则继承：#1043 已定不
 | 沙盒 | [`cluster/sandbox-server/`](../../cluster/sandbox-server/0-docker-label-resolver.md) 全部 | 本文 D2：第一版 Node 是本地子进程；隔离以后重新写决策 | I11 #1061 删除 sandbox-server 时 |
 | Git 线 | [`cloud/git-server/`](../git-server/0-project-code-hub-git-server-over-https.md) 全部；[`cloud/repo-executor/`](../repo-executor/0-repo-executor-sole-external-git-boundary.md)；[`cloud/project/20261016-repository-binding-and-snapshot-sync.md`](../project/20261016-repository-binding-and-snapshot-sync.md)；[`cloud/project/20261017-explicit-fast-forward-publish.md`](../project/20261017-explicit-fast-forward-publish.md)；[`cloud/identity-access/20261016-git-credentials-in-independent-credential-store.md`](../identity-access/20261016-git-credentials-in-independent-credential-store.md)；[`cloud/revision/`](../revision/0-cloud-owned-object-store-and-verified-revisions.md) 全部 | A4：外部仓库由 Cloud 进程拉取，令牌加密入库；Git server、交付和推回第一版不做 | I11 #1061 删除 v1 Git 线时 |
 | 模型接入 | [`cloud/model-access/`](../model-access/0-personal-model-connections-and-run-scoped-proxy.md) 全部 | A5：Cloud 进程内代理，部署级模型连接 | I11 #1061 删除 model-gateway 时 |
-| 登录 | [`cloud/identity-access/0-gateway-mediated-external-identity.md`](../identity-access/0-gateway-mediated-external-identity.md)、[`20260923-huawei-global-id-alias.md`](../identity-access/20260923-huawei-global-id-alias.md)、[`20261019-deployment-bound-desktop-sessions.md`](../identity-access/20261019-deployment-bound-desktop-sessions.md) | A6：登录收进 Cloud 进程，第一版只接 OAuth | I11 #1061 删除 v1 gateway 时 |
+| 登录 | [`cloud/identity-access/0-gateway-mediated-external-identity.md`](../identity-access/0-gateway-mediated-external-identity.md)、[`20260923-huawei-global-id-alias.md`](../identity-access/20260923-huawei-global-id-alias.md)、[`20261019-deployment-bound-desktop-sessions.md`](../identity-access/20261019-deployment-bound-desktop-sessions.md) | A6：登录收进 Cloud 进程，部署版华为 IDaaS、开发版无密码邮箱 | I11 #1061 删除 v1 gateway 时 |
 | 全局串行锁 | 写在 [`cloud/workspace/0-collab-space-boundary.md`](../workspace/0-collab-space-boundary.md)、[`cloud/api-boundary/0-space-api-and-event-stream.md`](../api-boundary/0-space-api-and-event-stream.md)、[`cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md`](../workflow/0-cloud-side-scheduler-owns-workflow-execution.md) 里，没有单独的 ADR | 本文 D5：不用全局锁 | 随所在 ADR 一起处理（见下一行） |
 | v1 业务领域 | `cloud/` 下其余目录：api-boundary、execution-admission、issue-collaboration、issue-run、persistence、plugin-marketplace、project（除上面列出的）、scheduled-task、squad、tenancy、thread、workflow、workspace | 放弃，不逐份继承：v2-server 各自另有实现，API 以 v2-server 和 #1029 的正式契约为准（D6） | I11 #1061 删除 v1 时整体标记，由 #1062 按领域执行 |
 | Node 进程宿主 | [`node/process/`](../../node/process/README.md) 下 architecture、control、io、lifecycle、persistence、protocol、recovery、upgrade、integration | #1033 的 O5：退役 host/guardian | O5 的 ADR（circus #1069）approved 后 |
@@ -220,10 +224,9 @@ v1 业务领域的 ADR 不逐份挑出仍成立的规则继承：#1043 已定不
 
 ## 落地顺序
 
-1. **第一次部署之前**：I1 #1051（版本化迁移）、I3 #1053（租户审计）、#1074（连续运行超过 24 小时）、I7 #1057
-   （外部仓库同步与私有仓库，按 A4）、I2 #1052（OAuth 登录，按 A6）。每一项都直接改现有路径，完成条件是
-   `task v2:demo` 照常一条命令起来、演示场景可用。
+1. **第一次部署之前**：I1 #1051（版本化迁移）、I3 #1053（统一租户授权）、#1074（连续运行超过 24 小时，已修复）、
+   I7 #1057（外部仓库同步与私有仓库，按 A4）、I2 #1052（登录，按 A6）、#1059（第一次内网部署）。每一项都直接改现有路径，
+   完成条件是 `task v2:demo` 照常一条命令起来、演示场景可用。
 2. **v1 退役**（I11 #1061）：删除 v1 组件，按“被取代的 v1 决策”一节标记 ADR。
-3. **暂停**：执行宿主（I4 #1054）、Node 镜像（I5 #1055）、Git server（I6 #1056）、模型代理收口（I8 #1058）、
-   离线部署包（I9 #1059）、演示切换（I10 #1060）和 Node 改项目令牌（#1066）。它们依据的决策已删除或重写，
-   等多机或隔离重新立项时再定去留。
+3. **已作废**：执行宿主（I4 #1054）、Node 镜像（I5 #1055）、Git server（I6 #1056）、模型代理收口（I8 #1058）、
+   演示切换（I10 #1060）和 Node 改项目令牌（#1066）已在 2026-11-12 关闭。多机或隔离以后按 D7 的接缝重新立项。
