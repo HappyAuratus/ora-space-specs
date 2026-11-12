@@ -1,12 +1,12 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 交互式节点：agent 显式完成信号驱动可完成，人工确认后推进
 
 交互式 Agent 节点目前只要本轮以 `EndTurn` 结束且 blockers 为空就视为 ready；但 agent 可能用 `EndTurn` 结束一个「向用户提问」的回合，界面于是把提问当成完成。本决策给交互式 agent 节点增加一个由 host 提供的显式完成信号：workflow 节点会话额外获得一个只在该会话可用的完成工具，agent 认为本步骤完成时调用它；host 把「当前 turn 的完成请求」绑定到发起它的 attempt，只有该 attempt 结算出的当前 turn 有被接受的请求时节点才可完成，人仍在步骤卡片上确认（或按节点配置自动接受）。没有信号时 `EndTurn` 不再让节点 ready；首轮 gate、异常停靠与 `force` 的既有语义继续适用。
 
-本决策是 `approved`，只定义 host 侧契约与行为，不定义 agent 插件如何实现工具调用；`Loop`/`Iteration` 区域、非交互节点、Cloud 与既有 workflow 包格式不在范围内。核心测试用例见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
+本决策处于 `implemented` 状态，由 [ora-space/desktop#767](https://github.com/ora-space/desktop/pull/767) 实现；验证证据登记在[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。它只定义 host 侧契约与行为，不定义 agent 插件如何实现工具调用；`Loop`/`Iteration` 区域、非交互节点、Cloud 与既有 workflow 包格式不在范围内。
 
 ## 继承与修改
 
@@ -143,13 +143,13 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 | 继续只靠 `EndTurn`，用文案提示 | 不解决「提问回合被当成完成」的误判，只是把问题留给用户点击 |
 | 把完成工具并入节点 `mcps` 白名单 | 会让用户以为它是可配置插件 MCP，破坏「空集合不注入任何插件 MCP」和「安装不等于授权」；它应由节点完成策略授权 |
 
-## 落地顺序与完成条件
+## 落地结果
 
-1. **ADR 评审**：本决策已 `approved`；核心用例已按本决策补充，证据为 `Missing` / `Partial`。完成条件：owner 批准并合并本 ADR；生效点：无运行时行为。
-2. **契约**：`NodeCompletionRequester` 增加 `Agent`（仅服务端使用）；节点配置增加 `completionSignal` / `autoAcceptAgentCompletion`；完成请求增加 `confirmAgentCompletion` 对象并移除客户端 `requester`；新增 `agent_signal_pending` / `agent_confirmation_pending` blocker 与 `WorkflowNodeSignalChanged`。完成条件：contracts 与 TS 绑定同步、契约测试更新；生效点：类型可用，行为未切换。
-3. **host 能力与门禁**：注入完成 MCP server、token、attempt 绑定、park 信号绑定、双 blocker 门禁、确认校验、自动接受。完成条件：单测 + backend 集成测试覆盖 D1–D4；生效点：只接线，默认仍为 `end_turn`，不向用户启用 `agent`。
-4. **前端**：步骤卡片按 D5 矩阵展示确认/继续/force；节点配置暴露两项配置；中英文案同步。完成条件：前端用例覆盖矩阵与确认请求；生效点：与阶段 3 同版本发布、编辑器默认切到 `agent` 后，后端门禁与确认界面在同一点生效；分阶段发布时不能只上后端。
-5. **验证与兼容**：覆盖 frozen graph、恢复/刷新/撤销、OpenCode 共享进程可见性、崩溃清理。完成条件：核心用例证据按实际测试标注；不提升未覆盖项。
+1. **契约**：`NodeCompletionRequester::Agent`、`confirmAgentCompletion { signalId }`、`agent_signal_pending` / `agent_confirmation_pending` 与 `WorkflowNodeSignalChanged` 已落地；客户端不再提供 `requester`，服务端按信号与 force 路径派生。
+2. **host 能力与门禁**：完成 MCP server、per-attempt token、park 信号绑定、双 blocker 门禁、确认校验与自动接受已接线。`agent_signal_pending` / `agent_confirmation_pending` 在 park 时物化进快照 blockers，卡片、投影与完成门禁读同一事实；跨回合的旧 `agentSignal` / `confirmation` 会被清除。
+3. **前端**：新建或重新保存的交互节点写入 `completionSignal: "agent"` 与 `schemaVersion: 4`，旧冻结图仍按 `end_turn` 读取；步骤卡片按 D5 矩阵展示，首轮有信号时主操作同时发送两个确认字段，首轮无信号时次操作发送 `confirmInitialTurn` + `force`；自动接受只在已结算的人类回合触发。
+4. **恢复与运行边界**：Session 持久化 `host_capabilities`，重启后按冻结节点策略恢复完成工具；attempt 结束、节点完成与运行取消都会撤销 token；完成 server 限制 64 KiB 请求体与 10 秒连接总时限。
+5. **验证**：核心用例证据已全部改为 `Covered`，直接测试见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
 
 ## 风险、未决问题与验收
 
