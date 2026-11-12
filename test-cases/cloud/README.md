@@ -220,6 +220,13 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | --- | --- | --- |
 | project-git | [项目仓库](project-git/external-repository-pull.md) | 地址夹带凭据或非 https、当前快照指向不完整的提交、同步改动已有会话的基准、同一项目并行同步、令牌泄露或被挪用 |
 
+[回合交付](../../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md)为 `approved`，尚待实现。证据按 cloud `0ca0a9a0` 的
+`v2-server/` 登记，7 项汇总为 0 Covered / 1 Partial / 6 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| project-git | [回合交付](project-git/turn-delivery.md) | 回合没有交付或重复交付、交付漏文件或带进物化技能、改动 Agent 的 Git 状态、有记录无 ref 或 ref 被改写、同步动了交付 ref、交付前就进待验收、清理后看不到改动、越权读对话交付、重启后重做或晚交付、经 Cloud 入口写 ref |
+
 ## 模型接入根决策
 
 [模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `approved`。

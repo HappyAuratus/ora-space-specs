@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 回合交付：每轮结束由 Cloud 在进程内把工作目录做成提交，写进项目镜像里只新建的交付 ref；变更视图、验收和 patch 下载都读它；修改 A4 D5 与 A1 D3 的"第一版不交付"
@@ -10,7 +10,7 @@ Agent 每一轮结束（对话的一轮、任务运行的一轮、工作流 Agen
 变更视图和验收改为读最近一次交付，不再读工作目录；用户可以从交付下载整份 patch，拿回去自己提交。任务要等这一轮的
 交付完成才进入待验收。Node 不改，也不提供 Git server 的 HTTP 入口；以后上多机时改由 Node 推送同名的 ref。
 
-本 ADR 处于 `proposed`：等 owner 评审，评审通过后改为 `approved` 并补核心测试用例。它是
+本 ADR 为 `approved`：owner 已在 circus #1121 确认评审意见，尚待实现；核心测试用例见 [回合交付用例](../../../test-cases/cloud/project-git/turn-delivery.md)。它是
 [项目仓库根决策](0-external-repository-pull-and-encrypted-token.md)（下称“A4”）的后续决策，同时修改
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）D3 的一句话。
 依据是 owner 2026-11-12 在 circus #1102、#1107 的结论：恢复交付，选单机最小交付；沿用 2026-11-11 原 A4 的三点
@@ -144,7 +144,8 @@ Cloud 内嵌的 Git server 的同名 ref `refs/ora/deliveries/<projectId>/<deliv
 5. 同步不读、不删、不改交付 ref。
 6. 任务只在这一轮的交付结果为 `delivered` 或 `empty` 之后进入待验收。
 7. 变更视图和 patch 下载只读交付，不读工作目录；对话的交付只有对话的主人能读。
-8. Node 和 Agent 不能向 Cloud 的镜像写入任何 ref。
+8. Node 和 Agent 不能经 Cloud 提供的任何入口向镜像写入 ref。第一版不隔离（A1 D2），Agent 作为同一个系统用户在磁盘上
+   改动镜像不在这条承诺之内。
 
 ## 为什么不是这些替代方案
 
@@ -170,6 +171,6 @@ Cloud 内嵌的 Git server 的同名 ref `refs/ora/deliveries/<projectId>/<deliv
 1. **实现（circus #1108）**：回合交付、变更视图改读交付、patch 下载、任务在交付完成后进入待验收、启动时补交付、
    前端的交付状态和下载入口。完成条件：三种来源每轮都有交付记录；工作目录被清理后变更视图和 patch 仍可用；
    patch 能在起点提交上应用；交付失败时任务不进待验收；物化的技能不进交付；`task v2:demo` 照常可用。
-2. 本文 `approved` 后补核心测试用例；实现合并后改为 `implemented`。
+2. 核心测试用例已随本文 `approved` 补上；实现合并后改为 `implemented`。
 
 从第 1 步起，变更视图从“读工作目录”改为“读最近一次交付”；浏览文件仍读工作目录。
