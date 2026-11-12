@@ -3,7 +3,8 @@
 依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）。
 下文的 D 编号与不变量编号都指这篇根决策。
 
-证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
+证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"Model Access Survives A Project Running Past Twenty-Four Hours"
+一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
 已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。
 
 ## Upstream Keys Stay In The Cloud Process
@@ -68,5 +69,7 @@
 - 触发：进行中的会话续期；新会话申请授权；Agent 发模型请求。
 - 必须成立：三者都照常成功。
 - 禁止结果：因证书过期而失败。
-- 验证义务与证据：**Missing** — 证书现在 24 小时过期且不轮换（`internal/nodeservices/tls.go`），由 circus #1074 修。
+- 验证义务与证据：**Covered** — `internal/nodeservices/tls_test.go` 的 `TestServicesKeepWorkingLongAfterStart`：把本机服务的
+  签发时刻放到 25 小时前和 3 年前，分别验证 Node 申请授权后续期、Agent 凭临时令牌经代理发模型请求（另有新会话 clone），
+  各路径互不依赖；证书在这段时间内到期，对应路径就会因 TLS 校验失败。
 - 决策依据：D2。
