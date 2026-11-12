@@ -4,6 +4,8 @@ status: implemented
 
 # 恢复停止确认接受 host 权威的 NotStarted：原 Scope 已 Closed 且该 Run 从未启动即视为已停止，UnknownIdentity 仍按未知并等 host 能证明记录完整后重估
 
+> 历史决策：D1、D2 对 `NotStarted` 和 `UnknownIdentity` 的区分已由 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5 修改：停止证据成立即为停止确认，锁文件不存在不算停止确认。
+
 恢复的停止确认在[完整恢复截止与停止确认决策](20261018-complete-restore-deadline-and-cancel-confirmation.md)（下称“截止决策”）D6 中定义为「受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出」。本文扩展这条证据：原 Scope 已 `Closed`，且 host 权威报告该 Run 为 `NotStarted`（平台在 spawn 时明确报告未启动，或 guardian 在接受到启动请求之前已取消；cleanup 为 `CleanupState::Complete`，证据按实际取得的结果分级报告）同样构成停止确认，与「直接进程已退出」并列。host 返回 `UnknownIdentity`（从未记录该 Run）仍不构成停止确认，继续走 `stop_unconfirmed`，交给残留回收或运维显式确认；以后 host 协议能证明记录完整时再另开决策重估。预算到期、关闭请求、清理预算耗尽与等待上限仍然都不是停止确认。
 
 本文为 `implemented`：Node 在原 Scope 已 `Closed` 后，核对返回的 Scope、Run 与快照身份，接受 launch/direct/cleanup 三项一致的 host 权威 `NotStarted`；host 保留已确认启动的事实，矛盾快照单独拒绝并公开错误，其他观测与 Scope 继续协调。本文只改截止决策 D6 的停止确认证据，D1–D5 以及正常路径、未知路径、上限与回收规则全部继承。涉及 desktop 恢复编排与受管执行查询；不涉及 Cloud 的 2/6/5 窗口、`stop_evidence` 写入与残留账本状态，也不新增会话状态或协议字段。兼容性边界：不改变正常路径的清理顺序与终态形状，不改变 `stop_unconfirmed` 的登记与转交；`UnknownIdentity` 一侧保持现状。直接行为证据及其覆盖边界见[恢复截止与停止确认用例](../../../test-cases/node/revision/restore-deadline-and-stop-confirmation.md)。截止决策继续为 `approved`，本文的实现不代表其联合 Cloud/Node 故障验收完成。

@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # 当前信任本机 Node，宿主代次只用于旧会话失效
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host 退役后不再有宿主会话和它的控制权。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。
 
 > 后续已实现决策：[云端运行时控制同步交付](../../../cloud/controller-integration/20260927-fenced-runtime-control-delivery.md)区分宿主代次与用户控制代次，建立云端管理/工作负载隔离边界，状态为 `implemented`；完整故障矩阵另行验收。不恢复本文延期的完整信任体系，本文保留原状态。
 

@@ -4,6 +4,8 @@ status: implemented
 
 # clone 尝试被终止且收尾已确认时判为中断失败，不再停留在 Unknown
 
+> 历史决策：D1 的证据来源、D3 的终止方式和 D4 的结束事实已由 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5 修改：Node 重启后已停止但没有退出状态的尝试同样以 `Interrupted` 结束；`Interrupted` 的语义和其余决策不变。
+
 Node 受管 clone 的 Git 进程被信号终止，且 host 确认原 Scope 已收尾时，本次执行以新增的失败码
 `Interrupted` 结束，保留目标目录；只有收尾或退出证据确实缺失时才保留 Unknown。Node 正常停止、
 命令超时、Node 强杀后恢复以及外部终止都走同一判定。调用方看到明确终态，可用新执行重试，

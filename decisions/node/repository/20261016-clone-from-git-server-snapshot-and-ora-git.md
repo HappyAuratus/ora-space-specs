@@ -4,6 +4,8 @@ status: implemented
 
 # Node 只从 Git Server 快照 clone 并校验 `baseCommit`，checkout 不配置 origin；Agent 经沙盒内固定动词的 `ora-git` 请求 Node 代为 fetch 与推送 Workspace 分支
 
+> 历史决策：恢复部分提到的 Scope 收尾已由 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 修改为停止证据；其余决策不变。
+
 Node 的 clone 不接受外部仓库地址，也不使用部署凭据。clone 输入是
 [Git Server 代码中心决策](../../cloud/git-server/20261016-project-repository-as-code-hub-and-ref-contract.md)（下称“契约 ADR”）D5 第
 1 项的快照输入 `{repository_url, snapshot_ref, base_commit, workspace_ref}`。Node 沿用

@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # 不兼容时拒绝并保留旧责任，已知日志布局才允许迁移
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host／guardian 的版本共存不再需要，升级由取代者承接。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。
 
 当前实现检查两套 wire 版本和日志 schema，只迁移明确识别的 host 布局。
 不兼容的活 guardian 必须保留兼容管理版本；不会通过重启同一 Scope 接管旧进程。
