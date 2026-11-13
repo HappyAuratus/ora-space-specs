@@ -4,7 +4,7 @@
 下文的 D 编号与不变量编号都指这篇根决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"A Deployment Keeps Working Past Twenty-Four Hours" 一条读取的是
-cloud `0ca0a9a0`（含 cloud#358）。第一版是单机、Node 为本地子进程；多机和隔离不在
+cloud `0ca0a9a0`（含 cloud#358），"Every Tenant Route Authorizes Through One Entry" 一条读取的是 cloud `b03ac2b4`（含 cloud#363）。第一版是单机、Node 为本地子进程；多机和隔离不在
 根决策的承诺里，所以这里没有对应的用例。
 
 ## Cloud Restart Interrupts Every Unfinished Execution Before Serving
@@ -82,6 +82,32 @@ cloud `0ca0a9a0`（含 cloud#358）。第一版是单机、Node 为本地子进�
   已覆盖：代理用后端的 Key 访问上游、不转发调用方的头、拒绝带凭据的上游地址、日志不含秘密。仍缺：没有检查写给 Node 的
   配置里不含 Key；外部仓库令牌还没有实现（I7 #1057）。
 - 决策依据：D4，不变量 5。
+
+## Every Tenant Route Authorizes Through One Entry
+
+- 风险：某条租户 API 漏判成员身份，或各处判定条件不一致，一个团队的人读写到另一个团队的数据；被移出团队的人
+  已排好的定时任务、任务运行仍以他的身份继续执行；只有 owner 能做的操作被普通成员做成。
+- 前置状态：两个团队；一个用户只在其中一个团队里，团队里另有 owner 和普通成员；有人排了定时任务后被移出团队。
+- 触发：非成员、其他团队的成员、未登录的调用方和普通成员逐条请求所有 `/tenants/{tid}` 路由；新增一条路由；被移出
+  的人的定时任务到点触发、任务运行或执行会话开始。
+- 必须成立：所有租户路由都经同一个判定函数和同一个路由中间件；非成员（含用户停用、删除，团队停用）一律 `404`，
+  未登录 `401`，普通成员调 owner 路由 `403`；owner 路由只在路由表上声明；后台工作开始执行时用同一个判定，不通过
+  就不开始；已开始的工作照常收尾。
+- 禁止结果：有租户路由不经判定就进入 handler；绕过路由表注册路由；非成员得到 `404` 以外的结果；被移出的人的定时
+  任务继续触发、执行准入继续放行；业务查询按调用者之外的条件读到别的团队的数据。
+- 验证义务与证据：**Partial** — `internal/server/routes_test.go` 的 `TestEveryTenantRouteRequiresTenantAccess`、
+  `TestRoutesAreRegisteredOnlyThroughTheRouteTable`、`TestRouterRefusesTenantRoutesWithoutTenantAuthorization`；
+  `internal/store/access_test.go` 的 `TestTenantAccessGrantsRolesOnlyToActiveMembersOfActiveTenants`、
+  `TestScheduledWorkStopsWhenTheCreatorLosesTenantAccess`；`internal/store/execution_access_test.go` 的
+  `TestExecutionRuntimeWritesSurviveAccessRevocation`、`TestExecutionAdmissionChecksProjectTenant`；
+  `internal/taskrun/taskrun_test.go` 的 `TestRevokedStarterLeavesTheIdleRunInPlace`。
+  已覆盖：遍历路由表的全部 118 条租户路由，未登录 `401`、非成员和格式错误的租户 `404`（带 `no-store`），7 条 owner
+  路由对普通成员 `403`，且 owner 路由清单固定在测试里；在路由表之外注册路由或把租户路由注册成别的级别，测试或启动
+  失败；判定函数对无 membership、用户停用、用户删除、团队停用一律拒绝；被移出的创建者不再被定时扫描、触发被拒；
+  撤权后执行会话创建和追加被拒、已开始的执行仍能写完；撤权后任务运行不替换已有的运行。
+  仍缺：业务查询只按 `tenant_id` 过滤没有逐条的测试，现在只有项目、执行准入等少数代表性用例证明拿别的团队的
+  资源 id 读不到数据。
+- 决策依据：D4 第 3 条，D7 第 5 条。
 
 ## A Deployment Keeps Working Past Twenty-Four Hours
 
