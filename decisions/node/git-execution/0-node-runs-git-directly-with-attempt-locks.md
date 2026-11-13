@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 直接执行自己的 Git：进程组终止，尝试锁给出停止证据，重启先收口，取代 host／guardian
@@ -17,7 +17,8 @@ Node 自己执行的 Git（clone、续作恢复、Revision 交付和 `ora-git`�
   确认停止。原先"host 说从未启动"和"host 查不到记录"的区分不再存在。
 - 保证等级仍是 BestEffort，会逃过保证的情况见 D8。
 
-本文为 `proposed`，等待评审；评审通过并改为 `approved` 时补充核心用例（义务见"验收义务"）。
+本文为 `approved`：方案已评审通过，实现尚未合入 desktop 的主干。核心用例登记在
+[Node 直接执行 Git 的核心用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)。
 
 - **涉及**：desktop 的 `apps/ora-node`（`managed/` 一层和 Node 数据库）、`crates/process`（`ora-process`）、
   `apps/ora-reaper`；Node 的部署清单要带上 `ora-reaper`，去掉 host 和 guardian。
@@ -126,12 +127,14 @@ Node 执行的每条 git 命令都带 `-c gc.auto=0 -c maintenance.auto=false`�
 
 | 命令 | 尝试锁 | Node 数据库记录 |
 |---|---|---|
-| clone 的传输仓库和工作目录命令 | 要 | 记（现有） |
+| clone 的工作目录命令 | 要 | 记（现有） |
+| clone 的传输仓库命令 | 要 | 不记：被打断后清掉传输仓库重新 fetch（现有） |
 | 续作恢复的命令 | 要 | 记（现有） |
 | Revision 交付、`ora-git` 的 fetch 和 push | 要 | 不记：被打断后从头准备（现有） |
 | 只读查询（clone 验收、preflight） | 不要 | 不记 |
 
-交付类命令不记数据库，但仍然要锁：Node 被强杀后旧的 push 可能还在跑，重启后从头准备之前必须先确认它停了（D4）。
+交付类命令和 clone 的传输仓库命令不记数据库，但仍然要锁：Node 被强杀后旧的 push 或 fetch 可能还在跑，重启后
+从头准备之前必须先确认它停了（D4）。
 只读命令的残留不会写入，不需要停止证据；它们同样在自己的进程组里运行并向 reaper 登记。
 
 ### D3：运行中的输出、期限和收尾
@@ -165,8 +168,11 @@ Node 启动时，在进入任何业务恢复（clone 恢复、续作恢复的交
 
 - **有数据库记录的尝试**（clone、续作恢复）：结果交给 D5 的业务判定。未知的尝试继续占着它的目录和输入，不影响
   不冲突的其他工作。
-- **没有数据库记录的锁**（交付、`ora-git`）：锁被占用期间，Node 不开始新的交付和 `ora-git` 写入，继续按线索终止
-  并重试探测。这种情况要求 Node 和 reaper 同时死亡且按线索终止失败，属于 D8 列出的边界。
+- **没有数据库记录的锁**（交付、`ora-git`、clone 的传输仓库）：锁被占用期间，Node 不开始新的交付、`ora-git`
+  写入和传输仓库命令，继续按线索终止并重试探测。这种情况要求 Node 和 reaper 同时死亡且按线索终止失败，属于 D8
+  列出的边界。
+  - 被占用的锁属于某个 clone 自己的传输仓库目录时，这个 clone 保持 Unknown：不清理该目录，不重新 fetch。
+  - 被占用的锁来自别处时，clone 等到下一轮再试，这次等待不计入它的 fetch 次数。
 - 取得数据库锁、reaper 已退出、等待超时，都不能代替停止证据。
 
 ### D5：各业务怎么用停止证据
@@ -236,7 +242,10 @@ Node 启动时，在进入任何业务恢复（clone 恢复、续作恢复的交
   状态"收口：clone 记为 `Interrupted`，续作恢复视为已确认停止。然后删除 host 目录。不要求人工清理，不拒绝启动。
   依据是部署前提：旧进程树已经结束，就不存在仍在写入的旧命令。
 - **Node 数据库迁移**：新增 D5 的结束事实；尝试记录不再保存 host 的运行意图。迁移失败时拒绝打开，不重建数据库。
-- **配置**：去掉 host 目录和 host 身份校验相关的配置项，新增 reaper 程序路径。
+- **配置**：新增可选的 reaper 程序路径 `reaper_program`，不写时用 Node 可执行文件同目录下的 `ora-reaper`。
+  两个旧配置项保留为兼容字段，都不再必填，按旧格式写的配置不用改就能加载：
+  - `host_directory`：只用来找到并删除旧的 host 目录；
+  - `expected_uid`：接受但不使用。
 - **部署清单**：Node 的运行资产去掉 host 和 guardian，加上 `ora-reaper`。
 
 ### D8：保证边界
@@ -326,7 +335,9 @@ Strong（纳管范围内完整的退出证据）需要 cgroup：它能列出并�
 
 ## 验收义务
 
-本文为 `proposed`，不维护核心用例。改为 `approved` 时在 `test-cases/node/git-execution/` 登记，至少覆盖：
+下面 13 条义务登记在
+[Node 直接执行 Git 的核心用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)，
+每条的证据状态以那里为准：
 
 1. Node 在启动 git 之后、写下终止线索之前被强杀：进程还在时判为未停止，进程结束后判为已停止。
 2. 后代换了进程组或会话，仍然活着时停止证据不成立。
@@ -346,11 +357,13 @@ Strong（纳管范围内完整的退出证据）需要 cgroup：它能列出并�
 
 1. **本文评审**：`proposed` → `approved`，同时登记核心用例，把 D9 的九组决策改为 `superseded`，并处理只服务它们
    的用例。到这一步为止运行中的系统不变。
-2. **`ora-process` 扩展**：降权时保留指定 fd。可独立合并和验证，不改变现有调用方的行为。
+2. **`ora-process` 扩展**：降权时保留指定 fd；启动方可以让自己的子进程不向 reaper 登记；能判断 reaper 是否自己
+   退出了。不改变现有调用方的行为。
 3. **Node 直接执行**：尝试锁、终止线索、收尾、重启收口、reaper 接入、Node 数据库迁移和旧尝试收口，替换
    `managed/` 里经 host 的实现。从这一步开始，Node 不再启动 host 和 guardian。
 4. **删除**：process 的 runtime、protocol、client、host、guardian、helper 代码，以及部署清单里的对应资产。
 5. **本文改为 `implemented`**：按最终实现同步正文和用例证据。
 
-第 2、3 步分开，是为了让涉及权限的改动单独评审；第 3、4 步分开，是为了让行为变化和大量删除不在同一次评审里。
+第 2、3、4 步在 desktop 的同一个 PR 里，按上面的顺序分成独立的 commit：涉及权限的改动、行为变化和大量删除
+各自可以单独检视。
 clone、续作恢复和交付对外的结果形状自始至终不变，变的只有 Node 重启后拿不到退出状态时 clone 的结论（D5）。
