@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 进行中的模型请求不随令牌到期取消，改由空闲超时和总上限约束，被切断时中止响应；取代固定的 5 分钟总时限
@@ -9,7 +9,8 @@ status: proposed
 默认 2 分钟和 30 分钟。因空闲超时、总上限、吊销或上游失败而在响应头发出之后停止时，Cloud 中止这个响应，Agent 读到的是
 一次失败，而不是一个正常结束的流。影响面只在 Cloud 的模型代理；Node 和 Agent 插件不改。
 
-本 ADR 处于 `proposed`，等 owner 评审。它是 [模型接入根决策](0-in-process-model-proxy-with-deployment-connections.md)
+本 ADR 处于 `approved`：owner 2026-11-13 在 circus #1133 评审通过，核心用例见
+[模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md)。它是 [模型接入根决策](0-in-process-model-proxy-with-deployment-connections.md)
 （下称“根决策”）之后的第一份后续决策，回答根决策“本决策未解决的问题”第 1 条。依据是 circus #1075 的实测和 owner 在
 #1122 的结论（2026-11-13）。读取的代码版本为 cloud `b03ac2b4`（`v2-server/internal/nodeservices`、
 `requestmetrics`、`executionruntime`）、desktop `dcff8afe`（`apps/ora-node` 的 `model_proxy`），实测用 OpenCode 0.6.11。
@@ -116,11 +117,11 @@ Agent 收到中止后的实际反应（OpenCode 0.6.11，circus #1122 实测，�
 
 ## 落地顺序
 
-1. **实现**（circus #1122 的 cloud PR）：令牌到期不再取消进行中的请求；空闲超时和总上限及其部署配置；中途停止时中止响应，
+1. **实现**（已完成：ora-space/cloud#367 于 2026-11-13 合并，merge commit `4183eb9b`）：令牌到期不再取消进行中的请求；空闲超时和总上限及其部署配置；中途停止时中止响应，
    请求记录写下中断或取消。完成条件：单测覆盖续期后进行中的请求不被切断、空闲超时和总上限都以失败呈现；真实 Node 与
    OpenCode 实测与 D3 所记一致。
-2. **本文 `approved`**：owner 评审后按反馈纠正，标为 `approved`，同时在
-   [模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md) 补核心用例。
+2. **本文 `approved`**（已完成）：owner 评审通过，标为 `approved`，同时在
+   [模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md) 补核心用例，证据按 cloud `4183eb9b` 登记。
 3. **本文 `implemented`**：实现合并后，按最终实现同步正文、精简实测细节，并补用例证据。
 
 从第 1 步合并起，长请求不再因为令牌到期或固定的 5 分钟而被切断，中途停止的请求以失败呈现；令牌期限、续期、吊销和转发规则
