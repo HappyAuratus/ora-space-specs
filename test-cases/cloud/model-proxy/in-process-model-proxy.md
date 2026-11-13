@@ -2,12 +2,12 @@
 
 依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）
 和它的后续决策 [长请求的空闲超时与总上限](../../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)
-（`approved`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后四条用例的编号指后续决策。
+（`implemented`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后四条用例的编号指后续决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"Model Access Survives A Project Running Past Twenty-Four Hours"
 一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
 已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。后续决策 D1–D3 的三条用例读取 cloud `4183eb9b`
-（ora-space/cloud#367 的合并提交）；D4 一条等 ora-space/cloud#369 合并后按合并提交登记。
+（ora-space/cloud#367 的合并提交）；D4 一条读取 cloud `00c2fa52`（ora-space/cloud#369 的 head）。
 
 ## Upstream Keys Stay In The Cloud Process
 
@@ -133,19 +133,22 @@
   重复拼接；最后这一轮只显示“已取消”，用户不知道原因。
 - 前置状态：一个 Agent 会话的一轮正在进行，模型请求经 Agent 模型路由发出。
 - 触发：一个请求被总上限切断后 Agent 重发；一个请求被空闲超时切断后 Agent 重发，重发的请求再次被空闲超时切断后又重发；
-  被空闲超时切断后有请求正常结束，之后又被空闲超时切断；一次卡住同时切断两个请求；切断前已经开始的请求在切断后结束；
-  这一轮最后由 Node 以取消结束。
+  等待响应头时被空闲超时切断；被空闲超时切断后有请求正常结束，之后又被空闲超时切断；被空闲超时切断后的重发遇到上游失败；
+  一次卡住同时切断两个请求；切断前已经开始的请求在切断后结束；这一轮最后由 Node 以取消结束。
 - 必须成立：总上限切断后，这一轮之后的请求在发往上游前被拒绝；空闲超时切断后放行一次重发，它再被空闲超时切断起拒绝；
-  正常结束的请求让计数清零；同时被切断的请求只算一次，切断前开始的请求不影响计数；拒绝的应答是 422、协议对应的错误格式，
+  响应头之前到时和之后一样计数；只有上游正常应答、没被切断的请求让计数清零，上游失败不清零；同时被切断的请求只算一次，切断前开始的请求不影响计数；拒绝的应答是 422、协议对应的错误格式，
   文字不含会触发重发的字样；这一轮以切断原因失败，页面显示可读的原因。
 - 禁止结果：被拒绝的请求到达上游；拒绝用了 408、409、429 或 5xx，或文字带有网络失败、超时等字样；空闲超时切断后的第一次
-  重发也被拒绝；被限值切断的一轮显示为用户取消。
-- 验证义务与证据：**Missing** — 由 ora-space/cloud#369 实现，合并后按合并提交登记。待登记的代表性测试（cloud#369 head
-  `9d01e0f6`）：`internal/agentruntime/retry_guard_test.go` 的 `TestRetryGuardRefusesEveryCallAfterTheTotalLimit`、
-  `TestRetryGuardAllowsOneRetryAfterAnIdleCut`、`TestRetryGuardCompletedCallClearsIdleCuts`、
+  重发也被拒绝；等待响应头时到时不计数、Agent 不受限重发；上游失败让计数清零；被限值切断的一轮显示为用户取消。
+- 验证义务与证据：**Covered** — `internal/nodeservices/outcome_test.go` 的
+  `TestOutcomeReportsLimitsBeforeAndAfterTheHeaderAndOnlyCountsA2xxAsCompleted`（经真实路由：响应头之前、之后的空闲超时和
+  总上限都报出限值，响应头之前照旧 502 不中止；上游拒绝和其它失败不算正常结束）；
+  `internal/agentruntime/retry_guard_test.go` 的 `TestRetryGuardRefusesEveryCallAfterTheTotalLimit`（拒绝不到上游，两种协议的
+  422 错误体，文字逐条对照 Agent 的重发规则）、`TestRetryGuardAllowsOneRetryAfterAnIdleCut`、
+  `TestRetryGuardCompletedCallClearsIdleCuts`、`TestRetryGuardOnlyANormalCompletionClearsAStall`、
   `TestRetryGuardIgnoresCallsStartedBeforeTheCut`、`TestRetryGuardCountsOneStallForCallsCutTogether`、
   `TestCancelledTurnCutAtLimitFailsWithTheLimit`；`internal/agentruntime/provider_test.go` 的
-  `TestProviderForCurrentObservedTurnAndPassthrough`（当前轮的每个请求都经过本轮的守卫，被拒的请求不记入请求记录）；
+  `TestProviderForCurrentObservedTurnAndPassthrough`（当前轮的每个请求都经过本轮的守卫，请求记录包在守卫里面，被拒的不记）；
   `frontend-v2/src/components/agent-thread/model/history.test.ts` 的“says which model limit stopped a turn that Node only
   recorded as cancelled”（失败原因的文字）。
-- 决策依据：后续决策 D4，不变量 6、7。
+- 决策依据：后续决策 D4，不变量 6、7、8。
