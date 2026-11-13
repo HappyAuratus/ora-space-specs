@@ -1,6 +1,6 @@
 # 最小 clone 执行契约
 
-> 执行方式已变：执行契约 D6 和中断失败判定 D1、D3、D4 已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 不再经 host 和 guardian 执行 Git。下文提到 host、guardian、Scope、Run 的前置状态和证据仍按被取代的实现登记，等该决策实现合入后再按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
+> 执行方式：执行契约 D6 和中断失败判定 D1、D3、D4 已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 直接执行自己的 Git，不经 host 和 guardian。下文的前置状态和证据已按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
 
 依据[已实现的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
 以及修改其 D6 的[中断失败判定](../../../decisions/node/repository/20260925-terminated-clone-attempt-fails-as-interrupted.md)。
@@ -41,8 +41,8 @@ Node 显式配置 Git、环境和 `git_access` 身份；分别准备认证被拒
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 输入限制与安全参数调用 | `crates/node-protocol/tests/protocol/repository.rs` 的 `clone_request_has_independent_wire_and_fragmented_round_trip`、`clone_accepts_only_git_server_https_addresses`、`clone_rejects_malformed_snapshot_inputs`、`clone_rejects_the_retired_repository_and_branch_shape`、`clone_rejects_execution_controls_in_payload_and_spec` 覆盖请求 wire、分片往返、地址、旧形状及执行控制拒绝；尚缺实际 Git 参数派发检查 | Partial |
-| 非交互认证与子进程收尾 | `apps/ora-node/tests/standalone/repository.rs` 的 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖授权被拒绝与 `401` 不重试；`unavailable_git_server_is_retried_within_the_fetch_pass`、`unavailable_git_server_fails_the_clone_once_the_attempts_run_out` 覆盖 Git Server 不可用的有界重试；`repository_recovery.rs` 覆盖网络中 Node 强杀后的原 scope 收尾；尚缺专门认证子进程超时测试 | Partial |
-| 秘密不进入持久记录或输出 | `apps/ora-node/tests/standalone/repository_policy.rs` 的 `snapshot_clone_ignores_deployment_credentials_and_checkout_extensions` 检查 Node／host SQLite 不含部署凭据内容；clone 使用 Discard 输出；尚缺敏感 stderr 注入及 guardian／日志联合检查 | Partial |
+| 非交互认证与子进程收尾 | `apps/ora-node/tests/standalone/repository.rs` 的 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖授权被拒绝与 `401` 不重试；`unavailable_git_server_is_retried_within_the_fetch_pass`、`unavailable_git_server_fails_the_clone_once_the_attempts_run_out` 覆盖 Git Server 不可用的有界重试；`repository_recovery.rs` 覆盖网络中 Node 强杀后原尝试的收口；尚缺专门认证子进程超时测试 | Partial |
+| 秘密不进入持久记录或输出 | `apps/ora-node/tests/standalone/repository_policy.rs` 的 `snapshot_clone_ignores_deployment_credentials_and_checkout_extensions` 检查 Node 数据库（尝试记录是唯一持久保存命令行的地方）不含部署凭据内容；clone 丢弃 Git 的输出；尚缺敏感 stderr 注入与日志的联合检查 | Partial |
 
 ### 决策依据
 
@@ -56,7 +56,7 @@ Node 显式配置 Git、环境和 `git_access` 身份；分别准备认证被拒
 
 ### 前置状态
 
-注入 repository_root 和 Node／host／guardian 状态路径；准备相等／父子重叠、已有空目录、用户文件和符号链接。
+注入 repository_root 和 Node 状态路径；准备相等／父子重叠、已有空目录、用户文件和符号链接。
 
 ### 触发
 
@@ -162,23 +162,23 @@ Git Server 上的快照 ref 可被改动，Node 使用持久执行与结果记�
 
 ### 风险
 
-丢回复后创建第二次 clone、旧进程仍写时重试，或删除残留来制造确定结果。
+Node 重启后把同一条命令再派发一次、旧进程仍写时重试，或删除残留来制造确定结果。
 
 ### 前置状态
 
-执行已关联目标及 Scope／Run；可制造未派发、派发丢回复、网络失败、成功未落盘和 guardian 不可用状态。
+执行已关联目标及尝试记录；可制造未派发、Node 在命令运行中被强杀、网络失败、成功未落盘，以及终止手段全部失效（旧 Git 在 Node 死后继续运行）的状态。
 
 ### 触发
 
-强杀 Node／guardian 或断连后重开，查询／重传原执行；明确失败后提交新的用户重试。
+强杀 Node 或断连后重开，查询／重传原执行；明确失败后提交新的用户重试。
 
 ### 必须成立
 
-- 每次变更派发前持久关联 Execution／目标／Scope／Run；丢回复查询原 Run，先核实旧 Scope 收尾再核实仓库。
+- 每条有副作用的命令派发前，锁文件已经建好，尝试已持久关联 Execution 和目标；恢复先取得原尝试的停止证据，再核实仓库。
 - 尚未派发且前置有效时继续原执行／目标；旧尝试成功且收尾、checkout 证据完整时只补交原成功。
-- 已知命令失败且收尾确认才保存失败与残留说明，不自动重跑或清理；用户重试使用新执行和新目录。
-- 清理或目录／成功证据不足时保持 Unknown 与预留，查询恢复仍可用；数据库锁或超时不代替证据。
-  被信号终止且收尾已确认不属于证据不足，按下一个用例以 `Interrupted` 结束。
+- 已知命令失败且停止证据成立才保存失败与残留说明，不自动重跑或清理；用户重试使用新执行和新目录。
+- 停止证据不成立，或目录／成功证据不足时保持 Unknown 与预留，查询恢复仍可用；数据库锁或超时不代替证据。
+  停止证据成立而尝试被信号终止或没有退出状态的，不属于证据不足，按下一个用例以 `Interrupted` 结束。
 - Unknown 不允许复用原目标；不共享可写资源的独立新目标不被一概阻塞。
 
 ### 禁止结果
@@ -189,8 +189,8 @@ Git Server 上的快照 ref 可被改动，Node 使用持久执行与结果记�
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 各故障边界恢复原尝试而非重复派发 | `killed_clone_recovers_original_run_without_redispatch` 使用独立 Node／host／guardian；`clone_recovers_completed_git_after_terminal_or_outbox_write_failure` 验证原唯一 Run 与离线补交；尚缺派发丢回复边界 | Partial |
-| 失败残留和 Unknown 责任保持 | `repository_recovery.rs` 与 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖原目标保留及不重跑；尚缺 clone 专用 guardian 丢失与独立新请求组合 | Partial |
+| 各故障边界恢复原尝试而非重复派发 | `apps/ora-node/tests/standalone/repository_recovery.rs` 的 `killed_clone_recovers_original_attempt_without_redispatch` 强杀真实 Node，重启的 Node 收口原尝试、尝试数不增加；`repository_commit.rs` 的 `clone_recovers_completed_git_after_terminal_or_outbox_write_failure` 验证终态或 outbox 写入失败后由原来三条尝试的结果补交，恢复没有重跑任何一条；`restart_inside_the_workload_sequence_keeps_its_transport_repository` 覆盖在工作目录命令之间重启；尚缺“锁文件已建、尝试已记录、尚未派发”边界上的强杀 | Partial |
+| 失败残留和 Unknown 责任保持 | `repository_recovery.rs` 与 `snapshot_failures_retain_targets_and_new_retry_uses_new_directory` 覆盖原目标保留及不重跑；`clone_stays_unknown_while_its_git_outlives_the_node` 覆盖旧 Git 仍持有尝试锁时保持 Unknown 与目录；尚缺 clone 处于 Unknown 时独立新 clone 照常进行的组合 | Partial |
 
 ### 决策依据
 
@@ -205,38 +205,38 @@ Node 主动或被动终止的尝试被当作证据缺失，永久停留在 Unkno
 
 ### 前置状态
 
-执行已派发，受管 Git 正在获取；host／guardian 可用，或被制造为不可用、无法回答。
+执行已派发，Git 正在获取；可制造旧 Git 在 Node 死后继续运行（reaper 和终止线索都失效）。
 
 ### 触发
 
 - Node 正常停止，Git 超过 `shutdown_grace_ms` 后被收尾；
 - Git 超过 `command_timeout_ms` 后被收尾；
-- 强杀 Node，guardian 按 owner 退出终止 Git，随后重启 Node 恢复；
-- 以上任一情况下 host 的收尾或退出观察缺失。
+- 强杀 Node，reaper 终止 Git，随后重启 Node 恢复；
+- 以上任一情况下停止证据不成立或缺失。
 
 ### 必须成立
 
-- Node 只在观测到原 Scope 已 Closed 之后解读原 Run 的结束事实或读取目标目录。
-- 被信号终止且收尾完成时，执行以 `Interrupted` 失败结束，残留为 `Retained`，只有一个尝试；
-  运行路径在本进程内落定该终态，恢复路径对同一观察得出相同结果。
+- Node 只在原尝试的停止证据成立之后解读它的结束事实或读取目标目录。
+- 停止证据成立，且尝试被信号终止或没有退出状态（Node 重启后收口得到）时，执行以 `Interrupted` 失败结束，
+  残留为 `Retained`，原尝试不重新派发；运行路径在本进程内落定该终态，恢复路径对同一观察得出相同结果。
 - Git 在终止前已以退出码结束时，按退出码处理（0 则核实仓库），不被判为中断。
-- 收尾未确认、退出结果未知、尚未启动或 host 无法回答时保持 Unknown 与预留。
+- 停止证据不成立、探测出错或锁文件不存在时保持 Unknown 与预留。
 - `Interrupted` 是不可变终态：原执行重传只重放它；用户重试使用新执行和新目录。
 - 终态经 Controller 接管后，以 `interrupted` 交付到 Cloud 契约。
 
 ### 禁止结果
 
-被终止的尝试停留在 Unknown、被判为成功、被自动重跑或在原目录续传；收尾未确认时给出 `Interrupted`；
-删除保留目录。
+被终止的尝试停留在 Unknown、被判为成功、被自动重跑或在原目录续传；停止证据不成立时给出 `Interrupted`；
+把“已停止，没有退出状态”判为成功；删除保留目录。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 正常停止与命令超时以 `Interrupted` 结束 | `apps/ora-node/tests/standalone/repository_recovery.rs` 的 `stopped_node_settles_its_interrupted_clone_before_exit`（停止进程自身落定终态，不经恢复）与 `command_deadline_settles_clone_as_interrupted`，真实 host／guardian 与暂停的 HTTPS，检查完整终态、`Retained`、单一已清理尝试 | Covered |
-| 强杀恢复以 `Interrupted` 结束 | `killed_clone_recovers_original_run_without_redispatch` 断言完整 `Interrupted` 终态与单一尝试 | Covered |
-| 证据缺失仍为 Unknown | `guardian_loss_keeps_interrupted_clone_unknown` 覆盖 guardian 丢失；尚缺 host 无法回答 Run 查询的直接测试 | Partial |
-| 一个 Run 只有一种结束事实，终止只支撑 `Interrupted` | `crates/node-db/src/tests/repository.rs` 的 `clone_interruption_requires_recorded_termination`、`clone_exit_code_cannot_back_an_interruption`；`version_four_upgrade_adds_termination_evidence_without_rewriting_clones` 覆盖 v4 升级不改写未完成 clone | Covered |
+| 正常停止与命令超时以 `Interrupted` 结束 | `apps/ora-node/tests/standalone/repository_recovery.rs` 的 `stopped_node_settles_its_interrupted_clone_before_exit`（停止进程自身落定终态，不经恢复）与 `command_deadline_settles_clone_as_interrupted`，真实 Node 直接执行 Git，远端是暂停的 HTTPS，检查完整终态、`Retained`、已记录的尝试全部收尾 | Covered |
+| 强杀恢复以 `Interrupted` 结束 | `killed_clone_recovers_original_attempt_without_redispatch`：重启的 Node 对原尝试取得停止证据，没有退出状态，断言完整 `Interrupted` 终态、已记录的尝试全部收尾且数量不增加 | Covered |
+| 证据缺失仍为 Unknown | `clone_stays_unknown_while_its_git_outlives_the_node`：杀掉 reaper、删掉终止线索后强杀真实 Node，旧 Git 仍持有尝试锁期间 clone 保持 Unknown 并保留目录，旧 Git 结束后同一尝试以 `Interrupted` 收口；尚缺 clone 路径上“锁文件不存在时保持 Unknown”的直接测试，执行层和续作恢复、交付的证据见 [git-execution 用例](../git-execution/attempt-locks-and-stop-evidence.md#a-held-attempt-lock-is-the-only-proof-that-a-command-may-still-run) | Partial |
+| 一个尝试只有一种结束事实，终止信号和“已停止，没有退出状态”只支撑 `Interrupted` | `crates/node-db/src/tests/repository.rs` 的 `clone_interruption_requires_recorded_termination`、`clone_exit_code_cannot_back_an_interruption`、`a_stop_without_exit_status_backs_only_an_interruption`；`version_four_upgrade_ends_the_host_attempt_as_stopped_without_rewriting_clones` 覆盖升级不改写未完成 clone，旧 host 留下的尝试以“已停止，没有退出状态”收口 | Covered |
 | 终态跨边界交付 | `apps/ora-node/tests/standalone/repository_websocket.rs` 的 `controller_session_takes_over_clone_stopped_in_its_snapshot_fetch`：生产 Controller 会话经 WebSocket 接管正常停止后的 clone 终态；`apps/ora-controller/src/cloud/mapping.rs` 失败码契约往返。租户级 clone 的公开接口已删除，原 Cloud 侧公开 `interrupted` 的证据不再适用 | Covered |
 
 ### 决策依据
@@ -273,7 +273,7 @@ WorktreeReady 冒充 clone 结果，重置历史身份或通过删除旧文件�
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 独立能力及旧结果共存 | `session::accepts_independent_and_combined_execution_capabilities`、`repository_results` 与 `worktree::completed` 覆盖能力声明、两种结果路径及历史归属；尚缺运行时派发和持久 clone 查询 | Partial |
-| 文件兼容与安全升级 | `version_two_upgrade_preserves_live_process_responsibility_and_legacy_results` 与 v1 升级测试保留原执行／Run／事件；未知文件保护测试保留。旧版本门禁经静态核对，尚缺真实旧程序验收 | Partial |
+| 文件兼容与安全升级 | `crates/node-db/src/tests/repository_migration.rs` 的 `version_two_upgrade_settles_the_host_attempt_and_preserves_legacy_results` 与 v1 升级测试保留原执行、尝试身份和事件，旧 host 没有收尾的尝试以“已停止”收口；未知文件保护测试保留。旧版本门禁经静态核对，尚缺真实旧程序验收 | Partial |
 | Controller 持久接管和 Client 状态 | 独立进程交接及确认丢失恢复测试；尚无 | Missing |
 
 ### 决策依据

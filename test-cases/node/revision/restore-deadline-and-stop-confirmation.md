@@ -1,10 +1,10 @@
 # Node 恢复截止、取消与停止确认
 
-> 执行方式已变：两篇决策里停止确认的证据来源已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 不再经 host 和 guardian 执行 Git。下文提到 host、guardian、Scope、Run 的前置状态和证据仍按被取代的实现登记，等该决策实现合入后再按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
+> 执行方式：两篇决策里停止确认的证据来源已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 直接执行自己的 Git，停止确认的证据是该命令的尝试锁能重新加上。下文的前置状态和证据已按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
 
 依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)；其中 D6 的停止确认证据另由[恢复停止确认接受 host 权威 NotStarted 决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)扩展（下称“扩展决策”）。下文的 D 编号与不变量编号未加限定时指前一篇 ADR，引用扩展决策时写明其 D 编号或“扩展决策不变量”；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
 
-本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不能替代本文新增的验证义务。host 权威 `NotStarted` 扩展的直接证据登记在下方同名用例，其余截止、取消与 Cloud/Node 联合故障义务保持各自的实际证据状态；扩展已实现不表示整份截止决策已经完成部署级验收。
+本文覆盖完整恢复截止与预算裁剪、停止确认的证据（尝试锁能重新加上，不区分命令是否启动过）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不能替代本文新增的验证义务。扩展决策原先的 host 权威 `NotStarted` 已不存在，它的后继规则（从未启动的命令同样构成停止确认，锁文件不存在不构成）登记在下方保留原标题的用例 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted`，证据已按最终实现重新登记。其余截止、取消与 Cloud/Node 联合故障义务保持各自原有的证据状态，本次只把其中的前置状态和所需证据改写为新的执行方式，没有改动状态。
 
 ## A Restore Deadline Covers Every Step And Clips Command Budgets To Its Remainder
 
@@ -23,7 +23,7 @@
 ### 必须成立
 
 - 一个截止从恢复第一步计到检出与祖先检查完成，任何子步骤、重试、退避或新连接都不重置它。
-- 每条受管 Git 命令的预算等于 min(自身预算, 开始时的剩余截止)；截止到期后不再开始新命令，等待类步骤立即中止，运行中的命令被请求关闭。
+- 每条受管 Git 命令的预算等于 min(自身预算, 开始时的剩余截止)；截止到期后不再开始新命令，等待类步骤立即中止，运行中的命令被整组终止。
 - 截止约束的是恢复步骤的执行与等待预算，不是会话返回时长：停止确认、有界清理、迟到补报和上限内的等待在截止之后另行进行，不被该截止压缩，也不得为了满足截止而提前终结或跳过停止证据。
 - 取得停止确认后，会话以 `agent_failed` 加 `prior_revision_*` 结束；停止确认与 D6 的证据定义一致。
 - 默认 5 分钟与 Cloud 6 分钟恢复窗口的关系只作为常态目标，不构成“Node 必然先报告”的保证。
@@ -33,103 +33,105 @@
 - 重试、退避或子步骤把截止推后；预算未被裁剪时命令用满自身 10–20 分钟预算越过截止。
 - 截止到期后仍开始新的 Git 命令；未取得停止确认就发终态。
 - 以“deadline 已过”推断 Git 已停止写入。
-- 把“恢复或会话在截止前返回”当作验收判据，为此提前发终态、跳过停止确认或推迟已发出的关闭请求。
+- 把“恢复或会话在截止前返回”当作验收判据，为此提前发终态、跳过停止确认或推迟整组终止。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 截止贯穿全程、子步骤不重置 | 注入跨步骤的重试与退避，使各步骤单独都在截止内、合计超过截止：断言恢复在截止处（以恢复第一步为唯一起点）不再开启新命令、等待类步骤立即中止，且截止不因第 N 次重试、退避或新连接顺延；非法配置（零、负、无限）拒绝启动恢复 | Missing |
-| 命令预算裁剪到剩余截止 | 在截止前一刻注入慢拉取，断言命令在截止处被关闭请求而不是用满自身预算；等待类步骤立即中止 | Missing |
+| 命令预算裁剪到剩余截止 | 在截止前一刻注入慢拉取，断言命令在截止处被整组终止而不是用满自身预算；等待类步骤立即中止 | Missing |
 | 到期终态与停止确认顺序 | 截止到期且取得停止确认后才发 `agent_failed`/`prior_revision_*`；未取得时按 `An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout` 处理 | Missing |
-| 停止确认与终态时点不并入截止 | 注入截止处发出关闭请求、原 Scope `Closed` 与直接进程退出晚于截止返回（例如 5 分 2 秒）：断言不再开启新命令、关闭请求已发出，取得停止确认后才清理并报终态，且该路径不按“超过截止”判失败；再注入上限内始终取不到原停止证据，断言会话保持未终结并转交残留回收。停止确认、清理与上限到期分别按 `Stop Confirmation Requires Scope Closure And Direct Process Exit`、`The Unconfirmed-Stop Bound Starts At The First Stop Request And Never Resets` 验证 | Missing |
+| 停止确认与终态时点不并入截止 | 注入截止处已整组终止、停止证据晚于截止才成立（例如 5 分 2 秒）：断言不再开启新命令、终止已发出，取得停止确认后才清理并报终态，且该路径不按“超过截止”判失败；再注入上限内始终取不到原停止证据，断言会话保持未终结并转交残留回收。停止确认、清理与上限到期分别按 `Stop Confirmation Requires The Attempt Lock To Be Free`、`The Unconfirmed-Stop Bound Starts At The First Stop Request And Never Resets` 验证 | Missing |
 
 ### 决策依据
 
 D1、D6；不变量 1、2、4、11。
 
-## Stop Confirmation Requires Scope Closure And Direct Process Exit
+## Stop Confirmation Requires The Attempt Lock To Be Free
 
 ### 风险
 
-把执行预算到期、关闭请求被接受或清理预算耗尽当作“Git 已停止”，在进程仍可能写入时发终态或开始交付。
+把执行预算到期、终止信号已发出、直接进程已退出或清理预算耗尽当作“Git 已停止”，在进程仍可能写入时发终态或开始交付。
 
 ### 前置状态
 
-恢复中有一条受管 Git 命令在运行；可注入 guardian 正常、关闭请求失败、guardian 不可达与直接进程状态未知。
+恢复中有一条 Git 命令在运行，它的尝试和锁文件已经记录；可注入后代脱离进程组后继续持有尝试锁、锁文件缺失与探测出错。
 
 ### 触发
 
-截止到期向受管执行请求关闭；host 接受关闭但 guardian 尚未观测到 `Closed`；清理预算耗尽；直接进程已退出但 Scope 未观测到 `Closed`。
+截止到期整组终止；终止信号已发出但尝试锁仍被占用；清理预算耗尽；直接进程已退出但后代仍持有尝试锁。
 
 ### 必须成立
 
-- 基础证据是“受管执行观测到原 Scope 已 `Closed` 且该 Run 的直接进程已退出”；扩展决策在此之外接受 host 权威的 `NotStarted`。两者的共同前提都是原 Scope 已 `Closed`，`UnknownIdentity` 只说明查不到记录，不成立停止确认；`NotStarted` 的来源、fencing 前提与矛盾检测按 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证。
-- 预算到期只表示恢复不再等这条命令，关闭请求只表示关闭已被提出；两者都不是停止确认，也都不能推导 `NotStarted`。
-- 停止确认按实际纳管保证报告：Strong 在声明范围内给出完整退出证据；当前 Linux BestEffort 的尽力清理完成不能排除未跟踪后代，不得写成已确认静止。
+- 停止确认只有一个证据：该命令的尝试锁能重新加上，即继承了锁的进程已经全部结束。命令从未启动和已经停止不区分，都构成停止确认；锁文件不存在或探测出错只说明证据缺失，不成立停止确认。这两侧的结论按 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证。
+- 预算到期只表示恢复不再等这条命令，终止信号已发出只表示终止已被提出，直接进程退出不代表它的后代已经结束；三者都不是停止确认。
+- 停止确认按实际纳管保证报告：当前是 BestEffort，主动关闭了继承 fd 的后代不在证据范围内，不得写成已确认静止。
 
 ### 禁止结果
 
-- 用关闭请求被接受、清理预算耗尽、`process_attempts` 记录缺失或 Node 重启推断停止，或用它们推断 host 将报告 `NotStarted`。
-- 把 `UnknownIdentity` 当作停止确认，或把“查不到记录”解释为“从未启动”。
+- 用终止信号已发出、直接进程已退出、清理预算耗尽、尝试记录缺失或 Node 重启推断停止。
+- 把锁文件不存在当作停止确认，或把“查不到”解释为“没在跑”。
 - 在未取得停止确认时发出作为停止确认的终态，或用清理结果替代停止确认。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 三种事实分开 | 注入“关闭请求成功但未观测到 `Closed`”“直接进程退出但 Scope 未 `Closed`”“清理预算耗尽”，断言前两者不产生停止确认、第三者不产生终态，且三者都不能被当成 `NotStarted` 的依据 | Missing |
-| 两侧结论 | 同一「原 Scope `Closed`」前置下分别注入 `NotStarted` 与 `UnknownIdentity`：断言前者构成停止确认并进入正常路径，后者不构成停止确认、不进入正常路径；`UnknownIdentity` 的具体禁令按 `An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout` 与 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证 | Missing |
-| 证据分级 | BestEffort 下尽力清理完成不报告“已确认静止”；Strong 启用时只在声明范围内报告；两者的结果可区分 | Missing |
+| 三种事实分开 | 在续作恢复路径上注入“终止信号已发出但尝试锁仍被占用”“直接进程退出但后代仍持有尝试锁”“清理预算耗尽”，断言前两者不产生停止确认、第三者不产生终态。执行层的同类证据登记在 [git-execution 用例](../git-execution/attempt-locks-and-stop-evidence.md#a-command-returns-only-after-its-stop-is-proven)，不替代本行 | Missing |
+| 两侧结论 | 同一条已记录的恢复尝试，分别注入“锁空闲”与“锁文件不存在”：断言前者构成停止确认并进入正常路径，后者不构成停止确认、不进入正常路径；具体禁令按 `An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout` 与 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted` 验证 | Missing |
+| 证据分级 | BestEffort 下停止确认不报告“已确认静止”；Strong 启用时只在声明范围内报告；两者的结果可区分 | Missing |
 
 ### 决策依据
 
-D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)。
+D6；不变量 3；[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D2、D5、D8，不变量 2、4、10。
 
 ## Stop Confirmation Also Accepts A Host-Authoritative NotStarted
 
+> 标题沿用旧名：它是 desktop 代码注释引用的稳定锚点。host 权威 `NotStarted` 和 `UnknownIdentity` 随 host 一起退役，[扩展决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md) D1、D2 的区分已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5 替换为：尝试锁能重新加上即构成停止确认，不区分命令是否启动过；锁文件不存在不构成。本用例登记的是替换后的规则。原先关于 `NotStarted` 两种来源、fencing 前提、矛盾检测和 cleanup 证据分级的义务只属于 host／guardian，已随它们的实现一并删除。
+
 ### 风险
 
-把“查不到记录”或“还没看到进程”当作“没有进程在跑”，或者把平台/guardian 合成的 `NotStarted` 用在没有 fencing 保证的路径上，在仍可能有 `Start` 到达或进程仍可能写入时发终态、开始交付。
+把“查不到记录”或“还没看到进程”当作“没有进程在跑”，在进程仍可能写入时发终态、开始交付；或者反过来，命令从未启动、或 Node 重启后拿不到退出状态，恢复就永远停在未知。
 
 ### 前置状态
 
-恢复命令的 attempt 已持久化，`Start` 未送达 host 或已被取消；host 可能返回 `DirectProcessState::NotStarted`（平台 spawn 明确未启动，或 worker 对 `Stop` 的 `UnknownRun` 合成 `cancelled()`）或 `HostRejection::UnknownIdentity`；可注入已确认启动的 Run（用于矛盾检测）、guardian 在接受到启动请求前后的两种时机，以及 host 记录不完整（journal 缺失、`process_attempts` 被清理）。
+恢复命令的尝试已持久化，锁文件已经建好；命令可能尚未派发、已被终止，或在 Node 被强杀后只留下锁文件和终止线索；可删除锁文件制造记录不完整，可让一个 Node 终止不了的进程一直持有尝试锁。
 
 ### 触发
 
-原 Scope 已 `Closed` 后查询该 Run：host 报告 `NotStarted`；或报告 `UnknownIdentity`；或对一个已确认启动的 Run 报告 `NotStarted`。
+探测该尝试的停止证据：锁空闲（命令从未启动或已经停止）；锁文件不存在；锁仍被占用。停止证据上限到期；Node 重启；从经 host 执行 Git 的版本升级。
 
 ### 必须成立
 
-- 原 Scope 已 `Closed` 且 host 权威报告该 Run 为 `NotStarted`（`direct` 为 `DirectProcessState::NotStarted`、`launch` 为 `LaunchFact::NotStarted`、cleanup 为 `CleanupState::Complete`）构成停止确认，走与直接进程退出相同的正常路径：在有界清理预算内清理临时目录与传输仓库（失败只记录），报告 `prior_revision_unavailable`（取消先生效时按取消原因），会话以 `agent_failed` 结束；不进入 `stop_unconfirmed`。
-- `NotStarted` 的来源限于平台 spawn 明确报告未启动与 guardian 在接受到启动请求前取消两类；后者由 worker 在发 `Stop` 收到 `GuardianRunRejection::UnknownRun` 后合成，可信前提是 fencing：当前 host binding 挡住旧请求，且 worker 发出 `Stop` 之后不再排 `Start`。
-- `UnknownIdentity` 仍不是停止确认：不发终态、不交付、不读 HEAD、不重开或复制执行、不解除 checkout 冲突责任，停止证据上限到期后在原执行上登记 `stop_unconfirmed`，迟到证据仍按原执行身份补报一次。
-- 对已确认启动的 Run 报 `NotStarted` 是矛盾，只拒绝该快照、保留原事实并公开协调错误；同批其他 Run、Scope 观测和其他 Scope 的协调继续，不能当作停止确认。
-- cleanup 证据按实际取得的结果分级报告：平台 spawn 路径取 `cleanup_evidence(guarantee)`，guardian 取消路径固定 `CleanupEvidence::BestEffortComplete`；BestEffort 的尽力清理完成不等于已确认静止。
+- 尝试锁能重新加上即构成停止确认，不要求退出状态，也不区分命令是否启动过，走与正常退出相同的路径：在有界清理预算内清理临时目录与传输仓库（失败只记录），报告 `prior_revision_unavailable`（取消先生效时按取消原因），会话以 `agent_failed` 结束；不进入 `stop_unconfirmed`。
+- Node 重启后只确认原尝试：按终止线索整组终止原命令，再探测原尝试的锁，不启动替代的命令。
+- 锁文件不存在或锁仍被占用不是停止确认：不发终态、不交付、不读 HEAD、不重开或复制执行、不解除 checkout 冲突责任，停止证据上限到期后在原执行上登记 `stop_unconfirmed`；之后只有原尝试自己的锁能补上证据，并按原执行身份补报终态一次。
+- 升级时，旧 host 留下、尚未收尾的恢复尝试按已确认停止收口（前提是部署已先结束旧进程树），会话可以到达它被推迟的终态。
+- 向上报告的实际纳管保证是 BestEffort，不写成已确认静止。
 
 ### 禁止结果
 
-- 由预算到期、关闭请求、清理预算耗尽或等待上限推导 `NotStarted`。
-- 接受 `UnknownIdentity` 作为停止确认，或把“查不到记录”解释为“从未启动”。
-- 在没有 fencing 前提（旧请求可能到达，或 `Stop` 之后仍可能排入 `Start`）的路径上合成 `NotStarted`。
-- 把已确认启动的 Run 的 `NotStarted` 静默当成停止确认。
-- 把 `BestEffortComplete` 报告成已确认静止。
+- 由预算到期、终止信号已发出、清理预算耗尽或等待上限推导停止确认。
+- 把锁文件不存在当作停止确认，或把“查不到”解释为“从未启动”。
+- 停止证据上限到期后发终态、停止保留原尝试，或以新的尝试顶替原尝试取得证据。
+- 把“已停止，没有退出状态”报告为恢复成功，或把 BestEffort 报告成已确认静止。
 
 ### 验证义务与证据
 
+测试路径相对 desktop 仓库根目录，按最终实现核对。
+
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| `NotStarted` 走正常路径 | [`not_started_requires_closed_scope_consistent_facts_and_original_identity`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/apps/ora-node/src/managed/not_started_tests.rs) 经真实 Unix IPC、SQLite 与生产停止确认/私有输入清理入口，断言一致 NotStarted 被接受、清理前输入保留、确认后传输目录清除、原 attempt 解除且 `agent_failed` / `prior_revision_unavailable` 终态只提交一次；不一致、cleanup 未完成及身份错配均不能终结，确认期间不执行 Git | Covered |
-| 两种来源各自成立 | [`platform_nonlaunch_preserves_cleanup_evidence_for_each_guarantee`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/tests/launch.rs) 从生产 ScopeRuntime 的平台 spawn 未启动路径取得快照与 Closed；[`nonlaunch_requires_bound_stop_and_never_sends_start_after_stop`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/worker_tests.rs) 经生产 worker 与真实 Unix IPC 从已绑定的 Stop/UnknownRun 取得一致 NotStarted。两类产出的事实由上述 Node 判定回归验证；这是分层行为证据，不是 Strong 平台部署验收 | Covered |
-| fencing 前提 | [`nonlaunch_requires_bound_stop_and_never_sends_start_after_stop`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/worker_tests.rs) 断言管理 binding 先于 Close/Stop、Stop 后无 Start；旧 binding、旧 session 和 Start/UnknownRun 均无 NotStarted；[`queued_request_checks_binding_after_takeover`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/guardian/management_tests.rs) 在实际执行互斥门禁排队后接管，旧 session 被拒。未尝试 guardian 的关闭路径由 [`restart_before_first_dispatch_distinguishes_recorded_and_unknown_runs`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/non_launch_tests.rs) 验证原 Scope 封闭、拒绝后续 Start 且未登记 Run 仍未知 | Covered |
-| 矛盾检测与错误隔离 | [`confirmed_launch_rejects_not_started_before_and_after_host_recovery`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host_state/observations.rs) 验证 Running/Exited 与后续 Unknown 不能抹掉已启动事实；[`contradictory_nonlaunch_preserves_facts_and_keeps_tick_serving`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/process-runtime/src/host/non_launch_tests.rs) 经生产 tick 与真实 SQLite，在重启前后断言 tick 成功、原观测不变、同批其他 Run 与另一 Scope 的观测/进度继续提交、查询暴露 Rejected(ConflictingRun)，不制造 settled 证据；Node 的一致性回归拒绝矛盾快照、无终态 | Covered |
-| `UnknownIdentity` 保守 | Node 一致性回归验证无终态、输入与原身份保留；[`unknown_stop_matrix_expires_without_terminal_then_original_proof_settles_once`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/apps/ora-node/src/managed/restore_tests.rs) 验证到期登记 stop_unconfirmed、停止轮询与原身份迟到终态一次；[`unknown_stop_retains_clock_terminal_and_checkout_responsibility`](https://github.com/ora-space/desktop/blob/8caecc59f857bb9a14568abbec06e75674645365/crates/node-db/src/tests/session/restore.rs) 验证原时钟/身份保留和 checkout 复用拒绝。完整入口由 [`unknown_identity_blocks_complete_delivery_before_and_after_bound_and_restart`](https://github.com/ora-space/desktop/blob/d50b49ae30a67a143769eedd68e88ad44582ce9e/apps/ora-node/tests/standalone/agent_sessions/unknown_delivery.rs) 验证：生产 Node 可执行文件经 Controller IPC 接受交付，真实 host 对原 Closed Scope 下从未登记的 Run 返回 UnknownIdentity，真实 SQLite 保留原恢复责任；上限前/后及 Node 关闭再启动时，Preparing 与 Frozen 均保持等待。另一 checkout 的已结束会话实际完成快照、mTLS Git 推送与 HTTP 上传作为执行器屏障，随后断言未知 checkout 与交付身份零 Git 调用、无 HEAD/快照/推送路径、无未知上传请求、本地/远端 ref 与 HEAD 不变，原 attempt、时钟与冻结计划保留，且无原会话终态 | Covered |
-| cleanup 证据分级 | 平台 nonlaunch 回归逐一断言 BestEffort/Strong 的实际快照与 Closed 证据；worker 的 Stop/UnknownRun 回归及 host 重启回归固定断言 BestEffortComplete，不升级为 ConfirmedQuiescence。这证明分级规则，不声明 Strong 部署已经启用 | Covered |
+| 锁空闲即停止确认，不要求退出状态 | `apps/ora-node/src/managed/restore_tests.rs` 的 `a_restarted_node_ends_and_confirms_the_original_restore_command`：被强杀的 Node 只留下锁文件和终止线索，重启后按线索终止原命令并确认原尝试已停止，待定的恢复尝试清空、锁文件退休，没有启动替代命令；`restore_cutoff_ends_real_git_and_confirms_its_stop`：真实 Git 在恢复截止处被终止，命令在尝试锁确认停止后才返回。尝试以“没有退出状态”收尾（含从未启动）由 `apps/ora-node/src/managed/exec_tests.rs` 的 `a_dispatched_attempt_settles_by_how_git_ended` 在执行层证明。缺口：没有“恢复命令已记录、从未派发，经会话入口以 `agent_failed` / `prior_revision_unavailable` 结束一次”的完整入口用例 | Partial |
+| 锁文件不存在或锁被占用时保守 | `restore_tests.rs` 的 `unknown_stop_expires_without_terminal_then_original_evidence_settles_once` 对“锁被占用”和“锁文件不存在”各跑一遍：上限内外都没有终态事件，到期登记 `stop_unconfirmed` 并保留原尝试；锁被占用的一侧在持有者结束后由原尝试自己的锁补上证据，终态只提交一次，锁文件退休；锁文件不存在的一侧始终不能终结。`crates/node-db/src/tests/session/restore.rs` 的 `unknown_stop_retains_clock_terminal_and_checkout_responsibility` 验证到期、重启和配置变化后原时钟、身份保留，checkout 复用被拒。完整入口由 `apps/ora-node/tests/standalone/agent_sessions/unknown_delivery.rs` 的 `missing_lock_blocks_complete_delivery_before_and_after_bound_and_restart` 验证：生产 Node 可执行文件经 Controller IPC 接受交付，原恢复尝试的锁文件不存在；上限前后及 Node 关闭再启动时，Preparing 与 Frozen 的交付都保持等待，未知 checkout 上没有任何 Git 调用，原尝试、时钟与冻结计划保留，没有原会话终态 | Covered |
+| 未确认时保留恢复输入 | `apps/ora-node/src/service/agents/tests.rs` 的 `unconfirmed_node_identity_restore_attempt_reaches_no_terminal_state`：原尝试的停止未确认时会话没有终态，传输仓库保留；`startup_cleanup_keeps_restore_inputs_until_original_stop_is_confirmed`：启动清理保留未确认的原命令可能还在读的传输仓库，确认后经同一条真实路径释放 | Covered |
+| 升级时旧 host 留下的恢复尝试按已确认停止收口 | `crates/node-db/src/tests/session/restore.rs` 的 `upgrade_confirms_the_stop_of_a_restore_attempt_the_host_left` | Covered |
+| 保证等级如实报告 | 上述回归登记和读取的纳管保证都是 `StopContainment::BestEffort`；没有断言“不会被报告为已确认静止”的专门用例，也没有 Strong 路径可对照 | Partial |
 
 ### 决策依据
 
-扩展决策 D1、D2；扩展决策不变量 3、4、5。
+[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D2、D4、D5、D7，不变量 2、4、8、10；扩展决策 D1、D2（已由前者修改）。
 
 ## An Unconfirmed Stop Never Yields A Terminal State Or A Deliverable Checkout
 
@@ -139,7 +141,7 @@ D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/2026
 
 ### 前置状态
 
-恢复的检出或取入正在进行；guardian 不可达、关闭失败、直接进程状态未知或 Node 在恢复期间崩溃；该会话带前序输入，Agent 从未启动。
+恢复的检出或取入正在进行；尝试锁仍被占用、锁文件缺失、探测出错或 Node 在恢复期间崩溃；该会话带前序输入，Agent 从未启动。
 
 ### 触发
 
@@ -148,7 +150,7 @@ D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/2026
 ### 必须成立
 
 - 会话保持未终结，不发送 `AgentSessionEnded` 或任何伪装成停止的终态；Cloud 的 D4 业务收尾是业务结算，不是停止证明。
-- 不把 `process_attempts` 标记 cleaned，不删除原 Scope/Run，不放弃原 host/guardian 身份，不为同一会话新建第二条恢复或第二个执行身份。
+- 不把原尝试记为已收尾，不删除原尝试的记录和锁文件，不为同一会话新建第二条恢复或第二个执行身份。
 - 交付被禁止：既不探查工作区改动，也不读 HEAD、不快照、不推新内容；checkout 不被新会话、新恢复或交付复用，即使 Cloud 已把 Run 记为 `done`。
 - 临时目录、传输仓库等本地清理失败只记录，并与进程未知分别报告，不合并成同一个结论。
 
@@ -161,7 +163,7 @@ D6；不变量 3；扩展见[扩展决策](../../../decisions/node/revision/2026
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 未知路径不发终态、不交付 | 四种注入（guardian 不可达、关闭失败、未返回 `Closed`、直接进程状态未知）下无终态事件、无交付读 HEAD/快照/推送、原 Run 记录保留、checkout 复用被拒 | Missing |
+| 未知路径不发终态、不交付 | 三种注入（尝试锁仍被占用、锁文件缺失、探测出错）下无终态事件、无交付读 HEAD/快照/推送、原尝试记录保留、checkout 复用被拒。锁文件缺失和锁被占用两种已有的证据登记在 `Stop Confirmation Also Accepts A Host-Authoritative NotStarted`，探测出错的注入尚缺，本行在三种注入齐备前保持原状态 | Missing |
 | 清理与进程未知分开 | 临时目录删除失败只产生清理结果，不改变停止证据或终态判断 | Missing |
 | Cloud 业务收尾不解除保护 | Cloud 已 `failed/done` 后，同一 checkout 的交付与复用仍被拒绝 | Missing |
 
@@ -173,7 +175,7 @@ D4、D6；不变量 7、8。
 
 ### 风险
 
-上限在重启、重试或对账时被重置，原 Scope/Run、checkout 冲突责任与 Workspace 再次被无限期保留；或到期被当成停止证据，提前交付或强停。
+上限在重启、重试或对账时被重置，原尝试、checkout 冲突责任与 Workspace 再次被无限期保留；或到期被当成停止证据，提前交付或强停。
 
 ### 前置状态
 
@@ -202,7 +204,7 @@ D4、D6；不变量 7、8。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 起点持久化与不重置 | 首次停止请求先落盘再发关闭请求；重启、重连、窗口到期与重复对账后上限不变；起点缺失时只锚定一次 | Missing |
+| 起点持久化与不重置 | 首次停止请求先落盘再整组终止；重启、重连、窗口到期与重复对账后上限不变；起点缺失时只锚定一次 | Missing |
 | 到期登记与可观测 | 到期后无终态、原记录保留，执行查询返回 `stop_unconfirmed` 与两个时间；Cloud 在 D4 结算时把 `stop_unconfirmed` 写成命名证据且 `reason`/`responsibility` 不变；两者在同一个 Run/Workspace 身份上可对应 | Missing |
 | 安全边界与迟到补报 | 到期后交付/复用仍拒绝；随后取得原停止证据时按原执行身份补报恰好一次；残留回收仍按证据分层，未因到期强停 | Missing |
 | 配置校验 | 非法值（零、负、无限、小于等于恢复截止）拒绝启动恢复 | Missing |
@@ -298,11 +300,11 @@ Node 重启后存在 `.ora-transport/` 或 `revision-restores/` 残留；其中�
 
 ### 触发
 
-Node 启动清理私有目录；原执行交接查询返回 `Closed` 或未知；Strong 能力启用时重复同一场景。
+Node 启动清理私有目录；原尝试的停止证据成立或未知；Strong 能力启用时重复同一场景。
 
 ### 必须成立
 
-- 启动清理以资源交接决策 D3 为前提：只清理原执行已取得停止确认的目录；未确认的保留并登记命名残留，不用 Node 重启、DB 锁或目录空闲推断停止。
+- 启动清理以 Node 直接执行 Git 决策 D4 为前提：只清理原执行已取得停止确认的目录；未确认的保留并登记命名残留，不用 Node 重启、DB 锁或目录空闲推断停止。
 - 清理结果按实际纳管保证报告：BestEffort 的尽力清理完成不写成已确认静止；Strong 只有在声明范围内取得完整退出证据时才报告。
 - 临时目录删除失败只记录并由启动清理兜底，不影响停止证据；进程未知也不因目录已删而缓解。
 
