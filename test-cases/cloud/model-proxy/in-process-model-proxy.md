@@ -2,7 +2,7 @@
 
 依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）
 和它的后续决策 [长请求的空闲超时与总上限](../../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)
-（`approved`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后三条用例的编号指后续决策。
+（`implemented`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后三条用例的编号指后续决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"Model Access Survives A Project Running Past Twenty-Four Hours"
 一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
