@@ -1,6 +1,6 @@
 # agent 显式完成信号
 
-本文件是[agent 显式完成信号决策](../../../../decisions/desktop/core/workflow/20261110-agent-completion-signal.md)的核心用例。实现尚未开始，证据状态按现状标为 `Missing` / `Partial`；实现落地后按直接测试更新。
+本文件是[agent 显式完成信号决策](../../../../decisions/desktop/core/workflow/20261110-agent-completion-signal.md)的核心用例。实现已由 [ora-space/desktop#767](https://github.com/ora-space/desktop/pull/767) 落地，证据按直接测试标注。
 
 ## Agent Completion Signal Binds To The Signaled Attempt
 
@@ -32,8 +32,8 @@ agent 调用 `ora_complete_workflow_step({ attemptToken })`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 无 token / 旧 token / 跨 session 被拒绝，同 attempt 幂等 | 无实现，暂无直接测试 | `Missing` |
-| park 只绑定结算 attempt，旧请求丢弃 | 无实现，暂无直接测试 | `Missing` |
+| 无 token / 旧 token / 跨 session 被拒绝，同 attempt 幂等 | `crates/backend/src/workflow/run/interactive/completion_server.rs` 的 `an_unknown_token_is_a_tool_error_and_a_wrong_path_is_unauthorized`、`a_tool_call_accepts_the_attempt_token_and_binds_to_its_turn`；`agent_signal.rs` 的 `unknown_and_revoked_tokens_are_rejected_with_the_adr_reason`（stale_attempt / not_awaiting）；e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it` | `Covered` |
+| park 只绑定结算 attempt，旧请求丢弃 | e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it`、`a_new_turn_without_a_signal_clears_the_previous_one` | `Covered` |
 
 ### 决策依据
 
@@ -69,8 +69,8 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| `completionPolicy: agent` 且缺信号时阻塞、普通完成被拒 | 无实现，暂无直接测试 | `Missing` |
-| 非首轮 force 覆盖 `agent_signal_pending` 并写审计 | 无实现，暂无直接测试 | `Missing` |
+| `completionPolicy: agent` 且缺信号时阻塞、普通完成被拒 | 单测 `agent_policy_materializes_the_signal_gate`；e2e `the_missing_signal_first_turn_uses_the_documented_force_exception` | `Covered` |
+| 非首轮 force 覆盖 `agent_signal_pending` 并写审计 | e2e `a_new_turn_without_a_signal_clears_the_previous_one`；单测 `forcing_a_stopped_turn_records_the_turn_window`、`forcing_an_unsettled_turn_records_the_last_assistant_message` | `Covered` |
 
 ### 决策依据
 
@@ -106,8 +106,8 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 确认必须匹配 `signalId` 与当前 turn | 无实现，暂无直接测试 | `Missing` |
-| 确认完成不写 `completion_forced` | 无实现，暂无直接测试 | `Missing` |
+| 确认必须匹配 `signalId` 与当前 turn | e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it`（stale id 返回 `WorkflowNodeSignalChanged`）；单测 `confirming_an_agent_signal_does_not_confirm_the_opening_turn` | `Covered` |
+| 确认完成不写 `completion_forced` | e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it`（最终 payload 无强制审计） | `Covered` |
 
 ### 决策依据
 
@@ -143,11 +143,11 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 单独 `force` 返回 `WorkflowNodeIncomplete`（含 `turn_unconfirmed`），不推进、不写审计 | 无实现，暂无直接测试 | `Missing` |
-| 场景 A 卡片次操作二次确认并同时发送 `confirmInitialTurn` + `force` | 无实现，暂无直接测试 | `Missing` |
-| 组合请求审计：`requester: human`、`confirmation: null`、`stop_cause`，`blockers` 恰含 `agent_signal_pending` 与 `prepare` 复算的文件 blocker，排除 `turn_unconfirmed` | 无实现，暂无直接测试 | `Missing` |
-| 例外之外（没有 `turn_unconfirmed`，或没有可被 force 覆盖的 blocker）返回 `invalid_request` | 无实现，暂无直接测试 | `Missing` |
-| 首轮有信号时两个确认字段缺一不可 | 无实现，暂无直接测试 | `Missing` |
+| 单独 `force` 返回 `WorkflowNodeIncomplete`（含 `turn_unconfirmed`），不推进、不写审计 | e2e `the_missing_signal_first_turn_uses_the_documented_force_exception` | `Covered` |
+| 场景 A 卡片次操作二次确认并同时发送 `confirmInitialTurn` + `force` | `packages/app-shell/src/features/workflow-run/run-node-session-chat.test.tsx` 的 `offers continue and the documented force exit for a first turn without a signal` | `Covered` |
+| 组合请求审计：`requester: human`、`confirmation: null`、`stop_cause`，`blockers` 恰含 `agent_signal_pending` 与 `prepare` 复算的文件 blocker，排除 `turn_unconfirmed` | e2e `the_missing_signal_first_turn_uses_the_documented_force_exception` 覆盖 `requester`、`confirmation`、`agent_signal_pending` 与 `stop_cause`；`prepare` 复算的输出契约/文件 blocker 由 `forcing_a_structured_failure_keeps_raw_output_without_structured_output` 等 force 单测覆盖，但尚未在同一请求上组合断言 | `Partial` |
+| 例外之外（没有 `turn_unconfirmed`，或没有可被 force 覆盖的 blocker）返回 `invalid_request` | 单测 `conflicting_completion_flags_are_rejected_before_claiming` | `Covered` |
+| 首轮有信号时两个确认字段缺一不可 | e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it`；单测 `confirming_an_agent_signal_does_not_confirm_the_opening_turn` | `Covered` |
 
 ### 决策依据
 
@@ -182,10 +182,10 @@ agent 用 `EndTurn` 结束一个提问回合，但没有调用完成工具；界
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 首轮用户停止的停靠分类与 blocker（`turn_stopped` + `user_stopped`，无 `turn_unconfirmed`） | 现有 e2e `a_stopped_opening_turn_waits_for_the_user`（legacy 语义，未覆盖 agent 策略） | `Partial` |
-| 卡片「继续」动作可用 | 无直接测试 | `Missing` |
-| 卡片 force 二次确认与发送 | 无直接测试 | `Missing` |
-| force 审计：`blockers` 含 `turn_stopped`、`stop_cause = user_stopped` | 无直接测试 | `Missing` |
+| 首轮用户停止的停靠分类与 blocker（`turn_stopped` + `user_stopped`，无 `turn_unconfirmed`） | e2e `a_stopped_opening_turn_waits_for_the_user`；单测 `forcing_a_stopped_turn_records_the_turn_window` | `Covered` |
+| 卡片「继续」动作可用 | `run-node-session-chat.test.tsx` 的 `keeps a user-stopped turn awaiting input instead of reading as an abnormal stop` | `Covered` |
+| 卡片 force 二次确认与发送 | 同一组件用例断言 `force-complete-node` 可用；`offers continue and the documented force exit for a first turn without a signal` 断言确认后发送 `force` + `confirmInitialTurn` | `Covered` |
+| force 审计：`blockers` 含 `turn_stopped`、`stop_cause = user_stopped` | 单测 `forcing_a_stopped_turn_records_the_turn_window` | `Covered` |
 
 ### 决策依据
 
@@ -221,7 +221,7 @@ park 完成后由 host 触发内部完成请求。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 自动接受只在结算后、非首轮、非异常时走同一门禁 | 无实现，暂无直接测试 | `Missing` |
+| 自动接受只在结算后、非首轮、非异常时走同一门禁 | e2e `auto_accept_completes_a_settled_human_turn_without_the_card`；单测 `a_headless_auto_accept_records_auto_confirmation`、`a_manual_confirmation_on_an_auto_accept_node_is_recorded_as_human`；前端 `shows the abnormal exit instead of a confirmation for a precise stop with a signal` | `Covered` |
 
 ### 决策依据
 
@@ -256,7 +256,7 @@ park 完成后由 host 触发内部完成请求。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 缺 `completionPolicy` 走 legacy；`agent` 缺信号仍阻塞 | 现有 legacy 快照测试覆盖旧行为，未覆盖 `completionPolicy` | `Partial` |
+| 缺 `completionPolicy` 走 legacy；`agent` 缺信号仍阻塞 | 单测 `completion_meta_defaults_to_end_turn_and_round_trips_agent_fields`、`agent_policy_materializes_the_signal_gate`、`a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`、`prepare_materializes_the_frozen_completion_policy`；e2e `a_legacy_end_turn_node_never_receives_the_completion_tool` | `Covered` |
 
 ### 决策依据
 
@@ -281,19 +281,19 @@ park 完成后由 host 触发内部完成请求。
 
 - 空 `Explicit` 仍不注入任何插件 MCP；
 - host 完成工具是独立宿主能力，不进入 `SessionMcpSelection` 与 `Effective MCP Set`；
-- `end_turn` 节点不注入完成工具；
+- 只有交互式 agent-policy 节点签发 attempt token 并注入完成指令；`end_turn` 或非交互节点不注入完成工具，也不签发 token；
 - 恢复时按节点绑定与冻结策略重新推导；绑定缺失或损坏时不注入；
 - 节点离开 `Pending`/`Running` 后 token 失效，越权调用被拒绝。
 
 ### 禁止结果
 
-- 空 `Explicit` 因为宿主工具被放宽；`end_turn` 节点获得完成工具；撤销后旧 token 仍可用。
+- 空 `Explicit` 因为宿主工具被放宽；`end_turn` 或非交互节点获得完成工具或 token；撤销后旧 token 仍可用。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 宿主能力与插件 MCP 白名单隔离、撤销后 token 失效 | 现有 MCP 白名单测试覆盖 `Explicit`，未覆盖宿主能力 | `Partial` |
+| 宿主能力与插件 MCP 白名单隔离、撤销后 token 失效 | e2e `workflow_mcp_allowlists_survive_restore_rebuild_and_refresh`、`mcp_plugins_bound_to_agent_nodes_reach_only_the_frozen_allowlist`、`a_legacy_end_turn_node_never_receives_the_completion_tool`、`a_non_interactive_agent_policy_node_never_receives_the_completion_tool`、`a_restarted_backend_restores_the_completion_tool`；单测 `an_oversized_request_is_rejected_before_reading_it` | `Covered` |
 
 ### 决策依据
 
