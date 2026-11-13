@@ -8,7 +8,7 @@
 [revision](../revision/restore-deadline-and-stop-confirmation.md) 的用例里，本文的证据不替代它们。
 
 证据按 desktop 实现分支的提交 `3e0b5607` 核对，该提交的 CI 全部通过，尚未合入 desktop 的主干。测试路径相对
-desktop 仓库根目录。需要 root 才能运行的测试默认被忽略，不在 CI 里运行，不算直接证据，对应义务如实标为 Partial。
+desktop 仓库根目录。需要 root 才能运行的测试默认被忽略，不在 CI 里运行，对应义务如实标为 Partial。
 
 | 验收义务 | 用例 | 状态 |
 |---|---|---|
@@ -94,7 +94,7 @@ Node 进程里有一把已加锁的尝试锁；Node 同时在启动别的子进�
 |---|---|---|
 | fd 不泄漏给同时启动的其他子进程（义务 4） | `crates/process/tests/descriptor.rs` 的 `only_the_named_child_inherits_the_descriptor`：父进程持有 fd 时启动的旁路子进程没有拿到锁。缺口：只在 `ora-process` 一层证明，没有"真实 Node 同时启动 Agent 会话"的用例 | Partial |
 | 锁目录和锁文件只有 Node 的运行用户能打开（义务 5） | `attempt_lock_tests.rs` 的 `lock_files_are_private_and_a_missing_one_is_unknown` 断言 0700 和 0600 | Covered |
-| 降权的 Git 继承锁，工作负载用户打不开锁文件（义务 5） | `apps/ora-node/src/managed/exec_tests.rs` 的 `workload_git_inherits_a_lock_it_cannot_open` 和 `descriptor.rs` 的 `a_dropped_identity_keeps_only_the_named_descriptor` 需要 root，默认忽略，不在 CI 里运行 | Partial |
+| 降权的 Git 继承锁，工作负载用户打不开锁文件（义务 5） | `apps/ora-node/src/managed/exec_tests.rs` 的 `workload_git_inherits_a_lock_it_cannot_open` 和 `descriptor.rs` 的 `a_dropped_identity_keeps_only_the_named_descriptor` 需要 root，默认忽略，不在 CI 里运行；实现时用 `sudo` 手动运行过并通过，但没有 CI 守护 | Partial |
 
 ### 决策依据
 
