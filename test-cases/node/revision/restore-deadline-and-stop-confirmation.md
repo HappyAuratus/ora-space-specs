@@ -1,5 +1,7 @@
 # Node 恢复截止、取消与停止确认
 
+> 执行方式已变：两篇决策里停止确认的证据来源已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 不再经 host 和 guardian 执行 Git。下文提到 host、guardian、Scope、Run 的前置状态和证据仍按被取代的实现登记，等该决策实现合入后再按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
+
 依据[已批准的 Node 恢复截止与停止确认决策](../../../decisions/node/revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)；其中 D6 的停止确认证据另由[恢复停止确认接受 host 权威 NotStarted 决策](../../../decisions/node/revision/20261021-stop-confirmation-accepts-not-started.md)扩展（下称“扩展决策”）。下文的 D 编号与不变量编号未加限定时指前一篇 ADR，引用扩展决策时写明其 D 编号或“扩展决策不变量”；“现行恢复决策”指[Node 恢复前序 Revision 决策](../../../decisions/node/revision/20261010-restore-prior-revision-before-session.md)，“内部线决策”指[Node 交付推送与 Git 恢复决策](../../../decisions/node/revision/20261017-push-delivery-ref-and-restore-from-git-server.md)，“启动决策”指[有界启动与未派发撤回决策](../../../decisions/cloud/issue-run/20261012-bounded-agent-startup-and-undispatched-withdrawal.md)，“残留回收决策”指[残留资源回收决策](../../../decisions/cloud/issue-run/20261018-residual-agent-run-reclamation.md)。
 
 本文覆盖完整恢复截止与预算裁剪、停止确认的两种证据（直接进程退出与 host 权威 `NotStarted`）、取消点、停止证据未知与上限、窗口衔接和启动清理交接。恢复已按内部线决策改为从 Git Server 拉取前序交付 ref，不再有 bundle 恢复；它的拉取、检出与失败分类证据登记在 [Node 经 Git Server 交付与恢复前序 Revision](git-delivery-push-and-restore.md)。那些证据不能替代本文新增的验证义务。host 权威 `NotStarted` 扩展的直接证据登记在下方同名用例，其余截止、取消与 Cloud/Node 联合故障义务保持各自的实际证据状态；扩展已实现不表示整份截止决策已经完成部署级验收。
@@ -318,4 +320,4 @@ Node 启动清理私有目录；原执行交接查询返回 `Closed` 或未知�
 
 ### 决策依据
 
-D1、D4、D6；[资源交接决策](../../../decisions/node/process/integration/0-shared-process-entry-and-resource-handoff.md) D3；[纳管保证根决策](../../../decisions/node/process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) D2。
+D1、D4、D6；[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D4、D5；[纳管保证根决策](../../../decisions/node/process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) D2。

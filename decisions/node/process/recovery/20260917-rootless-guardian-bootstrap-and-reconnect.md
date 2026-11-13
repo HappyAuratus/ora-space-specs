@@ -4,7 +4,7 @@ status: superseded
 
 # 无特权 Guardian 交接原锁，宿主重连原实例而不补启旧 Scope
 
-> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：guardian 退役后不再有它的引导和重连。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：guardian 退役后不再有它的引导和重连。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux rootless 路线先提交 Scope 创建责任，再把已持有的稳定锁交给独立 guardian。
 回复丢失后查询原实例，旧 Scope 不启动替代 guardian。本文于 2026-09-18 同步可信本机、

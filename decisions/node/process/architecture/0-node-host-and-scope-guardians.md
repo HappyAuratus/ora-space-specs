@@ -4,7 +4,7 @@ status: superseded
 
 # 独立宿主协调意图，Scope Guardian 拥有运行事实
 
-> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：Node 自己的 Git 是 host／guardian 唯一的调用方，它改为由 Node 直接执行之后，Node、host、guardian 三方分离不再存在。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：Node 自己的 Git 是 host／guardian 唯一的调用方，它改为由 Node 直接执行之后，Node、host、guardian 三方分离不再存在。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux 可信本机路线使用独立 host 和每 Scope 一个 guardian。Node 管业务执行与资源对账，
 host 管持久意图和协调，guardian 管进程、输出与收尾。宿主重启不重新启动原 Run。

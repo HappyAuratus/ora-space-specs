@@ -4,7 +4,7 @@ status: superseded
 
 # 独占资格之后核实原实例，缺少清理证据就保留阻塞
 
-> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host／guardian 退役后，失败恢复由取代者的重启收口承接。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host／guardian 退役后，失败恢复由取代者的重启收口承接。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux 宿主在稳定锁下恢复持久意图，重连原 guardian；连接失败不重启旧 Scope／Run。
 guardian 失效不接管活进程，也不承诺一定可以收尾。本 ADR 按 D1 表中的当前行为处于 `implemented`，完整故障

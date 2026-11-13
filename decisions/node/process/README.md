@@ -73,8 +73,8 @@ lifecycle／recovery／persistence／upgrade 的测试缺口是实现验收工�
 
 ## 故障验证与证据
 
-[核心用例索引](../../../test-cases/node/process/README.md)保留原稳定英文 anchors，并区分
-当前义务和未来设计输入；Covered／Partial／Missing 只描述直接证据，未来项不得改称已通过。
+被取代的九组决策的核心用例已经删除，[核心用例索引](../../../test-cases/node/process/README.md)只保留 containment
+的用例；Covered／Partial／Missing 只描述直接证据，未来项不得改称已通过。下面两段是取代之前的验证记录。
 
 本次依据 desktop 的 bdc6354e、66f61234、6d7c7a57、fd18e1de 及既有 host／guardian 实现。
 2026-09-17 全量 task test 通过；2026-09-18 重新运行 process-protocol、process-runtime、
