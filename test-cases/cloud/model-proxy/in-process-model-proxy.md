@@ -124,7 +124,7 @@
   `requestmetrics.Wrap`，断言中止并记为 `interrupted`）；`internal/requestmetrics/recorder_test.go` 的
   `TestRecorderRecordsCutOffAsInterrupted`；`internal/modelturn/compatibility_test.go` 的
   `TestRemoteProviderCompletionStopsOpenStreamAndJoins`（纯模型轮次在 `[DONE]` 后结束上游，不受中止影响）。Agent 收到中止后
-  的重发与显示不在本用例，由 circus #1132 跟进。
+  的重发与失败原因见下一条用例（后续决策 D4）。
 - 决策依据：后续决策 D3，不变量 4。
 
 ## A Call Cut At A Limit Is Not Re-Sent Within The Same Turn
