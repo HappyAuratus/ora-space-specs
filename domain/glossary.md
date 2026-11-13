@@ -367,7 +367,9 @@ _Avoid_: main worktree, workspace root, task checkout as a separate identity
 ## Node Process
 
 本节用于区分进程运行责任与上层业务身份，决策入口见
-[Node 进程运行](../decisions/node/process/README.md)。
+[Node 进程运行](../decisions/node/process/README.md)。ProcessScope、ProcessRun、ProcessSession、Process Host、
+Scope Guardian 和 Scope Control Generation 属于已被取代的 host／guardian 体系，只用于阅读历史决策；Node 自己的
+Git 现在使用下一节 Node Git Execution 的术语。
 
 ### ProcessScope
 
@@ -422,6 +424,29 @@ _Avoid_: direct process exit, business success
 `Best-effort Cleanup Complete`（尽力清理完成）表示承诺的跟踪与清理已经完成，仍不能排除未跟踪
 残留。它不同于已确认静止，也不由重试次数或等待期限到达自动产生。
 _Avoid_: Confirmed Quiescence, cleanup timeout
+
+## Node Git Execution
+
+本节是 Node 直接执行自己的 Git 时使用的术语，决策入口见
+[Node 直接执行自己的 Git](../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)。
+
+### Attempt Lock（尝试锁）
+
+`Attempt Lock` 是一条有副作用的 Git 命令在派发前取得的文件锁，由 git 和它的所有后代继承。它只回答"原命令的
+进程树里是否还有进程"，不记录是哪些进程，也不用于终止进程。
+_Avoid_: pid file, repository lock, Git index lock
+
+### Stop Evidence（停止证据）
+
+`Stop Evidence` 是"原命令已不再运行"的事实依据：重新对尝试锁加锁成功。它不区分从未启动和已经结束，也不说明
+命令是否成功。超时、已发出终止信号或等待期限到达都不是停止证据。
+_Avoid_: kill sent, timeout elapsed, exit status
+
+### Kill Clue（终止线索）
+
+`Kill Clue` 是派发后记下的直接子进程身份，只在 Node 重启后用来找到并终止残留进程。它的缺失或错误不改变
+停止证据的结论。
+_Avoid_: Stop Evidence, process attempt record
 
 ## Cloud Deployment
 

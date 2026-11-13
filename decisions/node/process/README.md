@@ -4,6 +4,12 @@
 当前交付是 **Linux、可信本机、无 root、BestEffort、独立 host／guardian 和 Node Git**。
 implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示全部 process 蓝图完成。
 
+**host／guardian 已被取代。**Node 自己的 Git 改为由 Node 直接执行，见
+[Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md)。本目录下 architecture、
+control、lifecycle、recovery、io、protocol、persistence、upgrade、integration 的决策整份标为 `superseded`，正文作为
+历史记录保留；containment 的决策保持 `approved`，继续定义保证等级和各平台的强纳管方向。下面各节描述的是被取代的
+体系，取代者的实现合并之前，desktop 里仍在运行的是这套实现。
+
 本次直接修订既有 ADR 是 Eric 的明确要求；保留未来设计方向和验证缺口，不创建一批空白未来 ADR。
 以后恢复延期能力时，在对应叶子追加日期 ADR，继承或修改当前规则，再补直接验收。
 
@@ -11,21 +17,21 @@ implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示
 
 | ADR | 状态 | 当前承诺／保留原因 |
 |---|---|---|
-| [architecture](architecture/0-node-host-and-scope-guardians.md) | implemented | Node／host／guardian 权威分离和独立 Linux 进程组合 |
-| [control](control/0-authorized-generations-and-leases.md) | implemented | 主题收敛为可信本机宿主会话控制；不冒充 Controller 授权 |
-| [lifecycle](lifecycle/0-durable-run-attempts-and-scope-closure.md) | implemented | 持久尝试与收尾；完整 Start／Close 竞争证据未齐，缺口在用例中 |
-| [recovery 根决策](recovery/0-single-authority-and-failure-recovery.md) | implemented | D1 表中的当前行为；完整恢复故障矩阵未齐，缺口在用例中 |
-| [rootless bootstrap](recovery/20260917-rootless-guardian-bootstrap-and-reconnect.md) | implemented | 原锁交接、原实例重连、持久宿主绑定和死亡缺口 |
+| [architecture](architecture/0-node-host-and-scope-guardians.md) | superseded | Node／host／guardian 权威分离和独立 Linux 进程组合 |
+| [control](control/0-authorized-generations-and-leases.md) | superseded | 主题收敛为可信本机宿主会话控制；不冒充 Controller 授权 |
+| [lifecycle](lifecycle/0-durable-run-attempts-and-scope-closure.md) | superseded | 持久尝试与收尾；完整 Start／Close 竞争证据未齐，缺口在用例中 |
+| [recovery 根决策](recovery/0-single-authority-and-failure-recovery.md) | superseded | D1 表中的当前行为；完整恢复故障矩阵未齐，缺口在用例中 |
+| [rootless bootstrap](recovery/20260917-rootless-guardian-bootstrap-and-reconnect.md) | superseded | 原锁交接、原实例重连、持久宿主绑定和死亡缺口 |
 | [guarantees](containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) | approved | 不混淆强／尽力的契约；生产只启用 Linux BestEffort |
 | [Linux cgroup](containment/linux/0-cgroup-v2-containment.md) | approved | 获批方向，Strong 后续 ADR 负责实施和验收 |
 | [Linux helper](containment/linux/20260917-independent-privileged-helper.md) | approved | 预检／inspect／底层降权已有部分实现，不是 Strong 闭环 |
 | [Windows](containment/windows/0-creation-time-job-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
 | [macOS](containment/macos/0-native-best-effort-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
-| [io](io/0-bounded-output-and-fenced-input.md) | implemented | 丢弃／有界内存输出、偏移读取、控制隔离；stdin 关闭 |
-| [protocol](protocol/0-independent-local-streams-and-state-recovery.md) | implemented | 有界本机请求／查询；无订阅／结果接管协议 |
-| [persistence](persistence/0-independent-journals-and-responsibility-retirement.md) | implemented | 独立 WAL／FULL；完整存储故障矩阵未齐，无退休回收 |
-| [upgrade](upgrade/0-version-coexistence-and-safe-migration.md) | implemented | 已知迁移／错误版本拒绝；完整布局与迁移中断矩阵未齐 |
-| [integration](integration/0-shared-process-entry-and-resource-handoff.md) | implemented | Node 的 clone 与 Revision Git 经 host；不含插件／Agent 进程与 Backend 切换 |
+| [io](io/0-bounded-output-and-fenced-input.md) | superseded | 丢弃／有界内存输出、偏移读取、控制隔离；stdin 关闭 |
+| [protocol](protocol/0-independent-local-streams-and-state-recovery.md) | superseded | 有界本机请求／查询；无订阅／结果接管协议 |
+| [persistence](persistence/0-independent-journals-and-responsibility-retirement.md) | superseded | 独立 WAL／FULL；完整存储故障矩阵未齐，无退休回收 |
+| [upgrade](upgrade/0-version-coexistence-and-safe-migration.md) | superseded | 已知迁移／错误版本拒绝；完整布局与迁移中断矩阵未齐 |
+| [integration](integration/0-shared-process-entry-and-resource-handoff.md) | superseded | Node 的 clone 与 Revision Git 经 host；不含插件／Agent 进程与 Backend 切换 |
 
 ## 未来 ADR 责任地图
 
@@ -67,8 +73,8 @@ lifecycle／recovery／persistence／upgrade 的测试缺口是实现验收工�
 
 ## 故障验证与证据
 
-[核心用例索引](../../../test-cases/node/process/README.md)保留原稳定英文 anchors，并区分
-当前义务和未来设计输入；Covered／Partial／Missing 只描述直接证据，未来项不得改称已通过。
+被取代的九组决策的核心用例已经删除，[核心用例索引](../../../test-cases/node/process/README.md)只保留 containment
+的用例；Covered／Partial／Missing 只描述直接证据，未来项不得改称已通过。下面两段是取代之前的验证记录。
 
 本次依据 desktop 的 bdc6354e、66f61234、6d7c7a57、fd18e1de 及既有 host／guardian 实现。
 2026-09-17 全量 task test 通过；2026-09-18 重新运行 process-protocol、process-runtime、

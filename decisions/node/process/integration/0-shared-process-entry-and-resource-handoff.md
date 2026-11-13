@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # Node 的 GitRunner 统一受管 Git，恢复先关闭旧尝试再对账
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：Node 的 Git 不再经 host 执行；"先记录再派发"和"先确认停止再对账"由取代者的尝试锁和重启收口承接。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux 独立 Node 的 Git 命令经 ManagedGitRunner → process-client → host → guardian 执行。
 gitlancer 仅构造命令与解析结果，不持有 Node／process 概念。本文覆盖 Node 自己执行的 Git：clone、Revision

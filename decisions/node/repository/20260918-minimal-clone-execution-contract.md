@@ -4,6 +4,8 @@ status: implemented
 
 # Node 非交互 clone 指定分支，独占目标目录并按原执行恢复
 
+> 历史决策：D6 中"通过 host 派发"和"核实旧 Scope 收尾"已由 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) D2、D4 修改为尝试锁和停止证据；D6 表格里的处置和其余决策不变。
+
 首版由调用方提供仓库地址和分支，Node 在显式配置的仓库根目录下分配新的独立目录，
 受管执行 clone 并检出指定分支。成功返回实际路径、分支和 commit；重传读取原执行，
 失败残留不自动删除或被新请求接管。

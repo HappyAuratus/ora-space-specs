@@ -1,5 +1,7 @@
 # 最小 clone 执行契约
 
+> 执行方式已变：执行契约 D6 和中断失败判定 D1、D3、D4 已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 不再经 host 和 guardian 执行 Git。下文提到 host、guardian、Scope、Run 的前置状态和证据仍按被取代的实现登记，等该决策实现合入后再按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
+
 依据[已实现的执行契约](../../../decisions/node/repository/20260918-minimal-clone-execution-contract.md)，
 以及修改其 D6 的[中断失败判定](../../../decisions/node/repository/20260925-terminated-clone-attempt-fails-as-interrupted.md)。
 契约 D1、D2、D4、D5 已被[Node 从快照 clone 决策](../../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)
@@ -239,7 +241,7 @@ Node 主动或被动终止的尝试被当作证据缺失，永久停留在 Unkno
 
 ### 决策依据
 
-中断失败判定 D1–D4，不变量 1–6；执行契约 D6；process integration D3。
+中断失败判定 D1–D4，不变量 1–6；执行契约 D6；[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D4、D5。
 
 ## Clone Capability Coexists With Historical Worktree State
 

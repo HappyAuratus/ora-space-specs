@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # Run 保留一次尝试身份，Scope 关闭不卸除未完成责任
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：Scope 和 Run 不再存在，尝试只记在 Node 数据库里，收尾由取代者的停止证据判定。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 host／guardian 持久接受原身份，未知启动不自动重试。直接退出、Run 收尾和 Scope 关闭
 分别表达。本文收紧至 Linux 可信本机路线，按这一范围处于 `implemented`，实现位于 desktop 的

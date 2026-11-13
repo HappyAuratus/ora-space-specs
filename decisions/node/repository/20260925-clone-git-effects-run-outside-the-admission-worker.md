@@ -4,6 +4,8 @@ status: implemented
 
 # clone 的 Git 副作用移出受理 worker：worker 独占 SQLite 与受理，执行器只做 host 交互
 
+> 历史决策：文中受理线程之外的"host 交互"已由 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 修改为直接执行 git；线程划分和数据库写入规则不变。
+
 Node 服务中唯一的阻塞 worker 线程目前同时负责 SQLite、会话受理和 clone 的全部 Git 执行：
 `recover_clones` 在 worker 上同步驱动 clone，等待 host 上的 Git 结束（可达 `command_timeout_ms`），
 期间状态查询、确认和事件重放都排在队列里等待。本文决定把 clone 中所有 host 交互（派发 Run、

@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # Guardian 持有有界输出，当前不提供 stdin
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：guardian 退役后，输出的有界读取规则由取代者承接。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux guardian 独立读取 stdout／stderr，支持丢弃或有界内存前缀捕获，通过偏移查询。
 stdin 关闭；不提供插件协议流、输入交付或持久输出。本文于 2026-09-18 收紧原双向 I/O

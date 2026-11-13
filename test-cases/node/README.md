@@ -3,6 +3,16 @@
 本目录与 `specs/decisions/node/` 镜像。Node 各能力的根决策进入 `approved` 后，再在对应子目录
 登记需要长期维护的跨进程、外部副作用、ownership、重试和恢复用例。
 
+## Node 直接执行 Git
+
+[Node 直接执行 Git 决策](../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)经 owner 批准为
+`approved`，实现尚未合入 desktop 的主干；核心用例的证据按实现分支核对，缺口逐项写在用例里。它取代了 host／guardian
+体系，[process](process/README.md) 下只保留 containment 的用例。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| git-execution | [尝试锁、停止证据与重启收口](git-execution/attempt-locks-and-stop-evidence.md) | 用超时或"查不到"推断已停止、锁泄漏给无关进程、后代仍在写入时上报结果、按过期线索误杀、Node 死后 Git 无人终止、重启后未收口就恢复、升级后旧尝试卡住、clone 留下常驻进程 |
+
 ## Git 原生代码链路（内部线）
 
 [Node 从快照 clone 决策](../../decisions/node/repository/20261016-clone-from-git-server-snapshot-and-ora-git.md)为

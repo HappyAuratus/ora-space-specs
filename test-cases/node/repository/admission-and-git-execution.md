@@ -1,5 +1,7 @@
 # 受理与 clone 的 Git 执行分离
 
+> 执行方式已变：本文依据的决策已由[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D5、D9 修改，Node 不再经 host 和 guardian 执行 Git。下文提到 host、guardian、Scope、Run 的前置状态和证据仍按被取代的实现登记，等该决策实现合入后再按最终实现同步；停止证据本身的义务见[Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
+
 依据[已实现的受理与 Git 执行分离决策](../../../decisions/node/repository/20260925-clone-git-effects-run-outside-the-admission-worker.md)。
 本文件登记“受理不等待 Git”与“在途执行不被重复驱动”两项承诺，desktop 实现见 `apps/ora-node/src/service/clones.rs`
 与 `repository/drive.rs`；
@@ -84,4 +86,4 @@ Git 移出 worker 后，恢复节拍或重复受理在原 Run 仍运行时再次
 
 ### 决策依据
 
-受理与 Git 执行分离 D2、D3、D5，不变量 2、4、7；执行契约 D6；process integration D3。
+受理与 Git 执行分离 D2、D3、D5，不变量 2、4、7；执行契约 D6；[Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D2、D4。

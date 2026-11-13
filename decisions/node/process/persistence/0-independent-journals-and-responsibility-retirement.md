@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # 宿主与 Guardian 分别提交日志，当前保留全部责任记录
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host 和 guardian 的独立日志不再存在，尝试只记在 Node 数据库里。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 host.sqlite 保存管理意图和历史查询投影，guardian.sqlite 保存接受与运行事实；各自使用
 SQLite WAL 和 synchronous=FULL。接受回复晚于事务提交；不依赖跨库事务。

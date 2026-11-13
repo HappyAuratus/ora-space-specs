@@ -1,8 +1,10 @@
 ---
-status: implemented
+status: superseded
 ---
 
 # 本机控制与输出分流，使用有界 MessagePack 请求和查询恢复
+
+> 已被取代：本决策由 [Node 直接执行自己的 Git](../../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，原因：host 退役后不再有 Node 与 host 之间的本机协议。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 host／guardian 以本文为历史依据。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 当前 Linux Node—host 使用控制和输出两个端点；host—guardian 保留 Control／Events／I/O
 通道绑定，但尚不提供事件订阅。查询原身份及历史事实恢复管理，不以通知流作为唯一事实来源。
