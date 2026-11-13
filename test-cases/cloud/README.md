@@ -230,12 +230,12 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## 模型接入根决策
 
 [模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `approved`，
-后续决策 [长请求的空闲超时与总上限](../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)为 `implemented`（cloud#367）。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，后续决策的三条按 `4183eb9b`），8 项汇总为 6 Covered / 2 Partial / 0 Missing。
+后续决策 [长请求的空闲超时与总上限](../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)为 `approved`（D1–D3 已由 cloud#367 实现，D4 待 cloud#369）。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，后续决策 D1–D3 的三条按 `4183eb9b`），9 项汇总为 6 Covered / 2 Partial / 1 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| model-proxy | [模型接入](model-proxy/in-process-model-proxy.md) | Key 或上游信息泄露、未登记或跨项目的执行拿到令牌、会话结束后请求继续、Agent 换模型或夹带认证头、运行超过 24 小时后模型访问失效、长请求被令牌到期或固定时限切断、被切断的流像正常结束一样收尾 |
+| model-proxy | [模型接入](model-proxy/in-process-model-proxy.md) | Key 或上游信息泄露、未登记或跨项目的执行拿到令牌、会话结束后请求继续、Agent 换模型或夹带认证头、运行超过 24 小时后模型访问失效、长请求被令牌到期或固定时限切断、被切断的流像正常结束一样收尾、被切断后 Agent 反复重发 |
 
 ## 登录与会话根决策
 
