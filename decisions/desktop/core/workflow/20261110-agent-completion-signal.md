@@ -147,9 +147,9 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 1. **契约**：`NodeCompletionRequester::Agent`、`confirmAgentCompletion { signalId }`、`agent_signal_pending` / `agent_confirmation_pending` 与 `WorkflowNodeSignalChanged` 已落地；客户端不再提供 `requester`，服务端按信号与 force 路径派生。
 2. **host 能力与门禁**：完成 MCP server、per-attempt token、park 信号绑定、双 blocker 门禁、确认校验与自动接受已接线。`agent_signal_pending` / `agent_confirmation_pending` 在 park 时物化进快照 blockers，卡片、投影与完成门禁读同一事实；跨回合的旧 `agentSignal` / `confirmation` 会被清除。
-3. **前端**：新建或重新保存的交互节点写入 `completionSignal: "agent"` 与 `schemaVersion: 4`，旧冻结图仍按 `end_turn` 读取；步骤卡片按 D5 矩阵展示，首轮有信号时主操作同时发送两个确认字段，首轮无信号时次操作发送 `confirmInitialTurn` + `force`；自动接受只在已结算的人类回合触发。
-4. **恢复与运行边界**：Session 持久化 `host_capabilities`，重启后按冻结节点策略恢复完成工具；attempt 结束、节点完成与运行取消都会撤销 token；完成 server 限制 64 KiB 请求体与 10 秒连接总时限。
-5. **验证**：核心用例证据已全部改为 `Covered`，直接测试见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
+3. **前端**：新建或重新保存的交互节点写入 `completionSignal: "agent"` 与 `schemaVersion: 4`，旧冻结图仍按 `end_turn` 读取；`completion.files`、`completionSignal` 与 `autoAcceptAgentCompletion` 共享 version-4 边界，删空文件不会把仍带策略的节点降回 3，关闭交互模式会清理这两个策略字段；步骤卡片按 D5 矩阵展示，首轮有信号时主操作同时发送两个确认字段，首轮无信号时次操作发送 `confirmInitialTurn` + `force`；自动接受只在已结算的人类回合触发。
+4. **恢复与运行边界**：Session 持久化 `host_capabilities`，重启后按冻结节点策略恢复完成工具；只有交互式 agent-policy 节点签发 token 并注入完成指令，非交互节点即使保留策略字段也不会拿到 token 或工具；attempt 结束、节点完成与运行取消都会撤销 token；完成 server 限制 64 KiB 请求体与 10 秒连接总时限。
+5. **验证**：核心用例除保留的一处 `Partial` 外均为 `Covered`，直接测试见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
 
 ## 风险、未决问题与验收
 

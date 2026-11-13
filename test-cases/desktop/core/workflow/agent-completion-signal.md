@@ -281,19 +281,19 @@ park 完成后由 host 触发内部完成请求。
 
 - 空 `Explicit` 仍不注入任何插件 MCP；
 - host 完成工具是独立宿主能力，不进入 `SessionMcpSelection` 与 `Effective MCP Set`；
-- `end_turn` 节点不注入完成工具；
+- 只有交互式 agent-policy 节点签发 attempt token 并注入完成指令；`end_turn` 或非交互节点不注入完成工具，也不签发 token；
 - 恢复时按节点绑定与冻结策略重新推导；绑定缺失或损坏时不注入；
 - 节点离开 `Pending`/`Running` 后 token 失效，越权调用被拒绝。
 
 ### 禁止结果
 
-- 空 `Explicit` 因为宿主工具被放宽；`end_turn` 节点获得完成工具；撤销后旧 token 仍可用。
+- 空 `Explicit` 因为宿主工具被放宽；`end_turn` 或非交互节点获得完成工具或 token；撤销后旧 token 仍可用。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 宿主能力与插件 MCP 白名单隔离、撤销后 token 失效 | e2e `workflow_mcp_allowlists_survive_restore_rebuild_and_refresh`、`mcp_plugins_bound_to_agent_nodes_reach_only_the_frozen_allowlist`、`a_legacy_end_turn_node_never_receives_the_completion_tool`、`a_restarted_backend_restores_the_completion_tool`；单测 `an_oversized_request_is_rejected_before_reading_it` | `Covered` |
+| 宿主能力与插件 MCP 白名单隔离、撤销后 token 失效 | e2e `workflow_mcp_allowlists_survive_restore_rebuild_and_refresh`、`mcp_plugins_bound_to_agent_nodes_reach_only_the_frozen_allowlist`、`a_legacy_end_turn_node_never_receives_the_completion_tool`、`a_non_interactive_agent_policy_node_never_receives_the_completion_tool`、`a_restarted_backend_restores_the_completion_tool`；单测 `an_oversized_request_is_rejected_before_reading_it` | `Covered` |
 
 ### 决策依据
 
