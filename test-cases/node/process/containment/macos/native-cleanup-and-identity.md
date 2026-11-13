@@ -5,7 +5,7 @@
 
 ## 当前验收范围（2026-09-18）
 
-本文件全部用例属于未来 macOS adapter ADR 的验收输入；当前新 process 体系不支持该平台。
+本文件全部用例属于未来 macOS adapter ADR 的验收输入；desktop 里没有该平台的纳管实现：host／guardian 体系已经删除，ora-node 只有 Linux 版。
 状态继续 Missing，不从旧 reaper 或 Linux 测试推导原生清理保证。
 
 ## Native macOS Cleanup Reports Its Best Effort Boundary

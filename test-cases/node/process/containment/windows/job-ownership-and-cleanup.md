@@ -5,7 +5,7 @@
 
 ## 当前验收范围（2026-09-18）
 
-本文件全部用例属于未来 Windows adapter ADR 的验收输入；当前新 process 体系不支持该平台。
+本文件全部用例属于未来 Windows adapter ADR 的验收输入；desktop 里没有该平台的纳管实现：host／guardian 体系已经删除，ora-node 只有 Linux 版。
 状态继续 Missing，旧 process crate 或跨平台编译通过不能替代真实 Job／guardian 测试。
 
 ## Windows Workloads Join The Job At Creation Without Breakaway

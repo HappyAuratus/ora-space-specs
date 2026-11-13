@@ -8,7 +8,7 @@ implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示
 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md)。本目录下 architecture、
 control、lifecycle、recovery、io、protocol、persistence、upgrade、integration 的决策整份标为 `superseded`，正文作为
 历史记录保留；containment 的决策保持 `approved`，继续定义保证等级和各平台的强纳管方向。下面各节描述的是被取代的
-体系，取代者的实现合并之前，desktop 里仍在运行的是这套实现。
+体系；取代者已经实现，desktop 里的 host、guardian、helper 和 process 的 runtime、protocol、client 代码已经删除。
 
 本次直接修订既有 ADR 是 Eric 的明确要求；保留未来设计方向和验证缺口，不创建一批空白未来 ADR。
 以后恢复延期能力时，在对应叶子追加日期 ADR，继承或修改当前规则，再补直接验收。
