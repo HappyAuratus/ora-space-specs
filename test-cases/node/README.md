@@ -5,9 +5,9 @@
 
 ## Node 直接执行 Git
 
-[Node 直接执行 Git 决策](../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)经 owner 批准为
-`approved`，实现尚未合入 desktop 的主干；核心用例的证据按实现分支核对，缺口逐项写在用例里。它取代了 host／guardian
-体系，[process](process/README.md) 下只保留 containment 的用例。
+[Node 直接执行 Git 决策](../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)为
+`implemented`（Linux）；核心用例的证据按最终实现核对，缺口逐项写在用例里。它取代了 host／guardian 体系，
+[process](process/README.md) 下只保留 containment 的用例，它们原有的证据随被取代的代码一起删除。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

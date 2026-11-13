@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 直接执行自己的 Git：进程组终止，尝试锁给出停止证据，重启先收口，取代 host／guardian
@@ -12,28 +12,32 @@ Node 自己执行的 Git（clone、续作恢复、Revision 交付和 `ora-git`�
 
 行为上的变化：
 
-- 每次 clone 不再留下常驻进程，也没有经 host 轮询带来的固定等待；Node 只多一个常驻的 `ora-reaper`。
+- 每次 clone 不再留下常驻进程，也没有经 host 轮询带来的固定等待；Node 只多一个常驻的 `ora-reaper`。实测一次
+  clone 的 Git 准备时间中位数从 13.0 秒降到 1.0 秒（同一台 4 核 arm64 机器、同一项目，release 构建）。
 - Node 重启后，原命令已停止但拿不到退出状态的 clone 以 `Interrupted` 失败结束；续作恢复在同样的证据下视为已
   确认停止。原先"host 说从未启动"和"host 查不到记录"的区分不再存在。
 - 保证等级仍是 BestEffort，会逃过保证的情况见 D8。
 
-本文为 `approved`：方案已评审通过，实现尚未合入 desktop 的主干。核心用例登记在
-[Node 直接执行 Git 的核心用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)。
+本文为 `implemented`：Linux 部分已在 desktop 实现并验证，host、guardian、helper 和它们背后的 process 代码已经
+删除；最终实现没有偏离评审通过的决策。核心用例和每条义务的证据状态登记在
+[Node 直接执行 Git 的核心用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)，
+没有直接证据的义务在那里如实标为 Partial 或 Missing。
 
 - **涉及**：desktop 的 `apps/ora-node`（`managed/` 一层和 Node 数据库）、`crates/process`（`ora-process`）、
-  `apps/ora-reaper`；Node 的部署清单要带上 `ora-reaper`，去掉 host 和 guardian。
+  `apps/ora-reaper`；Node 的部署清单带上 `ora-reaper`，去掉 host 和 guardian。
 - **不涉及**：gitlancer 的 `GitRunner` 接口，clone、续作恢复和交付的业务状态机，Node 协议，Agent 和插件进程的
   启动方式。
 - **取代**：[`node/process`](../process/README.md) 下 architecture、integration、control、lifecycle、io、
   protocol、persistence、recovery、upgrade 九组决策整份被本文取代（D9）。Node 自己的 Git 是 host／guardian
   唯一的调用方，它不再经过 host 之后，这套体系没有调用方。
 - **不承担的迁移**：不保留 host 客户端，不提供新旧执行方式并存的阶段；旧 host 目录里的遗留尝试按 D7 一次性收口。
-- **平台**：本文只要求 Linux 实现。ora-node 目前只有 Linux 版；macOS 和 Windows 的对应机制和保证等级见 D6，
-  等 Node 支持这些平台时再落地。
+- **平台**：只实现了 Linux。ora-node 目前只有 Linux 版；macOS 和 Windows 的对应机制和保证等级见 D6，等 Node
+  支持这些平台时再落地。
 
 ## 背景
 
-host／guardian 体系为每条 Git 命令提供持久的运行身份、独立于 Node 的存续和收尾证据。它的代价在实际使用中显现：
+被取代的 host／guardian 体系为每条 Git 命令提供持久的运行身份、独立于 Node 的存续和收尾证据。它的代价在实际
+使用中显现：
 
 - 一次 clone 执行 16 条 Git 命令，每条各开一个 Scope，留下 16 个常驻 guardian，没有退休回收；
 - 每条命令经 Node、host、guardian 三段轮询，一次 clone 的固定等待约 12 秒（debug 构建，4 核 arm64）；
@@ -64,8 +68,8 @@ host／guardian 体系为每条 Git 命令提供持久的运行身份、独立�
 
 - **执行入口**：`ManagedGitRunner` 直接启动 git，不再有 host、guardian、Scope 和 Run。gitlancer 的 `GitRunner`
   接口不变，clone、续作恢复和交付的状态机不变；改动集中在 Node 的 `managed/` 一层。
-- **每条命令一个进程组**：git 是进程组长，Node 终止时对整个进程组发 `SIGKILL`。这是 `ora-process` 现有的能力，
-  Node 启动 Agent 会话已经在用。
+- **每条命令一个进程组**：git 是进程组长，Node 终止时对整个进程组发 `SIGKILL`。Node 启动 Agent 会话用的是
+  `ora-process` 的同一种能力。
 - **降权**：配置了工作负载用户时，在 fork 之后、exec 之前切换身份（`ProcessIdentity::Linux`：清空附加组、
   `setresgid`、`setresuid`、`no_new_privs`、清空能力集），不再套一层 `/usr/bin/setpriv`。少一层 exec，尝试锁的
   fd 只在一个地方处理，Node 镜像也不再依赖 `setpriv`。
@@ -94,7 +98,7 @@ host／guardian 体系为每条 Git 命令提供持久的运行身份、独立�
   2. 派发时 Node 打开锁文件，加独占 `flock`，然后启动 git。
   3. git 继承这个 fd，它的所有后代默认也继承。fd 继承不受文件权限影响，降权后的 git 照样拿得到。
 - 这个 fd 在 Node 进程里始终带 `CLOEXEC`，只在目标子进程 exec 之前清掉。Node 并发启动的 Agent 和其他 git 拿不到
-  它。`ora-process` 的降权步骤会给 3 号以上的 fd 全部设 `CLOEXEC`，需要增加"保留指定 fd"的能力。
+  它。`ora-process` 的降权步骤给 3 号以上的 fd 全部设 `CLOEXEC`，只保留启动方指明的那一个。
 
 **停止证据**
 
@@ -123,8 +127,8 @@ Node 关闭自己手里的那份 fd，重新打开锁文件，尝试非阻塞地
 
 **关闭 git 的后台维护**
 
-Node 执行的每条 git 命令都带 `-c gc.auto=0 -c maintenance.auto=false`，或用等价方式关闭后台 gc 和 maintenance。
-否则 fetch 之后 git 会脱离出去做 gc，它继承了锁，会把停止确认拖到 gc 结束，而这部分工作没有人认领。
+Node 执行的每条 git 命令都带 `-c gc.auto=0 -c maintenance.auto=false`，关闭后台 gc 和 maintenance。否则 fetch
+之后 git 会脱离出去做 gc，它继承了锁，会把停止确认拖到 gc 结束，而这部分工作没有人认领。
 
 **哪些命令要锁**
 
@@ -220,7 +224,7 @@ Node 启动时，在进入任何业务恢复（clone 恢复、续作恢复的交
 
 ### D6：平台和部署形态
 
-本文只要求 Linux 实现。其他平台写明对应机制，Node 支持该平台时按下表落地，不需要重新决策；做不到的写明降到
+只有 Linux 一列已经实现。其他平台写明对应机制，Node 支持该平台时按下表落地，不需要重新决策；做不到的写明降到
 什么程度。
 
 | | Linux | macOS | Windows |
@@ -230,7 +234,7 @@ Node 启动时，在进入任何业务恢复（clone 恢复、续作恢复的交
 | 按线索核对身份 | pid 加启动时间 | pid 加启动时间 | 不需要：命名 Job Object 本身就是身份 |
 | `ora-reaper` | 可用 | 可用（同一份 Unix 实现） | 可用（Job 实现），Node 场景落地时验证 |
 | 保证等级 | BestEffort | BestEffort | BestEffort；Job 不允许脱离时接近 Strong，落地时另行确认 |
-| 本文是否要求实现 | 是 | 否 | 否 |
+| 是否已实现 | 是 | 否 | 否 |
 
 和部署形态的关系：
 
@@ -256,7 +260,9 @@ Node 启动时，在进入任何业务恢复（clone 恢复、续作恢复的交
   两个旧配置项保留为兼容字段，都不再必填，按旧格式写的配置不用改就能加载：
   - `host_directory`：只用来找到并删除旧的 host 目录；
   - `expected_uid`：接受但不使用。
-- **部署清单**：Node 的运行资产去掉 host 和 guardian，加上 `ora-reaper`。
+- **部署清单**：Node 的运行资产去掉 host 和 guardian，加上 `ora-reaper`，desktop 的 Node 镜像已经这样打包。
+  自己拉起 Node 的部署在升级到本实现之前，要先带上 `ora-reaper` 并停止启动 host：找不到 reaper 时 Node 启动
+  失败（D1）。
 
 ### D8：保证边界
 
@@ -295,7 +301,8 @@ Strong（纳管范围内完整的退出证据）需要 cgroup：它能列出并�
 | [upgrade](../process/upgrade/0-version-coexistence-and-safe-migration.md) | 升级由本文 D7 承接 |
 
 **保持有效**：`node/process/containment` 下的 guarantees、linux、macos、windows 保持 `approved`。它们定义保证等级
-和各平台的强纳管方向，不依赖 host／guardian 是否存在；本文沿用其中 BestEffort 和 Strong 的定义（D8）。
+和各平台的强纳管方向，不依赖 host／guardian 是否存在；本文沿用其中 BestEffort 和 Strong 的定义（D8）。它们的
+用例原先由 process 代码的测试作证据，这些测试随代码一起删除，对应义务的状态改为 Missing。
 
 **部分修改**（原决策状态不变，标题下加历史决策提示）：
 
@@ -348,7 +355,7 @@ Strong（纳管范围内完整的退出证据）需要 cgroup：它能列出并�
 
 下面 13 条义务登记在
 [Node 直接执行 Git 的核心用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)，
-每条的证据状态以那里为准：
+每条的证据状态以那里为准。本文为 `implemented` 不表示 13 条都是 Covered：
 
 1. Node 在启动 git 之后、写下终止线索之前被强杀：进程还在时判为未停止，进程结束后判为已停止。
 2. 后代换了进程组或会话，仍然活着时停止证据不成立。
@@ -366,14 +373,17 @@ Strong（纳管范围内完整的退出证据）需要 cgroup：它能列出并�
 
 ## 落地顺序
 
-1. **本文评审**：`proposed` → `approved`，同时登记核心用例，把 D9 的九组决策改为 `superseded`，并处理只服务它们
-   的用例。到这一步为止运行中的系统不变。
+五步都已完成：
+
+1. **本文评审**：`proposed` → `approved`，同时登记核心用例，把 D9 的九组决策改为 `superseded`，并删除只服务它们
+   的用例。
 2. **`ora-process` 扩展**：降权时保留指定 fd；启动方可以让自己的子进程不向 reaper 登记；能判断 reaper 是否自己
-   退出了。不改变现有调用方的行为。
+   退出了。不改变原有调用方的行为。
 3. **Node 直接执行**：尝试锁、终止线索、收尾、重启收口、reaper 接入、Node 数据库迁移和旧尝试收口，替换
    `managed/` 里经 host 的实现。从这一步开始，Node 不再启动 host 和 guardian。
 4. **删除**：process 的 runtime、protocol、client、host、guardian、helper 代码，以及部署清单里的对应资产。
-5. **本文改为 `implemented`**：按最终实现同步正文和用例证据。
+5. **本文改为 `implemented`**：按最终实现同步正文和用例证据，包括 clone、续作恢复用例里原先按 host／guardian
+   登记的证据，以及 containment 用例失去的证据。
 
 第 2、3、4 步在 desktop 的同一个 PR 里，按上面的顺序分成独立的 commit：涉及权限的改动、行为变化和大量删除
 各自可以单独检视。

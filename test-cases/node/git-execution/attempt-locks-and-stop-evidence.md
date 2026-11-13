@@ -1,14 +1,14 @@
 # Node 直接执行 Git 的核心用例
 
-依据[已批准的 Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)。
+依据[已实现的 Node 直接执行 Git 决策](../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)。
 下文的 D 编号、不变量编号和"验收义务"编号都指这篇 ADR。
 
 本文覆盖尝试锁给出的停止证据、锁的归属、命令收尾、终止线索、`ora-reaper`、重启收口、升级和常驻进程。clone、
 续作恢复和交付各自的业务义务登记在 [repository](../repository/minimal-clone-execution.md) 和
 [revision](../revision/restore-deadline-and-stop-confirmation.md) 的用例里，本文的证据不替代它们。
 
-证据按 desktop 实现分支的提交 `3e0b5607` 核对，该提交的 CI 全部通过，尚未合入 desktop 的主干。测试路径相对
-desktop 仓库根目录。需要 root 才能运行的测试默认被忽略，不在 CI 里运行，对应义务如实标为 Partial。
+证据按 desktop 的最终实现核对，测试路径相对 desktop 仓库根目录。需要 root 才能运行的测试默认被忽略，不在 CI 里
+运行，对应义务如实标为 Partial。
 
 | 验收义务 | 用例 | 状态 |
 |---|---|---|
@@ -329,7 +329,7 @@ Node 已启动并拉起 reaper。
 | 义务 | 直接证据 | 状态 |
 |---|---|---|
 | 完成后只剩 reaper，没有锁文件（义务 13） | `repository_recovery.rs` 的 `completed_clone_leaves_no_process_but_the_reaper` | Covered |
-| 固定等待的前后对照（义务 13） | 没有自动化用例；前后对照是一次性的实测，不由测试守护 | Missing |
+| 固定等待的前后对照（义务 13） | 没有自动化用例；前后对照是一次性的实测（Git 准备时间中位数 13.0 秒降到 1.0 秒），不由测试守护 | Missing |
 
 ### 决策依据
 

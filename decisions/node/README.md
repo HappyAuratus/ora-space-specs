@@ -11,7 +11,7 @@
 | `plugin-runtime` | Plugin 安装、启动、停止、运行和本地状态 |
 | `effect` | ResourceAdapter、ConsumerAdapter、观测、mutation 和 receipt |
 | `filesystem` | Node 文件系统访问、路径边界和 Workspace 文件操作 |
-| [git-execution](git-execution/0-node-runs-git-directly-with-attempt-locks.md) | Node 直接执行自己的 Git：进程组、尝试锁给出的停止证据、重启收口；取代 process 下的 host／guardian 决策 |
+| [git-execution](git-execution/0-node-runs-git-directly-with-attempt-locks.md) | Node 直接执行自己的 Git：进程组、尝试锁给出的停止证据、重启收口；取代 process 下的 host／guardian 决策；implemented（Linux） |
 | [process](process/README.md) | host／guardian 进程运行宿主的决策已被 git-execution 取代，作为历史记录保留；containment 继续定义保证等级和强纳管方向 |
 | `protocol` | Node Protocol 消息、握手、事件、重放和 Transport 边界 |
 | `revision` | 运行成果的内部快照、增量 bundle 与对象存储上传 |
