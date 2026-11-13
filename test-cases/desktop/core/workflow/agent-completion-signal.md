@@ -32,7 +32,7 @@ agent 调用 `ora_complete_workflow_step({ attemptToken })`。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 无 token / 旧 token / 跨 session 被拒绝，同 attempt 幂等 | `crates/backend/src/workflow/run/interactive/completion_server.rs` 的 `an_unknown_token_is_a_tool_error_and_a_wrong_path_is_unauthorized`、`a_tool_call_accepts_the_attempt_token_and_binds_to_its_turn`；e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it` | `Covered` |
+| 无 token / 旧 token / 跨 session 被拒绝，同 attempt 幂等 | `crates/backend/src/workflow/run/interactive/completion_server.rs` 的 `an_unknown_token_is_a_tool_error_and_a_wrong_path_is_unauthorized`、`a_tool_call_accepts_the_attempt_token_and_binds_to_its_turn`；`agent_signal.rs` 的 `unknown_and_revoked_tokens_are_rejected_with_the_adr_reason`（stale_attempt / not_awaiting）；e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it` | `Covered` |
 | park 只绑定结算 attempt，旧请求丢弃 | e2e `the_agent_signal_binds_to_the_turn_and_the_human_confirmation_completes_it`、`a_new_turn_without_a_signal_clears_the_previous_one` | `Covered` |
 
 ### 决策依据
@@ -221,7 +221,7 @@ park 完成后由 host 触发内部完成请求。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 自动接受只在结算后、非首轮、非异常时走同一门禁 | e2e `auto_accept_completes_a_settled_human_turn_without_the_card`；单测 `a_headless_auto_accept_records_auto_confirmation`；组件 `auto-accepts a settled human turn when the node opts in` | `Covered` |
+| 自动接受只在结算后、非首轮、非异常时走同一门禁 | e2e `auto_accept_completes_a_settled_human_turn_without_the_card`；单测 `a_headless_auto_accept_records_auto_confirmation`、`a_manual_confirmation_on_an_auto_accept_node_is_recorded_as_human`；前端 `shows the abnormal exit instead of a confirmation for a precise stop with a signal` | `Covered` |
 
 ### 决策依据
 
@@ -256,7 +256,7 @@ park 完成后由 host 触发内部完成请求。
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 缺 `completionPolicy` 走 legacy；`agent` 缺信号仍阻塞 | 单测 `completion_meta_defaults_to_end_turn_and_round_trips_agent_fields`、`agent_policy_materializes_the_signal_gate`、`a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`；e2e `a_legacy_end_turn_node_never_receives_the_completion_tool` | `Covered` |
+| 缺 `completionPolicy` 走 legacy；`agent` 缺信号仍阻塞 | 单测 `completion_meta_defaults_to_end_turn_and_round_trips_agent_fields`、`agent_policy_materializes_the_signal_gate`、`a_legacy_node_is_materialized_and_blocked_by_an_unsettled_turn`、`prepare_materializes_the_frozen_completion_policy`；e2e `a_legacy_end_turn_node_never_receives_the_completion_tool` | `Covered` |
 
 ### 决策依据
 
