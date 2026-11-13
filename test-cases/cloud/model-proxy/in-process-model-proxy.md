@@ -1,11 +1,13 @@
 # 模型接入：部署级连接、临时令牌、强制模型与连续运行
 
-依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）。
-下文的 D 编号与不变量编号都指这篇根决策。
+依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）
+和它的后续决策 [长请求的空闲超时与总上限](../../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)
+（`approved`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后四条用例的编号指后续决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"Model Access Survives A Project Running Past Twenty-Four Hours"
 一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
-已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。
+已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。后续决策 D1–D3 的三条用例读取 cloud `4183eb9b`
+（ora-space/cloud#367 的合并提交）；D4 一条等 ora-space/cloud#369 合并后按合并提交登记。
 
 ## Upstream Keys Stay In The Cloud Process
 
@@ -34,9 +36,10 @@
   `TestGrantReplacementExpiryIsolationAndPackageSnapshot`。
 - 决策依据：D2、D3，不变量 3。
 
-## An Ended Or Expired Token Stops New And In-Flight Requests
+## An Ended Session Stops Its Requests And An Expired Token Starts None
 
-- 风险：会话结束或执行中断之后，Agent 还能用临时令牌发模型请求，或者结束前发出的请求继续消耗上游。
+- 风险：会话结束或执行中断之后，Agent 还能用临时令牌发模型请求，或者结束前发出的请求继续消耗上游；过期的令牌还能
+  发起新请求。令牌过期本身不取消进行中的请求，那一条见下文“An Admitted Call Is Not Cut By Its Token's Expiry”。
 - 前置状态：一个会话持有有效的临时令牌，并有一个正在进行的模型请求。
 - 触发：会话结束；令牌过期后发新请求和续期；Cloud 重启后用重启前的令牌。
 - 必须成立：会话结束时进行中的上游请求被取消；过期的令牌不能发新请求，也不能续期；重启前的令牌在重启后无效。
@@ -73,3 +76,76 @@
   签发时刻放到 25 小时前和 3 年前，分别验证 Node 申请授权后续期、Agent 凭临时令牌经代理发模型请求（另有新会话 clone），
   各路径互不依赖；证书在这段时间内到期，对应路径就会因 TLS 校验失败。
 - 决策依据：D2。
+
+## An Admitted Call Is Not Cut By Its Token's Expiry
+
+- 风险：用有效令牌发起的长请求，在令牌到期时被切断——无论 Node 是否已经续期；或者在别的执行签发授权、续期被拒时，
+  顺带被清理掉。
+- 前置状态：一个会话持有临时令牌，并有一个正在进行的模型请求。
+- 触发：请求进行中 Node 续期，然后越过续期前的到期时刻；请求进行中令牌过期，随后该令牌续期被拒、另一个执行签发授权
+  （清理过期授权）、用过期令牌发新请求；最后会话结束。
+- 必须成立：进行中的请求跑完并正常收尾；过期的令牌不能续期、不能发新请求；这个授权在最后一个请求结束后被移除；会话结束
+  仍会取消它进行中的请求。
+- 禁止结果：请求因令牌到期、过期续期被拒或过期清理而中断；过期的令牌发起了新请求；过期授权的请求不能再被吊销。
+- 验证义务与证据：**Covered** — `internal/nodeservices/limits_test.go` 的
+  `TestRenewedGrantKeepsInFlightCallPastOriginalExpiry`（续期后请求跑过原到期时刻）、
+  `TestExpiredGrantKeepsRunningCallsUntilRevoked`（过期、续期被拒、别的执行触发清理后请求仍收尾，授权随后移除；过期后
+  `End` 仍取消）；`internal/nodeservices/service_test.go` 的 `TestEndCancelsActiveProvider`（吊销取消进行中的请求）。
+- 决策依据：后续决策 D1，不变量 1、2；根决策 D3。
+
+## Upstream Calls Are Bounded By Idle And Total Limits From Deployment Configuration
+
+- 风险：长推理或长输出因为固定的总时限被切断；或者卡住的上游无限占用连接和额度；或者部署配置写错后静默回退到默认值。
+- 前置状态：部署配置了（或没有配置）空闲超时和总上限；上游可能延迟发送响应头、输出后停住、或一直在输出。
+- 触发：上游在空闲超时之内发出响应头；上游晚于空闲超时才发响应头；上游输出几段后停住；上游持续输出超过总上限；
+  `V2_MODEL_IDLE_TIMEOUT`、`V2_MODEL_MAX_DURATION` 未设置、设为合法值、设为非法值或空闲超时大于总上限。
+- 必须成立：等待响应头只受空闲超时约束；连续超过空闲超时没有数据的请求被停止；持续超过总上限的请求被停止；未设置时
+  取默认值（2 分钟、30 分钟），合法值应用到两种协议的上游，非法值使配置被拒绝。
+- 禁止结果：存在独立于空闲超时的固定响应头时限或固定总时限；持续输出的请求被空闲超时切断；非法配置被接受。
+- 验证义务与证据：**Covered** — `internal/nodeservices/limits_test.go` 的 `TestRemoteProviderHeaderWaitBoundedOnlyByIdleLimit`、
+  `TestRemoteProviderIdleTimeoutAbortsResponse`、`TestRemoteProviderMaxDurationAbortsActiveStream`（流一直不空闲，只有总上限
+  能结束它）、`TestRemoteProviderLimitsValidation`；`internal/executionruntime/runtime_test.go` 的
+  `TestModelsFromEnvironmentAppliesRequestLimits`。
+- 决策依据：后续决策 D2，不变量 3、5。
+
+## A Call Stopped After Its Header Reaches The Agent As A Failure
+
+- 风险：响应头发出后请求被停止，流却像正常结束一样收尾，Agent 把半截内容当成完整回答并带着它继续请求；或者为了中止
+  响应而打断了不经 Agent 路由的进程内调用方。
+- 前置状态：Agent 经模型路由的请求已经收到响应头和部分内容；生产装配中路由与 provider 之间有请求记录的包装。
+- 触发：空闲超时、总上限或吊销（`End`）在响应头之后停止请求；经请求记录包装时被空闲超时停止；纯模型轮次在收到
+  `[DONE]` 后结束上游连接。
+- 必须成立：Agent 读到的是失败的响应（连接中止），而不是正常结束的流；经请求记录包装时同样中止，并记为中断；进程内的
+  纯模型轮次照常完成。
+- 禁止结果：被停止的流以正常结束收尾；请求记录把它记为成功；进程内调用方因中止而崩溃。
+- 验证义务与证据：**Covered** — `internal/nodeservices/limits_test.go` 的 `TestRemoteProviderIdleTimeoutAbortsResponse`
+  （直接与经 `Unwrap` 包装两种）、`TestRemoteProviderMaxDurationAbortsActiveStream`、`TestRevocationAfterHeaderAbortsRemoteResponse`；
+  `internal/nodeservices/metrics_route_test.go` 的 `TestCutOffThroughRequestMetricsAbortsAndRecords`（真实路由加
+  `requestmetrics.Wrap`，断言中止并记为 `interrupted`）；`internal/requestmetrics/recorder_test.go` 的
+  `TestRecorderRecordsCutOffAsInterrupted`；`internal/modelturn/compatibility_test.go` 的
+  `TestRemoteProviderCompletionStopsOpenStreamAndJoins`（纯模型轮次在 `[DONE]` 后结束上游，不受中止影响）。Agent 收到中止后
+  的重发与失败原因见下一条用例（后续决策 D4）。
+- 决策依据：后续决策 D3，不变量 4。
+
+## A Call Cut At A Limit Is Not Re-Sent Within The Same Turn
+
+- 风险：请求被总上限或空闲超时切断后，Agent 把中止当作网络失败反复重发，每次都重新跑满限值、成倍消耗上游，可见文字
+  重复拼接；最后这一轮只显示“已取消”，用户不知道原因。
+- 前置状态：一个 Agent 会话的一轮正在进行，模型请求经 Agent 模型路由发出。
+- 触发：一个请求被总上限切断后 Agent 重发；一个请求被空闲超时切断后 Agent 重发，重发的请求再次被空闲超时切断后又重发；
+  被空闲超时切断后有请求正常结束，之后又被空闲超时切断；一次卡住同时切断两个请求；切断前已经开始的请求在切断后结束；
+  这一轮最后由 Node 以取消结束。
+- 必须成立：总上限切断后，这一轮之后的请求在发往上游前被拒绝；空闲超时切断后放行一次重发，它再被空闲超时切断起拒绝；
+  正常结束的请求让计数清零；同时被切断的请求只算一次，切断前开始的请求不影响计数；拒绝的应答是 422、协议对应的错误格式，
+  文字不含会触发重发的字样；这一轮以切断原因失败，页面显示可读的原因。
+- 禁止结果：被拒绝的请求到达上游；拒绝用了 408、409、429 或 5xx，或文字带有网络失败、超时等字样；空闲超时切断后的第一次
+  重发也被拒绝；被限值切断的一轮显示为用户取消。
+- 验证义务与证据：**Missing** — 由 ora-space/cloud#369 实现，合并后按合并提交登记。待登记的代表性测试（cloud#369 head
+  `9d01e0f6`）：`internal/agentruntime/retry_guard_test.go` 的 `TestRetryGuardRefusesEveryCallAfterTheTotalLimit`、
+  `TestRetryGuardAllowsOneRetryAfterAnIdleCut`、`TestRetryGuardCompletedCallClearsIdleCuts`、
+  `TestRetryGuardIgnoresCallsStartedBeforeTheCut`、`TestRetryGuardCountsOneStallForCallsCutTogether`、
+  `TestCancelledTurnCutAtLimitFailsWithTheLimit`；`internal/agentruntime/provider_test.go` 的
+  `TestProviderForCurrentObservedTurnAndPassthrough`（当前轮的每个请求都经过本轮的守卫，被拒的请求不记入请求记录）；
+  `frontend-v2/src/components/agent-thread/model/history.test.ts` 的“says which model limit stopped a turn that Node only
+  recorded as cancelled”（失败原因的文字）。
+- 决策依据：后续决策 D4，不变量 6、7。
