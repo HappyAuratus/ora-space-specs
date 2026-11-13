@@ -205,11 +205,11 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## Cloud 单进程根决策
 
 [Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`），7 项汇总为 2 Covered / 3 Partial / 2 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，租户授权一条按 `b03ac2b4`），8 项汇总为 2 Covered / 4 Partial / 2 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、全局锁回归、迁移乱序、运行超过 24 小时后失效 |
+| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、租户路由漏判成员或撤权后后台照常执行、全局锁回归、迁移乱序、运行超过 24 小时后失效 |
 
 ## 项目仓库根决策
 
