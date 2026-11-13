@@ -20,9 +20,9 @@ containment 的四份决策保持 `approved`，它们的 10 个用例继续保�
 
 ## 证据状态与当前范围
 
-containment 的用例描述 Strong 纳管和各平台纳管的长期方向，生产只启用 Linux BestEffort。它们现有的证据来自
-`process-runtime` 和 `ora-process-helper` 的测试，这些代码随 host／guardian 一起退役；取代者的实现合入 desktop
-主干后，这些义务没有直接证据，届时按实际状态改为 Missing。
+containment 的用例描述 Strong 纳管和各平台纳管的长期方向，生产只有 Node 直接执行 Git 的 BestEffort。它们原有的
+证据来自 `process-runtime` 和 `ora-process-helper` 的测试，这些代码已随 host／guardian 一起删除，10 个用例的义务
+现在都没有直接证据，状态均为 Missing，作为将来强纳管落地时的验收输入保留。
 
 Covered 表示义务有直接证据；Partial 保留组合或平台缺口；Missing 没有直接证据。特权测试被忽略时不算通过。
 

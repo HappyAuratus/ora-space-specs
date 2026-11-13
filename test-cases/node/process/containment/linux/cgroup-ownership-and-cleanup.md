@@ -5,8 +5,9 @@
 
 ## 当前验收范围（2026-09-18）
 
-当前 rootless 用例仍是交付义务；helper 仅有预检／inspect 和底层启动前入组能力。
-其余 cgroup Strong 用例作为未来平台 ADR 输入保留，不因配置拒绝测试或 ignored 特权测试变为 Covered。
+host、guardian、`process-runtime` 和特权 helper 已随[Node 直接执行 Git 决策](../../../../../decisions/node/git-execution/0-node-runs-git-directly-with-attempt-locks.md)删除，desktop 里现在没有
+Linux 纳管实现；Node 自己的 Git 靠进程组和尝试锁收尾，保证等级是 BestEffort。下文全部用例作为将来 Linux 强纳管
+落地时的验收输入保留，原有证据随代码删除，状态均为 Missing；不从 Node 直接执行 Git 的测试推导纳管保证。
 
 ## Rootless Cleanup Retains Captured Identities Without Claiming Strong Containment
 
@@ -37,10 +38,10 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 普通用户准入、重传、直接退出后后代收尾及 Run 隔离 | `crates/process-runtime/tests/linux_best_effort.rs` 在普通用户 Linux 通过真实进程验证，独立 pidfd 检查目标退出；尚未接入生产 Client／guardian | `Partial` |
-| 已捕获成员脱离 session 后仍可停止，通知不冒充退出 | 同文件 `tracked_member_is_stopped_after_setsid` 与 `notification_does_not_manufacture_cleanup_and_can_escalate`；只验证捕获后脱离，不宣称完整后代发现 | `Covered` |
-| 复用身份不被误伤，观测／资源失败保留责任并可恢复 | `crates/utils/tests/linux_process.rs` 验证过期 proc 观测拒绝、原 pidfd 退出和非 UTF-8 名称；实际数字 PID 复用、描述符耗尽及失败恢复注入尚缺 | `Partial` |
-| 所有者强杀后仍能定位、清理与恢复 | 尚无 guardian／持久所有权直接证据；Drop 测试不替代该义务 | `Missing` |
+| 普通用户准入、重传、直接退出后后代收尾及 Run 隔离 | 尚无直接证据：原有的 `process-runtime` Linux 尽力清理测试随被取代的实现删除 | `Missing` |
+| 已捕获成员脱离 session 后仍可停止，通知不冒充退出 | 尚无直接证据：原有的测试随被取代的实现删除。Node 自己的 Git 对脱离会话的后代靠尝试锁给出停止证据（见 [git-execution 用例](../../../git-execution/attempt-locks-and-stop-evidence.md)），那是另一种机制，不替代本行 | `Missing` |
+| 复用身份不被误伤，观测／资源失败保留责任并可恢复 | `crates/utils/tests/linux_process.rs` 仍验证过期 proc 观测拒绝、原 pidfd 退出和非 UTF-8 名称，但使用这些辅助函数的纳管实现已经删除，它不再是本义务的证据；实际数字 PID 复用、描述符耗尽及失败恢复注入尚缺 | `Missing` |
+| 所有者强杀后仍能定位、清理与恢复 | 尚无持久所有权的直接证据；Drop 测试不替代该义务 | `Missing` |
 
 ### 决策依据
 
@@ -76,9 +77,9 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 部署身份和可信配置门禁拒绝不安全输入 | `crates/process-runtime/tests/linux_helper.rs`、`apps/ora-process-helper/tests/cli.rs` 与 `crates/utils/tests/trusted_path.rs` 已在普通用户 Linux 通过；特权文件加载、完整权限矩阵和正向部署仍待验证 | `Partial` |
-| 管理通道先认证、有界处理且退出释放连接 | `crates/process-runtime/tests/helper_management.rs` 在普通用户 Linux 通过真实 Unix socket 验证 UID 拒绝、严格请求、过大帧、半包超时和监听退出；root 端点权限／清理、连接饱和及跨身份进程仍待验证 | `Partial` |
-| 真实特权启动限制目标、执行前降权且拒绝迁出 | 启动门禁已实现；普通用户运行 `crates/process-runtime/tests/helper_launch.rs`、`crates/utils/tests/child_identity.rs` 验证身份哨兵及执行前拒绝。`helper_launch_privileged.rs` 已编译但显式 ignored，真实 cgroup／凭据／迁移正向验收尚未执行；拒绝测试不能替代完整义务 | `Partial` |
+| 部署身份和可信配置门禁拒绝不安全输入 | 尚无直接证据：`ora-process-helper` 和 `process-runtime` 的 helper 测试随实现一起删除；`crates/utils/tests/trusted_path.rs` 只验证底层的可信路径打开，不替代本义务。特权文件加载、完整权限矩阵和正向部署同样待验证 | `Missing` |
+| 管理通道先认证、有界处理且退出释放连接 | 尚无直接证据：原有的管理通道测试随 helper 一起删除；需覆盖 UID 拒绝、严格请求、过大帧、半包超时、监听退出，以及 root 端点权限／清理、连接饱和及跨身份进程 | `Missing` |
+| 真实特权启动限制目标、执行前降权且拒绝迁出 | 尚无直接证据：原有的启动门禁测试和从未执行的特权验收入口随 helper 一起删除；`crates/utils/tests/child_identity.rs` 只验证底层的身份切换，不替代本义务 | `Missing` |
 
 ### 决策依据
 
@@ -111,7 +112,7 @@
 
 | 验证义务 | 验证方式与直接证据 | 状态 |
 |---|---|---|
-| 业务执行与派生前已纳管，声明权限阻止迁出 | `crates/process-runtime/tests/helper_launch_privileged.rs` 提供显式 root／cgroup 验收入口，尚未执行；仍需派生后代和创建同步点验证 | `Missing` |
+| 业务执行与派生前已纳管，声明权限阻止迁出 | 尚无直接证据：原有的 root／cgroup 验收入口从未执行，已随 helper 一起删除；需派生后代和创建同步点验证 | `Missing` |
 | 委派边界、等价部署及受限环境拒绝／降级正确 | 尚无直接证据；需记录内核、实际委派与容器／gVisor 配置的独立验证 | `Missing` |
 
 ### 决策依据
