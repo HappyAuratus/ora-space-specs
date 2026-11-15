@@ -4,6 +4,9 @@ status: implemented
 
 # Node 协议增加插件、Agent 会话与 Revision 交付执行：会话执行发出有序的非终态 Thread 事件，并接受会话命令
 
+> 历史决策：“上传授权是唯一不持久化输入”已由[显式 Session MCP](../agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)
+> 修改：MCP Setting 值同样只在运行时内存中，持久输入仅保留插件身份、版本和空 Settings。其余规则不变。
+
 Controller–Node 协议以新增能力与消息的方式承载第二个最小闭环。三类新执行沿用既有的执行身份、派发前
 持久化、事件序号、`EventAck` 与重放规则；其中 Agent 会话执行在终态之前持续发出**非终态 Thread 事件**，
 这些事件与终态事件共享同一执行内的序号空间、同样持久保留直到确认。会话执行在运行期间接受
