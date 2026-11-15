@@ -55,3 +55,13 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |
+
+## 显式 Session MCP
+
+[显式 Session MCP 决策](../../decisions/node/agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)于
+2026-11-15 经 owner 批准为 `approved`。实现尚未合入 desktop 的 main，这些义务目前都是 `Missing`；
+[会话执行用例](agent-runtime/session-execution.md)的证据保持原范围，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [显式 Session MCP](agent-runtime/session-mcp.md) | 空选择被当成全量或自动发现、乱序重复非规范选择被受理、部分快照照常交付、Node 本地路径或 Controller 命令进入 setup、Setting 值进入账本/JSONL/Thread/日志/错误/Debug、重发改写运行中的值、能力缺失仍发 session/new、失败终态或日志携带值、租约提前释放、Separate 工作负载拿到不可执行命令、共享解析器使 Desktop 行为漂移 |
