@@ -4,7 +4,7 @@
 
 e2e 覆盖的是「重启 → 停止 → 完成」路径，与记录 2 的「停止 → 重启」顺序不同，但落到同一判定（`turn_stopped` 不调度下一节点、继续后可正常完成），证据表按等价路径记录。
 
-证据表里仍标 `Partial` / `Missing` 的项是已知缺口：真实 agent 的重启恢复证据与人类回合步骤边界注入证据由 #567 承接，其余非阻断改进（e2e 停止时机、act card 截断展示、文档措辞、格式）由 #565 承接。
+证据表里仍标 `Partial` / `Missing` 的项是已知缺口：投影不读历史、`Text` 的 `output_missing` 只有代码路径覆盖、`prepare`/`get` 无专门测试、多后继/末节点文案、`Running` 重启边界、首轮 Refusal/缺失 stop reason、非交互回归与 while 区域整链等；真实 agent 重启恢复的两条路径已由本表升级为 `Covered`，`session/load` 假成功后的重建重试真实 agent 复现仍由 #671 承接。
 
 另一条已知限制：完成先按已存快照的 blockers 判定；`prepare` 复算新出现、快照未记录的 blocker 不会阻断 blocker 门禁。但 blocker 门禁通过不等于输出契约通过：`prepare` 仍会重跑 `Structured` 契约，失败时返回 `WorkflowNodeIncomplete`（ADR 风险段已登记）。
 
@@ -301,7 +301,7 @@ cleanup；之后的 `prepare`。
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | `Pending` 跨重启保留 | e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart`；`workflow::run::operations::tests::recovery_preserves_awaiting_nodes_and_prunes_orphaned_baselines` | `Covered` |
-| `session/load` 成功与 rebuild 两条路径都能继续 | 同一 e2e 用例的 `restart_scenario(refuse_load)` 两个分支使用 fake plugin；真实 agent 集成证据缺失，由 #567 承接 | `Partial` |
+| `session/load` 成功与 rebuild 两条路径都能继续 | 路径 1：[2026-11-16 记录](https://github.com/ora-space/circus/issues/671#issuecomment-6906003938)（Ora `d9134409`、codeagent 0.5.1、CLI 1.2605.00；文件 `1.3.14` mtime 2026-10-24，确认 11-11 后未升级；load 350ms、同一 session、EndTurn、节点保持 Pending）。场景 B：[记录](https://github.com/ora-space/circus/issues/671#issuecomment-6905384187)（代理注入 load 失败后 rebuild，1926 字节历史重放并完成一轮）。无自动化真实 agent 测试，CI 的 `restart_scenario(refuse_load)` 只覆盖 fake plugin 协议路径 | `Covered` |
 | `session/load` 假成功时重建并重试一次 | e2e `a_stale_loaded_session_rebuilds_and_retries_the_first_prompt`（fake plugin 注入 load 后首个 prompt 失败，断言只重建一次、重试成功、节点保持 `Pending`）；真实 agent 复现由 #671 承接 | `Partial` |
 | continue 失败保持 `Pending` 且仍可完成 | `workflow::run::interactive::cleanup_tests::a_failed_human_turn_restores_the_previous_snapshot_and_still_forces`；`workflow::run::operations::tests::failed_prompt_start_restores_the_awaiting_node_before_returning` | `Covered` |
 | `Running` 仍按既有失败边界处理 | 现有 boot sweep 测试部分覆盖 | `Partial` |
