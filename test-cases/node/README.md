@@ -65,3 +65,14 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | agent-runtime | [显式 Session MCP](agent-runtime/session-mcp.md) | 空选择被当成全量或自动发现、乱序重复非规范选择被受理、部分快照照常交付、Node 本地路径或 Controller 命令进入 setup、Setting 值进入账本/JSONL/Thread/日志/错误/Debug、重发改写运行中的值、能力缺失仍发 session/new、失败终态或日志携带值、租约提前释放、Separate 工作负载拿到不可执行命令、共享解析器使 Desktop 行为漂移 |
+
+## 同一 checkout 的多个 Agent 会话
+
+[共享 checkout 会话决策](../../decisions/node/agent-runtime/20261115-shared-checkout-agent-sessions.md)于
+2026-11-16 经 owner 批准为 `approved`。实现尚未合入 desktop 的 main，这些义务目前都是 `Missing`；
+[会话执行用例](agent-runtime/session-execution.md)、[显式 Session MCP 用例](agent-runtime/session-mcp.md)与
+[恢复截止与停止确认用例](revision/restore-deadline-and-stop-confirmation.md)的证据保持原范围，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [同一 checkout 的多个 Agent 会话](agent-runtime/shared-checkout-sessions.md) | 结束一个会话波及兄弟、共享目录无界累积会话、恢复在存活兄弟下移动工作区或未知停止证据被绕过、拒绝关闭控制连接或可交付、重发产生第二个终态、拒绝路径持久化 Setting 值、依赖兄弟的交接或特权遍历越出 checkout、深树耗尽描述符、硬链接保护关闭仍遍历、跨 checkout 并发遍历无界、能力缺失或混合版本边界被隐藏 |
