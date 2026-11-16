@@ -231,7 +231,7 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 
 [模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `implemented`（最后两项证据由 cloud#377 补齐），
 后续决策 [长请求的空闲超时与总上限](../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)为 `implemented`（D1–D3 由 cloud#367、D4 由 cloud#369 实现）。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，Key 不下发 Node 与重启后令牌失效两条按 cloud#377 head `7a4e0203`，后续决策 D1–D3 的三条按 `4183eb9b`，D4 一条按 cloud#369 head `00c2fa52`），9 项汇总为 9 Covered / 0 Partial / 0 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，Key 不下发 Node 与重启后令牌失效两条按 cloud#377 head `24d7466b`，后续决策 D1–D3 的三条按 `4183eb9b`，D4 一条按 cloud#369 head `00c2fa52`），9 项汇总为 9 Covered / 0 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

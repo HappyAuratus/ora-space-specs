@@ -8,7 +8,7 @@
 一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
 已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。后续决策 D1–D3 的三条用例读取 cloud `4183eb9b`
 （ora-space/cloud#367 的合并提交）；D4 一条读取 cloud `00c2fa52`（ora-space/cloud#369 的 head）。"Upstream Keys Stay In The Cloud
-Process" 与 "An Ended Session Stops Its Requests And An Expired Token Starts None" 两条读取 cloud `7a4e0203`（ora-space/cloud#377
+Process" 与 "An Ended Session Stops Its Requests And An Expired Token Starts None" 两条读取 cloud `24d7466b`（ora-space/cloud#377
 的 head，补上 Node 侧不见 Key 和重启后令牌失效的直接测试）。
 
 ## Upstream Keys Stay In The Cloud Process
@@ -26,7 +26,8 @@ Process" 与 "An Ended Session Stops Its Requests And An Expired Token Starts No
   `internal/nodeservices/secrets_linux_test.go` 的 `TestNodeIsHandedNoUpstreamSecret`（两种协议、三种认证方式的真实上游：
   Node 配置、它引用的 gitconfig 与证书文件、授权申请、续期与吊销的应答）；`internal/agentruntime/driver_secrets_test.go` 的
   `TestDriverIPCSendsNodeNoUpstreamSecret`（OpenCode 与 Claude Code 会话从安装、clone、启动、追加一轮到结束发给 Node 的
-  每条命令，并断言每种命令都收到了）。
+  每条命令，并断言每种命令都收到了）。两者都同时匹配 Key 与地址的原文、hex 和各字节对齐下的 base64，Basic 凭据或 JSON
+  `[]byte` 里的编码形式也会被抓到。
 - 决策依据：D1，不变量 1。
 
 ## A Session Token Is Issued Only For An Admitted Session Of The Same Project

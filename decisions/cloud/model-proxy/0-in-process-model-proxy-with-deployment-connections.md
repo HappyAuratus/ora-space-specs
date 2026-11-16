@@ -16,7 +16,7 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 结论 4、#1023 第四节的 O2 加 O3。2026-11-11 owner 在 circus #1073 把第一版收窄，本文据此重写：原先的部署配置文件
 （多上游、企业 CA）、代理挪到 Cloud 入口、用项目令牌申请授权和计量承诺都已删除。起草时读取的代码版本为 cloud `80e9c9f1`
 （`v2-server/internal/nodeservices`、`executionruntime`、`agentruntime`）、desktop `dcff8afe`（`apps/ora-node` 的
-`model_proxy`）。改为 `implemented` 时按 cloud `7a4e0203`（cloud#377 的 head）核对。核心测试用例见
+`model_proxy`）。改为 `implemented` 时按 cloud `24d7466b`（cloud#377 的 head）核对。核心测试用例见
 [模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md)。进行中请求的时限由后续决策
 [长请求的空闲超时与总上限](20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)规定，它回答了本文原先
 “未解决的问题”中的长请求一条。
