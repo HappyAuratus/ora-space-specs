@@ -4,6 +4,10 @@ status: approved
 
 # 同一 checkout 允许多个存活 Agent 会话，恢复继续独占；拒绝只终结当前会话
 
+> 历史决策：D2 的停止证据围栏已由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D5 扩展：Agent/探测的
+> stop_unconfirmed 与未排空升级的 legacy_unknown 只挡 prior_revision 恢复和该 execution 自己的交付，
+> 普通新会话仍按本决策准入；既有恢复围栏不变。
+
 一个 clone 执行创建的 checkout 可以同时承载多个互相独立的 Agent 会话，行为对齐 Desktop 在同一运行 Workspace 中按节点各建会话的方式。准入只在前序 Revision 恢复、停止确认未知等需要独占 checkout 的情况下拒绝，并以每 checkout 8 个未结束会话为上限。拒绝只把新会话登记为 `agent_failed`，不关闭 Controller 控制连接，也不影响兄弟会话；被拒绝的执行从未运行，也不可交付。Node 以 `shared_checkout_sessions` 能力声明这项行为。
 
 本决策为 `approved`：owner 于 2026-11-16 经四轮评审后批准 D1–D5，核心测试用例见文末“核心测试用例”。实现尚未合入 desktop 的 main，用例义务如实标为 `Missing`；实现合入并完成验证后，由落地运行按最终实现同步正文并改为 `implemented`。本决策覆盖 desktop 的 `ora-node-db`、`ora-node`、`ora-node-protocol` 及消费能力的 Controller。它不改变消息版本、执行身份、事件序号、JSONL、插件进程隔离或数据库布局，不需要数据库迁移，也不改 Cloud／v2 代码。受控模式的运行时单例不在本次范围内。`checkout_busy`、`checkout_session_limit` 与 `checkout_too_deep` 是稳定的终态 `detail` 代码，不是新的协议消息；交付失败码新增 Node 侧的 `checkout_too_deep`。分离工作负载 UID 的部署新增两项宿主要求：`fs.protected_hardlinks = 1`（Node 启动时检查，并在每次交接遍历前重新读取）和足够的 `RLIMIT_NOFILE`（文档要求；Node 在所有 checkout 上同时至多运行 9 次交接遍历）。

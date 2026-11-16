@@ -76,3 +76,14 @@
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | agent-runtime | [同一 checkout 的多个 Agent 会话](agent-runtime/shared-checkout-sessions.md) | 结束一个会话波及兄弟、共享目录无界累积会话、恢复在存活兄弟下移动工作区或未知停止证据被绕过、拒绝关闭控制连接或可交付、重发产生第二个终态、拒绝路径持久化 Setting 值、依赖兄弟的交接或特权遍历越出 checkout、深树耗尽描述符、硬链接保护关闭仍遍历、跨 checkout 并发遍历无界、能力缺失或混合版本边界被隐藏 |
+
+## 会话 MCP 刷新与宿主健康
+
+[会话 MCP 刷新与宿主健康决策](../../decisions/node/agent-runtime/20261116-session-mcp-refresh-and-host-health.md)于
+2026-11-16 经 owner 三轮评审批准为 `approved`。实现尚未开始，这些义务目前都是 `Missing`；
+[显式 Session MCP 用例](agent-runtime/session-mcp.md)、[共享 checkout 会话用例](agent-runtime/shared-checkout-sessions.md)与
+[尝试锁用例](git-execution/attempt-locks-and-stop-evidence.md)的证据保持原范围，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| agent-runtime | [会话 MCP 刷新与宿主健康](agent-runtime/session-mcp-lifecycle.md) | 刷新扩大白名单或发送部分列表、旧 generation 回滚目标、Setting 值进入账本/日志/停止记录、准入前结算 Executed 或 MCP 门禁结束 execution、受阻轮次无界等待、刷新失败后以 session/new 重建、同一进程 load 无界累积或升级不重启、在用包版本被删、宿主子进程不持锁被判已停止、跨主机凭 boot_id 确认停止、残留挡住普通后继或放行恢复、未排空升级起不来或旧会话被直接结算、无证据的运维释放、排队探测被判超时或清理被遗弃、HTTP 探测随跳转或代理外发秘密、三层状态互相冒充 |

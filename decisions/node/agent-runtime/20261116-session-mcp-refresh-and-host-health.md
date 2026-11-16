@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 保留会话身份刷新 MCP，以有界准入和停止证据隔离故障
@@ -10,7 +10,9 @@ Controller 持久保存 Session 的显式 MCP 选择，向 Node 提交完整内�
 刷新失败阻塞新 prompt，下一轮自动重试，始终禁止回退到
 `session/new`。配置完整、ACP 接受 revision、Host MCP Health 分别取证。
 
-本文为 `proposed`，不是现有实现的描述。需要修改共享 `agent-runtime` 的宿主策略、Node 对话准入、
+本决策为 `approved`：owner 于 2026-11-16 经三轮评审后批准 D1–D9，核心测试用例见文末“核心测试用例”。
+实现尚未开始，用例义务如实标为 `Missing`；实现合入并完成验证后，由落地运行按最终实现同步正文并
+改为 `implemented`。本文不是现有实现的描述。需要修改共享 `agent-runtime` 的宿主策略、Node 对话准入、
 停止责任与持久账本、MCP 包租约及探测客户端。D5 的停止移交、持久证据、终态前提及门禁适用于
 升级后的**所有 Node Agent 会话**，包括未启用 mcp_lifecycle 和空 MCP 的 v2 会话；不能通过能力
 协商退出这项停止保证，正常终态也要等待原停止证据。Node 生命周期模式禁止重建的策略不改变 Desktop 默认
@@ -471,8 +473,8 @@ placement 下的 workload UID 均未覆盖。测试记录与复现材料以
 推广为所有 Agent/版本都能恢复。没有持久历史或不能跨进程 load 的 provider 在需要重启时会 blocked；
 UI 对已知此类 Agent 的包升级及达到运行时 load 阈值的重启提前提示内存状态可能丢失，不能承诺自动新会话。
 
-这些修改不改变 Desktop 安装器激活语义。本文批准后再为 plugin-runtime 根决策补历史指针；本 PR
-只在 README 新增本 ADR 的 proposed 入口，不改前序两份 ADR 的状态。
+这些修改不改变 Desktop 安装器激活语义。批准时已为 plugin-runtime 根决策补 `> 历史决策：` 指针，
+不改前序两份 ADR 的状态。
 
 ## D7：探测绑定当前解析产物，明确执行身份与 HTTP 边界
 
@@ -578,7 +580,7 @@ BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃�
 
 ## 验收场景与评审重点
 
-本 ADR 尚未 approved，以下是可观察场景；此阶段不新增核心测试用例或宣称已有实现覆盖。
+以下是可观察的验收场景；长期系统承诺已登记为文末的核心测试用例，实现尚未开始，不宣称已有实现覆盖。
 
 - v2 连接只有 session_mcp 的旧 Node，非空选择拒绝，空选择仍可启动；重载保留 S，运行中丢 S 后
   停止派发并 EndSession。重发原 command 保留原 generation，拒绝 mcp_update_required 后不能记已送达。
@@ -614,7 +616,7 @@ BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃�
 
 ## 风险、资源边界与落地顺序
 
-以下风险已按 owner 的复审结论纳入方案；细化后的停止/对账、计数和兼容行为仍待本轮批准：
+以下风险已按 owner 的复审结论纳入方案，并随本文一同批准：
 
 | 项目 | 边界与承担方式 |
 | --- | --- |
@@ -637,8 +639,9 @@ owner 另已决定接受 300 秒轮次截止涵盖完整重启，可能让正常
 
 落地分三步，代码义务由 Node 产品实现运行承担，不转嫁给仅实现 v2 UI 的运行：
 
-1. 完成本文复审后标 approved；再在镜像目录登记核心用例为 Missing，并为被修改的 plugin-runtime、
-   会话命令及停止/共享 checkout 契约补历史指针。不在本 PR 提前改其他 ADR 的 implemented/README。
+1. 已完成：三轮复审后标 approved，在镜像目录登记核心用例（义务均为 Missing），并为被修改的
+   plugin-runtime 根决策、会话命令、显式 Session MCP 及共享 checkout 决策补 `> 历史决策：` 指针；
+   不改其他 ADR 的状态。
 2. Node 产品 PR 同批交付下表责任并通过边界测试，全部具备才广告新能力；Controller/v2 同版本接入
    轮次拒绝/失败、generation/attempt 对账、原 IdleTimeout 策略、重启风险提示和能力门禁。v2 的选择恢复/状态展示可独立
    先行，但不能提前宣称刷新/健康已完成。
@@ -654,4 +657,15 @@ owner 另已决定接受 300 秒轮次截止涵盖完整重启，可能让正常
 
 3. 产品实现评审通过后另开落地运行，以实际实现修订 ADR 并回填直接测试证据；产品 PR 合并后再合并
    implemented 状态。保留旧模式冻结 setup、独立会话身份、Node 不自动恢复 Agent 和可靠事件承诺，
-   不把 proposed 的资源取舍或尚未验证的停止行为称为已实现。
+   不把已批准但尚未验证的资源取舍或停止行为称为已实现。
+
+## 核心测试用例
+
+见[会话 MCP 刷新与宿主健康用例](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md)：能力门禁与
+白名单、generation 排序与无值内存输入、准入与轮次结算、只 load 原身份的失败恢复、每进程运行时 load
+计数与版本重启、尝试锁停止证据与重启收口、残留门禁、未排空升级的 legacy_unknown、可审计运维对账、
+精确版本租约与同文件系统 view、探测许可/预算/清理与 HTTP 边界，以及三层状态与 Setting 值隔离。实现
+尚未开始，义务如实标为 `Missing`；[显式 Session MCP 用例](../../../test-cases/node/agent-runtime/session-mcp.md)、
+[共享 checkout 会话用例](../../../test-cases/node/agent-runtime/shared-checkout-sessions.md)与
+[尝试锁用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)的证据保持各自范围，
+不推导本文新义务。

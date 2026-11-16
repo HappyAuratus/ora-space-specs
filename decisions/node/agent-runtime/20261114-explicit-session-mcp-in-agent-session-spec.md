@@ -4,6 +4,10 @@ status: approved
 
 # Node 从 AgentSessionSpec 的显式选择解析 Session MCP
 
+> 历史决策：D2/D3 的“一次冻结 setup”对声明 `mcp_lifecycle: true` 的会话已由
+> [会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D1–D4 修改：独立的内存更新可在安全点改变绑定；
+> 未启用生命周期模式的会话及 start 重发不更新值的规则不变。
+
 Controller 在 `start_agent_session` 的 `AgentSessionSpec.mcp` 中交付完整的 MCP 插件选择、精确版本和
 Setting 值；Node 使用已安装包解析一次完整的 Session MCP Snapshot，通过 ACP `session/new` 交付。
 省略或空列表均表示不交付插件 MCP；Node 不自动发现。Desktop 与 Node 共享纯解析规则和 ACP 映射。
