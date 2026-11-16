@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 项目仓库：一个项目绑定一个外部仓库的一个分支，Cloud 在进程内拉取到本机镜像并支持手动同步，私有仓库令牌加密存 PostgreSQL；第一版没有 Git server，不推回外部
@@ -11,11 +11,12 @@ status: approved
 一个按项目保存的令牌访问，令牌用部署配置的密钥加密后存在 PostgreSQL，只在 Cloud 进程里使用，不下发给 Node。
 Node 仍像现在一样从 Cloud 本机的镜像只读 clone。第一版没有 Git server，Agent 的改动不推送到 Cloud，也不推回外部仓库。
 
-本 ADR 处于 `approved`：owner 已评审通过，手动同步和令牌尚未实现；它是领域 `cloud/project-git` 的根决策。前提是
+本 ADR 处于 `implemented`：手动同步、当前快照随同步推进和私有仓库令牌已在 v2-server 落地（I7，circus #1057）；它是
+领域 `cloud/project-git` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）。2026-11-11 owner 在
 circus #1073 把第一版收窄为“只拉进来，支持私有仓库，推回以后再设计”，本文据此重写：原先的内嵌 Git server、ref 写入
-规则、推送事件、Node 改造、每轮交付、webhook 和推回都已删除。读取的代码版本为 cloud `80e9c9f1`
-（`v2-server/internal/projectrepos`、`nodeservices`、`pluginmarket`）。核心测试用例见
+规则、推送事件、Node 改造、每轮交付、webhook 和推回都已删除。读取的代码版本为 cloud `affb2a885d81eca9aed98dca84fbfc486c1f7429`
+（PR ora-space/cloud#375 合并后，`v2-server/internal/projectrepos`、`nodeservices`、`pluginmarket`）。核心测试用例见
 [项目仓库用例](../../../test-cases/cloud/project-git/external-repository-pull.md)。
 
 范围与兼容性边界：
@@ -127,5 +128,6 @@ circus #1073 把第一版收窄为“只拉进来，支持私有仓库，推回�
 
 1. **I7（circus #1057）**：D2 的当前快照、D3 的手动同步、D4 的令牌。完成条件：私有仓库能建项目和同步；同步后新会话
    从新提交开始、旧会话不变；强推、分支删除、认证失败各有测试；令牌不出现在日志、API 应答和 Node 的配置里；
-   `task v2:demo` 照常可用。
+   `task v2:demo` 照常可用。**已完成**（PR ora-space/cloud#375 合并于 `affb2a885`），核心用例证据见
+   [项目仓库用例](../../../test-cases/cloud/project-git/external-repository-pull.md)。
 2. **I11（circus #1061）**：删除 v1 Git 线，按上一节标记 ADR。

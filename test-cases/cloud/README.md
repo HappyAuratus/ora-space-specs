@@ -213,8 +213,9 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 
 ## 项目仓库根决策
 
-[项目仓库根决策](../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)为 `approved`，手动同步和
-私有仓库令牌尚待实现。证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，4 项汇总为 0 Covered / 2 Partial / 2 Missing。
+[项目仓库根决策](../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)为 `implemented`：手动同步、
+当前快照随同步推进和私有仓库令牌已由 I7（circus #1057）实现。证据按 cloud `affb2a88` 的 `v2-server/` 登记，4 项汇总为
+1 Covered / 3 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
