@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 模型接入：模型代理在 Cloud 进程里，模型连接是部署级的、来自环境变量，Key 只在进程内存，Node 为每个 Agent 会话申请临时令牌；取代 v1 的 model-gateway 和个人模型连接
@@ -10,13 +10,16 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 认证头和模型。这些都是 v2-server 现在的做法，本文把它们定为第一版的承诺，不新增机制。第一版没有个人或团队的模型
 连接，没有限流和配额，也不对用量计量作承诺。
 
-本 ADR 处于 `approved`：owner 已评审通过；它是领域 `cloud/model-proxy` 的根决策。前提是
+本 ADR 为 `implemented`：所述行为由 v2-server 实现，核心用例的每一条都有直接测试（最后两项由 ora-space/cloud#377 补齐）；
+它是领域 `cloud/model-proxy` 的根决策。前提是
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）。依据是 circus #1043 的
 结论 4、#1023 第四节的 O2 加 O3。2026-11-11 owner 在 circus #1073 把第一版收窄，本文据此重写：原先的部署配置文件
-（多上游、企业 CA）、代理挪到 Cloud 入口、用项目令牌申请授权和计量承诺都已删除。读取的代码版本为 cloud `80e9c9f1`
+（多上游、企业 CA）、代理挪到 Cloud 入口、用项目令牌申请授权和计量承诺都已删除。起草时读取的代码版本为 cloud `80e9c9f1`
 （`v2-server/internal/nodeservices`、`executionruntime`、`agentruntime`）、desktop `dcff8afe`（`apps/ora-node` 的
-`model_proxy`）。核心测试用例见
-[模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md)。
+`model_proxy`）。改为 `implemented` 时按 cloud `81499631`（cloud#377 的 head）核对。核心测试用例见
+[模型接入用例](../../../test-cases/cloud/model-proxy/in-process-model-proxy.md)。进行中请求的时限由后续决策
+[长请求的空闲超时与总上限](20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)规定，它回答了本文原先
+“未解决的问题”中的长请求一条。
 
 范围与兼容性边界：
 
@@ -29,7 +32,7 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 | --- | --- |
 | A1 D1：model-gateway 收进 Cloud 进程 | 继承 |
 | A1 D4：模型 Key 不下发给 Node，Node 和 Agent 只拿临时令牌 | 继承（D1、D3） |
-| A1 D2：部署连续运行不因内部凭据到期而失效 | 继承：本机服务的证书由 circus #1074 修（D2） |
+| A1 D2：部署连续运行不因内部凭据到期而失效 | 继承：本机服务的证书有效期由 circus #1074 改为 10 年（cloud#358）（D2） |
 | v2-server `executionruntime`：连接来自 `V2_MODEL_*`，每种协议一个上游、一个模型 | 继承，定为承诺（D1） |
 | v2-server `nodeservices`：每个项目一份本机回环服务，授权接口要求这份服务签发的客户端证书；临时令牌 10 分钟，只在内存 | 继承，定为承诺（D2、D3） |
 | v1 [个人模型连接根决策](../model-access/0-personal-model-connections-and-run-scoped-proxy.md)：连接和 Key 归个人；不变量 2“原始 Key 不进入 Cloud 服务”；替代方案里否决了“共享部署 Key”和“Cloud 转发并解密 Key” | 取代：这两个被否决的方案就是本文的做法（D1） |
@@ -45,7 +48,7 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 - **地址**必须是 `https`，不带用户信息、查询串和片段。上游可以是模型供应商，也可以是企业自己的模型网关。
 - **共用**：整个部署一份，所有租户、项目和用户都能用。
 - **Key 的位置**：只在环境变量和 Cloud 进程的内存里。不写进 PostgreSQL，不出现在 API 应答、日志和下发给 Node 的
-  任何消息里。模型目录接口只返回标识和显示名。
+  任何消息里。模型目录接口只返回标识和显示名，显示名就是配置的模型名。
 - **修改**：改环境变量后重启 Cloud。
 - **没有个人和团队连接**：用户不能自己添加模型连接或 Key。是否要加，由 circus #809 决定。
 
@@ -118,13 +121,13 @@ Key 只在 Cloud 进程的内存里，不入库，不下发给 Node。Node 为�
 
 ## 本决策未解决的问题
 
-1. **长时间的单次模型请求**：现在一次请求的截止时间取它开始那一刻的令牌到期时间，之后的续期不延长它；上游另有
-   5 分钟的总时限。很长的推理可能被切断。遇到时再定规则。
-2. **个人或团队的模型连接**：circus #809。
-3. **用量计量、限流和配额。**
-4. **多机时代理的位置和 Node 的认证方式**：随多机的决策一起定（A1“本决策未解决的问题”第 1 条）。
+1. **个人或团队的模型连接**：circus #809。
+2. **用量计量、限流和配额。**
+3. **多机时代理的位置和 Node 的认证方式**：随多机的决策一起定（A1“本决策未解决的问题”第 1 条）。
 
 ## 落地顺序
 
-1. 本文描述的行为 v2-server 已经具备，不需要新的实现。#1074 修好证书之后，D2 的第三条成立。
-2. **I11（circus #1061）**：删除 model-gateway，按上一节标记 ADR。
+1. 本文描述的行为 v2-server 起草时已经具备，没有新增实现。circus #1074（cloud#358）把本机服务证书改为 10 年后，D2 的
+   第三条成立；cloud#377 补上写给 Node 的内容不含 Key、Cloud 重启后旧令牌无效的直接测试，核心用例全部 Covered，本文
+   改为 `implemented`。
+2. **I11（circus #1061）**：删除 model-gateway，按“被取代的 v1 决策”一节标记 v1 的 ADR；不改变本文的承诺和状态。

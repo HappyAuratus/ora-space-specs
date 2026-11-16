@@ -1,26 +1,32 @@
 # 模型接入：部署级连接、临时令牌、强制模型与连续运行
 
-依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`approved`）
+依据 [模型接入根决策](../../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)（`implemented`）
 和它的后续决策 [长请求的空闲超时与总上限](../../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)
 （`implemented`，下称“后续决策”）。没有特别注明时，D 编号与不变量编号指根决策；最后四条用例的编号指后续决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"Model Access Survives A Project Running Past Twenty-Four Hours"
 一条读取的是 cloud `0ca0a9a0`（含 cloud#358）。根决策把 v2-server 现有的做法定为承诺，所以多数义务
 已有测试；用量计量、限流和个人连接不在承诺里，这里没有对应的用例。后续决策 D1–D3 的三条用例读取 cloud `4183eb9b`
-（ora-space/cloud#367 的合并提交）；D4 一条读取 cloud `00c2fa52`（ora-space/cloud#369 的 head）。
+（ora-space/cloud#367 的合并提交）；D4 一条读取 cloud `00c2fa52`（ora-space/cloud#369 的 head）。"Upstream Keys Stay In The Cloud
+Process" 与 "An Ended Session Stops Its Requests And An Expired Token Starts None" 两条读取 cloud `81499631`（ora-space/cloud#377
+的 head，补上 Node 侧不见 Key 和重启后令牌失效的直接测试）。
 
 ## Upstream Keys Stay In The Cloud Process
 
 - 风险：上游的 Key 或上游地址出现在 API 应答、日志或下发给 Node 的消息里，被用户或 Agent 拿到。
 - 前置状态：部署的环境变量配置了上游地址、Key 和模型。
 - 触发：读取模型目录接口；Agent 经代理发请求，上游返回错误；环境变量只配了一部分。
-- 必须成立：模型目录只返回标识和显示名；日志和错误信息不含 Key；配置不完整时 Cloud 拒绝启动，报错不含已配置的秘密。
-- 禁止结果：Key、上游地址或上游的模型名出现在目录接口的应答里；Key 出现在日志里。
-- 验证义务与证据：**Partial** — `internal/server/catalog_test.go` 的 `TestExecutionCatalogHTTP`；
+- 必须成立：模型目录只返回标识和显示名；日志和错误信息不含 Key；配置不完整时 Cloud 拒绝启动，报错不含已配置的秘密；
+  写给 Node 的配置、配置引用的文件、授权接口的应答和发给 Node 的命令都不含 Key 和上游地址。
+- 禁止结果：Key 或上游地址出现在目录接口的应答里、写给 Node 的任何内容里；Key 出现在日志里。显示名就是部署配置的
+  模型名（D1 只有这一个名字），它出现在目录里不算泄露。
+- 验证义务与证据：**Covered** — `internal/server/catalog_test.go` 的 `TestExecutionCatalogHTTP`；
   `internal/nodeservices/provider_test.go` 的 `TestRemoteProviderLogsStatusWithoutSecrets`；
-  `internal/executionruntime/runtime_test.go` 的 `TestModelsFromEnvironmentRejectsPartialConfigurationWithoutSecrets`。
-  已覆盖：目录不泄露上游绑定，日志不含秘密，不完整的配置被拒绝且不带出秘密。仍缺：没有检查写给 Node 的配置和消息里
-  不含 Key。
+  `internal/executionruntime/runtime_test.go` 的 `TestModelsFromEnvironmentRejectsPartialConfigurationWithoutSecrets`；
+  `internal/nodeservices/secrets_linux_test.go` 的 `TestNodeIsHandedNoUpstreamSecret`（两种协议、三种认证方式的真实上游：
+  Node 配置、它引用的 gitconfig 与证书文件、授权申请与续期的应答）；`internal/agentruntime/driver_secrets_test.go` 的
+  `TestDriverIPCSendsNodeNoUpstreamSecret`（OpenCode 与 Claude Code 会话从安装、clone、启动、追加一轮到结束发给 Node 的
+  每条命令，并断言每种命令都收到了）。
 - 决策依据：D1，不变量 1。
 
 ## A Session Token Is Issued Only For An Admitted Session Of The Same Project
@@ -44,10 +50,11 @@
 - 触发：会话结束；令牌过期后发新请求和续期；Cloud 重启后用重启前的令牌。
 - 必须成立：会话结束时进行中的上游请求被取消；过期的令牌不能发新请求，也不能续期；重启前的令牌在重启后无效。
 - 禁止结果：会话结束后上游请求继续；过期或重启前的令牌被接受。
-- 验证义务与证据：**Partial** — `internal/nodeservices/service_test.go` 的 `TestEndCancelsActiveProvider`、
-  `TestGrantReplacementExpiryIsolationAndPackageSnapshot`、`TestRemoteProviderCancelsAndDiscardsErrorBody`。
-  已覆盖：结束会话取消进行中的上游请求，过期的令牌不能使用和续期，取消会传到上游。仍缺：没有测试直接证明 Cloud 重启后
-  重启前的令牌无效（令牌只在内存里，这是结构性事实）。
+- 验证义务与证据：**Covered** — `internal/nodeservices/service_test.go` 的 `TestEndCancelsActiveProvider`、
+  `TestGrantReplacementExpiryIsolationAndPackageSnapshot`、`TestRemoteProviderCancelsAndDiscardsErrorBody`；
+  `internal/nodeservices/restart_test.go` 的 `TestRestartedServiceRejectsTokensIssuedBeforeTheRestart`（同一配置、同一状态
+  目录起第二个实例：状态目录里没有令牌，新实例对同一执行和绑定拒绝旧令牌的请求、续期和吊销，同时旧实例仍接受它、
+  新实例自己签发的令牌可用）。
 - 决策依据：D3，不变量 5、6。
 
 ## The Proxy Forces The Frozen Model And Forwards Nothing From The Caller
