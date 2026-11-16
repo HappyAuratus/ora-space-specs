@@ -2,365 +2,449 @@
 status: proposed
 ---
 
-# Node 以完整内存输入刷新会话 MCP，并独立报告宿主健康
+# Node 保留会话身份刷新 MCP，以有界准入和停止证据隔离故障
 
-Controller 保留工作流 Session 的显式 MCP 选择，向 Node 提交同一选择的新版本和配置。Node 在共享
-Agent Session Barrier 内通过 ACP `session/load` 收敛，不中断已经开始的 prompt，也不替换 execution
-或 provider session identity。健康探测由 Node 使用同一解析产物独立执行；配置完整、ACP 已接受的
-revision、Host MCP Health 是三个不能互相推导的事实。
+Controller 持久保存 Session 的显式 MCP 选择，向 Node 提交完整内存配置。Node 在安全点收敛：仅配置
+变化时用原 provider ID 执行 ACP `session/load`；包版本变化时先停止本 execution 的 Agent，再启动
+它自己的 Agent 并 load 原 provider ID。刷新失败阻塞新 prompt，下一轮自动重试，始终禁止回退到
+`session/new`。配置完整、ACP 接受 revision、Host MCP Health 分别取证。
 
-本文为 `proposed`。已批准的是扩展范围，以下 wire 形状、资源上限、确认和重放规则仍需评审。影响
-`node-protocol`、Node 会话宿主、Node 的 MCP 包租约、共享运行时与 MCP 客户端的宿主接缝；不改变
-Desktop Backend 既有行为，不启用 Node 重启后的 Agent 自动恢复。Controller 的业务存储和 v2 页面
-实现分别遵守其所属契约，本文规定它们必须满足的消费边界，不规定数据库表或 UI 组件。
+本文为 `proposed`，不是现有实现的描述。需要修改共享 `agent-runtime` 的宿主策略、Node 对话准入、
+停止责任与持久账本、MCP 包租约及探测客户端。Node 生命周期模式禁止重建的策略不改变 Desktop 默认
+策略；共享 `ora-utils` HTTP 探测改为不跳转、限制响应体，会同时改变 Desktop 的探测行为。Node 重启
+仍不恢复 Agent；Controller 的业务存储与页面实现遵守下述消费边界。
 
 ## 继承与修改
 
 承接本目录前序[共享 checkout 会话](20261115-shared-checkout-agent-sessions.md)，经它继承
 [显式 Session MCP](20261114-explicit-session-mcp-in-agent-session-spec.md)及
 [共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)。MCP 生命周期由会话宿主拥有，
-因此在本目录定义协议扩展，不再在 protocol 目录复制同一状态机。
+本文集中定义状态机及跨协议约束。
 
 | 前序约定 | 处理 |
 | --- | --- |
-| 显式 Session MCP D1：有序完整选择、最多 16 个 Server、Settings 紧凑 JSON 合计 64 KiB | 继承；每次新输入独立校验，空选择不自动发现 |
-| 显式 Session MCP D2/D3：一次冻结 setup，configuration revision 为 0；重发 start 不替换值 | 仅对逐会话选择新能力的执行扩展；start 重发仍不更新值，后续更新走独立的内存路径 |
-| [会话命令](../protocol/20260928-streamed-thread-events-and-session-commands.md) D4：用户轮次及结束命令持久受理 | 继承；新增 MCP 更新、查询与重测不进入 durable command queue，不冒充 `SessionCommandAccepted` |
-| [实时预览](../protocol/20261018-live-thread-previews.md)：非持久观察可失效、丢失后重新查询 | 继承这项边界；MCP 状态是独立查询回复，不进入 Thread 记录、事件序号或 Ack 窗口 |
-| Node 重启结算 interrupted，不重启原 Agent | 继承；MCP 值、Active 和健康不从 ledger 重建 |
-| [工作流显式选择](../../desktop/core/agent/session/mcp/20260912-workflow-explicit-selection.md) | 继承 Session 自身保存白名单和 fail closed；Node 始终没有 Automatic |
-| [ACP setup/refresh](../../desktop/core/agent/session/mcp/0-acp-session-setup-delivery.md) | 继承同一 resolver、完整快照、barrier、成功响应推进 Active、失败阻塞；远程配置与 prompt 的排序见 D4 |
-| [Host 健康探测](../../desktop/core/agent/session/mcp/20260916-mcp-health-probing.md) | 继承完整握手、事实分离、无值结果与内存缓存；Node 只探测已授权会话的绑定，不在插件安装时取得会话凭据 |
-| [插件安装](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md) D2：按 ID 使用期间拒绝替换/移除 | 对 MCP 增加精确版本租约与不同版本并存；被使用的字节仍不可替换/移除，Agent 等其他类别保持原规则（D6） |
-| 共享 checkout 的独立会话、恢复独占、数量上限和受控单例 | 继承；一次 MCP 更新/探测只属于一个 execution，不重启兄弟 Agent，也不改变 checkout 归属 |
+| 显式 Session MCP D1：有序完整选择，最多 16 个 Server，Settings 紧凑 JSON 合计 64 KiB | 继承；每份输入独立校验，空选择不自动发现 |
+| 显式 Session MCP D2/D3：一次冻结 setup，configuration revision 为 0；重发 start 不更新值 | 修改：逐会话启用生命周期能力后，独立的内存更新可改变绑定；start 重发仍不更新值 |
+| [会话命令](../protocol/20260928-streamed-thread-events-and-session-commands.md) D4：持久受理，拒绝即登记已送达 | 修改：新增可重试的未受理拒绝；准入前不得结算 Executed；已受理轮次可用可靠的无值失败事件结算（D4） |
+| [实时预览](../protocol/20261018-live-thread-previews.md)：非持久观察丢失后重新查询 | 继承观察边界；MCP 更新、快照和健康不进入 Thread 或事件窗口；轮次失败和停止责任不是健康观察 |
+| Node 重启不重启原 Agent，结算 interrupted | 继承不恢复 Agent；修改停止前提：有未确认 Agent/探测责任时，先恢复围栏，取得原停止证据后才补报 interrupted（D5） |
+| [工作流显式选择](../../desktop/core/agent/session/mcp/20260912-workflow-explicit-selection.md) | 继承 Session 自身保存白名单；运行中丢失白名单时停止派发并 EndSession，不从 Node 观察重建授权 |
+| [ACP setup/refresh](../../desktop/core/agent/session/mcp/0-acp-session-setup-delivery.md)：完整快照、barrier、失败后下一轮先重试 | 修改 Node 宿主策略：隔离后保留 Blocked 和原 provider ID，仅允许 load；不沿用现有 attach 失败后 new 的路径；Desktop 策略保持原状 |
+| ACP refresh 的预算和进程边界 | 继承有 MCP 时 120 秒无活动窗口；修改 Node 包升级：允许同一 execution 内重启其独占 Agent（D4、D6） |
+| [Host 健康探测](../../desktop/core/agent/session/mcp/20260916-mcp-health-probing.md) | 继承完整握手、三事实分离、无值内存结果；Node 只探测已授权 Session；共享 HTTP 客户端增加不跳转与有界读取 |
+| [插件安装](../plugin-runtime/0-node-installs-plugins-into-workspace-home.md) D2/不变量 4：按 ID 使用期间拒绝替换/移除 | 修改 MCP 为精确版本租约，可并存不可改写；其他类别保持原规则（D6） |
+| 共享 checkout D2：未清理恢复尝试独立阻止复用 | 扩展至 Agent 和探测的未确认停止；在同一准入事务中先检查停止责任，再检查恢复独占和数量（D5） |
+| [停止确认](../revision/20261018-complete-restore-deadline-and-cancel-confirmation.md)及[未启动证据](../revision/20261021-stop-confirmation-accepts-not-started.md)：超时不是停止证据 | 继承命名原执行责任、有限等待、跨重启不续期与迟到确认；不恢复旧 host/guardian 架构 |
+| 范围决策中的“进程树清理” | 明确收窄：首版只负责直接子进程及仍处于原进程组的后代，以 `StopContainment::BestEffort` 报告；不声称 Strong 或整棵树静止（D5、D8） |
 
 ## 问题与约束
 
-Node 的启动快照没有 Controller 配置源，不能通过再次发送相同 `StartAgentSession` 更新 Settings。
-把值装进已有会话命令会写入 ledger；把 Controller 控制帧写出当成 ACP 送达，则无法区分未受理、
-等待安全点和 `session/load` 失败。与此同时，按 ID 租约阻止安装新版本，直接解除租约又可能删除
-旧 Agent 仍使用的文件。这些边界必须一起定义。
+当前 Node 启动快照不能更新。共享运行时的刷新失败会隔离 channel、标记 Stopped 并清除 live MCP；
+下一次 attach 的 load 失败又可以 new 新会话。Node 对话循环则在 prompt 受理前结算命令，受理失败
+按 `agent_unavailable` 结束 execution。现有停止路径也会在 stop 失败后释放租约并删除 view。
+因此下面的等待、保留身份和保留资源都需要新增行为，不能仅把内存配置源接入现有 Actor 就宣称完成。
 
-现有 MCP 握手组件可复用协议与错误分类，但 Node 还必须注入工作负载身份、版本视图和进程组清理。
-现有直接 spawn 并等待单个 child 的路径不能自动证明探测后代已清理，也不能默认以 Node 管理身份
-执行用户选择的 MCP。
+设置值不能进入命令队列或账本。ACP 成功只证明输入被接受，不证明旧 MCP 进程已退出；健康握手也
+不能证明 Agent 采用了相同连接。停止和资源释放必须另有证据，否则共享 checkout 会被残留写入者破坏。
 
-## D1：能力逐会话选择，显式白名单独立于可变绑定
+## D1：能力逐会话选择，白名单独立于可变绑定
 
-Node 增加能力 `session_mcp_lifecycle`，只有同时支持 `agent_session`、`session_mcp` 和本文全部行为
-时才声明。Controller 只有观察到该能力才在新 `AgentSessionSpec` 中设置 `mcp_lifecycle: true`；省略
-或 false 保持一次冻结 setup，已有执行不被隐式升级。该布尔值是无秘密持久输入的一部分，参与
-重复 start 的比较。没有选择此模式的会话不接受本文更新或主动探测。
+Node 只有同时支持 `agent_session`、`session_mcp` 及本文全部行为，才声明 `session_mcp_lifecycle`。
+Controller 观察到能力后才可设置 `AgentSessionSpec.mcp_lifecycle: true`。该无值字段持久化并参与
+重复 start 比较；省略/false 的其他调用方保持一次冻结 setup，已有执行不被隐式升级。
 
-新模式仍以 `spec.mcp` 启动，初始 generation 为 0。启动列表中的 canonical ID 集合 S 是该 execution
-永久不变的白名单；空 S 永远只能得到空集合。Controller 在创建业务 Session 时把 S 与 Session 一同
-持久化，恢复页面、重新挂接以及 provider 重新附着都读它，不在运行时反查可变工作流草稿。历史
-选择元数据缺失或不可信时采用空显式集合或拒绝恢复；不得从“已安装插件”重建权限。
+**Cloud v2 对非空 MCP 选择必须要求新能力，缺少时拒绝启动带 MCP 的工作流会话**，即使 Node 已有
+`session_mcp` 也不降级为冻结 setup。空选择仍可按原能力启动。旧调用方不能接管生命周期会话提交
+缺少 D4 generation 的轮次，但可以沿用查询执行及 EndSession 结束它。
 
-后续更新必须为 S 中每个 ID 提供且只提供一项，仍按 canonical ID 排序。每项是下列之一：
+新模式从 `spec.mcp`、generation 0 启动。canonical ID 集合 S 在 execution 全程不变，空 S 只允许
+空集合。Controller 创建业务 Session 时一同持久化 S；页面重载、挂接与 provider 恢复都读 Session，
+不反查工作流草稿或已安装插件。尚未启动且选择元数据缺失时，采用空显式集合或拒绝恢复；**运行中**
+丢失 S 的处理见 D5，不能用空 update 改写已有授权。
 
-- `configured`：精确 canonical `plugin_version`、无秘密 `configuration_revision` 和必填 Settings map；
-- `unavailable`：ID 以及 `mcp_plugin_missing` 或 `mcp_setting_missing`，不带值，也不猜测版本。
+更新必须按 canonical ID 排序，恰好为 S 的每个成员提供一项：`configured` 含精确 `plugin_version`、
+无值 `configuration_revision` 和 Settings map；`unavailable` 含 ID 与 `mcp_plugin_missing` 或
+`mcp_setting_missing`，不带值。unavailable、Node 缺包或解析失败使完整 desired blocked，不删除
+成员、不发送部分列表。仅 S 内绑定变化才产生更新；业务上增减 ID 需要新的业务 Session。
 
-`unavailable` 表达选中插件被卸载、配置被清除等事实；它不移除 S 的成员，也不允许把其余成员组成
-部分 ACP 列表。Node 把这一完整 desired 输入记为 blocked。包在 Node 缺失或解析失败也得到 blocked，
-即使 Controller 报告 configured。未选择插件的变化不提交新 generation。
+## D2：更新是有序内存输入，不是持久命令
 
-这保留白名单，又允许同一 ID 的版本和配置变化。业务上需要增减 ID 时应建立新的业务 Session，
-不能借 refresh 扩大已有会话授权；这与为了刷新而替换 execution 是两件事。
+Controller 对每个业务 Session 串行分配 generation，在配置保存的权威事务中持久化无值目标身份
+后发送完整更新。generation 与 configuration revision 为 `0..=2^53-1` 的 JSON 整数，新更新的
+前者必须大于 0；上限处拒绝，不回绕，不以值或值摘要生成代号。
 
-## D2：更新是带顺序的内存输入，不是持久命令
+以下是待评审的消息语义，均沿用 `protocol_version`、`operation_id`、`execution_id`，请求另有
+`node_id` 和有界 `request_id`。Controller 归属、执行身份及受控 incarnation/control scope 校验
+先于访问会话和解析配置；调用方不能提供 Node 路径。
 
-Controller 为每个业务 Session 的配置变化串行分配严格递增的 `generation`，持久化无值目标身份后
-发送完整更新。generation 与 configuration revision 都是非负且不超过 `2^53-1` 的 JSON 整数；新更新
-generation 大于 0。选用这个范围使 Go、Rust 与 JavaScript 能无损比较，不以 Setting 值或其摘要
-计算代号。到达上限明确拒绝新更新，不回绕。
-
-建议的消息形状如下，均携带既有 `protocol_version`、`operation_id`、`execution_id`，请求另带
-`node_id` 与有界 `request_id`。身份、当前 Controller 归属及受控模式的 incarnation/control scope
-验证先于读取/改变会话，也先于解密或解析配置；不允许传递 Node 路径。
-
-| 请求 | 输入与回复语义 |
+| 请求 | 行为与业务结果 |
 | --- | --- |
-| `UpdateSessionMcp` | `generation` 与 S 的完整成员列表；回复 `SessionMcpReply`，区分 accepted、duplicate、stale、conflict、session_ended、not_enabled、invalid_selection，并附当前无值状态 |
-| `GetSessionMcpState` | 无可变配置；立即返回当前无值快照，不触发解析、刷新、探测或新 Agent |
-| `ProbeSessionMcp` | 目标 generation、单个 plugin ID 与递增 `probe_attempt`；只允许当前 configured 成员，加入/发起一次探测并立即回复状态，完成后由查询观察 |
+| `UpdateSessionMcp` | generation + S 的完整列表；结果为 accepted、duplicate、stale、conflict、not_found、session_ended、not_enabled、invalid_selection 或 capacity_exceeded |
+| `GetSessionMcpState` | 立即返回无值快照；not_found、session_ended、not_enabled、capacity_exceeded 均为明确结果；不触发解析、刷新、探测或 Agent |
+| `ProbeSessionMcp` | 当前 generation、单个成员 ID、probe_attempt；结果为 accepted、duplicate、stale、not_found、session_ended、not_enabled、invalid_selection、not_configured 或 capacity_exceeded；立即回复，完成后查询 |
 
-`request_id` 只用于关联回复，更新去重以 execution + generation 为准。所有消息经严格 schema 和
-既有帧上限校验；更新仍限 16 项和 64 KiB Settings。结构错误走现有协议校验失败路径；上述业务拒绝
-保留控制连接。查询只返回所属执行的结果，未知执行返回 not_found，不暴露其他执行的数据。
+`SessionMcpReply` 用 request_id 关联，以结果和可用快照回复；not_found 不返回任何其他执行信息。
+结构错误仍按协议校验失败处理，业务拒绝保持连接。更新仍限 16 项和 64 KiB Settings。单连接最多
+64 个待答请求，满时立即回复新增 `capacity_exceeded`，不再保留请求/快照；若连这个控制回复也
+无法写出，走原有慢连接关闭策略，不无限积压。被容量拒绝的请求没有任何更新/探测副作用。
 
-Node 对单个 execution 串行比较 generation，并在回复 accepted **之前**原子替换内存 desired 输入
-和 prompt admission 所见的目标。此受理不等待包解析、ACP 或探测，不代表 applied，也不表示崩溃后
-可重放。语义是：
+Node 在 execution 内串行比较 generation，先原子替换 desired 与 prompt admission 的目标，再回复
+accepted；不等待包解析、ACP 或探测，不表示 applied 或崩溃后可重放。
 
-| 与已接收的最高 generation G 比较 | 处理 |
+| 输入 | 处理 |
 | --- | --- |
-| g > G 且白名单/结构合法 | 取代 desired；唤醒 Actor。即使包/设置不可用也必须推进目标并阻塞，不能继续旧配置 |
-| g = G，完整输入相同 | 返回 duplicate 和当前状态，不重做 ACP 请求或主动探测 |
-| g = G，输入不同 | 返回 conflict，保持原输入；值只在进程内做比较，不输出差异、不保存摘要 |
-| g < G | 返回 stale，不解析旧值，不改变状态 |
-| execution 已结束/模式未启用 | 返回对应拒绝，不留存值，不复活会话 |
+| g > 当前 G，选择/结构合法 | 推进目标并唤醒 Actor；包或设置不可用仍推进并 blocked，不继续旧配置 |
+| g = G，完整输入相同 | duplicate；不重做 ACP 或主动探测 |
+| g = G，输入不同 | conflict；不改变目标，不输出值差异或摘要 |
+| g < G | stale；不解析旧值、不回滚 |
+| 同一仍持有的成员配置身份，却给出不同 Settings | conflict + `configuration_revision_conflict`；不推进 generation；Controller 必须修正 revision 后重发，不派发依赖被拒目标的轮次 |
+| 已结束/未启用/不存在 | 对应拒绝，不留值、不复活 |
 
-Controller 重发同一 generation 必须发送相同输入；凭据轮换、包恢复或对 blocked 状态的显式重试
-均分配新 generation。不能用当前凭据重建旧 generation 的请求。若 Controller 丢失旧请求的内存值，
-先查询 Node，再从当前权威配置分配新 generation；不能从 Node ledger 补回秘密。
+配置身份包含成员 ID、精确包版本、configuration revision；比较仅针对仍在内存中持有的输入，
+不保留无限历史或秘密摘要。Controller 对任何值变化都必须推进 configuration revision，不能
+把“历史值已经释放”当成可复用旧 revision 的许可。
 
-Node 最多保留 active、正在发送的快照和最新 desired 三份有值输入，丢弃未发送的中间版本；每份
-仍受 64 KiB 限制。后台任务只收无值唤醒和身份，不复制有值输入到通用消息队列。值无 Debug、无日志，
-不进 WAL、历史、事件、Workspace 或临时文件；错误只含稳定码和适用的 plugin/setting/transport 标识。
+Controller 重发同 generation 必须用相同输入；凭据/包变化或显式重新提交用新 generation。若
+丢失旧请求值，先查询，再从权威配置分配新的 generation，不能用新值重建旧请求。**下一轮对同
+一 blocked generation 的自动重试不分配新 generation**，也不把重复 Update 当作重试触发器。
 
-Node 把 generation 纳入其 Desired/Active 的无秘密 revision 身份；新 generation 即使绑定内容相同，
-也必须完成本次收敛，不能把旧 ACP 响应改标为新 generation 的成功。这样显式重试与 duplicate 有
-可观察的区别；Controller 不应对未变配置空发 generation。异步解析完成时再次比较当前 generation，
-过时解析结果不覆盖最新 desired 或解除其阻塞。
+运行时最多保留 active、正在发送和最新 desired 三份输入，丢弃未发送中间值；这只是会话输入的
+边界，另有至多 8 个 Node 探测 flight（每 execution 2 个）的成员绑定。flight 从开始到清理责任
+转交都计数，不遗漏 cleanup_pending。原始 Settings 有值数据量上界为 `3 × N × 64 KiB + 8 × 64 KiB`，
+N 为存活生命周期会话数；这不包括序列化缓冲、绑定展开及外部 Agent/服务内存，不能当作总 RSS 上界。
+绑定帧仍受协议帧上限约束，解析与发送临时缓冲按实际使用者释放。排队意图只存无值身份，不能复制
+Settings 到通用后台队列。秘密不写 WAL、历史、事件、日志、Workspace 或临时文件；错误只含稳定码
+及适用的 plugin/setting/transport 标识。
 
-## D3：状态是可查询的内存事实，断线不创造应用证据
+generation 纳入 Desired/Active 的无值 revision。新 generation 即使内容相同也要完成新收敛，
+不能把旧 ACP 响应改标为新目标；异步解析和成功响应写回前复查身份，过时结果不解除新目标的阻塞。
 
-`SessionMcpReply` 携带请求 ID 和一份完整快照：Node 实例身份、execution、单调递增 `state_version`、
-desired generation/成员无值身份、active generation/成员无值身份（可空）、convergence 状态、错误和
-逐成员健康。convergence 为 `pending | refreshing | current | blocked | ended`。pending/refreshing
-不能被渲染为已送达；blocked 中若仍保有此前 Active，只表示“上次成功送达”，不表示当前配置可用。
+## D3：当前状态只通过查询取得
 
-快照只在内存中，通过上述请求回复，不主动向未请求新消息的连接广播，也不进入执行事件序号、
-Thread 或 `EventAck` 窗口。一个慢查询不阻塞 Actor、心跳或 EndSession；发送缓存每个查询只保留
-一份最新快照，单连接待答请求上限 64，超限按既有受理容量错误拒绝，不建立无界队列。
+快照含 `NodeRuntimeIdentity { node_id, incarnation_id }`（本文的“Node 实例”）、execution、单调
+`state_version`、desired/active 的无值身份、convergence、稳定错误及逐成员健康。convergence 为
+`pending | refreshing | current | blocked | stopping | ended`。blocked 可保留“上次送达”的 active
+身份，但 channel 可以为空；current 才表示最新目标已收敛。stopping 不可提交新 prompt。
 
-Controller 可以对 pending/refreshing/探测中的会话有界轮询，界面订阅结束即停止其轮询；查询不构成
-健康复检。状态按 Node 实例 + execution + state_version 合并，低版本、旧实例及已终态执行的迟到
-回复不能覆盖新状态。断线或状态缓存丢失后展示未知并重新查询，不能从最后一次写帧或磁盘缓存恢复
-current/Healthy。Node 重连且进程未重启时仍有当前内存状态；Node 重启按原协议结算 interrupted，
-不恢复 active、健康、值或原 Agent。已终态查询只返回 ended，历史的“曾送达”若需归档属于后续决策。
+逐成员快照另外给出当前 generation 的最高 `probe_attempt`（初始为 0）、`probe_in_flight`、
+`queued`、`cleanup_pending`。Controller 重启或丢计数后先查询，再以最大 attempt + 1 重测；不能
+从 1 静默重试。identity 不匹配的回复丢弃，查询后竞争造成 stale 时重新查询，不盲目增号。
 
-Rust Controller 与 Node 继续采用同版本发布边界，不能声称新增 enum 对旧解码器透明。v2 的字符串
-能力列表可接受未知能力，但必须显式消费本文能力才发送新字段/请求。旧启动输入仍有效；不支持
-生命周期的调用方不能接管一个已启用模式的会话继续提交 prompt，D4 的必填 generation 检查使其
-在进入 Agent 前失败。它仍可使用原 `GetExecutionStatus` / `EndSession` 对账和结束，不必解码 MCP
-回复；任何连接变化都不自动结束执行。
+查询回复不进入 Thread、execution sequence 或 EventAck，也不主动广播给不认识新消息的连接。
+等待状态的 Controller 有界轮询，页面订阅消失即停止；按 Node 实例 + execution + state_version
+合并。断线、旧实例或缓存丢失时展示未知并重新查询，不从帧写出或旧缓存恢复 current/Healthy。
+结束的执行只返回 ended，不还原历史健康。
 
-## D4：Node 在安全点收敛，Controller 显式携带 prompt 的配置下限
+Node 保留跨会话的探测容量汇总：总数 8、正在执行、cleanup_pending、等待意图数及可用名额。
+运维诊断能看到该汇总与命名残留，名额全部被 cleanup_pending 占用时明确标为“探测容量不可用”；
+会话快照只暴露这一容量状态及本执行意图，不泄露其他执行身份。它不是某个 MCP Server 的 Unhealthy。
 
-Node 复用共享 Actor 的 desired/active 比较和 Agent Session Barrier，不建立第二条 restart 或 load
-路径。空闲会话立即刷新；busy 会话允许当前已进入 Agent 的 prompt 完成，只保留最新 desired 欠账。
-下一轮进入 Agent 前必须 active 等于当前 desired 且状态 current。刷新重读完整输入并持有对应租约，
-以原 provider ID 调用 `session/load`，只在成功响应后推进 Active；完成时若有更新目标，继续阻止
-后续 prompt，不能让过期成功清除新欠账。
+新消息和轮次失败事件要求 Controller/Node 同版本发布；不能声称对旧 Rust enum 解码器透明。能力
+协商限制新模式的派发，不替代部署兼容检查。健康观察仍是内存事实；D4 的轮次失败及 D5 的停止
+证据分别走其可靠路径，不以健康快照承担结算责任。
 
-远程 Node 无法直接观察 Controller 数据库的一次提交。为防止更新与下一轮投递乱序，对启用模式的
-`SubmitUserTurn` 增加必填 `mcp_generation`，它是该轮允许使用的配置下限：
+## D4：对话循环和 Actor 共同把住准入，失败仅 load 原身份
 
-1. Controller 在接纳该轮的权威操作中读取当前目标 generation，与 turn 的无值派发记录一起保存；
-   同一配置保存操作为受影响的 Session 推进目标，尚未送达 Node 的更新不能让后续轮次沿用旧下限。
-2. Node 受理用户轮次时，若本地 desired 低于该下限，返回新增 `mcp_update_required` 拒绝，不写入
-   用户命令队列、不开始 prompt；Controller 先补更新再重试同一 command。拒绝不是持久受理。
-3. 若本地已 blocked，新增轮次以 `mcp_refresh_blocked` 拒绝。pending/refreshing 时可以沿用原队列
-   受理，但 Actor 只能在最新 desired 成功后执行。已经受理的排队轮次在刷新失败时保留为等待，
-   不假报完成、失败或丢弃；用户修复配置并提交新 generation 后继续，或 EndSession 按原规则丢弃。
-4. 出队时再次检查本地最新 desired，使用更新版本满足较低下限；不会为了旧轮次回退配置。已经
-   受理命令的重复请求仍按原规则返回 accepted，即使此时 blocked，不能把已有队列记录改说成拒绝。
+Node 对话循环拥有等待与命令结算，Actor 拥有最终准入、provider ID 和 Agent Session Barrier。
+二者以状态变更通知协作，不能各自独立检查后直接发送。空闲时立即刷新；已进入 Agent 的 prompt
+继续到安全点。权限请求未结算、prompt 未终止或 barrier 被占用时不提前 load，不为了温和刷新
+额外 cancel。只有 active 等于最新 desired 且 current 时才能准入新 prompt。
 
-排序点是 **Controller 接纳轮次与配置保存的顺序**，以及 **Node 接纳更新与 prompt admission 的顺序**。
-先于配置保存已被接纳的轮次可能在网络延迟后进入 Agent，使用尚未收到更新的旧版本；本文不承诺
-跨进程以绝对时间实现“配置 SQL 提交后一切 ACP prompt 立刻使用新值”。若 Node 已接纳新目标，
-任何尚未进入 Agent 的轮次（包括旧排队轮次）都必须等它收敛。这一明确边界避免用控制帧顺序代替
-跨系统原子性；需要撤销正在执行工具的凭据属于凭据系统，不由温和 refresh 承诺。
+共享 `agent-runtime` 增加 Node 生命周期宿主策略，具体义务如下；Desktop 默认策略不变：
 
-权限请求未结算、prompt 尚未终止或已有 Agent barrier 时，不提前执行 load。刷新预算为进入安全点
-后的 30 秒，不用健康探测延长它；busy 等待沿用既有轮次取消/看门狗，不发额外 cancel。EndSession
-始终优先且不受 MCP blocked 或查询阻塞。
+- resolver/能力失败也进入 Blocked，而非停留 RefreshPending；ACP 失败隔离后保留 Blocked、最新
+  desired、上次 active 身份和原 provider ID，`channel = None`，不能通过通用 mark_stopped 清成 Inactive。
+  持久 Session 行可记录无 channel 的停止状态，但不得清除 provider 绑定或用它触发重建。
+- attach 与 reconnect 使用同一策略：已有 provider ID 时只 `session/load`；不支持 load、原 ID
+  不存在或 load 失败均 blocked，不经过 `create_provider_session`/transcript 迁移。只有最初尚未
+  获得 provider ID 的创建允许 `session/new`，一次刷新绝不成为再次创建的理由。
+- 下一轮触发对当前 blocked generation 的一次自动收敛；失败后保留该轮等待修复/新目标，不忙循环。
+  每个轮次/目标最多触发一次这种重试；新 generation 可触发一次新尝试。没有新轮次/目标时不周期重试。
+  后续另一轮可触发重试，合并同一 in-flight 尝试；重复命令和重复 Update 均不能制造重试风暴。
+- MCP 导致的待刷新、busy 或刷新失败作为有类型的非终结 `McpAdmissionPending` / `McpAdmissionBlocked`
+  返回，和真正的 agent unavailable 分开。通用 `session_busy` 不能被 Node 映射成整 execution 失败。
 
-解析/能力失败发生在完整 ACP 请求前；ACP 拒绝或超时则将 channel 按共享运行时规则隔离，状态 blocked，
-不得继续旧集合或用 `session/new` 替代。明确的 resolver 错误沿用 setup 的稳定码；其余分别使用
-`mcp_refresh_failed`、`mcp_refresh_timeout`。这些码不含第三方响应或设置值。后续显式新 generation
-重试仍以原 provider ID load；无法安全恢复时保留 blocked，或者由用户结束会话。原有终态规则和
-正在评审的“取消一轮”协议分别演进，本文不假设取消一定保留会话。
+远程配置和轮次以 `SubmitUserTurn.mcp_generation` 关联下限。wire 上它是可选整数（兼容旧的
+`deny_unknown_fields` schema 需同步升级）；生命周期模式必填，旧模式缺省且不得借它启用刷新。
 
-## D5：Controller 失联与持久化边界
+| 阶段 | 必须成立 |
+| --- | --- |
+| Controller 接纳轮次 | 与配置保存串行读取当前 generation，把该下限与 turn/command 的无值派发记录一同持久化 |
+| Node 接纳命令 | 已受理的重复命令先按原内容返回 accepted；新命令若 desired 低于下限，以新增 `mcp_update_required` 拒绝，不写队列、不开始 prompt |
+| Controller 收到拒绝 | `mcp_update_required` 不登记已送达，先补 Update 再重试原 command；`session_ended` 仍登记已送达并按终态结算 |
+| 重复命令比较 | mcp_generation 是内容的一部分；同 command 改下限构成内容冲突。重放原下限，Node 用最新 desired 满足它，不用旧配置回退 |
+| Node 出队 | 在 `settle(Executed)` 前等待 pending/refreshing/blocked 收敛；初始轮次也经过此准入，不存在绕行 |
+| Actor 最终受理 | 再原子检查最新目标并占有本轮准入；若 Update 赢得排序，返回 MCP 非终结结果，Node 保留队列并等待通知；受理成功后才能结算 Executed |
+| 已受理后的账本失败 | 按内部错误停止，不重发 prompt；崩溃重启仍不重放未结算的 Agent 轮次，按 interrupted 收尾 |
 
-业务 Session 的 S、模式和 Controller generation 是持久事实；Node start 的持久投影仍只保留无值
-MCP 身份与版本。本文不持久化后续 desired、active、探测结果或含值更新命令，不新增 Node 数据库
-表，也不重写历史 start 输入。原数据库中没有 `mcp_lifecycle` 的记录按 false 读取，不改历史语义。
-旧二进制可能无法解码带新模式的持久执行输入，因此本文不承诺升级后的原库可直接降级运行；部署
-继续遵守 Node/Controller 同版本及原有数据库回滚边界。
+新 blocked 会话的轮次可持久受理并触发上述自动重试，不新增 `mcp_refresh_blocked` 的投递拒绝。
+准入成功只表示本轮归 Actor 所有，不表示轮次完成。按 Node 最终准入与 Update 的原子顺序判定：
+准入先发生的轮次可以用旧目标；Update 先发生则尚未准入的全部轮次都等最新目标。Controller 保存
+配置与 Node 准入之间不存在全局原子时钟，已开始轮次的凭据撤销不属于温和刷新保证。
 
-同一 Node 进程短暂失联时继续已经开始的 turn，保留最新 desired 和阻塞状态；恢复连接先查询状态
-并对账最高 generation，再派发后续轮次。Controller 不得把重新连接当成重新 start 的理由。控制
-scope 被撤销时，更新、重测、查询与用户轮次和既有权限规则一样被拒；不得通过 MCP 通道重新授权。
+**排队等待上限为 300 秒。** 每个已受理轮次从首次因 MCP 门禁受阻起计时，包括等 barrier、刷新和
+blocked；普通前序轮次的业务运行时间不计入，只有 MCP 门禁阻止调度后开始计时。所有受阻轮次各自
+记录首次时间，不因队首更换、generation 更新、活动通知、重连或重试重置。EndSession 始终优先。
 
-Controller 重启若只剩配置引用而没有旧值，按 D2 发送一个新 generation 的完整当前输入。若不能
-取得配置，不得自动扩大 S、删掉成员或重发空集合；发送覆盖全部 S 的 unavailable 目标以阻止后续
-prompt。Node 已重启的执行则只按 interrupted 对账，不向它重放凭据使 Agent 复活。
+到期仅该轮以稳定码 `mcp_refresh_wait_timeout` 失败，execution 仍可修复后接受下一轮。新增可靠
+`SessionTurnFailed { turn_id, command_id?, code }` 事件与命令 `Failed` 结算同事务提交；初始轮次没有
+command_id，但也有唯一 turn_id 和至多一次失败记录。它共享 execution 的连续序号和 Ack/重放规则，
+不是伪造的 Agent Thread 记录；不能标 Executed 或普通 Discarded。Controller 区分“命令已送达”和
+“轮次失败”。EndSession 先在同一串行结算边界生效则按原规则丢弃，终态之后不再发轮次失败事件。
+Node 重启时未结算轮次按 interrupted 路径丢弃，不能重启一个新的 300 秒等待。
 
-## D6：MCP 新旧版本并存，租约覆盖真实使用者
+ACP 刷新使用共享 `session_setup_window`：有 MCP 为 **120 秒无活动窗口**，收到 session update
+重置；空集合沿用 30 秒。等待 barrier 不计入此窗口，但计入已开始的 300 秒准入等待。持续更新可
+让 ACP 窗口延长，却不能延长轮次截止；轮次失败不伪称刷新已结束。解析错误沿用 setup 稳定码，
+其他刷新失败为 `mcp_refresh_failed`，无活动到期为 `mcp_refresh_timeout`，不带第三方响应。
 
-只对 MCP 包把 Node 使用租约细化为 canonical ID + 精确版本。安装新 MCP 版本可以在旧版本被使用
-时按原下载/摘要/静态校验路径原子发布到其版本目录，但不能重写同一被租用版本，不能在 publish
-时删除仍被任一会话、刷新尝试或探测使用的其他版本。非 MCP 插件仍保持按 ID 的原保护语义。
-允许并存前须验证新包与当前被使用版本均为 MCP；不能通过同 ID 改 kind 绕过 Agent 等类别的保护。
+资源等待另有执行级上限：无 active prompt 的未收敛区间连续达到 **600 秒**，Controller 派发
+`EndSession{IdleTimeout}`；Node 同样有 600 秒本地上限，覆盖 Controller 失联。pending/refreshing/
+blocked 相互切换或新输入不重置它，只有真正 current 才结束该区间。当前 prompt 执行期间不提前
+计入，安全点后的等待开始计时。上限请求结束，停止证据仍按 D5，不能凭到期释放资源。
 
-租约取得、包身份核对、发布和删除共用原 catalog 同步边界。不同版本可共存，同一版本无效且被使用
-时返回 `plugin_in_use`，不能以修复为由就地替换。`RemovePlugins` 仍是整 ID 移除：只要任一版本被
-使用即返回 `plugin_in_use`；Controller 的业务卸载可先提交 unavailable 使会话 blocked，磁盘移除
-要等相关会话结束，不用释放租约假造卸载成功。
+## D5：停止责任持久化，未确认时保留围栏并有限等待
 
-每次更新先取得新精确版本租约与会话拥有的只读 view，再解析和发送。旧 view/租约至少保留到成功
-切换；本提案选择更保守的释放点：**任何曾写入 ACP 帧的包版本都保留到该 Agent 进程确认停止**。
-原因是 ACP 的 load 成功只证明接受输入，不保证 Agent 已停止旧 MCP 子进程；提前删除旧可执行文件
-或依赖文件仍可能破坏已运行服务。未发送的 superseded 快照可立即释放；正在探测的版本至少保留到
-探测清理确认。Settings 可在不再被内存解析/发送使用后释放，不以保留字节租约为由延长其持有。
+Controller 丢失运行中 execution 的 S 时，立即停止派发新轮次并持久投递 EndSession；不能从
+GetSessionMcpState 重建授权、发送空 update 或继续旧下限。仅丢失设置值且 S 仍可信时，先查询
+再发送 S 的完整 unavailable 或新的当前配置。断线重连先对账 generation；Node 进程未重启则
+继续原 execution，Node 已重启则不能通过重放凭据复活它。
 
-为防止持续升级形成无界保留，一个 execution 至多保留 64 个不同的已发送 MCP 包版本身份（初始
-集合计入，最多 16 个 ID）。超过预算的更新仍推进 desired，并以 `mcp_package_retention_limit`
-blocked，绝不删除旧版本腾位置；这是需要结束该会话再发起新的业务会话的明确资源限制，不是每次
-refresh 的实现方式。Node 不在后台扫描并删除历史版本；结束后释放租约，后续安装可以按原规则
-清理无租约旧版本，整 ID 移除清理所有无租约版本。磁盘全局配额仍遵守插件存储的既有边界。
+“停止确认”指原 Agent/探测尝试的直接子进程已经退出，且原进程组的清理取得尽力完成证据；HTTP
+指本地任务/连接/流已终止，不保证远端服务销毁会话。它按 `StopContainment::BestEffort` 报告，
+不使用含混的“物理结束确认”或把 BestEffort 写成整棵树静止。首次停止请求、等待上限和原身份
+沿用 `StopUnconfirmed { scope_id, run_id, first_stop_at_ms, bound_at_ms, guarantee }` 的词汇。
 
-这些规则修改 Node catalog，不改变 Desktop 安装器的激活/移除语义、不改变包布局或工作区文件。
-版本 view 使用本次 execution 私有目录，新旧 view 不覆盖彼此，也不得删除兄弟会话的视图。
+Node 增加**无值持久停止责任记录**，不是持久健康缓存。Agent 和 stdio 探测在外部 spawn 之前登记
+原 Node 实例、execution、checkout、尝试身份、精确包版本/view 归属及可验证的进程组身份；HTTP
+登记本地任务责任。stop 时先锚定首次时间，再发信号，后续重试/重启不续期。不记录 argv/env/URL/
+headers/Settings、原始错误或秘密摘要。需要启动闸门：登记与 spawn 的崩溃窗口必须能区分“已证明
+未启动”和“未知”，不能把没有 PID 当成未启动，也不能在重启后只凭可复用的 PID/PGID 杀进程。
 
-## D7：探测绑定同一解析产物和执行身份
+Node 生命周期负责人在 driver 返回前接管未清理的 Agent/探测、catalog 租约、placement 和 view；
+`stop_plugin` 失败不得仅记录 warning 然后 drop 这些资源，scheduler 结束也不是停止证据。更新包
+而停止未确认时保持 blocked，不启动下一 Agent；执行结束时进入 stopping，不再接收轮次或探测。
 
-Node 对当前 desired 中配置完整、静态校验通过的成员使用共享 resolver 的同一 transport 绑定产物，
-不另写配置解释器，不向 Controller 返回 argv/env/headers/url。探测身份包含 Node 实例、execution、generation、
-canonical ID、精确包版本、configuration revision 和 workload 身份；依赖 workspace context 时再
-包含 Node 从 checkout 解析的真实绝对 cwd。相同 configuration revision 的不同值在同一 execution
-中不被允许：Controller 变更值必须推进其 revision；Node 对仍持有的同身份值进行内存一致性校验。
-初始 generation 0 的身份不与后续正 revision 混用。
+终态和清理采用下列顺序，兼容现有 `ExecutionStatus` 不允许 Completed 带 stop_unconfirmed 的约束：
 
-探测在新完整 desired 被成功解析以及 `session/new`/`session/load` 后异步补齐 Unknown；重复触发
-共享同一个身份的 flight 或已完成结果。手动 `ProbeSessionMcp` 的 `probe_attempt` 在当前 generation
-和成员内严格递增，范围为 1 到 `2^53-1`；Node 只保留该身份的最高 attempt。相同 attempt 重发只返回
-当前结果，较小 attempt 返回 stale，避免丢回复后的重发再次外连；较大 attempt 在有 flight 时加入
-同一个 flight，没有 flight 时才重测。自动补探测使用 attempt 0，不覆盖手动结果。无周期复检、
-无自动重试、无 TTL。跨 execution 不共享缓存，即使 ID/cwd 相同，避免将不同凭据/授权的结果混用。
+1. EndSession 或结束原因先停止准入，取消探测并请求停止本 execution 的 Agent；保留正常命令受理
+   回复，不能因为清理慢阻塞控制连接、心跳或其他会话。
+2. 只有该 execution 的 Agent 和所有探测责任都取得停止确认，才能释放相应租约/view、封口会话并
+   写入唯一 `AgentSessionEnded`。此前状态保持非 Completed；不会先发终态后继续清理写入者。
+3. 证据等待采用停止确认决策的**首次停止请求后默认 10 分钟**上限，可配置但必须有限且为正。
+   上限内进行有界检查；超过上限或检查无法继续时登记 stop_unconfirmed，结束当前等待任务，
+   将原责任交给残留对账。终态可以迟到，甚至因始终无证据而没有终态；这是明确可查询的停止
+   未确认，不是无限挂住 driver future。Controller 业务结束窗口按其现有策略收尾并保留残留责任。
+4. `GetExecutionStatus` 返回原 StopUnconfirmed，MCP 快照可显示 stopping/cleanup_pending。
+   有界的显式残留对账只能凭原尝试证据补确认；不得因时间到、连接断、future drop 或目录存在性
+   解除责任。取得迟到证据后补终态，原结束原因及序号规则不变。
 
-缓存只保留当前 desired 的至多 16 个成员，以及仍须收尾的有界 flight；新 generation 不复用旧
-generation 的健康结果。这比跨配置代复用多一次握手，但不需要持有历史凭据来证明结果仍相同，
-也不会让旧 configuration revision 被误复用时显示过期 Healthy。
+同一 checkout 的任一 Agent/探测停止未知，或停止责任日志不可读时，**普通新会话和带 prior_revision
+的恢复都拒绝为 checkout_busy**；检查与现有准入共用事务且先于数量限制。现存兄弟会话不被重启，
+但不能借旧 execution 的业务收尾触发新恢复。未确认的执行继续占未结束名额；已存在历史终态的
+残留也独立挡住复用和交付，不靠“未结束计数”单独保证安全。
 
-Node 没有不带会话的配置来源：插件安装本身不触发带凭据探测，不借安装执行伪造 cwd 或会话身份。
-没有真实会话上下文的插件卡片只能显示未探测；依赖 workspace context 时显示
-`Unknown(context_missing)`。会话视图可显示该 Node/Session 的结果，不能把它提升为全租户全局健康。
-没有配置资格的成员不呈现 Healthy/Unhealthy；空 S 不发起探测。
+Node 启动先恢复这些围栏及 catalog 的版本保护，再允许安装/移除、目录回收和 checkout 准入；
+不能按“私有目录”整棵清空。原 Agent 不重启，只有取得原停止证据后才补 interrupted；仅 Node
+进程更换而宿主仍存活不证明子进程退出。可靠的宿主重启/未启动证明可用于确认，缺证据继续保留。
+HTTP 的本地责任可由原进程已退出的证据结算，不把它说成远端会话已销毁。
 
-握手复用现有 MCP 客户端：`initialize`、`notifications/initialized`、`tools/list`，不执行
-`tools/call` 或其他业务操作。HTTP 使用同一 URL/headers 的 Streamable HTTP，凭据不随跨源跳转
-转发，不用简单 GET 或只有 initialize 的成功冒充工具发现成功。stdio 使用同一 command/args/env，
-workspace context 只替换声明中的占位参数，不擅自改变 ACP 未承诺的进程 cwd。
+新增责任、轮次 Failed 结算及其事件需要 Node DB 前向迁移。旧 start 的 mcp_lifecycle 缺省 false；
+旧库没有的责任不能凭空标为已清理，升级按既有停止/恢复围栏处理历史执行。旧二进制拒绝打开新
+schema，回滚用相容备份，不承诺直接降级。后续 desired/active、探测结果及 Settings 仍只在内存。
 
-配置 revision、包版本、执行或 cwd 身份失配后旧结果立即失效。旧 flight 可收尾，但结果不得写回
-当前身份；释放其租约前仍要完成清理。状态只在内存：`Healthy`、`Unhealthy{code}` 或
-`Unknown{not_probed|context_missing}`，另有 `probe_in_flight` 指示等待，不把等待当作失败。错误
-沿用 Host 探测的封闭码族，不输出第三方文本。普通健康失败不改变 desired/active，不阻止 prompt。
+## D6：版本变化重启自己的 Agent，精确租约保护使用中的字节
 
-## D8：探测必须有界，并由 Node 拥有收尾责任
+MCP 租约改为 canonical ID + 精确版本。新版本按原下载/摘要/静态校验路径发布到独立目录；被
+使用版本不得改写或删除。发布、取租约、校验与删除共用 catalog 同步边界；并存前核对新旧 kind
+均为 MCP，不允许同 ID 换 kind 绕过 Agent 保护。其他类别仍按 ID 保护。RemovePlugins 仍整 ID
+移除，任一版本被用即 `plugin_in_use`；同版本修复被使用时同样拒绝。
 
-每个 Node 最多同时执行 8 次探测，同一 execution 最多 2 次；至多为每个当前成员保留一个待探测
-意图，不保存重复的调用方等待者或旧 generation 队列。容量不足时手动请求回复 busy，自动补探测
-保持 Unknown；许可释放后可消费当前意图，旧身份不再补跑。排队从请求时计入 10 秒总预算，避免
-排队 + 握手各自重置超时。
+版本变化走本 execution 独占的重启路径：
 
-10 秒预算覆盖等待许可、spawn、initialize、tools/list 和正常清理；最多前 8 秒用于等待/握手，最后
-至少 2 秒保留给关闭 stdin、终止探测进程组和 wait。HTTP 同样关闭响应流和客户端会话。读入单帧、
-累计响应均限制为 1 MiB；超限按 handshake/tools 阶段返回对应稳定失败，不无界读 stdout 或响应体。
-一次 tools/list 响应即为本探测的发现证据，不自动追随分页执行无限请求。
+1. 先取得新完整集合的精确租约，解析并准备 view；准备失败 blocked，不触碰旧进程或部分切换。
+2. 等当前 prompt/权限请求与 barrier 安全点，停止自己的 Agent 和该旧进程拥有的 MCP。execution、
+   Session、provider ID、checkout、模型访问及历史归属保留，不影响兄弟 Agent。
+3. 旧 Agent 按 D5 取得 BestEffort 停止确认后，释放它使用的旧版本租约/view；旧版本若仍被探测或
+   兄弟会话使用，由那些使用者继续持有。停止未知时不释放、不启动新 Agent。
+4. 启动新 Agent，仅 load 原 provider ID 与最新完整输入；成功才 current。load 失败保持无可用
+   channel 的 blocked，下一轮只能按 D4 重试 load。provider 无法保留身份则刷新失败，不能 new。
 
-stdio 启动使用 Node 注入的 launcher：与对应 Agent 相同的 workload UID/GID、权限降级及只读包
-view，在独立探测进程组内运行；不继承 Node 管理密钥或全量宿主环境，只继承 Agent 所用的基础
-运行环境并叠加本次解析 env。不得直接复用默认以调用者身份 spawn 的便捷入口。探测从不加入 Agent
-进程组，结束探测不能杀 Agent 或兄弟会话。
+因此不再设置“累计 64 个旧版本”上限，也不把每个发过 ACP 的版本保留到 execution 结束。单个
+execution 同时只需旧 Agent 使用的集合与正在准备的新集合（各最多 16 个成员），加至多 2 个探测
+使用的旧成员版本；未开始的中间目标不取租约。进行中的切换串行，晚到更新在同一安全点接续收敛。
 
-探测任务由 Node 生命周期持有，客户端断线、取消 HTTP 查询或丢弃 future 不放弃收尾责任。超时、
-成员失效、EndSession 和 Node 正常停止都触发取消并等待清理。正常成功只有握手成功且进程/连接
-已清理才能成为 Healthy；必须测试直接子进程和同组后代的退出，而不只断言返回了 timeout。
+只改配置时继续运行中 load，不主动重启 Agent。ACP 成功不证明 provider 注销了旧注册、旧凭据
+已经撤销或 MCP 进程停止；升级重启也仅在 BestEffort 所覆盖的进程组内给出旧进程退出证据，不能
+保证逃逸后代。UI 的“已送达”不能替代这两种边界。
 
-如果操作系统在预算内无法确认退出，对外按时返回 `mcp_probe_timeout` 并标记
-`cleanup_pending: true`；这一标记是独立资源责任，不是健康成功。Node 保留该 flight 的并发名额、
-包租约及 view，由受控的收尾任务继续等待；不因等待超时假报已清理、释放额度或开始相同身份的
-新探测。该 execution 的物理结束确认必须等它拥有的探测停止，不能先删除 view。普通握手失败仍
-只影响健康；停止未确认属于宿主责任异常，不能用“健康不阻塞 prompt”掩盖资源未释放。
+`Separate` placement 的 MCP view 必须按 `(canonical ID, exact version)` 区分并由 execution 私有
+目录拥有，不能继续仅用 ID 的路径覆盖；硬链接跨设备失败时可能完整拷贝，同样受租约保护。
+`Shared` placement 不制造 view，使用对应精确版本的 installed 目录，也持有相同精确租约。
+目录删除逐使用者结算，不能因 Agent 停止删除尚在被探测使用的整个 placement。
 
-本方案保证正常子进程和同组后代的超时清理，不新增强 containment 或旧 host/guardian 体系；恶意
-自行脱离进程组及宿主崩溃后的完整后代纳管继承 Node 进程体系的已知边界，不能标为已解决。实现
-必须单独给出所声明进程组范围的真实证据，不以杀直接 child 的结果替代。
+这些是 Node catalog/placement 的新行为，不改变 Desktop 安装器的版本激活/移除语义。本文批准后
+在 plugin-runtime 根决策添加 `> 历史决策：` 指向本 ADR 的局部修改；proposed 阶段不把旧契约标成
+已被替换。前序两份 ADR 的 implemented 状态及 README 由各自落地运行维护。
+
+## D7：探测绑定当前解析产物，明确执行身份与 HTTP 边界
+
+Node 对当前 desired 中 configured 且静态有效的成员使用共享 resolver 的同一 transport 绑定。
+身份包含 NodeRuntimeIdentity、execution、generation、canonical ID、包版本、configuration revision、
+transport 和实际探测身份。stdio 额外绑定 workload UID/GID 与 **Node 从 checkout 解析的真实绝对 cwd**；
+探测进程的 current_dir 就设为该 cwd，workspace 占位参数也用它。缺少真实上下文时不 spawn，
+显示 Unknown(context_missing)，不继承偶然的 Node 工作目录。ACP 不承诺 provider 的 MCP 子进程
+cwd，因此该结果仅证明这一个 Node 上下文，不声称复现了 Agent 内部执行。
+
+HTTP 握手在 **Node 进程的网络身份/namespace** 中执行，不伪称按 workload UID 发出；headers/URL
+仍来自同一解析输入。不继承 Node 管理认证、cookie jar 或额外管理请求头。workload 的 UID 防火墙、
+代理或网络配置可能不同，Host Healthy 不能外推为 Agent 可达。stdio 使用对应 Agent 的 workload
+身份及受控基础环境，叠加本次 env，不继承 Node 管理密钥或全量环境。
+
+新 desired 解析成功及 session/new/load 完成时，为 Unknown 成员异步补探测；同身份 single-flight。
+手动 `probe_attempt` 范围 `1..=2^53-1`，按当前 generation/成员递增，快照暴露最高受理值：相同
+attempt 返回 duplicate，较小为 stale；较大在已有 flight/排队意图时加入，不重复外连，否则新建
+意图。自动触发用 0，不覆盖手动结果。当前缓存至多 16 成员，另有有界旧 flight 清理责任；新 generation
+不复用旧健康。无 TTL、周期重测或自动失败重试；未选择/未配置成员不能探测，安装本身不取得会话凭据。
+
+握手完成 `initialize`、`notifications/initialized`、`tools/list`，不调用工具，不用 GET 或只有
+initialize 的成功替代发现。一次 tools/list 响应就是本次证据，不无界追随分页。
+
+共享 `ora-utils` HTTP 客户端显式关闭**全部跳转**，包括同源、跨源和 DELETE；每次 3xx 按所处
+握手阶段失败，绝不向 Location 发出后续请求，任意自定义秘密头也不会随跳转外发。响应流在读取
+过程中累计限 **1 MiB**，超限立即终止，不在 `.text()` 分配完整 body 后才检查；JSON/SSE、错误体
+及不需正文的回复都不得无界读取。stdio 单帧与一次探测累计读取也限 1 MiB。超限/3xx 使用既有
+封闭的 handshake/tools 阶段失败码，不回传 body 或 Location。此安全行为同时影响 Desktop 的
+HTTP 探测，须覆盖回归；Desktop 的选择、刷新策略和健康三事实语义不变。
+
+结果只有 `Healthy`、`Unhealthy{code}`、`Unknown{not_probed|context_missing}`，另用 queued /
+probe_in_flight / cleanup_pending 描述资源状态。身份失效立即使旧结果不可见；晚到回调不能覆盖
+当前成员。探测失败不改 desired/active，不阻塞 prompt，停止责任异常则独立按 D5 处理。
+
+## D8：探测从取得许可起计时，预算耗尽不遗弃清理
+
+Node 最多 8 个探测 flight，同 execution 最多 2 个；cleanup_pending 继续占许可，恢复出的未确认
+探测也计入额度，不能以重启刷新额度。每个当前成员至多一个无值等待意图，以轮转方式跨 execution
+调度；不留重复请求等待者或旧 generation 队列。排队期间保持 Unknown/queued，**不启动 10 秒预算，
+不判 Unhealthy**。16 个成员在 2 个许可下依次探测，末尾成员不会因排队已过 10 秒而直接失败。
+
+取得许可后总预算 **10 秒**，覆盖 spawn、完整握手和正常清理：最多前 8 秒握手，至少最后 2 秒
+保留关闭 stdin、终止原进程组并 wait；HTTP 同样关闭本地流/连接并有界尝试会话 DELETE。stdio
+探测使用独立进程组，不加入 Agent 组；探测结束不能杀 Agent 或兄弟会话。launcher 和清理任务由
+Node 生命周期持有，断线、取消查询、丢弃 future 均不转移这项责任。
+
+只有握手成功且本地清理完成才报告 Healthy。超时、失效、EndSession、Node 正常停止均触发清理；
+预算内停止未确认则按时给出 `mcp_probe_timeout`、cleanup_pending，保留名额/租约/view 并登记 D5
+的责任，不再为同身份开第二个 flight。2 秒是本次探测的清理预算，D5 的停止证据等待上限是独立
+的有限对账周期，二者不重置。等待上限后停止后台等待，不自动释放许可；运维可按 D3 看见容量
+耗尽及命名原因，显式对账取得原证据后才能恢复。
+
+实现要验证直接子进程和同组后代退出，不能只断言函数返回 timeout。首版明确只提供进程组
+BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃后的未知证据不被说成 Strong。
+需要 cgroup/subreaper 或其他强纳管的保证另立后续决策，本次不以“整棵树清理”宣传这项能力。
 
 ## D9：三层状态按证据展示
 
 | 事实 | 权威证据 | 不代表 |
 | --- | --- | --- |
-| 已配置 | Controller 保存的选择/配置状态；Node 还可能发现包缺失或解析失败 | ACP 已接收、服务可连接 |
-| 已送达 ACP | Node 观察到对应 generation 的完整 `session/new`/`session/load` 成功响应，成为 Active | desired 已是最新、工具实际被调用、宿主健康 |
-| 宿主健康 | 当前匹配身份的完整探测及清理结果 | Agent 自己已连接或调用成功、会话应被阻塞 |
+| 已配置 | Controller 保存的选择/配置状态，Node 仍可能发现缺包或解析失败 | 已送达、可连接 |
+| 已送达 ACP | 对原 provider ID 的完整 setup/load 成功及 active generation | 当前 desired 已收敛、旧注册/凭据/进程已退出、工具已调用 |
+| 宿主健康 | 当前匹配身份的完整 Node 探测及 BestEffort 本地清理 | Agent 已连接或调用成功、整棵进程树静止 |
 
-Controller 只把当前匹配的 active/desired 显示为“当前配置已送达”；pending/blocked 时可显示“上次
-送达版本”，并明确当前刷新状态。缺少新 Node 能力或当前观察时显示未支持/未知，不伪造失败或成功。
-页面重载后 S 不变，但 Active 和健康必须重新取得当前观察；持久化选择不能变成持久化健康。
+只有 active 匹配当前 desired 且 current 才显示“当前配置已送达”；其他状态可显示“上次送达”
+但不能冒充当前可用。页面重载保留 S，重新取得 Active/健康。缺新能力按 D1 拒绝 v2 带 MCP 派发，
+旧执行只显示未支持/未知。刷新失败引导修复或下一轮重试，轮次等候超时显示稳定失败；探测失败
+可手动重测，排队/容量不可用与服务失败分开。停止未确认显示 stopping 与残留责任，不能显示已停止。
 
-刷新失败提示阻塞原因和配置入口；探测失败是非阻塞提示，可显式重新检测。成员 ID、setting ID 和
-稳定码用于定位，不显示设置值或第三方错误。权限检查沿用会话读取/操作授权；看得到运行不自动
-等于有权改凭据或发起带凭据的重新检测。
+展示仅使用成员 ID、setting ID 和稳定码，不显示值或第三方文本。读会话的授权不等于修改凭据
+或发起带凭据探测的授权；所有请求仍检查原 execution/control scope。
 
 ## 为什么不是这些替代方案
 
-| 方案 | 优势与未采用原因 |
+| 方案 | 优势与取舍 |
 | --- | --- |
-| Controller 用 Go 重新解析并探测 | 较易接现有后端，但不能证明与 Node package view、workload 身份及解析结果一致 |
-| 重发 start 或停止旧 execution 再新建 | 可复用旧入口，但前者按契约不更新值，后者改变会话上下文及执行生命周期 |
-| 更新直接进入 durable command queue | 天然有 ACK/重放，但会把 Settings 写进 WAL；只持久化摘要也泄露值关系且不能恢复凭据 |
-| 只做无值 invalidation，等下一次 prompt 取值 | 秘密路径少，但 idle 会话不会立即收敛，且 Node 没有 Controller 的配置存储 |
-| 以可靠 Thread 事件保存健康 | 便于历史查询，但跨重启会制造过期健康；事件窗口背压还会延迟当前诊断 |
-| load 成功即删旧包 | 磁盘占用更小，但 ACP 不证明旧 MCP 进程已退出；本提案保留到 Agent 停止并限制版本数量 |
-| 所有 Session 共享一个探测缓存 | 少一次握手，但 Node 的独立会话可能有不同配置/授权；首期按 execution 隔离 |
-| 直接复用现有 stdio child spawn | 改动少，但以 Node 身份执行以及只回收直接 child 都不满足工作负载与清理边界 |
+| Controller 重新解析并探测 | 接线较少，但无法证明 Node package view、workload 身份和实际绑定一致 |
+| 重发 start 或结束 execution 再新建 | 前者不更新值，后者丢失执行和会话身份，不采用 |
+| 同一 execution 内重启自己的 Agent | Node 没有 Desktop 的共享 Agent 代价；包版本变更采用，保留 provider ID，但有重启延迟和内存状态损失 |
+| 所有配置更新也重启 Agent | 可更快回收同版本旧注册，但增加每次凭据保存的中断成本；当前仅版本变化重启，配置刷新保留 provider 资源增长风险 |
+| load 成功即删旧包 | 节省空间，但 ACP 不证明旧使用者已退出；改用 Agent 停止证据和每个探测的独立租约 |
+| 更新进入 durable queue | 易于重放，却把 Settings 写入 WAL；本方案只持久化无值身份、轮次结算与停止责任 |
+| 用健康事件证明已送达 | 可历史查询，但健康与 ACP 独立，且跨重启会过期；保持内存观察 |
+| 清理超时就发终态并释放 checkout | UI 容易收敛，但残留进程仍可写树；采用有限等待后命名转交，终态留待证据 |
+| 默认 stdio spawn / 默认 HTTP 重定向 | 改动小，却可能以 Node 管理身份执行或将自定义秘密头交给跳转目标，不采用 |
 
 ## 不变量
 
-1. S 在创建、挂接、provider 恢复和刷新中不变；缺元数据不触发 Automatic。
-2. 最新合法 generation 先更新 Node admission，再回复受理；旧 generation 不回滚目标。
-3. Settings 只存在于受权运行内存和必要的 ACP/探测外发，不进入任何持久或诊断表面。
-4. 非 current 会话不能让新的 prompt 进入 Agent；已开始 prompt 不被 MCP 更新强行取消。
-5. Active 只有完整 ACP 请求成功才能推进；晚到的成功不清除更新目标。
-6. 当前健康来自相同执行/成员/版本/配置/cwd 身份的探测，且不决定 MCP 选择或 prompt 准入。
-7. 进程、连接、租约和 view 有明确 owner；停止未确认不被超时或客户端断线抹掉。
-8. 当前与被使用的旧包字节不被安装/移除替换；资源上限拒绝而不破坏旧使用者。
-9. 断线重新查询，Node 重启仍 interrupted；不会从持久投影恢复 Active、健康或旧值。
-10. 更新、观察和探测以当前 execution/control scope 为边界，不影响兄弟会话。
+1. S 不随挂接、刷新或 provider 恢复扩大；运行中缺授权元数据时停止派发并结束。
+2. Update 与 Actor 最终准入有确定顺序；非 current 不准入新 prompt。
+3. Settings 只在受权内存与必要外发中，不随停止责任、事件或诊断持久化。
+4. MCP 非终结拒绝不结束 execution；轮次只在真实准入后结算 Executed，等候超时可靠报告 Failed。
+5. 刷新失败保留原 provider ID，下一轮只 load；升级只重启本 execution 的 Agent。
+6. 超时、断线或任务结束不构成停止证据；未知责任保留精确包、view 与 checkout 围栏。
+7. Agent/探测停止责任先于 spawn 登记；重启先恢复围栏，不能刷新额度或复活 Agent。
+8. 探测预算从许可开始，排队不是不健康；探测与当前身份不符则不能写回。
+9. ACP 接受、Host 健康和 BestEffort 清理互不替代，不宣称旧凭据必然撤销或 Strong 静止。
+10. 终态之后没有事件；停止未确认时不伪造终态、不交付、不复用。
 
 ## 验收场景与评审重点
 
-本 ADR 尚未 approved，以下是方案的可观察验收场景，尚不创建核心测试用例或宣称实现证据。
+本 ADR 尚未 approved，以下是可观察场景；此阶段不新增核心测试用例或宣称已有实现覆盖。
 
-- reload/关联元数据丢失/空选择：S 不扩大；旧 start 保持冻结行为；新模式缺 capability 时不发送新输入。
-- idle 更新、busy 更新、权限等待、两次更新穿插 ACP 成功：只在安全点 load；后续 prompt 看到最新目标。
-- 断线时丢更新回复、重复/乱序/冲突更新、Controller 丢旧值、Node 重启：内存受理不被说成持久重放。
-- prompt 的 generation 领先 Node、已有 accepted 排队后配置失效、EndSession 到达：拒绝/等待/丢弃的
-  归属清晰；MCP blocked 不阻塞结束控制。评审特别核对 D4 的跨进程排序点，而非假定全局提交原子。
-- 升级时旧包正在被 Agent/探测使用、两个会话使用不同版本、移除和同版本修复：不覆盖使用中的字节，
-  不提前删 view；保留版本达到预算时明确 blocked。
-- stdio/HTTP 的成功、401/5xx、协议错误、tools/list 失败、超大响应和挂死；同身份 single-flight，
-  不同执行不串缓存；等待/取消/关闭/超时后验证同组后代和连接，停止未知时责任仍在。
-- 在真实控制帧、ACP fixture、ledger/WAL、JSONL、日志、错误、查询及页面中追踪特征 Settings 值，
-  只在允许的内存/外发边界出现。包版本保留不能顺便保留秘密。
-- 三层状态分别故障注入：仅配置成功、控制帧写出、ACP 拒绝、ACP 成功但探测失败，不能互相代替。
+- v2 连接只有 session_mcp 的旧 Node，非空选择拒绝，空选择仍可启动；重载保留 S，运行中丢 S 后
+  停止派发并 EndSession。重发原 command 保留原 generation，拒绝 mcp_update_required 后不能记已送达。
+- idle/busy/权限等待/已排队轮次与两次 Update 交错；以 Actor 准入排序，不能提前 Executed 或误报
+  agent_unavailable。解析失败也 blocked，ACP 失败隔离后无 channel，下一轮只 load 同 provider ID。
+- 120 秒无活动窗口与 session update 重置；barrier 等待独立计时；300 秒轮次期限和 600 秒未收敛
+  期限不因更新续期。EndSession 与 Failed 结算竞争时只有一种结果，无终态后事件。
+- 版本升级停止自己的 Agent；兄弟会话不受影响。stop 失败保留精确租约/view，不启动替代 Agent，
+  重启 Node 后仍禁止普通 checkout 复用和 prior_revision 恢复；迟到原证据才补终态、释放资源。
+- spawn 登记前后、进程启动闸门、stop 锚定及确认提交前后崩溃；未知身份不能伪装成未启动；PID
+  复用不能让新进程被误杀。Shared/Separate 和跨设备复制均覆盖版本 view 与清理边界。
+- 16 成员、2 个 execution 许可、8 个 Node 许可：排队不 timeout；8 个 cleanup_pending 耗尽容量
+  可见，重启不能恢复假额度。重测 attempt 丢回复/Controller 重启先查询，旧 flight 不覆盖新身份。
+- HTTP 307 + X-API-Key（含同源/跨源/DELETE），验证没有第二次请求；超 1 MiB、SSE 无结束、stdio
+  超长帧、401/5xx、tools/list 失败及挂死；不发 tools/call，验证直接 child 与同组后代清理。
+- 特征 Settings 追踪覆盖控制帧、ACP、探测以及 ledger/WAL、JSONL、日志、停止责任和页面；值只出
+  现在允许的内存/外发，停止记录不能保存 resolved URL/argv/env。
+- 配置成功、帧写出、ACP 拒绝、ACP 成功但探测失败分别注入；Desktop 原默认 attach 策略不变，
+  共享 HTTP 不跳转/有界响应的行为变化有独立回归。
 
-## 风险、未解决的问题与落地顺序
+## 风险、资源边界与落地顺序
 
-Controller 必须维护每 Session 的 generation 与配置保存/轮次接纳顺序；这是新增调用方义务，不能
-仅升级 Node binary 就宣称支持。内存回复需要查询对账，牺牲历史健康审计；历史证据归档另行设计。
-包版本保留可能增加磁盘占用，并在 64 个身份后要求结束旧会话；评审需要确认这一有界取舍。探测
-增加一次带凭据握手，接受其握手级副作用，但不允许工具调用或自动重试。
+以下是本提案要求明确接受的边界，不能用局部上限声称 Node 整体有界：
 
-本文不解决 Node 崩溃后恢复原 Agent、强进程 containment、MCP-over-ACP、Agent 内部是否真正连接/
-调用工具、全租户插件卡片的独立探测或后台周期复检。交互等待恢复仍由对应工作流/会话决策承接，
-本方案只保证重新建立的会话继续使用原显式选择。
+| 资源或保证 | 最坏情况与边界 |
+| --- | --- |
+| 会话总数 | 每 checkout 8 个，不设全 Node 上限；N 随 checkout 数增长，Agent 进程、会话输入和最多 16N 个等待探测意图都随 N 增长 |
+| MCP 版本/view | 活跃切换至多约 32N 个版本引用，加 8 个探测成员引用；同版本共享 installed 字节，但 EXDEV 的私有 view 可以完整复制，不能当作硬链接的零成本 |
+| 磁盘 | 包大小、插件根全局配额和无租约历史版本占用没有本 ADR 提供的总上限；原插件根也未解决磁盘配额。安装失败不得删除在用版本腾空间 |
+| 配置刷新 | 不变包的多次 load 可能让 provider 累积注册/子进程，数量可随刷新次数增长；本 ADR 未定义全局或每 Agent 硬进程上限，600 秒未收敛期限不能约束一直刷新成功的长寿命会话 |
+| blocked 与停止未知 | 无 prompt 的未收敛区间 600 秒内请求结束，但物理资源只有停止证据才释放；不可中断进程可使残留无限保留并耗尽 8 个探测许可，必须对账/运维处理，不能自动放宽围栏 |
+| 进程保证 | 进程组 BestEffort 是对原“进程树清理”范围的有意收窄；逃逸后代及其凭据不在完整退出保证内，强 containment 留给后续决策 |
+| Agent 重启 | 版本更新付出重启延迟并丢失 provider 仅驻内存的状态；若 provider 无法以原 ID load，则 blocked，禁止静默重建 |
+| HTTP | Node 网络身份与 workload 可能不一致；关闭全部跳转会使依赖重定向的 Desktop/Node endpoint 探测失败，需配置最终 URL |
 
-落地分为三步：
+未设全局会话/磁盘/配置刷新进程上限是本提案保留的风险，尚不能因局部数值已经选定就宣称 owner
+接受了这些无界项。确认后以部署监测与明确生命周期管理承担，强 containment、全局配额、provider
+注册回收策略或历史健康审计另行决策。本文也不解决 Node 崩溃后恢复 Agent、MCP-over-ACP 或 Agent
+实际工具可见性；Host 健康不替代它们。
 
-1. 完成本文评审，纠正模式/排序/租约/探测边界，标为 approved 后再在镜像目录维护核心用例，明确
-   每项义务为 Missing，不以现有启动 setup 测试推导新能力已覆盖。
-2. Node 实现与 PR：协议严格校验和兼容、内存配置源、Actor/barrier、版本租约与 view、工作负载探测
-   launcher、无值状态查询及直接边界测试同批交付；所有行为具备后才广告能力。Desktop 原行为测试
-   与 Node 门禁通过。Controller/v2 再按能力接入并独立验收。
-3. 实现 review 通过后另开落地运行，按最终实现及真实测试修订 ADR 和核心用例；产品 PR 合并后再
-   合并 implemented 状态。原冻结 setup、Thread 事件可靠性、Node 重启中断、checkout 共享围栏和
-   Desktop MCP 行为保持各自既有承诺。
+落地分三步，代码义务由 Node 产品实现运行承担，不转嫁给仅实现 v2 UI 的运行：
+
+1. 完成本文复审后标 approved；再在镜像目录登记核心用例为 Missing，并为被修改的 plugin-runtime、
+   会话命令及停止/共享 checkout 契约补历史指针。不在本 PR 提前改其他 ADR 的 implemented/README。
+2. Node 产品 PR 同批交付下表责任并通过边界测试，全部具备才广告新能力；Controller/v2 同版本接入
+   轮次拒绝/失败、generation/attempt 对账、IdleTimeout 和能力门禁。v2 的选择恢复/状态展示可独立
+   先行，但不能提前宣称刷新/健康已完成。
+
+   | 责任面 | 必须新增的行为 |
+   | --- | --- |
+   | `crates/agent-runtime` 的 actor_mcp / cleanup / attach / live state | Node 宿主策略保留 Blocked 与 provider ID；resolver 失败纳入状态机；只 load、无 new fallback；有类型的非终结准入结果与通知；版本切换的独占 Agent 重启接缝 |
+   | `apps/ora-node/src/session/driver.rs` | 在 settle Executed 前等门禁及 Actor 确认；300 秒 Failed 结算与 600 秒结束；停止失败移交资源 owner，不能直接 drop placement/leases |
+   | `crates/node-protocol` / `crates/node-db` / Node service | 新消息和条件必填 generation；按原因区分投递拒绝；可靠 SessionTurnFailed；无值停止责任、启动闸门与前向迁移；恢复围栏先于准入/回收 |
+   | Node catalog / `session/workload.rs` | MCP 精确版本租约、按 id/version 的 Separate view、Shared installed 路径、Agent/探测各自持有与迟到释放 |
+   | Node probe owner / `ora-utils::mcp` | 8/2 许可、从许可起 10 秒、独立 workload launcher 与确定 cwd、停止责任和容量诊断；共享 HTTP 禁跳转与流式响应上限 |
+
+3. 产品实现评审通过后另开落地运行，以实际实现修订 ADR 并回填直接测试证据；产品 PR 合并后再合并
+   implemented 状态。保留旧模式冻结 setup、独立会话身份、Node 不自动恢复 Agent 和可靠事件承诺，
+   不把 proposed 的资源取舍或尚未验证的停止行为称为已实现。
