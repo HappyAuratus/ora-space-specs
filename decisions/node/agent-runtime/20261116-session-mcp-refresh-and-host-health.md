@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 保留会话身份刷新 MCP，以有界准入和停止证据隔离故障
@@ -10,10 +10,12 @@ Controller 持久保存 Session 的显式 MCP 选择，向 Node 提交完整内�
 刷新失败阻塞新 prompt，下一轮自动重试，始终禁止回退到
 `session/new`。配置完整、ACP 接受 revision、Host MCP Health 分别取证。
 
-本决策为 `approved`：owner 于 2026-11-16 经三轮评审后批准 D1–D9，核心测试用例见文末“核心测试用例”。
-实现尚未开始，用例义务如实标为 `Missing`；实现合入并完成验证后，由落地运行按最终实现同步正文并
-改为 `implemented`。本文不是现有实现的描述。需要修改共享 `agent-runtime` 的宿主策略、Node 对话准入、
-停止责任与持久账本、MCP 包租约及探测客户端。D5 的停止移交、持久证据、终态前提及门禁适用于
+本决策的 Node 侧实现已随 [desktop#776](https://github.com/ora-space/desktop/pull/776) 合入
+`28da0a4e77ec2257468b15bffd99e166a186b31c`，状态为 `implemented`。该状态表示 Node 的协议、
+准入、停止责任、版本租约和探测机制已经落地，不表示 Controller/v2 消费端已经接线或所有验证义务均有
+完整直接证据。核心用例逐项保留 Covered / Partial / Missing；Node 侧验收通过不外推跨仓库端到端通过。
+Cloud v2 继续在启动前拒绝非空 MCP，直到消费端实现 generation、可靠轮次失败和状态查询协议；
+仅升级 Node 二进制不解除此门禁。D5 的停止移交、持久证据、终态前提及门禁适用于
 升级后的**所有 Node Agent 会话**，包括未启用 mcp_lifecycle 和空 MCP 的 v2 会话；不能通过能力
 协商退出这项停止保证，正常终态也要等待原停止证据。Node 生命周期模式禁止重建的策略不改变 Desktop 默认
 策略；共享 `ora-utils` HTTP 探测改为不跳转、限制响应体，会同时改变 Desktop 的探测行为。Node 重启
@@ -45,10 +47,9 @@ Controller 持久保存 Session 的显式 MCP 选择，向 Node 提交完整内�
 
 ## 问题与约束
 
-当前 Node 启动快照不能更新。共享运行时的刷新失败会隔离 channel、标记 Stopped 并清除 live MCP；
-下一次 attach 的 load 失败又可以 new 新会话。Node 对话循环则在 prompt 受理前结算命令，受理失败
-按 `agent_unavailable` 结束 execution。现有停止路径也会在 stop 失败后释放租约并删除 view。
-因此下面的等待、保留身份和保留资源都需要新增行为，不能仅把内存配置源接入现有 Actor 就宣称完成。
+本决策之前的启动快照不可更新，刷新失败后的通用重建策略也不能满足 Node 保留 provider 身份的要求。
+因此 Node 使用独立的宿主策略，并把 Actor 最终准入、轮次结算与停止责任分开拥有；内存配置源本身
+不构成完整生命周期，停止失败也不能触发租约或 view 的提前释放。
 
 设置值不能进入命令队列或账本。ACP 成功只证明输入被接受，不证明旧 MCP 进程已退出；健康握手也
 不能证明 Agent 采用了相同连接。停止和资源释放必须另有证据，否则共享 checkout 会被残留写入者破坏。
@@ -79,7 +80,7 @@ Controller 对每个业务 Session 串行分配 generation，在配置保存的�
 后发送完整更新。generation 与 configuration revision 为 `0..=2^53-1` 的 JSON 整数，新更新的
 前者必须大于 0；上限处拒绝，不回绕，不以值或值摘要生成代号。
 
-以下是待评审的消息语义，均沿用 `protocol_version`、`operation_id`、`execution_id`，请求另有
+消息语义如下，均沿用 `protocol_version`、`operation_id`、`execution_id`，请求另有
 `node_id` 和有界 `request_id`。Controller 归属、执行身份及受控 incarnation/control scope 校验
 先于访问会话和解析配置；调用方不能提供 Node 路径。
 
@@ -249,9 +250,10 @@ fsync，再持久登记尝试，然后加独占 flock 并派发；回收不能�
   它的副本。
 - 每个进程组在其 spawn 时各记一条 pid/start_ticks/boot_id/主机标识线索，同一尝试可有多条线索；
   终止和重启后的直接进程检查覆盖全部线索，不只插件运行时。
-- 拆除时宿主对子进程的 `kill_all` 结果（`crates/plugin-lifecycle/src/childprocess.rs:245-266`，
-  在 `runtime.rs:190-200` 的分离任务中接入，现状失败只记日志）必须回报给停止责任 owner，计入
-  停止证据；任一子进程 kill/wait 失败都不能被吞掉而让尝试显示为已停止。
+- `kill_all` / `stop_plugin` 的返回结果只用于诊断，不构成停止或未停止的证据。停止责任 owner
+  始终核对原尝试锁与全部直接进程线索：请求返回成功不能提前确认，请求返回错误也不能跳过原期限内
+  的证据等待。若随后取得真实停止证据，允许确认；否则保留责任、租约和 view。
+  这修改了 approved 版本把 `kill_all` 返回纳入停止证据的约定：请求结果与进程实际存续并不等价。
 - stdio 探测只有 Node 的一次直接 spawn，一个进程组、一条线索，派发后 Node 关闭自身副本，按原写法。
 
 每个 Agent/stdio 尝试新增一行 `session_stop_attempts`，含原 Node 实例、boot_id、主机标识、
@@ -302,8 +304,8 @@ first_stop_at_ms / bound_at_ms，再发信号，跨重试/重启不续期。原�
 ### 终态、转交与门禁
 
 Node 生命周期 owner 在 driver 返回前接管未清理 Agent/探测、catalog 租约和 placement/view；
-stop_plugin 失败不能仅记 warning 后 drop；宿主子进程的 `kill_all` 结果同样回到这个 owner，
-不能留在分离任务里只记日志。停止一旦请求，该代插件后续的宿主 spawn 一律拒绝，避免 Node 关闭
+`stop_plugin` / `kill_all` 错误只记诊断，不能据此 drop 资源或立即标记 `stop_unconfirmed`；
+owner 仍按首次持久化期限等待原锁与线索。停止一旦请求，该代插件后续的宿主 spawn 一律拒绝，避免 Node 关闭
 锁副本后再起不持锁的进程。更新中的旧 Agent 未确认停止时保持 blocked，不启动替代 Agent；结束
 execution 时 stopping，不再接受轮次/探测。HTTP 停止只确认本地任务/流/连接已结束，远端 DELETE
 仍是 BestEffort。
@@ -528,8 +530,14 @@ Node 生命周期持有，断线、取消查询、丢弃 future 均不转移这�
 只有握手成功且本地清理完成才报告 Healthy。超时、失效、EndSession、Node 正常停止均触发清理；
 预算内停止未确认则按时给出 `mcp_probe_timeout`、cleanup_pending，保留名额/租约/view 并登记 D5
 的责任，不再为同身份开第二个 flight。2 秒是本次探测的清理预算，D5 的停止证据等待上限是独立
-的有限对账周期，二者不重置。等待上限后停止后台等待，不自动释放许可；运维可按 D3 看见容量
-耗尽及命名原因，显式对账取得原证据后才能恢复。
+的有限对账周期，二者不重置；探测 owner 读取已持久化的 `bound_at_ms`，不以并发请求的本地计算值续期。
+等待上限后停止轮询，保留 owner 和许可并等待确认通知；自动收口或 root 显式对账取得原证据后都必须
+唤醒 owner，完成名额及精确版本租约释放。运维可按 D3 看见容量耗尽及命名原因。
+
+探测 runner/owner task panic 或异常退出时，整个 Node fail closed，不把故障局限在单个 execution 后
+继续服务。持久停止记录保留责任，Node 重启后先恢复围栏和占用的探测容量，再按原证据收口；不得因任务
+消失而返还名额。选择这一策略是为了避免活着的 Node 留下无 owner 的清理责任；代价是其他会话也受
+Node 退出影响。重启仍不自动复活 Agent，只恢复停止责任。
 
 实现要验证直接子进程和同组后代退出，不能只断言函数返回 timeout。首版明确只提供进程组
 BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃后的未知证据不被说成 Strong。
@@ -580,7 +588,7 @@ BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃�
 
 ## 验收场景与评审重点
 
-以下是可观察的验收场景；长期系统承诺已登记为文末的核心测试用例，实现尚未开始，不宣称已有实现覆盖。
+以下是长期验证义务；当前直接证据与缺口以文末链接的核心用例为准，不因产品合入而全部视为通过。
 
 - v2 连接只有 session_mcp 的旧 Node，非空选择拒绝，空选择仍可启动；重载保留 S，运行中丢 S 后
   停止派发并 EndSession。重发原 command 保留原 generation，拒绝 mcp_update_required 后不能记已送达。
@@ -593,7 +601,7 @@ BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃�
   stop_unconfirmed 只阻止 prior_revision 恢复/自身交付；正常停止的 A 不挡普通后继 B，仍检查 8 会话
   限制。Agent/探测带继承锁重启收口，空闲锁迅速确认，迟到证据才补终态、释放资源。
 - 插件运行时退出而宿主 spawn 的 Agent CLI（另一进程组）仍存活：锁仍被占用、CLI 线索被终止或保留
-  责任，不能判 Stopped；`kill_all` 失败进入停止证据；请求停止后的宿主 spawn 被拒绝。
+  责任，不能判 Stopped；`kill_all` 的成功或失败都不替代原锁与线索；请求停止后的宿主 spawn 被拒绝。
 - spawn 登记前后、进程启动闸门、stop 锚定及确认提交前后崩溃；未知身份不能伪装成未启动；PID
   复用不能让新进程被误杀；子进程未继承 fd 不外推 Strong。Shared/Separate 均覆盖版本 view，
   跨设备部署及 EXDEV 必须拒绝。同一进程第 9 次运行时 load（含重连重发与 O1 重试）走重启，失败调用
@@ -614,7 +622,7 @@ BestEffort；恶意 setsid/脱组、无法确认的内核状态及宿主崩溃�
 - 配置成功、帧写出、ACP 拒绝、ACP 成功但探测失败分别注入；Desktop 原默认 attach 策略不变，
   共享 HTTP 不跳转/有界响应/忽略系统代理的行为变化有独立回归。
 
-## 风险、资源边界与落地顺序
+## 风险与资源边界
 
 以下风险已按 owner 的复审结论纳入方案，并随本文一同批准：
 
@@ -637,35 +645,21 @@ owner 另已决定接受 300 秒轮次截止涵盖完整重启，可能让正常
 却不提升为强纳管。Node 全局配额、强 containment、历史健康审计、跨 Node 崩溃恢复 Agent 及实际
 工具可见性均不在本文；所述真实 Agent 前提验证不代替产品实现证据。
 
-落地分三步，代码义务由 Node 产品实现运行承担，不转嫁给仅实现 v2 UI 的运行：
+Node 与消费端分别承担协议责任：Node 提供完整内存控制输入、原子准入与可靠失败、停止证据、
+精确版本租约和宿主探测；Controller/v2 必须完成轮次拒绝/失败、generation/attempt 对账、原 IdleTimeout
+策略、重启风险提示和能力门禁后才能启用非空 MCP。Node 能力广播不替代消费端接入验收。
 
-1. 已完成：三轮复审后标 approved，在镜像目录登记核心用例（义务均为 Missing），并为被修改的
-   plugin-runtime 根决策、会话命令、显式 Session MCP 及共享 checkout 决策补 `> 历史决策：` 指针；
-   不改其他 ADR 的状态。
-2. Node 产品 PR 同批交付下表责任并通过边界测试，全部具备才广告新能力；Controller/v2 同版本接入
-   轮次拒绝/失败、generation/attempt 对账、原 IdleTimeout 策略、重启风险提示和能力门禁。v2 的选择恢复/状态展示可独立
-   先行，但不能提前宣称刷新/健康已完成。
-
-   | 责任面 | 必须新增的行为 |
-   | --- | --- |
-   | `crates/agent-runtime` 的 actor_mcp / cleanup / attach / live state | Node 宿主策略保留 Blocked 与 provider ID；resolver 失败纳入状态机；只 load、无 new fallback；有类型的非终结准入结果与通知；版本切换的独占 Agent 重启接缝 |
-   | `apps/ora-node/src/session/driver.rs` / `session/process.rs` | 在 settle Executed 前等门禁及 Actor 确认；300 秒 Failed 结算；失败路径每尝试至多一次 spawn、每进程 8 次运行时 load 计数、保留模型授权/socket；会话 spawner 给插件运行时及全部宿主子进程传同一锁 OFD 并逐组记线索；停止失败移交资源 owner，不能直接 drop placement/leases |
-   | `crates/plugin-lifecycle` childprocess / runtime | 请求停止后拒绝新的宿主 spawn；`kill_all` 逐进程结果回报停止责任 owner，不在分离任务中只记日志 |
-   | `crates/node-protocol` / `crates/node-db` / Node service | 新消息和条件必填 generation；按原因区分投递拒绝；可靠 SessionTurnFailed；新增 session_stop_attempts / audit（含主机标识）、attempt_lock 派发与前向迁移；迁移前只读排空检查及 legacy_unknown 登记；stop_unconfirmed 围栏只限恢复/自身交付，root-only socket 的可审计对账和确认记录 GC |
-   | Node catalog / `session/workload.rs` | MCP 精确版本租约、按 id/version 的 Separate view、Shared installed 路径、同文件系统硬链接门禁、Agent/探测各自持有与迟到释放 |
-   | Node probe owner / `ora-utils::mcp` | 8/2 许可、从许可起 10 秒、独立 workload launcher 与确定 cwd、停止责任和容量诊断；共享 HTTP 禁跳转、禁系统代理与流式响应上限 |
-
-3. 产品实现评审通过后另开落地运行，以实际实现修订 ADR 并回填直接测试证据；产品 PR 合并后再合并
-   implemented 状态。保留旧模式冻结 setup、独立会话身份、Node 不自动恢复 Agent 和可靠事件承诺，
-   不把已批准但尚未验证的资源取舍或停止行为称为已实现。
+等待旧 supervisor 退出没有独立超时；不能把超时当作已退休并提前启动替代者。极端挂起的恢复依赖
+Node 重启后的持久停止责任收口。该路径及若干竞争分支仍有直接测试缺口，详见核心用例；不据此
+承诺每次 supervisor 退休都在固定时间内完成。
 
 ## 核心测试用例
 
 见[会话 MCP 刷新与宿主健康用例](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md)：能力门禁与
 白名单、generation 排序与无值内存输入、准入与轮次结算、只 load 原身份的失败恢复、每进程运行时 load
 计数与版本重启、尝试锁停止证据与重启收口、残留门禁、未排空升级的 legacy_unknown、可审计运维对账、
-精确版本租约与同文件系统 view、探测许可/预算/清理与 HTTP 边界，以及三层状态与 Setting 值隔离。实现
-尚未开始，义务如实标为 `Missing`；[显式 Session MCP 用例](../../../test-cases/node/agent-runtime/session-mcp.md)、
+精确版本租约与同文件系统 view、探测许可/预算/清理与 HTTP 边界，以及三层状态与 Setting 值隔离。
+Node 侧验收 4、5、6、8、12 为 Passed，其余明确保留跨仓库或直接测试缺口；[显式 Session MCP 用例](../../../test-cases/node/agent-runtime/session-mcp.md)、
 [共享 checkout 会话用例](../../../test-cases/node/agent-runtime/shared-checkout-sessions.md)与
 [尝试锁用例](../../../test-cases/node/git-execution/attempt-locks-and-stop-evidence.md)的证据保持各自范围，
 不推导本文新义务。
