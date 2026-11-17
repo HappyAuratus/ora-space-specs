@@ -80,7 +80,8 @@
 ## 会话 MCP 刷新与宿主健康
 
 [会话 MCP 刷新与宿主健康决策](../../decisions/node/agent-runtime/20261116-session-mcp-refresh-and-host-health.md)于
-2026-11-16 经 owner 三轮评审批准为 `approved`。实现尚未开始，这些义务目前都是 `Missing`；
+Node 侧已实现为 `implemented`。17 条核心用例分别维护直接证据与缺口，Node 侧验收 4、5、6、8、12 为 Passed；
+不把 Node 合入或验收通过外推为 Controller/v2 全链完成，也不把默认 ignored 的 root 用例算作 CI 通过。
 [显式 Session MCP 用例](agent-runtime/session-mcp.md)、[共享 checkout 会话用例](agent-runtime/shared-checkout-sessions.md)与
 [尝试锁用例](git-execution/attempt-locks-and-stop-evidence.md)的证据保持原范围，不推导本文的新义务。
 
