@@ -205,11 +205,11 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## Cloud 单进程根决策
 
 [Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，租户授权一条按 `b03ac2b4`），8 项汇总为 2 Covered / 4 Partial / 2 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，租户授权一条按 `b03ac2b4`，首次内网部署准备一条按 `85bc9a5f` / cloud#362），9 项汇总为 2 Covered / 5 Partial / 2 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、租户路由漏判成员或撤权后后台照常执行、全局锁回归、迁移乱序、运行超过 24 小时后失效 |
+| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、租户路由漏判成员或撤权后后台照常执行、全局锁回归、迁移乱序、运行超过 24 小时后失效、离线部署清数据/带入演示数据、同源前端吞掉 API 或路径穿越、离线资源搬移与关闭官方市场失效 |
 
 ## 项目仓库根决策
 
@@ -241,7 +241,7 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## 登录与会话根决策
 
 [登录与会话根决策](../../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)为 `approved`，
-IDaaS 登录、邀请链接、移出成员和 desktop 令牌尚待实现。证据按 cloud `0ca0a9a0` 的 `v2-server/` 登记，10 项汇总为
+IDaaS 登录、邀请链接、移出成员和 desktop 令牌尚待实现。证据按 cloud `0ca0a9a0` 的 `v2-server/` 登记（“Exactly One Login Method Is Open” 的 `V2_LOGIN` 必填部分按 `85bc9a5f` / cloud#362 补充），10 项汇总为
 0 Covered / 3 Partial / 7 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
