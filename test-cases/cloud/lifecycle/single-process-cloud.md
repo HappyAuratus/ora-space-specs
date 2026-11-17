@@ -4,8 +4,9 @@
 下文的 D 编号与不变量编号都指这篇根决策。
 
 证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）；"A Deployment Keeps Working Past Twenty-Four Hours" 一条读取的是
-cloud `0ca0a9a0`（含 cloud#358），"Every Tenant Route Authorizes Through One Entry" 一条读取的是 cloud `b03ac2b4`（含 cloud#363）。第一版是单机、Node 为本地子进程；多机和隔离不在
-根决策的承诺里，所以这里没有对应的用例。
+cloud `0ca0a9a0`（含 cloud#358），"Every Tenant Route Authorizes Through One Entry" 一条读取的是 cloud `b03ac2b4`（含 cloud#363），
+"Offline Deployment Serves Same-Origin Frontend And Preserves Data Without Demo Fixtures" 一条读取的是 cloud `85bc9a5f`（含 cloud#362）。
+第一版是单机、Node 为本地子进程；多机和隔离不在根决策的承诺里，所以这里没有对应的用例。
 
 ## Cloud Restart Interrupts Every Unfinished Execution Before Serving
 
@@ -122,3 +123,19 @@ cloud `0ca0a9a0`（含 cloud#358），"Every Tenant Route Authorizes Through One
   CA 与证书（`internal/nodeservices/tls.go`，有效期远长于任何一次不重启的运行）和模型授权令牌（`internal/nodeservices/grant.go`，
   短期、靠续期延长，续期路径在上述测试里）。
 - 决策依据：D2，不变量 7。
+
+## Offline Deployment Serves Same-Origin Frontend And Preserves Data Without Demo Fixtures
+
+- 风险：部署启动清空或覆盖已有数据、混入演示账号与演示数据；离线包搬移后资源路径失效或夹带敏感文件；同源前端吞掉 `/api` 等后端路由或放过路径穿越；关闭官方市场后仍展示旧官方快照或向外同步。
+- 前置状态：主机构建或解压了包含服务端、前端产物、相对路径资源清单和启动器的离线目录，且 `V2_DATA_DIR` 已有历史数据；部署显式设置 `V2_PLUGIN_MARKETPLACE_URL=""`。
+- 触发：校验未携带 demo/cleanup 标志的启动预检、整体搬移离线目录、请求页面/后端前缀/越权路径、关闭官方市场后读取和同步插件目录。
+- 必须成立：部署启动不修改已有数据并跳过演示准备（当前构建不支持 IDaaS 登录时必须在接触数据目录与数据库前拒绝启动）；离线打包只保留白名单交付物，搬移后相对路径与 SHA-256 校验通过并拒绝篡改或越界路径；同源前端只服务静态文件与无扩展名 HTML 导航，`/api`、`/auth`、`/internal` 等后端前缀交回后端且符号链接与路径穿越返回 `404`；显式关闭官方市场后目录不返回官方条目、拒绝官方同步与包解析，且重新启用后保留原快照。
+- 禁止结果：部署模式清空数据或注入演示数据；离线包夹带 `users.json`、私有数据目录或包外路径；`/api` 请求落到 `index.html` 或穿越读出包外文件；关闭官方市场后仍可安装官方插件。
+- 验证义务与证据：**Partial** — `internal/server/frontend_test.go` 的 `TestFrontendBoundary`、`TestFrontendPreservesRealAPIRouting`；
+  `internal/preparedassets/assets_test.go` 的 `TestResourceRelocationAndLegacyAbsolutePath`；
+  `internal/store/plugins_test.go` 的 `TestDisabledOfficialCatalogRetainsSnapshotWithoutOfferingInstall`；
+  `scripts/package_offline_test.py` 的 `PackageBoundary.test_allowlist_relocation_and_corruption`；
+  `deployment_test.go` 的 `TestDeploymentPreflightPreservesExistingData`、`TestOptionalIntegrationUnsetAndEmpty`。
+  已覆盖：同源前端静态边界与后端路由隔离、相对路径资源搬移与摘要拒绝、关闭官方市场隐藏目录/拒绝同步并保留旧快照、离线打包白名单与搬移校验、预检失败不破坏已有数据。
+  仍缺：部署模式不跑 seed/demo（在 I2 #1052 接入 IDaaS 登录并能于真实数据库启动 `V2_LOGIN=idaas` 前标为 Missing）。
+- 决策依据：D2，D6 第 8 条。
