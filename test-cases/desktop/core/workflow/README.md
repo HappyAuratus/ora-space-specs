@@ -15,6 +15,8 @@ Agent 长任务的静默容错见
 节点产出物声明（`completion.files`）见
 [交互式节点产出物声明](../../../../decisions/desktop/core/workflow/20261023-interactive-deliverable-contract.md)。
 
+自动重试后的交付窗口与后继调度见[最终尝试产出决策](../../../../decisions/desktop/core/workflow/20261118-interactive-retry-output.md)。
+
 ## 阅读与维护规则
 
 - 核心用例按业务风险组织，不按单元测试、集成测试或 crate 组织。
@@ -42,6 +44,7 @@ while-Loop 已实现独立轮池、上限两策略与早退清理；普通执行
 | [invalidation-events.md](invalidation-events.md) | 失效事件不携带工作流状态，重查收敛 |
 | [prompt-inactivity.md](prompt-inactivity.md) | 静默持续等待、冻结策略、会话隔离与取消清理 |
 | [interactive-node-completion.md](interactive-node-completion.md) | 交互式节点完成门禁、park 快照与 turn key、force 审计、cleanup 修复与区域边界 |
+| [interactive-retry-output.md](interactive-retry-output.md) | 自动重试的最终输出窗口、重复完成与自动接受门禁、原会话恢复及 force 审计 |
 | [interactive-deliverable-contract.md](interactive-deliverable-contract.md) | 产出物声明的文件判定、路径与 glob 边界、基线缺失降级、不支持字段与版本拒绝 |
 | [first-turn-confirmation.md](first-turn-confirmation.md) | 首轮自动回合显式确认、异常停靠与等待参与分离、普通确认与 force 审计、旧快照兼容 |
 

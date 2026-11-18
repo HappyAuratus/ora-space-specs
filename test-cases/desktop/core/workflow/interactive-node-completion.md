@@ -140,8 +140,8 @@ park 与 `prepare` 读取历史。
 
 - turn key 为 `{userSeq, endedSeq}`：最后一条用户消息的 `HistoryLine.seq` 与它之后那条 `TurnEnded` 的 `seq`；不一致时 `complete` 返回 `WorkflowNodeTurnChanged`。
 - 没有 `TurnEnded` 时不生成 turn key，判 `turn_unknown`，不读取上一轮输出。
-- 最终文本取 `(userSeq, endedSeq]` 窗口内按 `seq` 的最后一条 assistant 消息，可能为空，不取最后一条非空。
-- 重试时被放弃尝试的文本可能进入窗口，这是已登记的已知限制；后续独立 attempt boundary record 修复。
+- 旧历史缺少重发边界时，最终文本取 `(userSeq, endedSeq]` 窗口内按 `seq` 的最后一条 assistant 消息，可能为空，不取最后一条非空。
+- 含重发边界时，从最后一个边界起校验本次交付。验证义务见[自动重试的交付边界](interactive-retry-output.md#only-the-final-attempt-can-authorize-successors)。
 
 ### 禁止结果
 
@@ -153,7 +153,6 @@ park 与 `prepare` 读取历史。
 | --- | --- | --- |
 | turn key 从历史推导并在 complete 比对 | `workflow::run::interactive::completion_tests::a_changed_turn_wins_over_the_blockers_gate`、`forcing_a_changed_turn_still_reports_the_conflict`、`changed_output_text_reports_the_two_digests` | `Covered` |
 | 空收尾消息不被旧文本掩盖 | `workflow::run::completion_snapshot::tests::final_text_is_the_last_assistant_message_even_when_empty`、`an_unsettled_turn_does_not_report_output_contract_problems` | `Covered` |
-| 重试已知限制有直接测试与说明 | 无直接用例；按 ADR D2 登记为已知限制 | `Missing` |
 
 ### 决策依据
 
