@@ -32,7 +32,7 @@ Controller 必须承担的义务（D6）；不改变 Desktop Backend 自己注�
 | 前序约定 | 处理 |
 | --- | --- |
 | 宿主拥有进程、会话和授权生命周期 | 继承，不变；宿主能力的授权仍由提供它的宿主（这里是 Controller）负责，Node 只负责送达 |
-| 显式 Session MCP D1：`mcp` 是有序完整的插件选择，最多 16 个 Server，空列表不注入插件 MCP；版本必须与 canonical 序列化往返相等 | 继承并扩展：`host_mcp_servers` 是独立字段，不计入 16 项，不参与插件 ID 排序与唯一性；URL 采用同样的 canonical 往返规则（D1） |
+| 显式 Session MCP D1：`mcp` 是有序完整的插件选择，最多 16 个 Server，空列表不注入插件 MCP；版本必须与 canonical 序列化往返相等 | 继承并扩展：`host_mcp_servers` 是独立字段，不计入 16 项，不参与插件 ID 排序与唯一性；URL 必须完整匹配 D1 文法（文法保证 WHATWG 不动点，不用解析再序列化的往返比较实现） |
 | 显式 Session MCP D3：Setting 值只在运行时边界存在，持久输入只留身份 | 继承并扩展：宿主 Server 的 URL 与请求头同样只在内存中，持久输入只留 Server 名称（D3） |
 | 显式 Session MCP D4：Node 与 Agent 能力门禁分离，能力错误在 `initialize` 后、`session/new` 前；非法选择是帧校验失败 | 继承并扩展：非空宿主列表要求 Agent 声明 ACP HTTP MCP，缺少时以新的稳定 code 失败；非法宿主输入同样按帧校验失败关闭连接 |
 | 显式 Session MCP D5：stdio 命令必须属于已安装包的 `assets/`，不信任 Controller 提供的主机命令 | 继承，不变；宿主 MCP 只接受 HTTP，没有 stdio 形态 |
@@ -230,7 +230,7 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
 - **按能力派发、启动前准入**：只向声明 `session_host_mcp_servers` 与 `agent_session` 的 Node 发送非空列表，
   发送前按 D1 的文法与共用样例校验。使用者需要宿主能力（例如 `agent` 完成策略的交互节点）而目标 Node
   不具备时，拒绝派发或另选具备能力的 Node，不静默降级为不需要宿主能力的行为：完成策略来自冻结的图，
-  悄悄降级会让实际执行的策略与冻结的图不一致，又没有记录。建议使用方在 WorkflowRun 启动准入时检查（冻结
+  悄悄降级会让实际执行的策略与冻结的图不一致，又没有记录。使用方必须在 WorkflowRun 启动准入时检查（冻结
   图里有 `agent` 策略的交互节点时），以有名字的原因拒绝，而不是等前面的节点跑完、用掉模型额度后再在派发
   时拒绝；只有一个可用 Node 的部署（如 Cloud v2 一个项目一个 Node）没有“另选 Node”。
 - **可达性由部署配置决定**：真正发起连接的是 Agent 进程，它可能以 workload UID 运行在自己的网络环境里，
@@ -243,8 +243,9 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
 - **凭据只在持久 execution 记录处于非终态时有效**：宿主 Server 的凭据（URL 或请求头中的秘密）按 execution
   签发，只对这个 execution 有效，并且只在 Controller 持久的 execution 记录处于非终态时有效；判断以持久状态
   为准，不依赖内存中的吊销名单，Controller 重启后已结束 execution 的凭据不会重新可用。记录在以下任一事件
-  最先发生时离开运行态：Controller 决定结束它、发出 `EndSession`、收到 `AgentSessionEnded`、execution 被
-  中断（Controller 重启或与 Node 断连）、经 `GetExecutionStatus` 观察到 `StopUnconfirmed`。被拒绝的调用不
+  最先发生时离开运行态：Controller 决定结束它、发出 `EndSession`、收到 `AgentSessionEnded`、Controller
+  把 execution 的持久记录标为中断（例如 Cloud v2 在自身重启或与 Node 断连时中断全部 execution；协议本身不要求
+  因重启或断连中断）、经 `GetExecutionStatus` 观察到 `StopUnconfirmed`。被拒绝的调用不
   改变任何状态。
 - **启动时检查可恢复性**：Controller 启动时、宿主 Server 开始提供服务之前，逐个检查仍处于运行态的
   execution 的端点和凭据能否恢复；不能恢复的，走正常的结束路径并记录有名字的原因，而不是让会话拿着
@@ -252,8 +253,8 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
   （同一 lifecycle 决策的 D3），天然满足。
 - **attempt 级授权**：完成工具一类按 attempt 授权的工具，token 只在一个 attempt 内短期有效，绑定会话
   （execution）与 attempt。它只能把重放限制在这一个 attempt 和它绑定的会话上，挡不住同一身份下读取当前
-  prompt 的进程：经 Node 承载时 token 随 prompt 写入 Node 持久的会话命令输入，Shared 模式下同一 workload UID
-  的兄弟会话也能读到彼此 provider 的存储。是否接受这一点，或者要求不持久化的承载方式，由使用方的决策
+  prompt 的进程：经 Node 承载时 token 随 prompt 写入 Node 持久的会话命令输入；Shared 模式下 Agent 以 Node 自身的身份
+  运行，能读到 Node 数据库；使用 workload UID 时，兄弟会话共享该 UID，能读到彼此 provider 的存储。是否接受这一点，或者要求不持久化的承载方式，由使用方的决策
   规定。开启 `autoAcceptAgentCompletion` 的节点没有人工确认兜底，一次伪造的完成信号会直接让节点完成，影响
   因此放大。
 
@@ -264,7 +265,7 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
    选择，也不改变它们的失败语义。
 3. 同一 execution 的每一次 ACP setup 附加的宿主 Server 列表相同；会话内不更新，重发 start 不替换值。
 4. 宿主 Server 名不含 `/`，在 ACP Server 名层面不会与任何插件 MCP 的 Server 名相同。
-5. 合法 URL 等于自己的 canonical 序列化；明文 `http` 只出现在字面 `127.0.0.1` 或 `[::1]` 上；Controller
+5. 合法 URL 完整匹配 D1 文法，因而是 WHATWG 不动点；明文 `http` 只出现在字面 `127.0.0.1` 或 `[::1]` 上；Controller
    与 Node 对同一输入的接受与拒绝判断相同。
 6. URL 与请求头只驻留内存和成功的 ACP setup 请求，不属于任何持久或诊断数据（包括解码错误文本）；持久
    投影只有 Server 名称。
