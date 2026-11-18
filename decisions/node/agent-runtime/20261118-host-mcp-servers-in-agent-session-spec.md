@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Controller 经 AgentSessionSpec 交付宿主 MCP，Node 在每次 ACP setup 附加
@@ -13,7 +13,7 @@ Server（名称、URL 与请求头），Node 把它们原样附加到该会话�
 经 Node 执行的工作流也能获得与 Desktop 相同的
 [Agent 完成信号](../../desktop/core/workflow/20261110-agent-completion-signal.md)。
 
-本决策为 `proposed`，已按 owner 评审修订。影响 `node-protocol` 的会话 spec 与能力枚举、Node 会话宿主对共享
+本决策经 owner 评审后为 `approved`。影响 `node-protocol` 的会话 spec 与能力枚举、Node 会话宿主对共享
 运行时 `SessionSetup::host_mcp_servers` 的实现、Node 对执行输入的持久投影，以及提供宿主 Server 的
 Controller 必须承担的义务（D6）；不改变 Desktop Backend 自己注入宿主能力的路径，不改变插件 MCP 的
 解析、生命周期、刷新、健康探测或失败语义，也不改变共享运行时的 setup 等待窗口。旧 Node 的
@@ -272,6 +272,10 @@ lifecycle 和运行时，宿主 Server 不会出现在兄弟会话的 Agent 工�
 
 ## 核心测试用例
 
-本决策处于 `proposed`，按规则暂不维护核心测试用例；改为 `approved` 时，在
-`test-cases/node/agent-runtime/` 补充 Node 侧用例，并把只能由 Controller 验证的 D6 义务登记在
-`test-cases/controller/session/`。
+- Node 侧见[宿主 MCP 用例](../../../test-cases/node/agent-runtime/host-mcp-servers.md)：字段与上限的规范形式
+  和共用样例、能力协商、每次 ACP setup 附加同一列表且不进入插件 MCP、运行值的持久与诊断隔离（含解码失败）、
+  HTTP 能力门禁与失败优先级。
+- Controller 侧见[Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)：
+  按能力派发与镜像校验、端点与凭据跨 Controller 重启有效、按 execution 签发与吊销、attempt 级授权。
+
+实现尚未开始，两份用例的证据一律为 `Missing`。
