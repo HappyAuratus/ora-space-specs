@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Node 协议增加"取消一轮"命令；一轮以取消或失败结束、且 Agent 已静止时，会话保留
@@ -19,8 +19,9 @@ D5 在取得停止证据之后才发出。新行为由 Node 与 Controller 在�
 会话和旧对端保持原行为，没有声明 `turn_cancel` 的 Controller 看到的
 握手内容不变，不具备该能力的 Controller 不能接管已选择新行为的会话。
 
-本 ADR 处于 `proposed`，供评审纠偏，尚无实现，也不维护核心测试用例；评审需要覆盖的验证义务列在
-"验证义务"一节，`approved` 时转为核心用例。影响 desktop 的 `crates/node-protocol`（消息、事件、握手字段、能力、
+本 ADR 已通过评审，状态为 `approved`，尚无实现。"验证义务"一节的每一条都已转为
+[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)，编号一一对应，证据状态均为 `Missing`，
+随实现补齐。影响 desktop 的 `crates/node-protocol`（消息、事件、握手字段、能力、
 会话输入字段）、`crates/node-db`（受理新命令、持久化新事件）与 `apps/ora-node/src/session/`（会话执行）；共享
 `crates/agent-runtime` 已有取消当前一轮、取消宽限期、丢弃空闲期流量与续用 provider 会话的能力；本决策要它
 区分用户取消与看门狗取消的宽限期、在准入提交处和看门狗重发前认取消、识别已失效的 provider 会话，并向
@@ -502,7 +503,7 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 
 ## 验证义务
 
-`approved` 时转为核心测试用例，每项都要有直接证据：
+已逐条转为[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)，每项都要有直接证据：
 
 1. 取消正在执行的一轮后，同一会话可以接着 `SubmitUserTurn`，上下文保留；事件顺序为 `TurnEnded` →
    `TurnCancelSettled{stopped}` → 下一轮。

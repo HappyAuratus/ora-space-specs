@@ -99,3 +99,14 @@ owner 评审为 `approved`，实现尚未开始，义务一律为 Missing。只�
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | agent-runtime | [Node 承载的宿主 MCP](agent-runtime/host-mcp-servers.md) | 两端 URL 判断不一致关闭控制连接、非字面 loopback 上的明文 http、上限口径不清、某次 setup 漏带或改写宿主 Server、宿主 Server 混入插件状态或 setup 窗口、重发改写在用的值、URL/请求头进入账本/日志/解码错误、持久行解码失败、能力缺失仍发 session/new、宿主门禁改写插件失败、Node 探测宿主 URL |
+
+## 取消一轮与一轮结束后保留会话
+
+[取消一轮决策](../../decisions/node/protocol/20261116-cancel-turn-and-keep-session-after-turn-ends.md)为 `approved`，
+尚未实现。30 条核心用例与决策的 30 条验证义务一一对应，状态均为 `Missing`。会话命令与事件的既有规则见
+[Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
+[会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| protocol | [取消一轮与一轮结束后保留会话](protocol/cancel-turn-and-keep-session.md) | 取消没有结论或结论晚于期限、取消误伤下一轮、上一轮的迟到更新混进下一轮、没有停止证据就写终态或放行交付、MCP 门禁中取消与超时各记一个结果、重复取消拖过期限、重启丢失原结束决定、账本不可写时把内存状态当作结论、旧 Controller 握手失败或接管新会话、只选取消的会话在失败后被保留 |
