@@ -8,12 +8,15 @@ Controller 新增会话命令 `CancelTurn{command_id, turn_id}`。Node 持久受
 结论，每个被受理的取消恰好得到一条新的非终态事件 `TurnCancelSettled`：目标轮次正在执行时，向 Agent 发 ACP
 `session/cancel`，这一轮以 `TurnEnded{cancelled}` 结束；目标轮次已被准入、但 prompt 还没有写给 Agent 时不再写出；
 目标轮次还没有被准入（在排队，或在等会话接入、MCP 门禁）时直接丢弃；目标轮次已经在停止中时，并入那一次停止的
-结论；目标轮次已经有结果或不存在时不做任何事。选择了新行为的会话，在一轮以取消或失败（ACP prompt 报错、无进展
-看门狗放弃）结束后，只有 Agent 具备可依赖的轮次边界、且满足可验证的静止条件（D2）时才保留会话、接着执行下一轮；
+结论；目标轮次已经有结果或不存在时不做任何事。会话保留分两项逐会话选择：`keep_session_on_cancel`（一轮被
+`CancelTurn` 取消后保留）与 `keep_session_on_failure`（一轮失败后保留，失败指 ACP prompt 报错、无进展看门狗放弃）。
+选择了对应一项的会话，在一轮以该方式结束后，只有 Agent 具备可依赖的轮次边界、且满足可验证的静止条件（D2）时才
+保留会话、接着执行下一轮；
 否则，或属于 D3 清单中的情况时，Node 不再向 Agent 派发任何一轮并请求停止 Agent，这次取消的结论是
 `session_ending`，会话终态按[会话 MCP 刷新与宿主健康](../agent-runtime/20261116-session-mcp-refresh-and-host-health.md)
 D5 在取得停止证据之后才发出。新行为由 Node 与 Controller 在握手中共同协商 `turn_cancel`、Controller 在
-`StartAgentSession` 中逐会话选择；没有选择的会话和旧对端保持原行为，没有声明 `turn_cancel` 的 Controller 看到的
+`StartAgentSession` 中逐会话选择；第一版只启用取消后保留，失败后保留等失败原因上报落地后再启用（D5）。没有选择的
+会话和旧对端保持原行为，没有声明 `turn_cancel` 的 Controller 看到的
 握手内容不变，不具备该能力的 Controller 不能接管已选择新行为的会话。
 
 本 ADR 处于 `proposed`，供评审纠偏，尚无实现，也不维护核心测试用例；评审需要覆盖的验证义务列在
@@ -53,7 +56,7 @@ MCP 门禁和结束会话时的停止责任来自[会话 MCP 刷新与宿主健�
 | 协议 D6：Node 重启后会话以 `interrupted` 结束，不恢复 Agent | 继承，不变 |
 | 实时预览：旁路不改变权威状态，查看与断开不触发取消 | 继承，不变 |
 | 子代理投影：不从静默、父工具完成或父 prompt 结束推断子代理终态 | 继承；启动过子代理投影的轮次不满足 D2 的静止条件 |
-| agent-runtime D6："轮次失败、超时、连接丢失：记录 `TurnEnded`，会话保持" | 修改。当前实现为"只有成功的 ACP 完成才接受下一轮，失败以 `agent_failed` 结束会话"，与 D6 原文不符。改为：连接丢失结束会话；失败与超时只在选择了新行为、且满足 D2 时保留会话（D2、D3）；MCP 门禁中的轮次失败按会话 MCP 刷新 D4，本来就不结束会话；未选择的会话保持当前实现的行为 |
+| agent-runtime D6："轮次失败、超时、连接丢失：记录 `TurnEnded`，会话保持" | 修改。当前实现为"只有成功的 ACP 完成才接受下一轮，失败以 `agent_failed` 结束会话"，与 D6 原文不符。改为：连接丢失结束会话；失败与超时只在选择了 `keep_session_on_failure`、且满足 D2 时保留会话（D2、D3）；MCP 门禁中的轮次失败按会话 MCP 刷新 D4，本来就不结束会话；未选择的会话保持当前实现的行为 |
 
 ## 问题与约束
 
@@ -157,8 +160,8 @@ provider 会话，下一轮通过 `session/load`（Agent 支持时）或带 Ora 
   记录，不写入会话 JSONL，也不进入实时预览。
 - Controller 只在目标 `SubmitUserTurn` 已被受理之后发送 `CancelTurn`；目标尚未受理（包括被
   `mcp_update_required` 拒绝、还没有重试成功）时结论是 `unknown`，Node 不为它保留取消。
-- 会话已终态时回复 `SessionCommandRejected{session_ended}`。会话没有选择新行为（D5）时回复
-  `SessionCommandRejected{turn_cancel_unsupported}`，不执行，也不改变会话。
+- 会话已终态时回复 `SessionCommandRejected{session_ended}`。会话没有选择 `keep_session_on_cancel`（D5）时
+  回复 `SessionCommandRejected{turn_cancel_unsupported}`，不执行，也不改变会话。
 
 为什么以准入为界：准入是运行时已有的提交点，准入与 MCP 等候超时在这里已经互斥，取消加入同一个边界。准入之前这一轮
 没有任何记录，丢弃它不需要 Agent 配合，结论也不取决于会话接入或 MCP 收敛要多久；准入之后这一轮已有记录，必须有
@@ -174,14 +177,17 @@ provider 会话，下一轮通过 `session/load`（Agent 支持时）或带 Ora 
 
 ### D2：一轮以取消或失败结束后会话保留的条件
 
-对选择了新行为的会话，一轮以下列方式结束时，只有同时满足"可依赖的轮次边界"和三条静止条件，会话才保留，
-回到"等待下一轮或结束命令"。prompt 从未发给 Agent 的轮次不在此列，按 D1 直接保留：
+一轮以下列方式结束时，会话先要选择了对应的那一项，再同时满足"可依赖的轮次边界"和三条静止条件，才保留，
+回到"等待下一轮或结束命令"。没有选择对应一项时，会话按本决策之前的规则结束：取消没有对应的旧规则，因为没有选择
+`keep_session_on_cancel` 的会话不受理 `CancelTurn`；失败以 `agent_failed` 和既有 detail 结束，并入这次停止的
+`CancelTurn` 得到 `session_ending`。prompt 从未发给 Agent 的轮次不在此列，按 D1 直接保留：
 
-| 这一轮怎么结束 | 记录 |
-| --- | --- |
-| `CancelTurn`，Agent 在 G 内回应了这次 prompt | `TurnEnded{cancelled}` |
-| ACP `session/prompt` 返回错误（模型请求失败、限流、key 失效、要求重新认证、Agent 内部错误） | `TurnEnded{cancelled}` |
-| 无进展看门狗取消后 Agent 回应了这次 prompt，但不再重发（回应不是 `cancelled`，或重发次数用尽） | `TurnEnded{cancelled}` |
+| 这一轮怎么结束 | 归类 | 要求的选择 | 记录 |
+| --- | --- | --- | --- |
+| `CancelTurn`，Agent 在截止时刻前回应了这次 prompt | 取消 | `keep_session_on_cancel` | `TurnEnded{cancelled}` |
+| 看门狗取消期间并入了 `CancelTurn`，Agent 在截止时刻前回应 | 取消 | `keep_session_on_cancel` | `TurnEnded{cancelled}` |
+| ACP `session/prompt` 返回错误（模型请求失败、限流、key 失效、要求重新认证、Agent 内部错误） | 失败 | `keep_session_on_failure` | `TurnEnded{cancelled}` |
+| 无进展看门狗取消后 Agent 回应了这次 prompt，但不再重发（回应不是 `cancelled`，或重发次数用尽），期间没有并入 `CancelTurn` | 失败 | `keep_session_on_failure` | `TurnEnded{cancelled}` |
 
 **轮次流量与会话级通知**：本节的条件只针对轮次流量，即会写入一轮内容的消息：正文、思考、用户消息片段、
 工具调用及其更新、计划、权限请求，以及带子代理来源的更新；Node 不认识的更新类型按轮次流量处理。会话级通知
@@ -268,9 +274,22 @@ D5，本决策不修改它，选择了新行为的会话同样适用：
    `StopUnconfirmed{scope_id, run_id, first_stop_at_ms, bound_at_ms, guarantee}`，转交残留对账。之后取得原证据才补发
    终态，原因与 detail 是最初决定结束时的那一个；终态也可能始终缺席。
 
-D3 的情况与本决策的取消结论之间的关系：Node 作出结束决定时，所有尚未结算的 `CancelTurn` 在同一事务中得到
-`TurnCancelSettled{session_ending}`；决定之后、终态之前受理的 `CancelTurn` 在受理时立即得到它（D1）。所以取消的结论
-在决定结束时就已写入，不等停止证据；终态什么时候到、到不到，只影响 Controller 对会话的结算，不影响这次取消。
+D3 的情况与本决策的取消结论之间的关系：
+
+- **结束决定与结论同一事务落账**：Node 作出结束决定时，在一个事务中写入这份结束决定，再在事务提交之后发停止
+  信号。事务的内容是：
+  - 首次终态原因与 detail；
+  - 停止时钟 `first_stop_at_ms` 与 `bound_at_ms`（会话 MCP 刷新 D5 的锚定，跨重启不续期）；
+  - 所有尚未结算的 `CancelTurn` 的 `TurnCancelSettled{session_ending}`。
+  所以任何一条 `session_ending` 可见时，结束决定都已经能从账本唯一恢复。决定之后、终态之前受理的 `CancelTurn`，
+  在受理的同一事务中得到 `session_ending`（D1）。
+- **重启后沿用结束决定**：Node 在结束决定落账之后重启，包括结论已写入或已投递、停止信号还没发出：
+  - 重启收口读到这份决定就按它继续，不再写取消结论，每个 `command_id` 仍只有原来那一条；
+  - 不把会话改记为 `interrupted`，终态的原因、detail 和停止时钟都用原来的；
+  - 仍要取得原停止证据才写终态。
+  只有重启时还没有结束决定的会话，才按协议 D6 以 `interrupted` 结束。
+- 取消的结论在决定结束时就已写入，不等停止证据；终态什么时候到、到不到，只影响 Controller 对会话的结算，不影响
+  这次取消。
 
 | 情况 | 终态 |
 | --- | --- |
@@ -284,7 +303,7 @@ D3 的情况与本决策的取消结论之间的关系：Node 作出结束决定
 | Node 账本读写失败，包括命令结算失败 | `agent_failed`，detail `ledger_unavailable` |
 | 模型授权被撤销 | `agent_failed`，detail `model_access_revoked` |
 | `EndSession` | 命令给出的原因 |
-| Node 重启 | `interrupted`（协议 D6；有未确认的停止责任时，取得原停止证据后才补报，会话 MCP 刷新 D5） |
+| Node 重启 | 重启前没有结束决定时为 `interrupted`（协议 D6）；已有结束决定时沿用它。有未确认的停止责任时，取得原停止证据后才写终态（会话 MCP 刷新 D5） |
 
 MCP 门禁中的情况（等候超时、刷新失败、blocked）只让对应轮次失败或等待，不结束会话（会话 MCP 刷新 D4），不在
 此表中。
@@ -293,7 +312,7 @@ MCP 门禁中的情况（等候超时、刷新失败、blocked）只让对应轮
 决策把会话当作结束，本决策不改变这些规则。包括：与 Node 的连接断开且不再恢复、事件在 Controller 一侧持久化
 失败、Node 回复 `SessionCommandRejected`、Node 回复的身份与会话对不上、以及 D4 中 Node 未在期限内结算。
 
-没有选择新行为的会话，D2 中的失败仍以 `agent_failed` 结束会话，与本决策之前一致。
+没有选择 `keep_session_on_failure` 的会话，D2 中的失败仍以 `agent_failed` 结束会话，与本决策之前一致。
 
 **为什么兜底是安全的**：Node 决定结束会话后不再向 Agent 派发任何一轮，下一轮不可能与上一轮混在同一个 provider
 会话里。上一轮仍在运行的工具对 checkout 的影响由停止责任约束：终态只在取得停止证据后写入；取不到证据时没有终态，
@@ -318,8 +337,20 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
   的各个 `TurnCancelSettled` → 会话保留时是下一轮的 Thread 事件，会话结束时是取得停止证据后的终态。终态之后没有
   事件。
 - **本地结算期限**：Node 持续运行时，自受理 `CancelTurn` 起，在 G + Q 内把它的 `TurnCancelSettled` 持久化到账本。
-  这一期限只取决于 Node 与 Agent，与连接、在途窗口和停止证据都无关。Node 重启时，未结算的 `CancelTurn` 在重启
-  收口中得到 `session_ending`，早于这个会话的 `interrupted` 终态；Node 不运行的时间不计入期限。
+  这一期限只取决于 Node 与 Agent，与连接、在途窗口和停止证据都无关。这一期限以账本可写为前提。Node 重启时，
+  已有结束决定的会话按 D3 沿用它；没有结束决定的会话，在重启收口中写入以 `interrupted` 为原因的结束决定，同一事务
+  为未结算的 `CancelTurn` 写 `session_ending`。Node 不运行的时间不计入期限。
+- **账本持续不可写**：`CancelTurn` 已受理、之后的账本写入失败时：
+  - **Node**：不把内存状态当作结算。写不进账本的 `TurnCancelSettled`、命令结算和结束决定，既不发送，也不当作已经
+    发生。Node 立即停止准入，不再写出任何 `session/prompt`，按 D3 的 `ledger_unavailable` 结束会话。停止信号照常
+    发出，因为停止总是安全的；但没有落账的停止不产生终态，也不解除停止责任。账本不可写期间，新命令无法持久受理，
+    不回复 `SessionCommandAccepted`。
+  - **Controller**：收不到结论，按下一条的等待规则超过 T 后，判定 Node 未在期限内结算。它把这次停止当作未确认：
+    不当作已停，不交付，不恢复，不再向这个会话提交轮次；可以查询 `GetExecutionStatus`，按自己的故障规则收尾。
+  - **恢复**：账本恢复可写时（或之后 Node 重启时），Node 在写任何终态之前先补齐。先写结束决定：已有落账的决定就
+    沿用；没有就以 `ledger_unavailable` 为原因，Node 重启后则是 `interrupted`。同一事务为每个已受理、还没有
+    `TurnCancelSettled` 的 `CancelTurn` 写一条 `session_ending`，每个 `command_id` 至多一条，已有结论的不再写。之后
+    终态仍要等停止证据。账本一直不可写时，结论和终态都不会出现，由 Controller 按上面的规则收尾。
 - **投递**：结论与其他事件一样按序号投递，受在途窗口约束：前序事件未被确认、窗口已满时，结论在账本中等待，
   确认释放窗口后才发送；断线时在重连后按序重放。所以 Controller 收到结论的时间等于本地结算时间加上它确认
   前序事件所用的时间，后者由 Controller 自己的确认进度决定。
@@ -342,20 +373,30 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
   协商成功，与实时预览的协商形式相同。否则 `HelloAccepted` 不含这项能力和确认字段，与本决策之前的内容相同。
   原因是 Controller 的解码器不一定容忍未知能力：desktop `crates/node-protocol` 的 `NodeCapability` 是封闭枚举，
   使用它的旧 Controller 遇到未知能力值会握手失败。
-- `AgentSessionSpec` 增加可选字段 `keep_session_on_turn_end: bool`，省略即 `false`。Controller 只在当前连接协商
-  成功时设置为 `true`；它和其他输入一样先持久化，同一执行重发时参与输入比较。
-- 字段为 `true` 的会话：接受 `CancelTurn`，按 D1–D4 处理一轮的结束。字段省略或为 `false` 的会话：拒绝
-  `CancelTurn`（`turn_cancel_unsupported`），一轮失败仍结束会话，也不会产生 `TurnCancelSettled` 或新的 detail。
-- **接管边界**：只要 Node 上还有字段为 `true`、且尚未终态或仍有未确认事件的会话执行，Node 就拒绝没有协商
+- `AgentSessionSpec` 增加两个可选字段，省略即 `false`：`keep_session_on_cancel: bool` 与
+  `keep_session_on_failure: bool`。Controller 只在当前连接协商成功时设置为 `true`；它们和其他输入一样先持久化，同一
+  执行重发时参与输入比较。下文"选择了新行为的会话"指两个字段中至少一个为 `true` 的会话。
+- `keep_session_on_cancel` 为 `true`：接受 `CancelTurn`，按 D1–D4 处理，被取消的一轮满足 D2 时会话保留。为 `false`：
+  拒绝 `CancelTurn`（`turn_cancel_unsupported`）。
+- `keep_session_on_failure` 为 `true`：一轮失败（D2 的归类）且满足 D2 时会话保留。为 `false`：一轮失败仍以
+  `agent_failed` 和既有 detail 结束会话。
+- 两个字段都为 `false` 的会话，不会产生 `TurnCancelSettled` 或新的 detail，行为与本决策之前相同。
+- **启用顺序**：第一版的 Controller 只设置 `keep_session_on_cancel`，不设置 `keep_session_on_failure`。失败后保留
+  要等失败原因上报的后续决策落地（D6），调用方能从协议看到失败和原因（包括需要重新认证）之后，才启用。Node 第一版
+  就支持两个字段，启用顺序由 Controller 遵守。
+- **接管边界**：只要 Node 上还有选择了新行为、且尚未终态或仍有未确认事件的会话执行，Node 就拒绝没有协商
   `turn_cancel` 的连接：在 `HelloAccepted` 之前以 `4403`（能力不符）结束这次连接，不投递、不重放任何事件，也不
   受理任何命令。这些执行在 Node 上照常进行并持久化事件，等到具备能力的 Controller 连接后，从最小的未确认序号
   起按序重放。所以已选择新行为的会话不会被不理解其事件的 Controller 接管。
 - **拒绝的持续时间**：close code 决策把 `4403` 归为重连不会自行恢复的配置错误，旧 Controller 仍按 `reconnect_ms`
   重连，在拒绝解除前每次都被拒。拒绝在这些会话终态、且事件全部被确认后解除。事件只能由具备能力的 Controller
   确认；终态还可能因停止证据缺席而始终不到（D3）。所以只剩旧 Controller 时，拒绝不会自行解除，出路只有前向恢复：
-  让具备能力的 Controller 连接这个 Node，确认事件、按 D3 处理残留责任。降级 Controller 的前提见"本决策未解决的问题"。
-- **打开选择的前提**：Controller 只有在可能连接这个 Node 的所有 Controller 实例都具备 `turn_cancel` 之后，才为
-  新会话选择新行为。滚动升级期间新旧实例并存时不选择，否则旧实例重连就会被拒绝。
+  让具备能力的 Controller 连接这个 Node，确认事件、按 D3 处理残留责任。
+- **部署前提**：可能连接这个 Node 的全部 Controller 实例都具备 `turn_cancel` 之后，Controller 才为新会话选择新行为。
+  滚动升级期间新旧实例并存时不选择，否则旧实例重连就会被拒绝。
+- **回退条件**：把可能连接这个 Node 的 Controller 回退到不具备 `turn_cancel` 的版本之前，这个 Node 上每个选择了新
+  行为的会话执行都必须已终态、停止责任已解除（没有 `stop_unconfirmed`）、事件全部被确认。有执行排不空时不回退，
+  只做前向恢复：由具备能力的 Controller 接管，确认事件、处理残留责任。
 - 旧 Node 不声明 `turn_cancel`，且 `StartAgentSession` 使用 `deny_unknown_fields`：Controller 不能向它发送新字段
   或 `CancelTurn`，停止仍用 `EndSession`。旧 Controller 不设置新字段：Node 对它启动的会话保持原行为。
 - 新命令与新事件写入 Node 账本；需要时账本 schema 前向迁移，旧程序拒绝打开新库（沿用 Node 升级规则）。
@@ -375,25 +416,26 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 区分取消与失败、在协议和历史记录中携带失败原因、看门狗取消后 Agent 回 `end_turn` 时是重发还是以"无进展"
 失败，都由后续决策承担；它们建立在本决策的会话保留之上。
 
-后续决策落地之前，选择了新行为的会话有一个缺口。没有选择的会话，一轮失败时以 `agent_failed` 和它的 detail
-（例如 `agent_authentication_required`、`agent_turn_failed`）结束，调用方能看到这次失败。选择了新行为并保留
-会话后，这一轮只有 `TurnEnded{cancelled}`：调用方看不出这是失败，也拿不到"需要重新认证"。
-`keep_session_on_turn_end` 同时打开取消后保留与失败后保留，所以只想要"停止"的 Controller 也会遇到这个缺口。
-怎样消除它，见"本决策未解决的问题"。
+失败后保留有一个缺口，所以它的启用要等后续决策（D5 启用顺序）。没有选择 `keep_session_on_failure` 的会话，一轮
+失败时以 `agent_failed` 和它的 detail（例如 `agent_authentication_required`、`agent_turn_failed`）结束，调用方能
+看到这次失败。选择了它并保留会话后，这一轮只有 `TurnEnded{cancelled}`：调用方看不出这是失败，也拿不到"需要重新
+认证"。取消后保留没有这个缺口：Controller 以 `TurnCancelSettled` 知道这是自己请求的取消，而一轮失败时，只选择了
+`keep_session_on_cancel` 的会话仍按原规则结束并带 detail。
 
 ## 不变量
 
 1. 一个被受理的 `SubmitUserTurn` 恰好以下列之一结束：带其 `turn_id` 的一个 `TurnEnded`；被 `CancelTurn` 丢弃，命令
    结算为 Discarded 并有 `TurnCancelSettled{not_started}`；MCP 等候超时，以 `SessionTurnFailed` 与命令 Failed 结算；
    会话先结束时按 `EndSession` 的既有规则被丢弃。准入之前，取消、准入与等候超时三者至多一个生效。
-2. 每个被受理的 `CancelTurn` 恰好得到一条 `TurnCancelSettled`。Node 持续运行时，它在受理后 G + Q 内持久化，不等
-   停止证据，也不等终态；它在任何终态之前写入。
+2. 每个被受理的 `CancelTurn` 恰好得到一条 `TurnCancelSettled`。Node 持续运行且账本可写时，它在受理后 G + Q 内
+   持久化，不等停止证据，也不等终态；它在任何终态之前写入。账本不可写时，没有落账的状态不被当作结论，恢复后在
+   终态之前补齐，每个命令至多一条。
 3. 结论按执行内的序号投递，在前序事件被确认、窗口释放后送达；连接仍在时，只要 Controller 持续确认，结论一定到达。
 4. 并入同一次停止的多个 `CancelTurn` 得到与这次停止一致的结论，共用一个截止时刻；在这一轮停止中时，没有
    `CancelTurn` 得到 `already_ended`，除非这一轮因失败而停。
 5. `CancelTurn` 只影响 `turn_id` 那一轮，不丢弃其他轮次；它导致会话结束只经由 D3 的兜底分支。
 6. `EndSession` 优先于 `CancelTurn`；会话已终态后命令不复活会话。
-7. 会话在一轮取消或失败后保留，当且仅当会话选择了新行为，并且：这一轮的 prompt 从未写给 Agent；或者 Agent
+7. 会话在一轮取消（或失败）后保留，当且仅当会话选择了 `keep_session_on_cancel`（或 `keep_session_on_failure`），并且：这一轮的 prompt 从未写给 Agent；或者 Agent
    版本在轮次边界清单中、Agent 连接仍在、D2 的三条静止条件都成立。
 8. 同一会话内，上一轮满足 D2 之前，Node 不向 Agent 发送下一轮；回应之后到达的上一轮轮次流量不记入任何一轮，
    其后的轮次中收到可归属被取消或失败轮次的更新时会话结束。
@@ -402,11 +444,13 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
    不是停止证据。
 10. 已选择新行为、尚未终态或仍有未确认事件的会话，不会把事件投递给没有协商 `turn_cancel` 的 Controller；没有声明
     `turn_cancel` 的 Controller 收到的 `HelloAccepted` 不含这项能力。
-11. 没有选择新行为的会话，行为与本决策之前完全一致。
+11. 两个字段都没有选择的会话，行为与本决策之前完全一致；只选择了 `keep_session_on_cancel` 的会话，一轮失败时的行为与本决策之前一致。
 12. `SessionCommandAccepted` 不代表取消已有结论；结论只以 `TurnCancelSettled` 为准，会话是否结束只以终态为准。
 13. 会话级通知不改变任何一轮的结论，也不导致会话结束。
 14. 被取消的一轮，在 `CancelTurn` 生效之后不再有新的 `session/prompt` 发给 Agent：prompt 尚未写出时不写出，
     看门狗不再重发。
+15. 任何 `TurnCancelSettled{session_ending}` 可见时，对应的结束决定（首次终态原因、detail 与停止时钟）已经落账；
+    重启不改变它，也不重复产生取消结论。
 
 ## 为什么不是这些替代方案
 
@@ -451,10 +495,10 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 | Claude Code 内部或传输错误后关闭 provider 会话，Agent 进程仍在 | 下一轮发到已失效的会话 | 按 D2 识别后 `session/load` 恢复 |
 | G 短于 Agent 正常取消的耗时，或 Q 短于 Agent 回应后残余流量的间隔 | 本可续用的会话被结束，或违约未被静默窗口发现 | 实测 OpenCode 取消运行中 shell 工具的耗时、两者回应后残余流量的时间分布，再定 G 与 Q |
 | 一轮失败后保留会话，会话存在的时间变长 | 同一 checkout 承载多个会话时，会更久地占用 checkout 的会话名额 | 由 Controller 的空闲超时与 `EndSession` 释放；checkout 名额的规则不在本决策内 |
-| 降级 Controller 时仍有已选择新行为的会话 | 该 Node 拒绝旧 Controller 的所有连接，同一 Node 上的其他执行也无人接管；这些会话终态后仍有未确认事件、或终态因停止证据缺席而始终不到时，拒绝不会自行解除 | 全部 Controller 实例具备能力后才打开选择（D5）；`4403` 让拒绝原因可诊断；只能前向恢复；降级前提待定 |
+| 降级 Controller 时仍有已选择新行为的会话 | 该 Node 拒绝旧 Controller 的所有连接，同一 Node 上的其他执行也无人接管；这些会话终态后仍有未确认事件、或终态因停止证据缺席而始终不到时，拒绝不会自行解除 | 全部 Controller 实例具备能力后才打开选择（D5）；`4403` 让拒绝原因可诊断；只能前向恢复；回退前按 D5 的回退条件排空 |
 | 取消后会话结束、停止证据缺席 | 取消已有 `session_ending`，但会话可能始终没有终态，这个执行不能交付，checkout 不能带 `prior_revision` 恢复 | 沿用会话 MCP 刷新 D5 的残留对账与 R9；本决策不加强 BestEffort 停止保证 |
 | 用过子代理的轮次取消或失败后会话一律结束 | 长任务常用子代理，这些轮次得不到会话保留，功能的实际覆盖面可能明显小于预期 | 实现阶段统计被取消轮次中用过子代理的比例；放宽需要子代理终态的来源，由后续决策承担 |
-| 一轮失败后保留会话，调用方没有失败信号 | 选择了新行为的会话失败时，用户看不到失败，也看不到需要重新认证（D6） | 待定：见"本决策未解决的问题" |
+| 一轮失败后保留会话，调用方没有失败信号 | 选择了 `keep_session_on_failure` 的会话失败时，用户看不到失败，也看不到需要重新认证（D6） | 第一版不启用 `keep_session_on_failure`，等失败原因上报落地后再启用（D5） |
 
 ## 验证义务
 
@@ -493,10 +537,10 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 17. **旧 Controller 的实际握手**：用本决策之前版本的 desktop `ora-node-protocol` 解码新 Node 回给旧 `Hello`（不含
     `turn_cancel`）的 `HelloAccepted`，以及 cloud v2-server 的握手解码，两者都接受；Node 上没有选择新行为的会话时，
     旧 Controller 正常连接、收发命令与事件。声明了 `turn_cancel` 的 `Hello` 才收到这项能力和 `turn_cancel: true`。
-18. ACP prompt 报错、看门狗放弃后满足 D2 时，会话保留；报错后 provider 会话已失效时，下一轮经恢复继续；MCP 生命周期
+18. 选择了 `keep_session_on_failure` 的会话，ACP prompt 报错、看门狗放弃后满足 D2 时，会话保留；报错后 provider 会话已失效时，下一轮经恢复继续；MCP 生命周期
     模式的会话只 load 原 provider ID，失败时 blocked。
 19. D3 中每一种情况仍结束会话，Node 作出结束决定时尚未结算的 `CancelTurn` 都得到 `session_ending`。
-20. 未选择新行为的会话：`CancelTurn` 被拒绝，一轮失败仍以 `agent_failed` 结束，行为与之前一致；旧 Node 与旧
+20. 两个字段都没有选择的会话：`CancelTurn` 被拒绝，一轮失败仍以 `agent_failed` 结束，行为与之前一致；旧 Node 与旧
     Controller 的消息、握手与输入编解码不变。
 21. `EndSession` 与 `CancelTurn` 同时排队时按 `EndSession` 结束，`CancelTurn` 得到 `session_ending`，早于终态。
 22. 静默窗口内只收到会话级通知（标题、用量、可用命令）时会话保留，这些通知不记入任何一轮。
@@ -516,30 +560,36 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
     正常完成后，空闲期到达的更新不结束会话。
 27. Node 在 `CancelTurn` 受理之后、结论写入之前重启：重启收口中这个命令得到 `session_ending`，早于 `interrupted`
     终态；有未确认停止责任时，终态在取得原证据后才写入。
+28. **结论可见之后重启**：G 内没有回应，`TurnCancelSettled{session_ending}` 已写入（分别覆盖已投递、未投递），停止
+    信号还没有发出时 Node 重启。验证：
+    - 重启后不重复产生取消结论；
+    - 终态原因不是 `interrupted`，仍是 `turn_cancel_unanswered`；
+    - 停止时钟沿用原来的 `first_stop_at_ms` 与 `bound_at_ms`，不续期；
+    - 取得原停止证据之后才写终态。
+29. **受理之后账本持续不可写**：`CancelTurn` 成功受理后，注入账本持续写失败。验证：
+    - Node 不发送任何没有落账的结论，不再写出 `session/prompt`；
+    - Controller 超过 T 后按未确认收尾，不把超时或内存状态当成已结算；
+    - 账本恢复后，在终态之前为这个命令补写恰好一条 `session_ending`，结束原因为 `ledger_unavailable`；
+    - 恢复前已有结论的命令不重复写。
+30. **两个字段的组合**：
+    - 只选择 `keep_session_on_cancel`：取消后满足 D2 时会话保留；一轮失败时以 `agent_failed` 和既有 detail 结束，
+      并入的 `CancelTurn` 得到 `session_ending`；
+    - 只选择 `keep_session_on_failure`：`CancelTurn` 被拒绝（`turn_cancel_unsupported`），一轮失败后满足 D2 时会话保留；
+    - 两者都选择：两种结束分别按对应规则；
+    - 看门狗取消期间并入了 `CancelTurn` 的一轮，按取消处理。
 
 ## 本决策未解决的问题
 
 - 区分取消与失败、上报失败原因，以及看门狗取消后 Agent 回 `end_turn` 的处理（D6）。
 - Agent 进程退出、兜底结束会话之后的会话恢复，以及 Node 重启后的会话恢复（协议 D6）。
 - 轮次边界清单由插件自己声明（例如写入插件的 Agent 声明）还是由 Node 维护；第一版由 Node 维护，随一致性测试更新。
-- **失败后保留会话的启用方式（待 owner 确认）**：`keep_session_on_turn_end` 同时打开取消后与失败后保留，失败后保留时
-  调用方没有失败信号（D6）。可选：
-  - 甲：选择拆成"取消后保留"与"失败后保留"两项，先接入的 Controller 只选择取消后保留，失败后保留等失败原因上报
-    落地后再启用；
-  - 乙：保留一个选择，接受失败信号缺口；
-  - 丙：本决策只定义取消后保留，失败后保留整体移到失败原因上报的决策中。
-- **降级 Controller 的前提（待 owner 确认）**：第一版按"所有 Controller 实例具备能力后才打开选择"的部署前提推进
-  （D5）。要不要再规定降级条件，可选：
-  - 甲：降级前，Node 上每个已选择新行为的会话执行都已终态、停止责任已解除（没有 `stop_unconfirmed`）、事件全部
-    被确认；有执行无法排空时不降级，只能前向恢复，即让具备能力的 Controller 接管并处理残留；
-  - 乙：不规定降级条件，只保留 D5 的连接拒绝与前向恢复。
 - 用过子代理的轮次取消或失败后保留会话，需要子代理终态的来源。
 - 各 Controller 如何展示被取消或失败的一轮、何时自动发 `EndSession`。
 
 ## 落地顺序
 
 1. **协议与账本**：`crates/node-protocol` 增加 `CancelTurn` 消息、`TurnCancelSettled` 事件、`Hello`／`HelloAccepted`
-   的 `turn_cancel`、能力 `turn_cancel`、`keep_session_on_turn_end` 字段、拒绝原因 `turn_cancel_unsupported` 与新的
+   的 `turn_cancel`、能力 `turn_cancel`、`keep_session_on_cancel` 与 `keep_session_on_failure` 字段、拒绝原因 `turn_cancel_unsupported` 与新的
    终态 detail，补校验与往返测试；`crates/node-db` 受理并持久化新命令与新事件。完成条件：旧形状的消息、握手与
    输入编解码不变，新字段省略时输入比较与之前相同。
 2. **共享运行时、Node 会话执行与接管**：`crates/agent-runtime` 区分用户取消与看门狗取消的宽限期，在准入提交处
@@ -550,8 +600,11 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
    完成条件："验证义务"中的每一项都有直接测试；"已知风险与待实测"中的每一项都有真实 Agent 的实测结论，据此
    确定 G、Q 与轮次边界清单。
 3. **Controller 接入**：各 Controller 在握手中声明 `turn_cancel`；可能连接 Node 的全部 Controller 实例都具备能力
-   后，才为新会话选择新行为，停止改用 `CancelTurn`，按 D4 的进展规则等待结论，收到 `session_ending` 后按停止责任
+   后，才为新会话选择 `keep_session_on_cancel`，停止改用 `CancelTurn`，按 D4 的进展规则等待结论，收到 `session_ending` 后按停止责任
    等待终态。
 
-保持不变：已有消息、已有会话、未选择新行为的会话，以及 Node 重启后的 `interrupted`。从第 2 步开始改变：选择了
-新行为的会话在一轮取消或失败、且满足 D2 后保留。
+4. **启用失败后保留**：失败原因上报的后续决策落地、Controller 能展示失败和原因之后，才为新会话选择
+   `keep_session_on_failure`。
+
+保持不变：已有消息、已有会话、两个字段都没有选择的会话，以及没有结束决定时 Node 重启后的 `interrupted`。从第 3 步
+开始改变：选择了 `keep_session_on_cancel` 的会话在一轮被取消、且满足 D2 后保留；第 4 步之后，一轮失败也可以保留。
