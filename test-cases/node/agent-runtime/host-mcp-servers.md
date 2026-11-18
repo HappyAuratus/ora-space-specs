@@ -23,15 +23,21 @@ Node 以 `deny_unknown_fields` 解码 `AgentSessionSpec`；`node-protocol` 提�
 
 ### 触发
 
-用样例中的每一项分别发送 `host_mcp_servers`：省略、空列表、恰好与超过每项上限的输入、乱序或重复或
-不以 `ora-` 开头的名称、非 canonical URL（`127.1`、`2130706433`、`0x7f.0.0.1`、大写主机、默认端口、未规范的
-百分号编码）、`http://localhost`、`http://127.0.0.2`、`http://[::ffff:127.0.0.1]`、带 userinfo 或 fragment 的
-URL、保留请求头、含 CR/LF 的值、未知字段、缺失 `headers`。
+用样例中的每一项分别发送 `host_mcp_servers`：省略、空列表、恰好与超过每项上限的输入；乱序、重复、
+不以 `ora-` 开头或只有 `ora-` 的名称；不符合 D1 文法的 URL：`127.1`、`2130706433`、`0x7f.0.0.1`、大写
+scheme 或主机、空路径（`http://127.0.0.1:41234`）、默认端口（`http://127.0.0.1:80/mcp`、
+`https://example.com:443/x`）、前导 0 与越界端口（`:041234`、`:0443`、`:65536`、`:0`）、点段（`/a/./b`、
+`/a/../b`、`%2E`）、小写十六进制的百分号转义、`?` 查询与 `#` fragment、IPv6 的其他写法与十六进制大小写
+（`[::ffff:127.0.0.1]`、`[::FFFF:7f00:1]`、`[0:0:0:0:0:0:0:1]`）、非 ASCII 与 `xn--` 的 IDNA 主机、以数字
+开头的末段、反斜杠、制表符与换行、空格与 `€` 等未编码的字符、userinfo；`http://localhost`、
+`http://127.0.0.2`；保留请求头与逐跳头、空值或首尾带空格的值、含 CR/LF 的值、重复的 JSON 键、未知字段、
+缺失 `headers`。
 
 ### 必须成立
 
 - 省略与空列表等价且空列表不被序列化；旧格式 spec 照常解析。
-- 只接受与自身 WHATWG 序列化逐字节相等的 URL；明文 `http` 只接受逐字的 `127.0.0.1` 与 `[::1]`。
+- 只接受完整匹配 D1 文法的 URL；每个接受样例经 WHATWG 解析器解析再序列化后与原样逐字节相等；明文
+  `http` 只接受逐字的 `127.0.0.1` 与 `[::1]`。
 - 名称、请求头和全部上限按 D1 计数：每个 Server 8 个请求头，请求头名 1–64 字节，4 个 Server，URL 2 KiB，
   URL 与请求头名、值合计 8 KiB，全部是闭区间。
 - 非法输入是帧校验失败：Node 以协议错误关闭控制连接，不受理、不启动 Agent。
@@ -48,6 +54,7 @@ URL、保留请求头、含 CR/LF 的值、未知字段、缺失 `headers`。
 |---|---|---|
 | 省略与空列表等价、旧 spec 兼容 | `crates/node-protocol/tests/protocol/` 下宿主 MCP 往返测试：旧输入等于空列表、空列表不序列化、分帧往返保留请求头 | Missing |
 | 共用样例在 Node 上逐项判断一致 | 同目录测试遍历共用样例文件，在编码与接收边界逐项断言接受或拒绝与标注相同；样例覆盖上面“触发”的每一类与每个上限的恰好/超过一项 | Missing |
+| 接受样例是 WHATWG 不动点 | 同目录测试对每个接受样例用 WHATWG 解析器解析再序列化，断言与原样逐字节相等 | Missing |
 | 非法输入关闭控制连接 | `apps/ora-node/tests/agent_session/` 下的测试：发送非法宿主列表，断言控制连接以协议错误关闭、没有受理记录、没有 Agent 进程 | Missing |
 | 能力广告 | Node 握手测试断言 `HelloAccepted.capabilities` 含 `session_host_mcp_servers` | Missing |
 
@@ -92,7 +99,7 @@ D1、不变量 1、4、5；显式 Session MCP D4 的帧校验失败。
 |---|---|---|
 | 四类 setup 附加同一份列表 | `apps/ora-node/tests/agent_session/` 下以真实 ACP 帧记录 `session/new`、`session/load`、刷新 load 与重启后 `session/new`/`session/load` 的 `mcpServers`，逐次断言宿主部分完全相同且在插件之后 | Missing |
 | 与插件 MCP 隔离 | 同目录测试：带宿主 Server 的会话查询 `GetSessionMcpState`、刷新与 16 项上限均不包含宿主 Server；空 `mcp` 只发宿主 Server | Missing |
-| 不放宽 setup 窗口 | `crates/agent-runtime` 单测：只有宿主 Server 的 setup 选择普通窗口 | Missing |
+| 不放宽 setup 窗口 | 运行时层的测试（`crates/agent-runtime` 的会话 setup 测试或 Node 集成测试）：只有宿主 Server 的会话，假 Agent 在 setup 上一直不回答，在普通窗口到期时以 `agent_timed_out` 失败，而不是等到 MCP 窗口；只看插件快照的窗口选择函数的单测不能作为证据 | Missing |
 | 重发 start 不替换值 | 同目录测试：以不同 URL/请求头重发同一 execution，后续 load 仍发送首次受理的值 | Missing |
 
 ### 决策依据

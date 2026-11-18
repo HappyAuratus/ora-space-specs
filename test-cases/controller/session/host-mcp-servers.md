@@ -1,17 +1,19 @@
 # Controller 交付宿主 MCP
 
 依据[已批准的 Controller 交付宿主 MCP 决策](../../../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)
-D1 与 D6。这些义务只能在 Controller 及其宿主 Server 上验证，Node 侧义务见
-[Node 承载的宿主 MCP 用例](../../node/agent-runtime/host-mcp-servers.md)。Controller 的使用者（工作流完成
-工具）尚未接入，下表证据一律为 `Missing`，随该使用者的交付登记直接测试。
+D1 与 D6。这些义务只能由提供宿主 Server 的一方（Controller 侧，在 Cloud v2 中就是 Cloud 进程）验证，Node
+侧义务见[Node 承载的宿主 MCP 用例](../../node/agent-runtime/host-mcp-servers.md)。使用方（工作流完成工具）尚未
+接入，下表证据一律为 `Missing`，随它的交付登记直接测试；使用方的决策（预计在 `cloud/workflow`）会接手或
+迁移这些用例。
 
 ## Controller Sends Only Valid Host Servers To Capable Nodes
 
 ### 风险
 
-Controller 与 Node 对同一 URL 判断不同，把 Node 判为非法的输入发出去，关闭整条控制连接；向未声明能力的
-旧 Node 发送字段让它拒绝整帧；需要宿主能力的节点被派到不具备能力的 Node 后静默降级；给 Agent 无法到达的
-网络环境配了 loopback 地址。
+Controller 用 Go `net/url` 之类非 WHATWG 解析器的“解析再序列化相等”判断 URL，把 Node 判为非法的输入发出去，
+Node 关闭整条控制连接，重连后重发又被关闭；向未声明能力的旧 Node 发送字段让它拒绝整帧；需要宿主能力的
+节点被派到不具备能力的 Node 后静默降级；前面的节点已经跑完、用掉模型额度后才在派发时拒绝；给 Agent 无法
+到达的网络环境配了 loopback 地址。
 
 ### 前置状态
 
@@ -20,52 +22,66 @@ Controller 与 Node 对同一 URL 判断不同，把 Node 判为非法的输入�
 
 ### 触发
 
-为 `agent` 完成策略的交互节点派发会话；用样例中的每一项构造宿主列表；目标 Node 不具备能力。
+用样例中的每一项构造宿主列表；启动冻结图里含 `agent` 完成策略交互节点的 WorkflowRun，而可用 Node 不具备
+能力。
 
 ### 必须成立
 
-- 发送前的校验对共用样例逐项给出与标注相同的判断，非法输入不发送。
+- 发送前按 D1 文法逐字符校验，对共用样例逐项给出与标注相同的判断，非法输入不发送。
 - 只向同时声明 `session_host_mcp_servers` 与 `agent_session` 的 Node 发送非空列表。
-- 需要宿主能力而没有具备能力的 Node 时，在派发前拒绝或另选 Node，不降级为不需要宿主能力的行为。
+- 需要宿主能力而没有具备能力的 Node 时，在 WorkflowRun 启动准入时以有名字的原因拒绝（或另选 Node），
+  不降级为不需要宿主能力的行为。
 - 每个 Node 使用的 URL 来自部署配置；loopback 明文只用于与 Agent 同网络命名空间的端点。
 
 ### 禁止结果
 
 - 任何样例在 Controller 上的判断与标注不同；旧 Node 收到 `host_mcp_servers`。
-- 需要宿主能力的节点在不具备能力的 Node 上运行。
+- 需要宿主能力的节点在不具备能力的 Node 上运行，或者在前序节点已经运行后才被拒绝。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 共用样例判断一致 | Controller 校验测试遍历共用样例文件，逐项断言接受或拒绝与标注相同 | Missing |
-| 按能力派发 | Controller 派发测试：不声明能力的 Node 收不到字段；需要宿主能力而无可用 Node 时派发前拒绝 | Missing |
+| 按能力派发与启动准入 | Controller 测试：不声明能力的 Node 收不到字段；需要宿主能力而无可用 Node 时，WorkflowRun 在启动准入时以有名字的原因被拒绝，没有任何节点开始运行 | Missing |
 | URL 来自部署配置 | Controller 配置测试：每个 Node 的宿主端点取自部署配置，远程沙箱没有 Agent 可达的 https 端点时不提供宿主能力 | Missing |
 
 ### 决策依据
 
-D1、D6“按能力派发”与“可达性由部署配置决定”，不变量 1、5。
+D1、D6“按能力派发、启动前准入”与“可达性由部署配置决定”，不变量 1、5。
 
-## Host Endpoints Stay Valid For The Whole Execution
+## Host Endpoints Stay Valid Or The Execution Ends Before Serving
 
 ### 风险
 
 Controller 照 Desktop 的写法每个进程随机绑定端口、随机生成 token，Controller 重启后 Node 上仍在运行的会话
-拿着失效的 URL，节点永远等不到完成信号；Controller 靠重发 start 轮换凭据，但 Node 忽略重发的值。
+拿着失效的 URL，节点永远等不到完成信号；Controller 在“已发送、未持久化”时崩溃，重启后生成新凭据而 Node
+保留第一次的值，每次调用都被拒绝；Controller 靠重发 start 轮换凭据，但 Node 忽略重发的值。
 
 ### 前置状态
 
-一个 Running 的 execution 带宿主 Server；Controller 持久保存或可推导该 execution 的凭据。
+一个 Running 的 execution 带宿主 Server。Controller 采用两种合规做法之一：凭据持久保存或可推导、跨重启
+仍有效；或者重启时、宿主 Server 提供服务之前结束所有受影响的 execution（Cloud v2 重启即中断全部
+execution）。
 
 ### 触发
 
-重启 Controller 进程；之后 Agent 调用宿主工具；再模拟凭据无法恢复（例如推导密钥丢失）。
+重启 Controller 进程，之后 Agent 调用宿主工具；在发送 start 与持久化之间杀死 Controller 再重启；在采用第一种
+做法时模拟凭据无法恢复（例如推导密钥丢失）；重发 start。
 
 ### 必须成立
 
-- 重启后同一 URL 与请求头仍然被宿主 Server 接受，调用在当前 attempt 内照常生效。
-- 凭据无法恢复时，Controller 结束该 execution。
-- Controller 不通过重发 start 更换在用 execution 的端点或凭据。
+二选一，且至少满足其一：
+
+- 重启后同一 URL 与请求头仍然被宿主 Server 接受，调用在当前 attempt 内照常生效；
+- 或者在宿主 Server 开始提供服务之前，Controller 经正常结束路径结束该 execution，并记录有名字的原因。
+
+无论哪种做法：
+
+- 端点和凭据（或推导它们的输入）在第一次发送 start 之前已经持久化；发送与持久化之间崩溃后，重启后的
+  值与 Node 保留的值相同，或者该 execution 在提供服务前被结束。
+- 凭据无法恢复时，启动检查在提供服务前结束该 execution。
+- 每次重发 start 的宿主列表与第一次逐字节相同。
 
 ### 禁止结果
 
@@ -75,21 +91,23 @@ Controller 照 Desktop 的写法每个进程随机绑定端口、随机生成 to
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 跨 Controller 重启有效 | Controller 重启测试：同一 execution 在重启前后都能成功调用宿主工具 | Missing |
-| 无法恢复时结束 execution | Controller 测试：凭据不可恢复时发出结束该 execution 的命令 | Missing |
-| 不轮换 | Controller 测试：重发 start 时宿主列表与首次发送逐字节相同 | Missing |
+| 跨重启有效或在提供服务前结束 | Controller 重启测试：同一 execution 在重启后能成功调用宿主工具，或者在宿主 Server 接受第一个请求之前已经以有名字的原因结束 | Missing |
+| 先持久化再发送 | Controller 测试：在发送与持久化之间注入崩溃，重启后的值与第一次发送的逐字节相同，或该 execution 在提供服务前被结束 | Missing |
+| 无法恢复时启动检查结束 execution | Controller 测试：凭据不可恢复时，启动检查在提供服务前走正常结束路径并记录原因 | Missing |
+| 重发相同字节 | Controller 测试：重发 start 时宿主列表与首次发送逐字节相同 | Missing |
 
 ### 决策依据
 
-D3“重发 start 时值被忽略”、D6“端点与凭据在整个 execution 内有效”，不变量 3、9。
+D3“重发 start 时值被忽略”，D6“先持久化再发送，重发相同字节”与“启动时检查可恢复性”，不变量 3、9。
 
-## Host Servers Authenticate Every Call Per Execution And Attempt
+## Host Credentials Follow The Persisted Execution State And Bind Each Attempt
 
 ### 风险
 
-宿主 Server 把“请求到达了端点”或“工具出现在某个 Agent 里”当作授权，同一 workload UID 下的兄弟会话或本机
-其他进程伪造完成信号；会话结束或停止未确认后凭据仍然有效；过期或别的 attempt 的 token 被接受；开启
-`autoAcceptAgentCompletion` 的节点因伪造信号直接完成。
+吊销名单只在内存中，凭据又可以推导，Controller 重启后已结束 execution 的凭据又能用了；依赖推送事件吊销，
+而 `stop_unconfirmed` 只能经 `GetExecutionStatus` 查到，可能始终没有终态；宿主 Server 把“请求到达了端点”当作
+授权，接受另一个 execution 或早先 attempt 的 token；开启 `autoAcceptAgentCompletion` 的节点因跨 execution 或
+跨 attempt 的调用直接完成。
 
 ### 前置状态
 
@@ -97,18 +115,24 @@ D3“重发 start 时值被忽略”、D6“端点与凭据在整个 execution �
 
 ### 触发
 
-用另一个 execution 的凭据或 token 调用；用早先 attempt 的 token 调用；收到 `AgentSessionEnded` 或
-`stop_unconfirmed` 后再调用。
+用另一个 execution 的凭据或 token 调用；用早先 attempt 的 token 调用；在以下每种事件之后再调用：Controller
+主动结束、发出 `EndSession`、收到 `AgentSessionEnded`、execution 被中断、经 `GetExecutionStatus` 观察到
+`StopUnconfirmed`；execution 结束（吊销）后重启 Controller 再调用。
 
 ### 必须成立
 
-- 凭据只对签发它的 execution 有效；token 只在绑定的会话与 attempt 内短期有效。
-- 收到该 execution 的 `AgentSessionEnded` 或 `stop_unconfirmed` 后凭据被吊销。
-- 越权、过期或已吊销的调用被拒绝且不改变任何状态，包括开启自动接受的节点。
+- 凭据只对签发它的 execution 有效，且只在 Controller 持久的 execution 记录处于非终态时有效；以上每种事件
+  最先发生时记录离开运行态，之后的调用被拒绝。
+- 吊销后重启 Controller，已结束 execution 的凭据仍被拒绝。
+- token 只在绑定的会话与 attempt 内短期有效；越权、过期或已失效的调用被拒绝且不改变任何状态，包括开启
+  自动接受的节点。
 
 ### 禁止结果
 
-- 跨 execution 或跨 attempt 的调用产生完成信号；吊销后的调用被接受。
+- 跨 execution 或跨 attempt 的调用产生完成信号；记录已离开运行态后的调用被接受，包括重启之后。
+
+本用例只证明跨 execution、跨 attempt 的重放被拒绝；同一系统用户下读取当前 prompt 的进程不在保护范围内
+（决策 D5、D6），不登记为义务。
 
 ### 验证义务与证据
 
@@ -116,9 +140,10 @@ D3“重发 start 时值被忽略”、D6“端点与凭据在整个 execution �
 |---|---|---|
 | 按 execution 隔离凭据 | 宿主 Server 测试：另一个 execution 的凭据被拒绝且状态不变 | Missing |
 | attempt 绑定与有效期 | 宿主 Server 测试：早先 attempt 或过期的 token 被拒绝且状态不变 | Missing |
-| 终态与停止未确认时吊销 | Controller 测试：收到 `AgentSessionEnded` 或 `stop_unconfirmed` 后同一凭据被拒绝 | Missing |
-| 自动接受不放大伪造 | 宿主 Server 测试：开启自动接受的节点收到越权调用时不完成 | Missing |
+| 以持久状态判定有效期 | Controller 测试：五种离开运行态的事件各自之后，同一凭据被拒绝 | Missing |
+| 吊销后重启仍拒绝 | Controller 测试：execution 结束后重启 Controller，同一凭据仍被拒绝 | Missing |
+| 自动接受不放大跨 execution 或跨 attempt 的调用 | 宿主 Server 测试：开启自动接受的节点收到越权调用时不完成 | Missing |
 
 ### 决策依据
 
-D5、D6“按 execution 签发、及时吊销”与“attempt 级授权”，不变量 9；完成信号 D1、D2。
+D5、D6“凭据只在持久 execution 记录处于非终态时有效”与“attempt 级授权”，不变量 9；完成信号 D1、D2。
