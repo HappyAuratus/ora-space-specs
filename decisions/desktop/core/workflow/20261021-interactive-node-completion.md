@@ -4,6 +4,8 @@ status: implemented
 
 # 交互式节点完成契约：以本轮终态门禁推进，暂停可继续，强制完成可审计
 
+> 历史决策：D2 和风险登记中的“重试没有可用的 attempt 边界”仅适用于没有重发边界的旧历史。有边界的历史按[交互式节点按最终尝试的有效产出恢复](20261118-interactive-retry-output.md)判定最终输出，turn key 继续使用原定义。
+
 交互式 Agent 节点每轮结束后停在 `Pending`。本决策把「完成」从一个人工动作改为由本轮终态支撑的门禁：只有本轮以 `EndTurn` 结束、且声明的输出契约通过时才允许完成；`Cancelled`、截断、拒答、缺失或未知都视为未完成，必须继续对话或显式强制完成。完成判定先由 `prepare` 按持久状态与 turn key 复核（turn key 比对在 per-run 锁外），锁内只复核 run/node 状态与 completion claim；park 快照进入读取投影，会话消息不被拦截，由后端在每个回合前注入步骤边界。
 
 本决策为 `implemented`。实现随 `ora-space/desktop` PR #729 落地（`Refs ora-space/circus#500`，reviewer 已 Approve、CI 全绿；本 ADR 在该 PR 合并后同步为 `implemented`），验收证据与偏差记录见[核心用例](../../../../test-cases/desktop/core/workflow/interactive-node-completion.md)与下文「实现与 `approved` 方案的差异」。它改变 `completeWorkflowNode` 的公开语义（新增 `WorkflowNodeIncomplete`、`WorkflowNodeTurnChanged`、`WorkflowNodeOutputChanged` 与 `force`），涉及 backend 的完成/停靠路径、contracts 的完成请求、application 的节点映射和 app-shell 的运行视图；数据库只读写既有 `payload` 列，不改 schema、冻结图字段或本地文件布局。正常 `EndTurn` 后的完成行为保持不变；`Loop`/`Iteration` 区域内的 interactive 行为不在本决策范围，仍按既有区域边界处理。升级前已停靠且无快照的节点只在 `prepare` 做一次性物化。
