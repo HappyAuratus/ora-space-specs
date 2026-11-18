@@ -78,6 +78,9 @@ Selection 过滤，再从当前 installed snapshot 中解析静态有效且配�
 
 `Host Session Capability` 是 Host 在 ACP 发送边界附加的会话能力（例如 workflow 完成工具）；它不属于
 插件 MCP，不进入 `Explicit` 集合或 `Effective MCP Set`，授权来自节点冻结策略与仅在单个 attempt 内有效的 token。
+经 Node 执行的会话由 Controller 在 `AgentSessionSpec.host_mcp_servers` 中交付这类能力的 HTTP MCP Server（能力
+`session_host_mcp_servers`，见[Controller 交付宿主 MCP](../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)）；
+它与 `Host MCP Health` 无关，后者只针对已安装的插件 MCP。
 
 `Desired Session MCP Revision` 是 Effective MCP Set 的 secret-free 内容身份，绑定成员的 canonical
 Plugin ID、精确 package version 与 Configuration revision。它用于合并变化通知并判断 Live Session
