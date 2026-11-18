@@ -221,8 +221,8 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | --- | --- | --- |
 | project-git | [项目仓库](project-git/external-repository-pull.md) | 地址夹带凭据或非 https、当前快照指向不完整的提交、同步改动已有会话的基准、同一项目并行同步、令牌泄露或被挪用 |
 
-[回合交付](../../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md)为 `approved`，尚待实现。证据按 cloud `0ca0a9a0` 的
-`v2-server/` 登记，7 项汇总为 0 Covered / 1 Partial / 6 Missing。
+[回合交付](../../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md)为 `implemented`：由 circus #1108 实现（cloud PR #410）。证据按 cloud
+`7fb7c972` 的 `v2-server/` 与 `frontend-v2/` 登记，7 项汇总为 7 Covered / 0 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
