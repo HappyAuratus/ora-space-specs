@@ -205,16 +205,17 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## Cloud 单进程根决策
 
 [Cloud 单进程根决策](../../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)为 `approved`。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，租户授权一条按 `b03ac2b4`），8 项汇总为 2 Covered / 4 Partial / 2 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，租户授权一条按 `b03ac2b4`，首次内网部署准备一条按 `85bc9a5f` / cloud#362），9 项汇总为 2 Covered / 5 Partial / 2 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、租户路由漏判成员或撤权后后台照常执行、全局锁回归、迁移乱序、运行超过 24 小时后失效 |
+| lifecycle | [Cloud 单进程](lifecycle/single-process-cloud.md) | 重启后执行挂在进行中、恢复时重放、Node 退出后执行不结束、Key 和令牌下发给 Node、租户路由漏判成员或撤权后后台照常执行、全局锁回归、迁移乱序、运行超过 24 小时后失效、离线部署清数据/带入演示数据、同源前端吞掉 API 或路径穿越、离线资源搬移与关闭官方市场失效 |
 
 ## 项目仓库根决策
 
-[项目仓库根决策](../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)为 `approved`，手动同步和
-私有仓库令牌尚待实现。证据按 cloud `80e9c9f1` 的 `v2-server/` 登记，4 项汇总为 0 Covered / 2 Partial / 2 Missing。
+[项目仓库根决策](../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)为 `implemented`：手动同步、
+当前快照随同步推进和私有仓库令牌已由 I7（circus #1057）实现。证据按 cloud `affb2a88` 的 `v2-server/` 登记，4 项汇总为
+1 Covered / 3 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -229,9 +230,9 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 
 ## 模型接入根决策
 
-[模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `approved`，
+[模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `implemented`（最后两项证据由 cloud#377 补齐），
 后续决策 [长请求的空闲超时与总上限](../../decisions/cloud/model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md)为 `implemented`（D1–D3 由 cloud#367、D4 由 cloud#369 实现）。
-证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，后续决策 D1–D3 的三条按 `4183eb9b`，D4 一条按 cloud#369 head `00c2fa52`），9 项汇总为 7 Covered / 2 Partial / 0 Missing。
+证据按 cloud `80e9c9f1` 的 `v2-server/` 登记（24 小时一条按 `0ca0a9a0`，Key 不下发 Node 与重启后令牌失效两条按 cloud#377 head `24d7466b`，后续决策 D1–D3 的三条按 `4183eb9b`，D4 一条按 cloud#369 head `00c2fa52`），9 项汇总为 9 Covered / 0 Partial / 0 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -240,7 +241,7 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 ## 登录与会话根决策
 
 [登录与会话根决策](../../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)为 `approved`，
-IDaaS 登录、邀请链接、移出成员和 desktop 令牌尚待实现。证据按 cloud `0ca0a9a0` 的 `v2-server/` 登记，10 项汇总为
+IDaaS 登录、邀请链接、移出成员和 desktop 令牌尚待实现。证据按 cloud `0ca0a9a0` 的 `v2-server/` 登记（“Exactly One Login Method Is Open” 的 `V2_LOGIN` 必填部分按 `85bc9a5f` / cloud#362 补充），10 项汇总为
 0 Covered / 3 Partial / 7 Missing。
 
 | 领域 | 核心用例 | 重点风险 |

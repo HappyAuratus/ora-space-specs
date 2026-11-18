@@ -4,6 +4,10 @@ status: implemented
 
 # Node 以执行的方式把 Cloud 指定的插件安装到 Workspace 数据中的插件目录，复用 desktop 安装器
 
+> 历史决策：D2 与不变量 4 的“按 ID 使用期间拒绝替换/移除”对 MCP 包已由
+> [会话 MCP 刷新与宿主健康](../agent-runtime/20261116-session-mcp-refresh-and-host-health.md) D6 修改：MCP 改为 canonical ID +
+> 精确版本租约，新旧版本可并存，在用版本不得改写或删除；其他类别及整 ID 移除规则不变。
+
 Node 收到 `InstallPlugins`/`RemovePlugins` 执行后，用 desktop 已有的 `ora-plugin-manager` 安装器按载荷下载、
 校验 SHA-256、做安装期包校验，并原子放置到 Workspace 数据卷中的插件目录；逐个插件报告结果。安装只落盘，
 不启动插件进程——进程由使用方（第一版只有 Agent 会话）按需启动。安装与移除是幂等的：同版本已装好直接

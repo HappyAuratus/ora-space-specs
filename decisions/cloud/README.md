@@ -18,9 +18,9 @@ Cloud 的领域与协议边界划分，不预先决定 Go package、数据库表
 | `operation` | 持久操作、幂等、版本、重试、状态转换和恢复证据 |
 | `execution-admission` | Access、Execution Ticket、准入关闭、idle 证据和活动保护 |
 | `controller-integration` | Controller lease、内部快照、effect plan、epoch fencing 和接管边界 |
-| `project-git` | 项目仓库：外部仓库的绑定、Cloud 进程内拉取与手动同步、当前快照、私有仓库令牌；[根决策](project-git/0-external-repository-pull-and-encrypted-token.md) approved（同步和令牌尚待实现）；[回合交付](project-git/20261112-single-machine-turn-delivery.md) approved（尚待实现） |
+| `project-git` | 项目仓库：外部仓库的绑定、Cloud 进程内拉取与手动同步、当前快照、私有仓库令牌；[根决策](project-git/0-external-repository-pull-and-encrypted-token.md) implemented；[回合交付](project-git/20261112-single-machine-turn-delivery.md) approved（尚待实现） |
 | `login` | 登录与会话：部署版华为 IDaaS、开发版无密码邮箱，部署版凭一次性邀请链接、开发版按邮箱邀请入队，网页与 desktop 会话落在同一账号；[根决策](login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md) approved（尚待实现） |
-| `model-proxy` | 模型接入：Cloud 进程内的模型代理、部署级模型连接、按 Agent 会话签发的临时令牌；[根决策](model-proxy/0-in-process-model-proxy-with-deployment-connections.md) approved；[长请求的空闲超时与总上限](model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md) implemented |
+| `model-proxy` | 模型接入：Cloud 进程内的模型代理、部署级模型连接、按 Agent 会话签发的临时令牌；[根决策](model-proxy/0-in-process-model-proxy-with-deployment-connections.md) implemented；[长请求的空闲超时与总上限](model-proxy/20261113-in-flight-model-calls-bounded-by-idle-and-total-limits.md) implemented |
 | `persistence` | PostgreSQL schema、migration、事务顺序、约束和兼容性 |
 | `lifecycle` | Cloud 启动、健康检查、优雅停止、配置、升级和部署边界；[单进程、第一版单机、崩溃即中断的根决策](lifecycle/0-single-process-cloud-on-enterprise-intranet.md) approved，是 phase3 基座的根决策 |
 | `plugin-marketplace` | 插件市场目录快照同步、工作区插件选择状态、fan-out 与自闭合 effect 载荷 |

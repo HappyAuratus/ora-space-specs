@@ -3,8 +3,9 @@
 依据 [登录与会话根决策](../../../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)（`approved`）。
 下文的 D 编号与不变量编号都指这篇根决策。
 
-证据读取的是 cloud `0ca0a9a0` 的 `v2-server/`（路径相对该目录）。v2-server 现在只有开发版的无密码邮箱登录，没有
-`V2_LOGIN`、IDaaS、邀请链接、移出成员和 desktop 令牌，所以多数用例是 Missing；开发版已有的行为引用现有测试。
+证据读取的是 cloud `0ca0a9a0` 的 `v2-server/`（路径相对该目录）；“Exactly One Login Method Is Open” 的 `V2_LOGIN` 必填部分读取的是
+cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密码邮箱登录，没有
+`V2_LOGIN` 之外的 IDaaS、邀请链接、移出成员和 desktop 令牌，所以多数用例是 Missing；开发版已有的行为引用现有测试。
 
 ## Exactly One Login Method Is Open
 
@@ -14,9 +15,10 @@
 - 必须成立：不配置或配错值时拒绝启动；`/auth/providers` 只返回当前的那一种；部署版拒绝邮箱登录（`400 unknown_provider`）；
   不支持的提供方一律拒绝。
 - 禁止结果：没有 `V2_LOGIN` 时按某个默认值启动；部署版里存在不经 IDaaS 得到会话的路径。
-- 验证义务与证据：**Partial** — `internal/server/server_test.go` 的 `TestLoginRejectsOtherProvidersAndForeignRedirects`。
-  已覆盖：不支持的提供方被拒绝，`returnTo` 只接受站内路径。仍缺：`V2_LOGIN` 必填、`/auth/providers` 只返回一种、
-  部署版拒绝邮箱登录。
+- 验证义务与证据：**Partial** — `internal/server/server_test.go` 的 `TestLoginRejectsOtherProvidersAndForeignRedirects`；
+  `deployment_test.go` 的 `TestLoginPreflightBeforeEffects`。
+  已覆盖：不支持的提供方被拒绝，`returnTo` 只接受站内路径，`V2_LOGIN` 缺失或非法值时在接触数据目录前拒绝启动（当前构建亦拒绝
+  `V2_LOGIN=idaas` 且不回落到 `email`）。仍缺：`/auth/providers` 只返回一种、部署版拒绝邮箱登录（待 I2 #1052 接入 IDaaS 后补齐）。
 - 决策依据：D1，不变量 1、2。
 
 ## The IDaaS Exchange Keeps Every Credential Out Of Storage And Logs

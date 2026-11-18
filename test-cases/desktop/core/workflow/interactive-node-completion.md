@@ -287,7 +287,8 @@ cleanup；之后的 `prepare`。
 
 - `Pending` 跨重启保留。
 - 重启后 `session/load` 成功、失败→`rebuild_provider_session` 两条路径，「继续当前步骤」都能得到一轮回复（真实 agent 集成测试）。
-- continue 的 prompt 失败时：界面明确报错，节点保持 `Pending`，「仍然完成」仍可用，不静默丢回合。
+- `session/load` 假成功、实际会话不可用时：该 channel 首个 prompt 在无输出/工具调用下失败，runtime 关闭旧 channel、重建并重试同一 prompt 一次；只对可复用的 `RequestFailed` 生效，已有输出不重试，重试轮仍失败返回该轮错误，只有重建失败返回第一次错误。
+- 重试后 continue 的 prompt 仍失败时：界面明确报错，节点保持 `Pending`，「仍然完成」仍可用，不静默丢回合。
 - 在途 `Running` 仍按 `interrupted_by_restart` 失败，不自动续算。
 - 工作流层不预设「重新运行本步骤」的降级路径。
 
@@ -301,6 +302,7 @@ cleanup；之后的 `prepare`。
 | --- | --- | --- |
 | `Pending` 跨重启保留 | e2e `a_stopped_step_blocks_completion_and_continues_after_a_restart`；`workflow::run::operations::tests::recovery_preserves_awaiting_nodes_and_prunes_orphaned_baselines` | `Covered` |
 | `session/load` 成功与 rebuild 两条路径都能继续 | 同一 e2e 用例的 `restart_scenario(refuse_load)` 两个分支使用 fake plugin；真实 agent 集成证据缺失，由 #567 承接 | `Partial` |
+| `session/load` 假成功时重建并重试一次 | e2e `a_stale_loaded_session_rebuilds_and_retries_the_first_prompt`（fake plugin 注入 load 后首个 prompt 失败，断言只重建一次、重试成功、节点保持 `Pending`）；真实 agent 复现由 #671 承接 | `Partial` |
 | continue 失败保持 `Pending` 且仍可完成 | `workflow::run::interactive::cleanup_tests::a_failed_human_turn_restores_the_previous_snapshot_and_still_forces`；`workflow::run::operations::tests::failed_prompt_start_restores_the_awaiting_node_before_returning` | `Covered` |
 | `Running` 仍按既有失败边界处理 | 现有 boot sweep 测试部分覆盖 | `Partial` |
 

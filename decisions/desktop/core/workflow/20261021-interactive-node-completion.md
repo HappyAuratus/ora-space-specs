@@ -144,12 +144,12 @@ structured 校验失败时 `force` 不写 `structured_output`，raw output 仍�
 
 ### D8：重启由 runtime 处理 provider 恢复，工作流层不预设降级
 
-`Pending` 在重启后保留。provider 会话层由 runtime 负责：`attach` 先试 `session/load`，不支持或失败就 `rebuild_provider_session`，下一条 prompt 带 transcript 交接；工作流层看不到 “restore failed”，因此不预设工作流层的「重新运行本步骤」。
+`Pending` 在重启后保留。provider 会话层由 runtime 负责：`attach` 先试 `session/load`，不支持或失败就 `rebuild_provider_session`，下一条 prompt 带 transcript 交接。已发布的 CLI 可能对无效 session 误报 load 成功，因此 load 成功后 runtime 仍标记该 channel；它的首个 prompt 在没有任何 assistant 输出或工具调用时以 `RequestFailed` 失败，就关闭旧 channel、`session/new` 重建，并用同一 prompt 重试一次（只对可复用的 `RequestFailed` 生效；已有输出不重试；重试轮仍失败返回该轮错误，只有重建失败返回第一次错误）。工作流层看不到这些恢复细节，因此不预设工作流层的「重新运行本步骤」。
 
 验收固定为三条：
 
-1. 重启后 `session/load` 成功、失败→rebuild 两条路径，「继续当前步骤」都能得到一轮回复（真实 agent 集成测试）；
-2. 如果 continue 的 prompt 失败：界面明确报错，节点保持 `Pending`，「仍然完成」仍可用，不静默丢回合；
+1. 重启后 `session/load` 成功、失败→rebuild 两条路径，「继续当前步骤」都能得到一轮回复（真实 agent 集成测试）；load 假成功时由 runtime 在首个无输出失败后自动 rebuild + 重试一次；
+2. 如果重试后 continue 的 prompt 仍失败：界面明确报错，节点保持 `Pending`，「仍然完成」仍可用，不静默丢回合；
 3. 如果测试发现真正无法继续（Ora 会话/历史丢失等），另开依赖本决策的后续 issue，定义「重新运行本步骤」的触发、机制（新 attempt / 新 node run）、部分输出来源与测试；不阻塞本 ADR。
 
 重启时仍在 `Running` 的节点按 while D6 的失败边界处理，不由本决策新增自动续算。

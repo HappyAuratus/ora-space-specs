@@ -1,10 +1,10 @@
 # 项目仓库：绑定、拉取与当前快照、手动同步、私有仓库令牌
 
-依据 [项目仓库根决策](../../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)（`approved`）。
+依据 [项目仓库根决策](../../../decisions/cloud/project-git/0-external-repository-pull-and-encrypted-token.md)（`implemented`）。
 下文的 D 编号与不变量编号都指这篇根决策。
 
-证据读取的是 cloud `80e9c9f1` 的 `v2-server/`（路径相对该目录）。现在只有"建项目时拉取一次、只支持公开仓库"；手动同步、
-随同步推进的当前快照和私有仓库令牌都还没有实现，由 I7（circus #1057）补齐。
+证据读取的是 cloud `affb2a885d81eca9aed98dca84fbfc486c1f7429`（PR ora-space/cloud#375 合并后）的 `v2-server/`
+（路径相对该目录）。手动同步、随同步推进的当前快照和私有仓库令牌已由 I7（circus #1057）实现。
 
 ## A Project Binds One HTTPS Repository Without Embedded Credentials
 
@@ -14,9 +14,10 @@
   拉取失败。
 - 必须成立：只接受不带用户信息、查询串和片段的 `https` 地址；其余在访问网络之前被拒绝；拉取失败时项目不创建。
 - 禁止结果：带凭据的地址被保存；非 `https` 的地址被访问；拉取失败却留下项目。
-- 验证义务与证据：**Partial** — `internal/projectrepos/projects_test.go` 的 `TestRepositoryURLPolicy`；
-  `internal/server/projects_test.go` 的 `TestProjectRepositoryLifecycle`。已覆盖：地址规则；建项目时拉取并记录提交。
-  仍缺：没有直接测试"拉取失败时项目不创建"；地址和分支建后不可修改现在靠没有修改接口保证。
+- 验证义务与证据：**Covered** — `internal/projectrepos/projects_test.go` 的 `TestRepositoryURLPolicy`；
+  `internal/server/projects_test.go` 的 `TestProjectRepositoryLifecycle`；
+  `internal/projectrepos/sync_test.go` 的 `TestPrivateRepositoryTokenCreatesSyncsAndReportsRejection`。已覆盖：地址规则；
+  建项目时拉取并记录提交；私有无令牌时建项目失败、不留下项目。地址和分支建后不可修改由没有修改接口保证，不是靠测试。
 - 决策依据：D1。
 
 ## The Current Snapshot Moves Only After A Successful Pull
@@ -27,9 +28,12 @@
 - 必须成立：成功时写入新的快照 ref 并推进当前快照，新会话以它为基准；失败和中断时当前快照不变，原因可见；强推时
   跟随并保留旧快照；已有会话目录的基准不变；快照 ref 写入后不再改变。
 - 禁止结果：当前快照指向没有快照 ref 的提交；旧快照被删除或改写；已有会话的基准随同步变化。
-- 验证义务与证据：**Partial** — `internal/server/projects_test.go` 的 `TestProjectRepositoryLifecycle`。已覆盖：建项目时
-  快照 ref 指向记录的提交，外部仓库消失后仍从镜像和数据库读取。仍缺：同步还没有实现，快照推进、失败不变、强推和中断
-  都没有证据（I7 #1057）。
+- 验证义务与证据：**Partial** — `internal/projectrepos/sync_test.go` 的 `TestSyncAdvancesCurrentSnapshotOnlyOnSuccess`、
+  `TestSyncFollowsForcePushedBranchAndKeepsOldSnapshot`、`TestSyncFailureKeepsCurrentSnapshotAndShowsReason`；
+  `internal/server/project_sync_test.go` 的 `TestProjectSyncAndRepositoryToken`。已覆盖：同步成功写入新快照 ref 并推进
+  当前快照、旧快照保留；强推跟随并保留旧快照；失败（分支删除）时当前快照不变、原因可见；HTTP 层同步推进与失败状态。
+  仍缺：同步中途 Cloud 重启的中断路径（`store.ClearStaleSyncs`）和"已有会话目录的基准不随同步变化"没有直接测试；
+  "新会话以推进后的快照为基准"沿用建会话的既有机制，无针对同步推进的直接断言。
 - 决策依据：D2、D3，不变量 2、3、5。
 
 ## Only One Sync Runs Per Project And Only On Request
@@ -39,7 +43,10 @@
 - 触发：同步进行中再次点同步；建会话；长时间无人操作。
 - 必须成立：进行中再点返回正在进行的那一次；建会话不触发同步；没有周期性的访问。
 - 禁止结果：同一个项目两次同步同时进行；Cloud 自行访问外部仓库。
-- 验证义务与证据：**Missing** — 同步还没有实现（I7 #1057）。
+- 验证义务与证据：**Partial** — `internal/projectrepos/sync_test.go` 的 `TestSyncRunsOncePerProject`
+  （两个并发同步并发探针只被探测一次）和 `TestSyncOutlivesTheRequestThatStartedIt`（发起同步的请求结束后共享的拉取仍完成）。
+  已覆盖：同一项目同时最多一次同步、进行中再点共享同一次。仍缺：没有直接测试"建会话不触发同步"和"没有周期性访问"；
+  这两者由实现只在建项目和显式同步时访问外部仓库保证（不变量 7），但不是测试证据。
 - 决策依据：D3，不变量 4、7。
 
 ## The Repository Token Stays Inside Cloud
@@ -52,5 +59,10 @@
   密钥缺失时 Cloud 照常启动，需要令牌的拉取失败并写明原因；只有创建者和团队管理员能更换和删除；公开仓库匿名拉取；
   被拒绝时提示更换，不自动停用。
 - 禁止结果：令牌明文进入日志、API 应答、命令行参数、地址、Git 配置或 Node 的配置。
-- 验证义务与证据：**Missing** — 私有仓库令牌还没有实现（I7 #1057）。
+- 验证义务与证据：**Partial** — `internal/projectrepos/sync_test.go` 的 `TestRepositoryTokenSealsToBindingAndNeverLeaks`
+  和 `TestPrivateRepositoryTokenCreatesSyncsAndReportsRejection`；`internal/server/project_sync_test.go` 的
+  `TestProjectSyncAndRepositoryToken`。已覆盖：密文落库且不含明文；挪到别的项目解不开；令牌只经 Git 子进程的环境使用、
+  不进镜像配置和 API 应答；API 只返回是否已配置和最后更换时间；普通成员更换被拒（403）、创建者/管理员可更换删除；
+  公开仓库匿名拉取；令牌被拒时同步失败、快照不变并提示更换令牌。仍缺：没有直接测试"去掉加密密钥后 Cloud 照常启动、
+  需要令牌的拉取失败并写明原因"。
 - 决策依据：D4，不变量 6。
