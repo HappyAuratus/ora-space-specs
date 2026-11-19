@@ -89,8 +89,8 @@ status: proposed
   - `ignored`：`recoverable` 时目录里有没有被忽略规则排除的文件，只有确实有时界面才提示；
   - `undeliveredChanges`：`undelivered` 时相对最后一次成功交付（没有时相对起点）列出未交付的改动（路径、增删），有上限，
     超过时给出总数；除 `delivering` 外都列出（`legacy` 相对起点列出）；
-  - `gitState`：原因是 `git_state` 时列出发现了什么：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
-    嵌套仓库的路径。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
+  - `git`：原因是 `git_state` 时列出发现了什么（`revision` 始终包含 Git 状态）：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
+    嵌套仓库的路径（顶层以下的 `.git`、`.git/modules/` 下的仓库和变动过的 gitlink 合并去重）。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
   - `latestDelivery`：最近一次 `delivered` 交付的 ID，界面据此提供现有的 `…/workspace/deliveries/{id}/patch` 下载；
   - `revision`：这份预览所依据的状态的标识，包含最后一轮、最近一次交付、判定与原因、按交付规则生成的快照树和 Git 状态，
     所以同一路径、同样增删行数的内容改写也会改变它；`discard` 时要带回。
@@ -99,7 +99,7 @@ status: proposed
   - `discard`：用户明确丢弃，不管能不能恢复都回收。请求必须带回预览的 `revision`；删除时（结束会话之前）重新计算，
     不一致、或会话有回合未结束，返回 `409 deletion_preview_stale`，对话和目录都不动，界面重新取预览。
 - **删除的返回值** `workspace`：`reclaimed`（已回收，附释放的字节数和文件数）、`kept`（附原因）、`pending`（附原因：
-  `delivering`；`check_failed` 或删除失败，等启动时重试；`reclaim_unavailable`，见下）、`none`。
+  `delivering`；`in_progress`，后台继续删；`check_failed`、`removal_failed`，等启动时重试；`reclaim_unavailable`，见下）、`none`。
 - **Cloud 没有 Agent 运行时、无法判定时**（例如没有配置 Node 资产启动，但磁盘上还有以前的 checkout）：对登记过工作目录的
   对话，预览和 `discard` 在结束会话和删除事务之前返回 `503 workspace_reclaim_unavailable`，什么都不改；默认 `reclaim` 照常
   删除对话、登记 `pending`，返回 `pending`/`reclaim_unavailable`，留给以后有运行时的启动按 D1 判定。界面说明“删除后先保留，
@@ -129,7 +129,7 @@ status: proposed
 
 - **登记**：用户删除对话时，在删除对话记录的同一个事务里写一条工作目录回收：`WorkspaceID`、项目、会话 ID、来源对话、
   路径、`clone_execution`（取自 `v2_workspaces`）、模式、登记时间，状态 `pending`。会话没有登记过工作目录的不登记。登记
-  只在用户删除对话的路径上发生；`Create` 首轮被拒后回滚对话的删除不是用户删除，不登记。模式登记后不可变。
+  只在用户删除对话的路径上发生；`Create` 首轮被拒后回滚对话的删除不是用户删除，不登记。模式登记后不可变，由数据库保证。
 - **状态**：`pending → deleting → reclaimed | kept`，另记尝试次数、最后一次错误、最后一次尝试时间，结束时记释放的字节数
   与文件数，`reclaimed` 时记依据的交付（交付 ID、交付提交、起点提交，供运维恢复，D6）。
   - `pending`：每次执行按 D1 判定。`delivering`（两种模式都一样，`discard` 也要等交付义务清空）→ 保持 `pending`；
