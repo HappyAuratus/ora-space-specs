@@ -7,7 +7,7 @@
 |---|---|
 | [repository](repository/0-clone-selected-repository-branch.md) | 当前最小闭环：clone 指定仓库的指定分支；范围根决策与[最小执行契约](repository/20260918-minimal-clone-execution-contract.md)均 approved，尚未实现 |
 | `worktree` | main worktree、task worktree 及 Git worktree 生命周期 |
-| `agent-runtime` | Agent 进程、ACP 转发、会话连接和运行恢复；[显式 Session MCP](agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)、[同一 checkout 的多个会话](agent-runtime/20261115-shared-checkout-agent-sessions.md)（approved）；[会话 MCP 刷新与宿主健康](agent-runtime/20261116-session-mcp-refresh-and-host-health.md)（Node 侧 implemented，消费端与证据边界见正文）；[Controller 交付宿主 MCP](agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)（Node 侧 implemented，Controller 义务随使用方接入） |
+| `agent-runtime` | Agent 进程、ACP 转发、会话连接和运行恢复；[显式 Session MCP](agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)（Node 侧 implemented，Controller 义务随使用方接入）；[同一 checkout 的多个会话](agent-runtime/20261115-shared-checkout-agent-sessions.md)（approved）；[会话 MCP 刷新与宿主健康](agent-runtime/20261116-session-mcp-refresh-and-host-health.md)（Node 侧 implemented，消费端与证据边界见正文）；[Controller 交付宿主 MCP](agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)（Node 侧 implemented，Controller 义务随使用方接入） |
 | `plugin-runtime` | Plugin 安装、启动、停止、运行和本地状态 |
 | `effect` | ResourceAdapter、ConsumerAdapter、观测、mutation 和 receipt |
 | `filesystem` | Node 文件系统访问、路径边界和 Workspace 文件操作 |
