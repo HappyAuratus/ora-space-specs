@@ -301,7 +301,7 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
   - 新建的交互节点默认使用 `end_turn` 还是 `agent` 不在本 ADR：由另一份工作流决策修改
     [Agent 完成信号](../../desktop/core/workflow/20261110-agent-completion-signal.md)落地结果 3（新建或重新保存的
     交互节点写入 `completionSignal: "agent"`）以及 D7 中“升级后新建或重新保存的交互节点默认 `agent`”一条，改为
-    默认 `end_turn`。
+    默认 `end_turn`，见[经 Node 承载的交互节点默认 `end_turn`](../../cloud/workflow/20261119-end-turn-default-until-host-completion-tool.md)。
   - Desktop 是否也对不支持 HTTP MCP 的 Agent 做 D4 的检查，另行决定。
 
 落地顺序：
