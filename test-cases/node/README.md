@@ -49,12 +49,14 @@
 
 [子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)为
 `implemented`，核心用例按现有测试登记证据并保留缺口；
+[CodeAgent _subagent/update 子代理进度通道决策](../../decisions/node/agent-runtime/20261118-codeagent-subagent-update-channel.md)为
+`approved`，实现尚未合入 desktop 的 main，其新增的 11 项义务目前标为 `Missing`。
 [会话执行用例](agent-runtime/session-execution.md)与[静默策略用例](../desktop/core/workflow/prompt-inactivity.md)的
 证据保持原范围，不推导来源保真或终态缺口已实现。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动续期父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口 |
+| agent-runtime | [子代理投影、终态缺口与运行诊断](agent-runtime/child-projection-and-diagnostics.md) | 父子内容互串或按 depth 猜归属、同 messageId 跨来源拼接、父回合结束把未知结局伪装成终态、忽略已返回的委托或把委托返回当子组终态、子活动不当续期或暂停父提示、把重放时间当实时活动、只读详情崩溃或长出控制入口、`_subagent/update` 乱序/内层工具 ID 碰撞/越权改写父会话状态或污染工作流输出 |
 
 ## 显式 Session MCP
 

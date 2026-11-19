@@ -183,55 +183,85 @@
 
 - 风险：`_subagent/update` 与 `session/update` 走不同通道导致实时与历史顺序错乱；`timestamp` 进入
   `_meta` 阻断 chunk 合并；`call_0`/`call_1` 等内层工具 ID 与父流或兄弟任务碰撞；`taskId` 含 `:` 时
-  前缀碰撞；后续省略 `toolCallId`/`agentType` 的帧抹除归因；伪造或冲突命名空间越权或改写父会话状态。
+  前缀碰撞；后续省略或置 `null` 的 `toolCallId`/`agentType` 抹除归因；伪造或冲突命名空间越权或改写
+  父会话状态；未知扩展或扩展请求断开共享连接；找不到路由的帧污染其他会话或断开连接。
 - 前置状态：运行中的 `AcpPeer` 与 `run_process_generation` 连接路由，存在多个活跃会话，CodeAgentCLI
   在启用 `CODEAGENT3_ACP_SUBAGENT_CHANNEL=true` 后并发或顺序发出父 `session/update`、有效
-  `_subagent/update`（含省略可选字段的续帧、`taskId` 含 `:`、缺 `title` 工具、内层携带冲突
-  `opencode/child-session` / `ora/turn-end-settled`），以及含未授权 `sessionUpdate` 变体或缺失必填
-  字段的非法 `_subagent/update` 帧；超过任务缓存上限的连续多任务。
+  `_subagent/update`（含省略可选字段或可选字段为 `null` 的续帧、`taskId` 含 `:`、缺 `title` 工具、内层
+  携带冲突 `opencode/child-session` / `ora/turn-end-settled`、同一会话的多个子任务），以及含未授权
+  `sessionUpdate` 变体或缺失必填字段的非法 `_subagent/update` 帧、`sessionId` 不对应任何会话的合法帧、
+  非 `_` 开头的未知通知、带 `id` 的 `_` 开头请求；超过任务缓存上限的连续多任务。帧形态取自真实采集
+  （直连采集脚本，非经 Ora），Ora 内路由只能由本用例的连接层测试证明。
 - 触发：经 `ora-acp` 读取扩展通知、在 `run_process_generation` 入口同步翻译、路由到目标父会话、
   写入 `HistoryAssembler` 与前端聊天 store 并重载。
-- 必须成立：`_` 开头通知按入站 FIFO 保序透传；`_subagent/update` 仅在合法且属于白名单变体
-  （`agent_message_chunk`、`agent_thought_chunk`、`plan`、`tool_call`、`tool_call_update`）时路由至
-  `params.sessionId` 对应的父会话；剥离逐帧 `timestamp` 使连续 chunk 合并；内层 `toolCallId` 编码为
-  单射 `subagent:{len}:{taskId}:{innerToolCallId}`；同 `(sessionId, taskId)` 缓存的 `toolCallId`/
-  `agentType` 在省略可选字段时保留，超上限按 FIFO 淘汰最早条目；剥离内层冲突子来源与内部标记；
-  非法或会话级状态修改帧只记警告并丢弃，不断开连接。
-- 禁止结果：父子通知乱序、把非法扩展通知当成连接致命错误断开进程、允许子代理修改父会话标题/模式/
-  用量、碰撞内层工具 ID、因 `timestamp` 拆散连续文本、整表清空活跃任务缓存或退回父流。
+- 必须成立：`_` 开头通知按入站 FIFO 保序透传；非 `_` 开头的未知通知丢弃；带 `id` 的 `_` 开头请求回
+  JSON-RPC `-32601`，连接保持；`_subagent/update` 仅在合法且属于白名单变体（`agent_message_chunk`、
+  `agent_thought_chunk`、`plan`、`tool_call`、`tool_call_update`）时路由至 `params.sessionId` 对应的父
+  会话，白名单外的变体不改写父会话的标题、模式和用量；剥离逐帧 `timestamp` 使连续 chunk 合并；内层
+  `toolCallId` 编码为单射 `subagent:{len}:{taskId}:{innerToolCallId}`；同 `(sessionId, taskId)` 缓存的
+  `toolCallId`/`agentType` 在可选字段省略或为 `null` 时保留，超上限按 FIFO 淘汰最早条目，被淘汰任务的
+  后续省略帧失去委托关联与标题但仍进入同一子组；剥离内层冲突子来源与内部标记；非法或会话级状态修改帧
+  只记警告并丢弃，不断开连接；找不到路由的合法帧静默丢弃，不断开连接、不落盘、不污染其他会话；同一
+  会话内的所有子任务都按 `depth: 1` 挂在父流下，不构造多层树。
+- 禁止结果：父子通知乱序、把非法扩展通知或扩展请求当成连接致命错误断开进程、允许子代理修改父会话
+  标题/模式/用量、碰撞内层工具 ID、因 `timestamp` 拆散连续文本、外层 `null` 清除已知归因、整表清空
+  活跃任务缓存或退回父流、找不到路由的帧进入其他会话、为 `_subagent/update` 推断多层嵌套。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | `_` 开头扩展通知按 FIFO 保序透传与翻译路由 | 经 `AcpPeer` 与 `run_process_generation` 验证 `_subagent/update` 与 `session/update` 线序一致、精确路由到 `params.sessionId` 父会话、非法/越权变体丢弃且不断连（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
-| 作用域编码、归因保留与权威性 | 验证剥离 `timestamp` 后连续 chunk 合并、长度前缀编码防止含 `:` 碰撞、缓存保留与 FIFO 淘汰、内层冲突命名空间与 `ora/turn-end-settled` 剥离（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 未知通知与扩展请求不破坏连接 | 验证非 `_` 开头的未知通知被丢弃、带 `id` 的 `_` 开头请求收到 `-32601` 且连接继续处理后续帧（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 子代理帧不改写父会话状态 | 验证白名单外的 `session_info_update`、`current_mode_update`、`config_option_update`、`available_commands_update`、`usage_update` 经 `_subagent/update` 到达时，父会话的标题、模式与用量快照不变（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 作用域编码、归因保留与权威性 | 验证剥离 `timestamp` 后连续 chunk 合并、长度前缀编码防止含 `:` 碰撞、外层可选字段省略或为 `null` 时保留缓存归因、FIFO 淘汰后省略帧失去关联与标题但留在同一子组、内层冲突命名空间与 `ora/turn-end-settled` 剥离（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 找不到路由的帧静默丢弃且隔离 | 验证 `sessionId` 不对应任何已路由会话的合法帧被静默丢弃，不断开连接、不落盘、不混入其他活跃会话（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 嵌套按 `depth: 1` 展平 | 验证同一父会话下多个 `taskId` 的子组都以 `parentId = sessionId`、`depth: 1` 呈现，在实时与重载下一致（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 
-- 决策依据：`20261118` D1、D2，不变量 1、2、4。
+- 决策依据：`20261118` D1、D2、D3，不变量 1、2、4。
 
-## CodeAgent Subagent Delegations Must Require Provider Completion And Stay Isolated From Parent Liveness And Workflow Output
+## CodeAgent Subagent Delegations Must Require Provider Completion, Renew The Parent Only While The Delegation Is Open, And Stay Out Of Workflow Output
 
 - 风险：仅靠回合结束收束 `completed`（带中间输出）或取消/非 `completed` 状态误报「委托已返回结果」；
-  `title` 在完成帧变化导致委托关联失效或错配无关 `rawOutput.metadata.sessionID`；`session/load` 回放
-  省略 `content` 只给顶层 `rawOutput.status: "completed"` 时误判为未知；子代理更新刷新父无活动计时
-  或混入工作流节点输出；`plan` 按错误键覆盖或重复。
-- 前置状态：真实 `_subagent/update` 轨迹（`s1_complete`：父 `Task` `pending` → 子进度 → 完成帧
-  `status: "completed"` 且 `content` 非空、`rawOutput` 缺失、`title` 改写；`s2_cancel`：`pending` →
-  `cancelled`；`s3_load`：`content` 缺失、`rawOutput.status: "completed"` 与 `"running"`；另有
-  `in_progress` 带部分输出经 `end_turn` 收束并标记 `ora/turn-end-settled`）；以及工作流输出累加器。
-- 触发：实时完成/取消、回合收束、暖/冷重载、工作流输出累加与诊断更新。
+  `title` 在完成帧变化导致委托关联失效或错配无关 `rawOutput.metadata.sessionID`；结构化 `rawOutput`
+  的状态被忽略或被错误字段覆盖；provider 的 `session/load` 回放被写进 Ora 历史；父 `Task` 只发
+  `pending` 时，超过首个窗口的前台委托被取消并重复执行；反过来，子代理活动在父委托结束后仍续期父计时，
+  或在任何情况下暂停父计时；子代理更新混入工作流节点输出；`plan` 按错误键覆盖或重复。
+- 前置状态：真实 `_subagent/update` 轨迹 `s1_complete`（父 `Task` `pending` → 6 条子帧 → 完成帧
+  `status: "completed"` 且 `content` 非空、`rawOutput` 缺失、`title` 改写；父流静默 62.66 秒，含子帧时
+  相邻最大间隔 19.6 秒）与 `s2_cancel`（`pending` → `cancelled`，没有子帧）；按 `s3_load` 回放形态构造的
+  结构化快照（`content` 缺失、`rawOutput.status` 为 `"completed"` 或其他值、`rawOutput` 为 `null`、
+  `rawOutput.metadata.status` 与顶层 `status` 同时存在且取值不同）；`in_progress` 带部分输出经
+  `end_turn` 收束并标记 `ora/turn-end-settled`；一次 provider `session/load` 回放（含子代理工具摊平帧与
+  转换后的 `_subagent/update`）；以及工作流输出累加器。
+- 触发：实时完成/取消、回合收束、恢复 provider 会话、暖/冷重载、工作流输出累加、诊断更新与父 prompt
+  静默计时。
 - 必须成立：显式 `toolCallId` 只匹配同回合父流中同一 ID 的最晚调用（不看 `title` 也不回退到 OpenCode
-  `sessionID`）；`s1_complete` 与 `s3_load(status="completed")` 在实时/暖/冷重载均显示「委托已返回结果」，
-  而 `s2_cancel`、回合收束补态（`ora/turn-end-settled` / `settledByTurnEnd`）与 `rawOutput.status="running"`
-  均显示「后续未知（投影已停止）」；`PromptLiveness` 与诊断消费统一来源规则，子活动不续期或暂停父
-  计时；`plan` 按有效子来源 ID 去重替换；工作流 `AssistantOutputAccumulator` 与 `completion_snapshot`
-  跳过带有效 `_subagent/update` 归因的更新。
+  `sessionID`）；`s1_complete` 在实时、暖加载与冷加载下均显示「委托已返回结果」，`s2_cancel` 与回合收束
+  补态（`ora/turn-end-settled` / `settledByTurnEnd`）均显示「后续未知（投影已停止）」；存储与组装层解析
+  已持久化的结构化 `rawOutput` 时，`null` 按没有输出处理，`rawOutput.metadata.status` 存在时优先于顶层
+  `status`，只有取值为 `"completed"` 才显示「委托已返回结果」；`session/load` 期间 provider 的回放（含
+  转换后的 `_subagent/update`）被排空，不落盘、不转发；带有效外层 `toolCallId` 的子帧在父委托于本次尝试中
+  仍为 `pending`/`in_progress` 时为父窗口续期、不暂停计时，按 `s1_complete` 的真实间隔驱动时父 prompt
+  不被取消；父委托已结束、外层 id 不认识或帧非法时不续期；子代理超过一个窗口没有任何帧时父 prompt 照常
+  超时；重试清除旧尝试的父委托观察；诊断消费统一来源规则；`plan` 按有效子来源 ID 去重替换；工作流
+  `AssistantOutputAccumulator` 与 `completion_snapshot` 跳过带有效 `_subagent/update` 归因的更新。
 - 禁止结果：回合结束兜底补成 `completed` 的父委托误报已返回结果、信任入站伪造的 `ora/turn-end-settled`、
-  回放 `rawOutput.status="completed"` 漏判、子代理文本或工具污染工作流输出、子代理更新保活父计时。
+  结构化 `rawOutput.status="completed"` 漏判或被顶层字段覆盖 `metadata.status`、provider 回放进入 Ora
+  历史、子代理帧暂停父计时、父委托结束后子代理帧仍续期、压缩时间间隔使续期测试失去意义、子代理文本或
+  工具污染工作流输出。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 真实帧形态下委托返回与收束隔离 | 覆盖 `s1_complete`、`s2_cancel`、`s3_load` 及 `in_progress` 带部分输出经 `end_turn` 收束（带 `ora/turn-end-settled`）在实时/暖/冷重载下的判定与伪造标记剥离（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
-| 统一来源在计时、诊断、`plan` 与工作流输出生效 | 覆盖 `PromptLiveness` 隔离（含碰撞 ID）、`observeDiagnostics` 继承、`plan` 按子来源 ID 替换，以及 `AssistantOutputAccumulator` / `completion_snapshot` 排除子代理输出（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 真实帧形态下委托返回与收束隔离 | 覆盖 `s1_complete` 在实时/暖/冷加载下标「委托已返回结果」，`s2_cancel` 与 `in_progress` 带部分输出经 `end_turn` 收束（带 `ora/turn-end-settled`）标「后续未知（投影已停止）」，以及伪造标记剥离（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 结构化 `rawOutput` 在存储与组装层的解析 | 覆盖已持久化快照中 `content` 缺失、`rawOutput.status` 为 `"completed"` 与其他值、`rawOutput` 为 `null`、`metadata.status` 与顶层 `status` 并存时以 `metadata.status` 为准（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| `session/load` 回放不进入 Ora 历史 | 覆盖恢复 provider 会话时回放的子代理工具摊平帧与转换后的 `_subagent/update` 被排空，不写 JSONL、不转发给前端（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 父委托未结束时续期、不暂停 | 覆盖父委托 `pending`/`in_progress` 时有效子帧续期；父委托已完成、外层 id 缺失或不认识、帧非法时不续期；子帧不计入运行中工具、不暂停；子代理一个窗口内没有帧时照常超时；重试清除旧观察；其中一条按 `s1_complete` 的真实时间间隔（不压缩）驱动并断言父 prompt 不被取消（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 统一来源在诊断、`plan` 与工作流输出生效 | 覆盖 `PromptLiveness` 隔离（含碰撞 ID）、`observeDiagnostics` 继承、`plan` 按子来源 ID 替换，以及 `AssistantOutputAccumulator` / `completion_snapshot` 排除子代理输出（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 
-- 决策依据：`20261118` D3、D4，不变量 3、4、5、6。
+已知缺口：CodeAgent 子代理的 `session/request_permission` 不带子来源，目前按父工具续期，与本文件
+「Projected Child Activity Must Not Rearm The Parent Prompt」的子权限要求不一致，留待 `20261118`
+「本决策未解决的问题」决定后再登记义务；实时完成帧不带 provider 状态，后台委托回执会被标为「委托已返回
+结果」，属于 `20261118` D4 的已知限制，不作为本用例的失败。
+
+- 决策依据：`20261118` D3、D4、D6，不变量 3、4、5、6。
