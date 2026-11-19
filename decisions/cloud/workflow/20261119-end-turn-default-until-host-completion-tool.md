@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 经 Node 承载的交互节点：完成工具送达前新节点默认 `end_turn`，按产品版本恢复 `agent`
@@ -13,7 +13,8 @@ Controller 的产品版本接入完成工具之前，为它写图的编辑器给
 Controller 接入完成工具、且它锁定的 Node 声明 `session_host_mcp_servers` 的那个产品版本起，编辑器恢复默认
 写 `agent`。之前保存的 `end_turn` 是显式值，不改回，已冻结的图也不动。
 
-本决策处于 `proposed` 状态，只定默认值，以及显式 `agent` 在恢复版本前后怎样执行。涉及 Cloud v2 的工作流
+本决策处于 `approved` 状态，尚待实现，只定默认值，以及显式 `agent` 在恢复版本前后怎样执行；验证义务见
+[完成工具送达前的默认完成方式用例](../../../test-cases/cloud/workflow/end-turn-default-before-completion-tool.md)。涉及 Cloud v2 的工作流
 编辑器和 v2-server 的交互节点执行，desktop 的行为和代码都不变。完成工具怎样经 Node 送达（宿主 MCP ADR
 D6 的 Controller 义务，以及 [Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)）
 不在本 ADR，由之后接入完成工具的使用方决策承接。本决策没有数据迁移义务：它不改写任何已保存或已冻结的值。
@@ -144,8 +145,8 @@ ADR 的两处默认值规定，并限定宿主 MCP ADR D6 的适用时点。
 
 落地顺序：
 
-1. **本 ADR**：评审到 `approved`，同一 PR 在完成信号 ADR 的落地结果 3 与 D7 加 `> 历史决策：`，指向本 ADR；
-   `approved` 时在 `test-cases/cloud/workflow/` 补核心用例。desktop 不改代码。
+1. **本 ADR**：`approved`。同一变更在完成信号 ADR 的落地结果 3 与 D7 加 `> 历史决策：`，在宿主 MCP ADR 的
+   “未解决”一节链到本 ADR，并在 `test-cases/cloud/workflow/` 建立核心用例。desktop 不改代码。
 2. **`implemented`**：Cloud v2 的工作流编辑器和 v2-server 已按 D2 实现（新节点写 `end_turn`，`agent` 与
    自动接受按 `end_turn` 执行并标为暂不生效）；合并后登记它的证据，ADR 改为 `implemented`。
 3. **恢复**：由接入完成工具的使用方决策落地，它的产品版本按 D4 把编辑器默认值改回 `agent`。使用方的 ADR 在
