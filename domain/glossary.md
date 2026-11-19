@@ -468,3 +468,11 @@ _Avoid_: retry_wait, parked operation, failed
 它不是 v1 的 Revision：不经 Node 上传、不进对象存储、不承载会话历史。见
 [回合交付](../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md)。
 _Avoid_: Revision, delivery settlement
+
+### Workspace Reclaim
+
+`Workspace Reclaim`（工作目录回收）是用户删除普通对话时，Cloud 在同一事务里为这个对话的工作目录登记、再按精确归属删除
+这个目录的过程，状态为 `pending`、`deleting`、`reclaimed` 或 `kept`。只有成果能由运维从回合交付恢复、或用户明确丢弃时
+才删除；它不删除交付、镜像、数据库记录或会话历史。见
+[删除对话时回收工作目录](../decisions/cloud/project-git/20261119-reclaim-deleted-conversation-workspace.md)。
+_Avoid_: workspace cleanup, garbage collection
