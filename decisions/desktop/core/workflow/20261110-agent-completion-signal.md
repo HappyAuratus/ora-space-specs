@@ -115,6 +115,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 
 - 升级前冻结的图没有 `completionSignal` 字段：按 `end_turn` 遗留语义执行，不注入完成工具，不追溯改变已停靠节点。
 - 升级后新建或重新保存的交互节点默认 `agent`；编辑器明示，允许显式改回 `end_turn`。
+  > 历史决策：经 Node 承载的 Controller（如 Cloud v2）例外：在它的产品版本接入完成工具之前，编辑器给新交互节点默认写 `end_turn`，显式 `agent` 按 `end_turn` 执行并提示暂不生效，恢复条件见[经 Node 承载的交互节点默认 `end_turn`](../../../cloud/workflow/20261119-end-turn-default-until-host-completion-tool.md)。desktop 直接承载的会话仍按本条默认 `agent`。
 - 旧快照没有 `completionPolicy`：按 legacy 读取；`agent` 策略的新快照即使缺 `agentSignal` 也按 `agent_signal_pending` 处理，不能回退成 legacy。`prepare` 按节点冻结策略重新物化并写入 `completionPolicy`；升级前已停靠节点在下次 park/prepare 前保持 legacy。
 - host 完成工具不影响插件 MCP 白名单；`Explicit` 为空、插件缺失、刷新失败等 MCP 错误仍按 MCP ADR 失败，不会因为 host 工具而放宽。
 - 不支持工具调用的 agent：节点不会 ready；用户可以继续对话，首轮正常结束且无信号时可用 `confirmInitialTurn` + `force` 二次确认推进，非首轮可用 force 兜底；不在本决策内做能力探测或自动降级。
@@ -148,6 +149,7 @@ ora_complete_workflow_step({ "attemptToken": "..." })
 1. **契约**：`NodeCompletionRequester::Agent`、`confirmAgentCompletion { signalId }`、`agent_signal_pending` / `agent_confirmation_pending` 与 `WorkflowNodeSignalChanged` 已落地；客户端不再提供 `requester`，服务端按信号与 force 路径派生。
 2. **host 能力与门禁**：完成 MCP server、per-attempt token、park 信号绑定、双 blocker 门禁、确认校验与自动接受已接线。`agent_signal_pending` / `agent_confirmation_pending` 在 park 时物化进快照 blockers，卡片、投影与完成门禁读同一事实；跨回合的旧 `agentSignal` / `confirmation` 会被清除。
 3. **前端**：新建或重新保存的交互节点写入 `completionSignal: "agent"` 与 `schemaVersion: 4`，旧冻结图仍按 `end_turn` 读取；`completion.files`、`completionSignal` 与 `autoAcceptAgentCompletion` 共享 version-4 边界，删空文件不会把仍带策略的节点降回 3，关闭交互模式会清理这两个策略字段；步骤卡片按 D5 矩阵展示，首轮有信号时主操作同时发送两个确认字段，首轮无信号时次操作发送 `confirmInitialTurn` + `force`；自动接受只在已结算的人类回合触发。
+   > 历史决策：本条的默认值不适用于经 Node 承载的 Controller（如 Cloud v2）：在它接入完成工具之前，新交互节点写 `completionSignal: "end_turn"`，见[经 Node 承载的交互节点默认 `end_turn`](../../../cloud/workflow/20261119-end-turn-default-until-host-completion-tool.md)。desktop 的前端仍按本条写 `agent`。
 4. **恢复与运行边界**：Session 持久化 `host_capabilities`，重启后按冻结节点策略恢复完成工具；只有交互式 agent-policy 节点签发 token 并注入完成指令，非交互节点即使保留策略字段也不会拿到 token 或工具；attempt 结束、节点完成与运行取消都会撤销 token；完成 server 限制 64 KiB 请求体与 10 秒连接总时限。
 5. **验证**：核心用例除保留的一处 `Partial` 外均为 `Covered`，直接测试见[agent completion signal 用例](../../../../test-cases/desktop/core/workflow/agent-completion-signal.md)。
 
