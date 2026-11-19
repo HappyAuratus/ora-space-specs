@@ -277,3 +277,128 @@ pack 的 workflow 成员卡片与单包卡片是同一个已安装卡片组件�
   D1–D4 与不变量 3–5。
 - [Workflow 插件类别根决策](../../../../../decisions/desktop/plugin/category/workflow/0-workflow-package-format.md)
   D4 的逐文档独立与首次发布规则。
+
+## Marketplace Install And Uninstall Must Surface Workflow Dependencies Without Blocking Removal
+
+### 风险
+
+如果市场安装或升级含工作流的插件只弹成功 toast 而不展示工作流引用的 MCP / Skill 就绪状态，用户
+直到实际运行才会发现缺插件或未配置；如果卸载被引用的 MCP / Skill 插件毫无提示，用户会误删工作
+流依赖；若因被引用而硬阻止卸载，或因加载未完成/单图损坏就给出「无依赖」结论，则会误导操作或锁死
+插件管理。
+
+### 前置状态
+
+- 存在携带 `kind = "workflow"` 成员或文档的市场插件，导入的工作流草稿或已发布快照引用了 MCP / Skill，
+  或 Agent 节点存在 `"agentConfig": null`。
+- 工作流库中部分工作流的草稿或已发布快照可能引用了待卸载的 Skill 或 MCP 插件；另一部分工作流在
+  草稿中移除了绑定但已发布快照仍引用，或存在无法拉取/非法的图。
+
+### 触发
+
+1. 从市场卡片、详情页或 Pack 执行安装或升级（含重试导入）并带回 `imported` 或 `failed` 文档；或只
+   带回跳过结果。
+2. 从已安装插件管理器、插件详情页、Skills 设置页删除插件 Skill、或 Pack 卸载确认弹窗触发卸载前影响检查。
+
+### 必须成立
+
+- 市场安装、升级与 Pack 安装响应含 `imported` 或 `failed` 时弹出与本地 `.orax` 共用判定的逐工作流
+  依赖报告，展示使用节点及去安装 / 去配置 / 去查看入口，且当前页可直接跳转修复并关闭报告；全部为
+  跳过结果时保持一行 toast。
+- `agentConfig: null` 与 `undefined` 一致视为无插件绑定，既不使依赖报告弹窗崩溃，也不在卸载检查中
+  误计为不可读。
+- 四个卸载入口均同时扫描工作流的草稿与已发布快照，列出引用待卸载插件的工作流与节点并给出警告，但
+  **只警告、不阻止**卸载确认。
+- 目录或工作流列表/草稿正在初次加载或后台 stale 刷新时禁用卸载确认按钮，且刷新失败时不复用旧缓存
+  图；单个工作流图不可读时只计入不可读提示而不丢失其余已确认依赖；目录整体读取失败时给出明确提示
+  并允许用户继续确认。待卸载插件没有 MCP / Skill 目标时跳过逐工作流 `workflow.get` 扫描。
+
+### 禁止结果
+
+- 市场安装或升级含新导入/失败工作流时不展示缺失/未配置依赖，或与本地导入使用两套互相矛盾的依赖判定。
+- `agentConfig: null` 导致安装报告渲染崩溃。
+- 仅扫草稿而漏掉已发布快照中的引用，或在检查/刷新未完成时放开确认按钮。
+- 卸载因被工作流引用而硬阻止，或目录/图读取失败时静默汇报「无依赖影响」。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 市场卡片、详情页、升级、Pack 安装与卡片重试含导入/失败时弹出逐工作流依赖报告并支持修复跳转 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `reports workflow dependencies after a marketplace install`、`reports workflow dependencies after a marketplace update`、`reports workflow dependencies after installing from the detail page`、`reports workflow dependencies after upgrading from the detail page`、`reports workflow dependencies after a Pack install`、`resolves dependencies in-pane when upgrading from the plugin manager`、`opens the MCP configuration editor from a marketplace card report`；`retries failed workflow document imports from the installed card` 在一条 `skipped_processed` 与一条 `failed` 并存时只断言弹窗打开，未断言修复跳转 | `Partial` |
+| 安装、升级、Pack 与卡片重试全部为已处理或冲突跳过时保持一行 toast、不弹出报告 | 没有测试断言「全跳过时不弹窗」，上述任何入口都没有；也没有测试调用 `marketplaceWorkflowReportInput` 或 `marketplaceReportOutcomes` | `Missing` |
+| `agentConfig: null` 按无绑定处理，安装报告与卸载检查口径一致 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `reports a marketplace install whose Agent node has a null agent config`；`packages/app-shell/src/features/settings/workflow-dependency-impact.test.ts` 的 `reads an explicit null agent config as a workflow with no dependencies` | `Covered` |
+| 四个卸载确认入口扫描草稿与已发布快照，列出依赖工作流与节点并只警告不阻止 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `names the workflows that depend on a plugin before uninstalling it`、`names affected workflows before uninstalling from the detail page`、`names the workflows a Pack uninstall would break`、`names workflows whose published snapshot still binds a removed plugin`；`packages/app-shell/src/features/settings/atoms-settings.test.tsx` 的 `names workflows that depend on a plugin Skill before uninstalling from Skills settings`；`packages/app-shell/src/features/settings/workflow-dependency-impact.test.ts` | `Covered` |
+| 检查与刷新期间禁用确认按钮，目录/单图异常与空目标分支行为准确且不阻断卸载 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `disables uninstall confirmation until the workflow impact check finishes`、`re-checks and disables uninstall confirmation while cached workflow data refreshes`、`allows uninstall with an explicit warning when workflow catalogs fail to load`、`keeps confirmed dependents visible when another workflow draft fails to load`、`does not reuse cached draft graphs when the refresh fails`、`skips fetching workflow drafts when the removed plugin owns no Skill or MCP targets`；`packages/app-shell/src/features/settings/use-workflow-uninstall-impact.test.ts` 的 `skips the workflow library when the catalogs resolve no bindable target` | `Covered` |
+
+上述前端行为证据均在 `app-shell` 测试层通过类型化 handler 驱动真实设置组件与 hook 验证，未启动
+Tauri/Rust 后端或真实远程市场。`retries failed workflow document imports from the installed card` 同时
+包含 `skipped_processed` 与 `failed`，只证明弹窗打开；它以及所有其他入口都没有断言「全跳过时不弹窗」，
+`marketplaceWorkflowReportInput` / `marketplaceReportOutcomes` 也没有直接调用测试。
+
+### 决策依据
+
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D4（安装、升级与重试的逐文档结果及依赖报告；卸载被工作流引用的 MCP / Skill 插件）与不变量 5、7。
+
+## Uninstalling A Workflow Plugin Keeps Its Copies And Marks Their Uninstalled Source
+
+### 风险
+
+卸载 workflow 插件时如果只保持工作流库原样而没有任何说明，用户既不知道已导入副本是否会被删除，
+也无法在工作流库和创建运行入口分辨哪些工作流来自已卸载插件；反过来，如果把来源已卸载当作不可用
+并禁用编辑或运行，则会违背「副本属于用户数据且运行不依赖来源包」的契约。
+
+### 前置状态
+
+- 工作流库中包含：① 由市场 workflow 插件导入的副本（可能已被用户改名，或部分已被用户删除）；
+  ② 本地 `.orax` 导入或手工自建的工作流；③ 与包内同名的 `conflict_skipped` 原有工作流。
+- 部分来源插件已卸载，部分仍在装或随后重装同一 canonical Plugin ID（或装了不同 `namespace` 下的同名
+  `identifier`）；或已安装插件列表正在加载/加载失败。
+
+### 触发
+
+1. 在已安装管理器、插件详情页或 Pack 卸载确认弹窗中发起卸载 `kind = "workflow"` 插件（Pack 含
+   `remove` 成员与 `preserve` 成员）。
+2. 确认卸载后浏览工作流库列表与工作区创建运行菜单，点击编辑或发起运行；随后重装同一 canonical
+   Plugin ID。
+
+### 必须成立
+
+- 后端在 `WorkflowSummary` DTO 中提供 `sourcePluginId`，工作流库与创建运行菜单读取同一摘要，不各自
+  在前端 join 来源。映射来自 `workflow_document_imports`（`state = 'imported'`），保持工作流
+  `namespace` 为 `local`、改名后关联不变、已删除副本不列出，本地导入/自建/`conflict_skipped` 无来源
+  插件 ID；本地 `.orax` 安装的 workflow 插件没有市场导入记录，其副本不参与保留列表和来源标记。
+- 卸载 workflow 插件（含 Pack 的 `remove` 成员）时，确认弹窗在检查完成前禁用确认按钮；完成后列出
+  该插件导入且当前仍存在的工作流，说明卸载会保留它们且可继续编辑和运行。Pack 中的 `preserve`
+  成员不触发此列出。工作流库或来源记录读取失败时明确提示列表无法完整确认，检查结束后仍允许继续
+  卸载，不把「读不到」当成「没有」。
+- 「来源插件已卸载」由导入记录与已安装插件目录共同派生，包括功能上线前已经卸载的来源；工作流库与
+  工作区创建运行菜单均对这些工作流显示该标记。标记纯属信息提示，编辑、重命名、导出、删除与打开运行
+  弹窗不受阻碍，也不参与运行前或画布上的缺依赖判定。
+- 重装同一 canonical Plugin ID 后标记消失，且按 D2 不重复导入、不产生重复副本；不同 `namespace` 的
+  同名插件不消除原标记；已安装插件列表加载中或加载失败时不误标「来源插件已卸载」。
+
+### 禁止结果
+
+- 卸载 workflow 插件时删除、归档、改写或禁用已导入的工作流副本，或阻碍编辑与创建运行。
+- 在确认列表中列出已被用户删除的工作流、本地自建/本地导入工作流、`conflict_skipped` 既有工作流，
+  或 Pack 中属于 `preserve` 桶的成员导入的工作流。
+- 凭工作流名称推断并回填旧安装来源，或在重装后重复创建工作流副本。
+- 把 plugin identity 写入 `workflows.namespace`，或在已安装插件目录失败时误标所有市场导入工作流。
+- 将工作流库或来源记录读取失败当作没有保留副本，或因此永久禁用卸载确认。
+- 把「来源插件已卸载」作为缺失依赖或禁止运行的理由。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| `WorkflowSummary` DTO 提供 `sourcePluginId`（保留 `local`、改名保持、删除排除，本地导入/自建/冲突无来源，本地 `.orax` 安装不参与列表和标记） | 待实现合并后登记证据 | `Missing` |
+| 单插件与 Pack（仅 `remove` 成员）卸载确认在检查中禁用确认，列出存活导入工作流及保留可运行说明；读取失败明确提示且仍允许卸载 | 待实现合并后登记证据 | `Missing` |
+| 工作流库与创建运行菜单从同一摘要派生「来源插件已卸载」（含功能上线前已卸载），编辑、重命名、导出、删除与发起运行不受阻碍，且不参与缺依赖判定 | 待实现合并后登记证据 | `Missing` |
+| 重装同一 canonical Plugin ID 后标记消失且不重导；不同 `namespace` 同名与目录失败/加载中不误判 | 待实现合并后登记证据 | `Missing` |
+
+### 决策依据
+
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D2、D4（卸载 workflow 插件的保留提示与「来源插件已卸载」标记）与不变量 1、2、7。
+- [Workflow 插件类别根决策](../../../../../decisions/desktop/plugin/category/workflow/0-workflow-package-format.md) D5、D6。
