@@ -117,11 +117,14 @@
 - 前置状态：父 prompt 使用默认策略或 `wait`，带明确子来源的更新持续到达；包含后续省略 metadata 的
   同一工具增量、子权限请求往返和一次重试。
 - 触发：在静默窗口内持续收到子活动；子权限请求往返；provider 失败后重试。
-- 必须成立：带子来源的内容照常投递但不重置或暂停父计时；省略 metadata 的增量继承本次尝试已识别的
-  来源；子权限请求往返不独立重置父计时；父委托工具自身的 `in_progress` 仍按既有规则暂停计时；
-  重试清除旧来源观察；Wait、手动停止、真实错误与取消收敛不变。
-- 禁止结果：把子输出或后台日志当作父活动续期；按 tool ID 文本保活；省略 metadata 的增量改算父工具；
-  新增父子等待协议或改变权限处理策略。
+- 必须成立：带子来源的内容照常投递但不暂停父计时，也不重置父计时；唯一例外是满足
+  [`20261118` D6](../../../decisions/node/agent-runtime/20261118-codeagent-subagent-update-channel.md#d6父委托未结束时指向它的子代理帧为父窗口续期但不暂停计时)
+  续期条件的 CodeAgent `_subagent/update` 帧，它只续期、不暂停，由
+  [CodeAgent Subagent Delegations Must Require Provider Completion, Renew The Parent Only While The Delegation Is Open, And Stay Out Of Workflow Output](#codeagent-subagent-delegations-must-require-provider-completion-renew-the-parent-only-while-the-delegation-is-open-and-stay-out-of-workflow-output)
+  验证；省略 metadata 的增量继承本次尝试已识别的来源；子权限请求往返不独立重置父计时；父委托工具自身的
+  `in_progress` 仍按既有规则暂停计时；重试清除旧来源观察；Wait、手动停止、真实错误与取消收敛不变。
+- 禁止结果：把子输出或后台日志当作父活动续期（`20261118` D6 的有条件续期除外）；按 tool ID 文本保活；
+  省略 metadata 的增量改算父工具；新增父子等待协议或改变权限处理策略。
 - 验证义务与证据：
 
 | 义务 | 所需直接证据 | 状态 |
@@ -133,8 +136,8 @@
 只证明不同 ACP session 的更新不会唤醒父 prompt；上表的直接证据覆盖同一会话内带子来源 metadata
 的更新，该测试不作为本用例证据。
 
-- 决策依据：D4，不变量 4；继承[静默策略决策](../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)，
-  不改变其窗口与重试规则。
+- 决策依据：D4，不变量 4；CodeAgent `_subagent/update` 的例外见 `20261118` D6、不变量 5；
+  继承[静默策略决策](../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)，不改变其窗口与重试规则。
 
 ## Diagnostics Must Separate Observation Time From Recorded History Time
 
@@ -256,7 +259,7 @@
 | 真实帧形态下委托返回与收束隔离 | 覆盖 `s1_complete` 在实时/暖/冷加载下标「委托已返回结果」，`s2_cancel` 与 `in_progress` 带部分输出经 `end_turn` 收束（带 `ora/turn-end-settled`）标「后续未知（投影已停止）」，以及伪造标记剥离（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 | 结构化 `rawOutput` 在存储与组装层的解析 | 覆盖已持久化快照中 `content` 缺失、`rawOutput.status` 为 `"completed"` 与其他值、`rawOutput` 为 `null`、`metadata.status` 与顶层 `status` 并存时以 `metadata.status` 为准（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 | `session/load` 回放不进入 Ora 历史 | 覆盖恢复 provider 会话时回放的子代理工具摊平帧与转换后的 `_subagent/update` 被排空，不写 JSONL、不转发给前端（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
-| 父委托未结束时续期、不暂停 | 覆盖父委托 `pending`/`in_progress` 时有效子帧续期；父委托已完成、外层 id 缺失或不认识、帧非法时不续期；子帧不计入运行中工具、不暂停；子代理一个窗口内没有帧时照常超时；重试清除旧观察；其中一条按 `s1_complete` 的真实时间间隔（不压缩）驱动并断言父 prompt 不被取消（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
+| 父委托未结束时续期、不暂停 | 覆盖父委托 `pending`/`in_progress` 时有效子帧续期；父委托已完成、外层 id 缺失或不认识、帧非法时不续期；子帧不计入运行中工具、不暂停；子代理一个窗口内没有帧时照常超时；重试清除旧观察；其中一条在暂停的 tokio 时钟上用生产窗口 `PROMPT_INACTIVITY_WINDOWS`（不用 `set_test_prompt_inactivity_windows` 缩小窗口），按 `s1_complete` 的真实间隔推进（父委托 `pending` 后依次 16.265、19.617、3.252、0.861、14.472、6.490、1.702 秒到达子帧与父委托完成），断言父 prompt 不被取消；同一时间线换成外层 id 不认识、或父委托已完成时，父 prompt 在父委托 `pending` 后 45 秒被取消，作为反向对照（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 | 统一来源在诊断、`plan` 与工作流输出生效 | 覆盖 `PromptLiveness` 隔离（含碰撞 ID）、`observeDiagnostics` 继承、`plan` 按子来源 ID 替换，以及 `AssistantOutputAccumulator` / `completion_snapshot` 排除子代理输出（待阶段 2 产品 PR 合入后登记测试引用） | Missing |
 
 已知缺口：CodeAgent 子代理的 `session/request_permission` 不带子来源，目前按父工具续期，与本文件
