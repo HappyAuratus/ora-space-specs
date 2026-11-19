@@ -58,8 +58,12 @@
 
 ## 显式 Session MCP
 
-[显式 Session MCP 决策](../../decisions/node/agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)于
-2026-11-15 经 owner 批准为 `approved`。实现尚未合入 desktop 的 main，这些义务目前都是 `Missing`；
+[显式 Session MCP 决策](../../decisions/node/agent-runtime/20261114-explicit-session-mcp-in-agent-session-spec.md)的
+Node 侧为 `implemented`，证据按 desktop 固定合并提交 [`98c0414f`](https://github.com/ora-space/desktop/commit/98c0414fdaf998ae7ede817f743e3431d94c81d7)（desktop#773）
+登记，共 21 项义务（15 项 `Covered`、5 项 `Partial`、1 项 `Missing`）：`Missing` 为 Controller 发送前镜像规则
+（随使用方接入登记），5 项 `Partial` 为 `session_mcp_rejects_ambiguous_or_unbounded_selection`/`read_controller_message` 接收与控制连接关闭测试、
+`NodeSessionMcp::prepare` 负例路径、真实 `session/new` 默认值省略场景、非空 MCP 崩溃重启结算 `interrupted`
+及运行期间 `RemovePlugins` 对 MCP 包返回 `plugin_in_use`。
 [会话执行用例](agent-runtime/session-execution.md)的证据保持原范围，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |

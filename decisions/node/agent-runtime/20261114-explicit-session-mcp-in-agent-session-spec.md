@@ -1,23 +1,26 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 从 AgentSessionSpec 的显式选择解析 Session MCP
 
-> 历史决策：D2/D3 的“一次冻结 setup”对声明 `mcp_lifecycle: true` 的会话已由
-> [会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D1–D4 修改：独立的内存更新可在安全点改变绑定；
-> 未启用生命周期模式的会话及 start 重发不更新值的规则不变。
+> 历史决策：以下条款已由后续 ADR 在对应范围修改，本文仅保留 `desktop#773`（`98c0414f`）交付的基线规则：
+> - D2/D3 的“一次冻结 setup”与宿主健康归属：对声明 `mcp_lifecycle: true` 的会话，[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)（Node 侧 `implemented`）D1–D4 允许独立内存更新在安全点刷新绑定，D7 新增由 Node 执行的已授权 Session 宿主健康探测；未启用生命周期模式的会话及 start 重发不更新值的规则不变。
+> - D3 的崩溃结算 `interrupted`：[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D5 继承“重启不恢复 Agent”，并为所有升级后的 Node 会话增加“先恢复围栏并取得原停止证据再结算 `interrupted`”的前提。
+> - D5 的包租约与 workload view：[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D6 将 MCP 包租约由按 ID 细化为精确版本租约（允许同 ID 多版本并存），并将 workload view 收紧为强制同文件系统硬链接、拒绝 `EXDEV`。
+> - 平行字段扩展：[Controller 交付宿主 MCP](./20261118-host-mcp-servers-in-agent-session-spec.md)（Node 侧 `implemented`）在 `AgentSessionSpec` 上平行增加 `host_mcp_servers`，不改变本文的插件 `mcp` 规则。
 
 Controller 在 `start_agent_session` 的 `AgentSessionSpec.mcp` 中交付完整的 MCP 插件选择、精确版本和
 Setting 值；Node 使用已安装包解析一次完整的 Session MCP Snapshot，通过 ACP `session/new` 交付。
 省略或空列表均表示不交付插件 MCP；Node 不自动发现。Desktop 与 Node 共享纯解析规则和 ACP 映射。
 
-本决策为 `approved`：owner 于 2026-11-15 经两轮评审后批准 D1–D5，核心测试用例见文末“核心测试
-用例”。实现尚未合入 desktop 的 main，用例义务如实标为 `Missing`；实现合入并完成验证后，由落地运行
-按最终实现同步正文并改为 `implemented`。影响 `node-protocol`、共享 agent-runtime、Node
-会话宿主和 Desktop 的纯解析器归属；不改变 Desktop 的选择、配置存储、刷新或健康探测行为。不迁移
-历史会话、不恢复 Node 进程重启前的 Agent；旧格式 spec 继续表示空选择。旧 Node 使用
-`deny_unknown_fields`，因此 Controller 只向声明新能力的 Node 交付非空选择。
+本决策的 Node 侧已随 [desktop#773](https://github.com/ora-space/desktop/pull/773)（合并提交
+[`98c0414f`](https://github.com/ora-space/desktop/commit/98c0414fdaf998ae7ede817f743e3431d94c81d7)）实现并验证，
+状态为 `implemented`；Controller 侧的客户端镜像校验与派发义务随使用方接入另行验证（Cloud v2 后续的生命
+周期消费接入见[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)）。影响
+`node-protocol`、共享 agent-runtime、Node 会话宿主和 Desktop 的纯解析器归属；不改变 Desktop 的选择、
+配置存储、刷新或健康探测行为。不迁移历史会话、不恢复 Node 进程重启前的 Agent；旧格式 spec 继续表示空选择。
+旧 Node 使用 `deny_unknown_fields`，因此 Controller 只向声明新能力的 Node 交付非空选择。
 
 ## 继承与修改
 
@@ -41,12 +44,12 @@ Setting 值；Node 使用已安装包解析一次完整的 Session MCP Snapshot�
 
 ## 问题与约束
 
-Cloud v2 工作流的 Agent 节点在 Ora Node 上执行，目前 `AgentSessionSpec` 没有 MCP 字段，Node
-组合 `NoSessionMcp`，选择无法到达 Agent。Desktop 已经以 `ora-plugin-config` 编译包内声明，再映射到
-ACP，但纯解析规则仍位于 Backend；让 Node 再写一份会使参数、HTTP header、路径和能力检查发生漂移。
+Cloud v2 工作流的 Agent 节点在 Ora Node 上执行；引入本决策前，`AgentSessionSpec` 没有 MCP 字段，Node
+组合 `NoSessionMcp`，选择无法到达 Agent。Desktop 已以 `ora-plugin-config` 编译包内声明再映射到 ACP，
+纯解析规则曾位于 Backend；若在 Node 另写一套会使参数、HTTP header、路径和能力检查发生漂移。
 
 包已通过 `InstallPlugins` 交付到 Node，Controller 不知道也不应传递 Node 的本地路径。Node 不持久化
-凭据的要求，与原执行输入整体持久化存在明确冲突，必须在 SQLite 写入前分离运行时值和持久身份，
+凭据的要求与原执行输入整体持久化存在明确冲突，因此必须在首次 SQLite 写入前分离运行时值和持久身份，
 不能先写入再删除，也不能把 Setting 值的摘要当作 secret-free revision。
 
 ## D1：显式、完整、确定的选择
@@ -58,10 +61,11 @@ ACP，但纯解析规则仍位于 Backend；让 Node 再写一份会使参数、
 `semver::Version::parse(version).to_string() == version`，因此 `v1.2.0`、非完整版本、版本范围或
 自动选最高版本都被拒绝。
 
-Controller 必须在发送前镜像这些客户端规则：一次会话最多 **16** 个 Server；所有 `settings` map 的
-紧凑 JSON UTF-8 编码长度之和最多 **64 KiB**，包括键、标点与转义；原始 ID 的字节序、严格 ID 解析、
-精确 canonical 版本字符串以及 `settings` 必填都按上一段执行。两项上限独立于控制帧上限：限制进程
-扇出和凭据驻留量；超限是 spec 校验错误，不启动 Agent。空列表不读取无关插件，也不退回 `Automatic`。
+Controller 必须在发送前镜像这些客户端规则（属于 Controller 侧义务，随使用方接入验证）：一次会话最多
+**16** 个 Server；所有 `settings` map 的紧凑 JSON UTF-8 编码长度之和最多 **64 KiB**，包括键、标点与转义；
+原始 ID 的字节序、严格 ID 解析、精确 canonical 版本字符串以及 `settings` 必填都按上一段执行。两项上限
+独立于控制帧上限：限制进程扇出和凭据驻留量；超限是 spec 校验错误，不启动 Agent。空列表不读取无关插件，
+也不退回 `Automatic`。
 
 Controller 冻结完整选择；Node 对每项校验包和 Setting，任何一项失败都拒绝整个快照，绝不跳过插件。
 Settings 使用声明默认值，显式覆盖必须已声明且类型正确；缺少必填值或被 transport 引用而不存在的值
@@ -81,7 +85,9 @@ Node 从自身 plugin catalog 取得每项的精确版本并持有使用租约�
 [ACP Session setup 交付](../../desktop/core/agent/session/mcp/0-acp-session-setup-delivery.md)与
 [工作流显式选择](../../desktop/core/agent/session/mcp/20260912-workflow-explicit-selection.md)，
 但 Node 的配置来源为 spec，没有 Desktop 的配置 store。Desktop 的既有自动选择和刷新规则不变；
-[Host 健康探测](../../desktop/core/agent/session/mcp/20260916-mcp-health-probing.md)仍为 Desktop 职责。
+在本基线中 [Host 健康探测](../../desktop/core/agent/session/mcp/20260916-mcp-health-probing.md)仍为
+Desktop 职责（Node 侧生命周期模式下的已授权会话健康探测后续由
+[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D7 新增）。
 
 ## D3：值只在运行时边界存在
 
@@ -93,10 +99,13 @@ Node 的结构化 setup 失败携带稳定 code，并在适用时携带 Plugin I
 `transport`（`stdio` 或 `http`），无法确定的字段省略，其他终态也省略。它们是标识而非值，包编译或
 I/O 错误不透传原始文本。
 不把启动帧当作诊断记录，也不把 ACP 请求体写日志。
+宿主插件日志（`plugin.log`）持久化的 Agent 自写 stderr 不在 D3 范围内（Node 不过滤 Agent 输出，见
+“风险”），按已知运行时值的尽力脱敏由 [circus#1294](https://github.com/ora-space/circus/issues/1294) 承接。
 
 持久输入保留 MCP 身份、版本和空 Settings。身份、版本及其他原字段参与重复执行比较，Setting 值不参与：
 重发相同 execution 不替换正在使用的内存值；需要改变值必须创建新 execution。受理后进程崩溃不从
-持久投影启动 Agent，按原规则结算 `interrupted`，不要求 Controller 重放凭据来恢复。运行和持久输入
+持久投影启动 Agent，按原规则结算 `interrupted`（后续[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)
+D5 为所有升级后的会话增加先取得原停止证据的前提），不要求 Controller 重放凭据来恢复。运行和持久输入
 必须在首次数据库写入前分开，避免凭据残留在空闲页或备份中。历史空选择无需数据迁移。
 
 ## D4：分离 Node 与 Agent 能力门禁
@@ -125,10 +134,13 @@ Agent 发送任何 MCP Setting 值。不启动健康探测来代替 Agent 能力
 仅限 Agent 的 kind 过滤，`kind = "mcp"` 使用现有 MCP 包验证。stdio command 必须是该版本包
 `assets/` 内的普通文件，发送前重新验证 containment，不能信任 Controller 提供的主机命令。
 
-独立 workload 身份不能读取 Node 私有 home，因此与 Agent 包相同，将不可写的 MCP 包文件链接到
-本次会话拥有的 package view 后交付该 view 内的 command。view 保留同一版本字节及 assets containment；
+独立 workload 身份不能读取 Node 私有 home，因此与 Agent 包相同，Separate 工作负载通过会话自有目录
+`mcp-<sha256(canonical_id)>` 经 `link_tree_no_follow` 将不可写的 MCP 包文件链接为可遍历的只读
+package view 后交付该 view 内的 command。view 保留同一版本字节及 assets containment；
 不修改 Node home 权限、不把 Setting 写入 view。Agent 停止后释放 view 与包租约。会话子目录使用独立
-名称，复用既有会话目录的清理，不能碰其他会话、工作区或用户文件；没有全局目录迁移义务。
+名称，复用既有会话目录的清理，不能碰其他会话、工作区或用户文件；没有全局目录迁移义务。（`desktop#773`
+基线上的 `link_tree_no_follow` 含跨文件系统复制回退；后续已由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)
+D6 收紧为强制同文件系统硬链接拒绝 `EXDEV`，并将租约细化为精确版本租约。）
 
 ## 不变量
 
@@ -152,15 +164,21 @@ Agent 发送任何 MCP Setting 值。不启动健康探测来代替 Agent 能力
 ## 风险、本决策未解决的问题与落地顺序
 
 凭据将到达 Agent 和所选 MCP，平台不能以“控制面无凭据”描述此路径。需要保证帧诊断、错误及输入
-Debug 不输出值；本 ADR 不定义对恶意 Agent 在普通输出中主动回显任意凭据的通用内容过滤。
-本决策不增加 live refresh、会话 restore、Node Host health probes、取消回合（#1110）或 Cloud 实现；
-前三项由 [circus #1171](https://github.com/ora-space/circus/issues/1171) 承接。这些涉及新的凭据续期和
-生命周期，不由一次冻结 setup 隐式承诺。
+Debug 不输出值；本 ADR 不定义对恶意 Agent 在普通输出中主动回显任意凭据的通用内容过滤（Agent 写到
+stderr 的回显会进入 Node 持久化的 `plugin.log`，按已知运行时值的尽力脱敏由
+[circus#1294](https://github.com/ora-space/circus/issues/1294) 承接）。
+本决策本身不增加 live refresh、会话 restore、Node Host health probes、取消回合（#1110）或 Cloud 实现；
+前三项在 Node 侧后续已由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)（`implemented`）
+实现，在 Cloud v2 由 [circus#1171](https://github.com/ora-space/circus/issues/1171) /
+[circus#1199](https://github.com/ora-space/circus/issues/1199) 消费接入（遗留跟踪见
+[circus#1301](https://github.com/ora-space/circus/issues/1301)）。
 
-1. 协议字段、边界、上限与持久投影已评审通过（2026-11-15），核心用例已依据最终决策补充，不以当前代码替代决策审批。
-2. 提取纯解析器，以 Desktop 原行为测试证明没有选择、映射和错误漂移；宿主 store 与 health 保持原归属。
-3. Node 接入冻结输入、包租约、workload view 和无值持久投影，以真实 session/new 帧及失败路径验证。
-4. `session_mcp` 能力广告与上述实现和测试同批交付；验证协议兼容、数据库/JSONL/日志无值与清理隔离。Controller 的选择和派发另行交付。
+落地顺序（第 1–4 步的协议、共享解析器与 Node 实现均已随 [desktop#773](https://github.com/ora-space/desktop/pull/773) 完成；Controller 侧的选择校验与派发随使用方接入另行验证）：
+
+1. 协议字段、边界、上限与持久投影评审通过（2026-11-15），核心用例按最终实现核对登记。
+2. 提取纯解析器至共享 crate `crates/agent-runtime/src/mcp_resolver/`，以 Desktop 原行为测试证明没有选择、映射和错误漂移；宿主 store 与 health 保持原归属。
+3. Node 接入冻结输入、包租约、workload view 和无值持久投影，以真实 `session/new` 帧及失败路径验证。
+4. `session_mcp` 能力广告与上述实现和测试同批交付；验证协议兼容、数据库/JSONL/日志无值与清理隔离。Controller 的客户端镜像校验和派发随使用方接入另行验证。
 
 从声明能力并接入的 Node 开始，显式 MCP 才能进入 Agent Session；Desktop 行为、Node 事件重放、
 旧 spec 的空选择和重启中断规则保持不变。
@@ -169,5 +187,7 @@ Debug 不输出值；本 ADR 不定义对恶意 Agent 在普通输出中主动�
 
 见[显式 Session MCP 用例](../../../test-cases/node/agent-runtime/session-mcp.md)：选择校验与上限、Node
 全量解析与 workload view、Setting 值的持久与诊断隔离、能力门禁与失败 code、包租约与 view 生命周期，
-以及 Desktop 解析器行为不变。实现尚未合入 desktop 的 main，义务如实标为 `Missing`；
+以及 Desktop 解析器行为不变。Node 侧证据按 desktop 固定合并提交 [`98c0414f`](https://github.com/ora-space/desktop/commit/98c0414fdaf998ae7ede817f743e3431d94c81d7)
+逐项登记（共 21 项义务：15 项 `Covered`、5 项 `Partial`、1 项 `Missing`；其中 `Missing` 为 Controller
+发送前镜像校验，5 项 `Partial` 详见用例正文）；
 [会话执行用例](../../../test-cases/node/agent-runtime/session-execution.md)的证据保持原范围，不推导本文新义务。
