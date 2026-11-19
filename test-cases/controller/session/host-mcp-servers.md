@@ -1,6 +1,6 @@
 # Controller 交付宿主 MCP
 
-依据[已批准的 Controller 交付宿主 MCP 决策](../../../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)
+依据[Controller 交付宿主 MCP 决策](../../../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)
 D1 与 D6。这些义务只能由提供宿主 Server 的一方（Controller 侧，在 Cloud v2 中就是 Cloud 进程）验证，Node
 侧义务见[Node 承载的宿主 MCP 用例](../../node/agent-runtime/host-mcp-servers.md)。使用方（工作流完成工具）尚未
 接入，下表证据一律为 `Missing`，随它的交付登记直接测试；使用方的决策（预计在 `cloud/workflow`）会接手或
@@ -113,11 +113,14 @@ D3“重发 start 时值被忽略”，D6“先持久化再发送，重发相同
 
 同一 Node 上两个 execution 各带自己的宿主凭据；其中一个节点开启 `autoAcceptAgentCompletion`。
 
+本用例只证明跨 execution、跨 attempt 的重放被拒绝；同一系统用户下读取当前 prompt 的进程不在保护范围内
+（决策 D5、D6），不登记为义务。
+
 ### 触发
 
 用另一个 execution 的凭据或 token 调用；用早先 attempt 的 token 调用；在以下每种事件之后再调用：Controller
-主动结束、发出 `EndSession`、收到 `AgentSessionEnded`、execution 被中断、经 `GetExecutionStatus` 观察到
-`StopUnconfirmed`；execution 结束（吊销）后重启 Controller 再调用。
+主动结束、发出 `EndSession`、收到 `AgentSessionEnded`、Controller 把 execution 的持久记录标为中断、经
+`GetExecutionStatus` 观察到 `StopUnconfirmed`；execution 结束（吊销）后重启 Controller 再调用。
 
 ### 必须成立
 
@@ -130,9 +133,6 @@ D3“重发 start 时值被忽略”，D6“先持久化再发送，重发相同
 ### 禁止结果
 
 - 跨 execution 或跨 attempt 的调用产生完成信号；记录已离开运行态后的调用被接受，包括重启之后。
-
-本用例只证明跨 execution、跨 attempt 的重放被拒绝；同一系统用户下读取当前 prompt 的进程不在保护范围内
-（决策 D5、D6），不登记为义务。
 
 ### 验证义务与证据
 

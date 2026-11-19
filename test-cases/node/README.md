@@ -91,8 +91,9 @@ Node 侧已实现为 `implemented`。17 条核心用例分别维护直接证据�
 
 ## Node 承载的宿主 MCP
 
-[Controller 交付宿主 MCP 决策](../../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)经
-owner 评审为 `approved`，实现尚未开始，义务一律为 Missing。只能由 Controller 验证的义务在
+[Controller 交付宿主 MCP 决策](../../decisions/node/agent-runtime/20261118-host-mcp-servers-in-agent-session-spec.md)的
+Node 侧为 `implemented`，证据按 desktop 固定合并提交登记，受理后崩溃重启与 `mcp_lifecycle` 的 load 要求两项为
+Partial。只能由 Controller 验证的义务在
 [Controller 侧用例](../controller/session/host-mcp-servers.md)维护；[显式 Session MCP 用例](agent-runtime/session-mcp.md)与
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)的证据保持原范围。
 
