@@ -4,6 +4,8 @@ status: implemented
 
 # 保留子代理投影来源，以只读详情和真实观察呈现运行状态
 
+> 历史决策：D1 首期仅识别 OpenCode 来源及 D3 仅按 OpenCode metadata 关联委托的限定已由 [扩展共享 ACP 运行时识别 CodeAgent _subagent/update 通道](20261118-codeagent-subagent-update-channel.md) 扩展；新增 `_meta["_subagent/update"]` 来源与外层 `toolCallId` 关联规则，其余约定不变。
+
 共享运行时保留 provider 在现有 ACP 更新中明确提供的来源；history 和聊天组装不得把不同来源合并。
 首期消费 OpenCode v2 的父流投影，在父时间线展示只读子代理树。运行诊断展示收到的活动、工具和
 待处理请求，区分观察时间与历史记录时间，不从静默、父工具完成或父 prompt 结束推断子代理健康与终态。
