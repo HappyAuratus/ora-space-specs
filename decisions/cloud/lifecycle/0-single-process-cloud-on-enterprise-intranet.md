@@ -6,7 +6,7 @@ status: approved
 
 > 历史决策：D3 里“Agent 的改动只存在于 Node 的工作目录里，第一版不交付”由[回合交付](../project-git/20261112-single-machine-turn-delivery.md)修改：每轮结束由 Cloud 交付到项目镜像，仍不推送到外部仓库。其余决策不变。
 >
-> 历史决策：D3 隐含的“Cloud 从不删除工作目录”与 D7 第 3 条“只读”由[删除对话时回收工作目录](../project-git/20261119-reclaim-deleted-conversation-workspace.md)（proposed）修改：用户删除普通对话时，Cloud 经 `workspacefs` 按该决策回收它的工作目录。
+> 历史决策：D3 隐含的“Cloud 从不删除工作目录”与 D7 第 3 条“只读”由[删除对话时回收工作目录](../project-git/20261119-reclaim-deleted-conversation-workspace.md)（approved）修改：用户删除普通对话时，Cloud 经 `workspacefs` 按该决策回收它的工作目录。
 
 正式 Cloud 不再是 v1 那套由 server、gateway、model-gateway、credential-store、git-server、repo-executor、
 ora-controller、sandbox-server 组成的分布式系统，而是由 `ora-space/cloud` 的 `v2-server` 演进出的**一个 Cloud 进程**，

@@ -232,6 +232,13 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | --- | --- | --- |
 | project-git | [回合交付](project-git/turn-delivery.md) | 回合没有交付或重复交付、交付漏文件或带进物化技能、改动 Agent 的 Git 状态、有记录无 ref 或 ref 被改写、同步动了交付 ref、交付前就进待验收、清理后看不到改动、越权读对话交付、重启后重做或晚交付、经 Cloud 入口写 ref |
 
+[删除对话时回收工作目录](../../decisions/cloud/project-git/20261119-reclaim-deleted-conversation-workspace.md)为 `approved`：由 circus #1196 的运行 #1319
+（cloud PR #419）实现，尚未合并。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| project-git | [工作目录回收](project-git/workspace-reclaim.md) | 默认删除丢掉运维也恢复不了的改动、过期的丢弃删掉用户没看到的内容、先删记录再盲扫、删到别人或项目外的目录、回收阻塞整个项目、崩溃后残留或误判保留、回收改动交付、保留的目录没人看得到 |
+
 ## 模型接入根决策
 
 [模型接入根决策](../../decisions/cloud/model-proxy/0-in-process-model-proxy-with-deployment-connections.md)为 `implemented`（最后两项证据由 cloud#377 补齐），
