@@ -7,8 +7,10 @@
 desktop 上 `end_turn` 节点与旧快照的 legacy 行为见
 [Legacy End Turn Nodes And Old Snapshots Stay Unchanged](../../desktop/core/workflow/agent-completion-signal.md#legacy-end-turn-nodes-and-old-snapshots-stay-unchanged)。
 
-ADR 为 `approved`，实现尚未合并，下表义务一律为 `Missing`。恢复版本（D4）还不存在，最后一个用例的义务
-留待该版本验证。
+ADR 为 `implemented`。证据基线是 cloud main 上 [cloud#403](https://github.com/ora-space/cloud/pull/403) 的合并提交
+[`2b80c023`](https://github.com/ora-space/cloud/commit/2b80c023)：编辑器测试、v2-server 单元测试和 `frontend-v2/e2e` 的真实 Node
+用例。只有测试失败会直接说明义务不成立时才登记为证据；没有测试跑过 `agent` 策略的交互节点，所以“按 `end_turn`
+执行”一类义务如实保留为 `Missing`。恢复版本（D4）还不存在，最后一个用例的义务留待该版本验证。
 
 ## New Interactive Nodes Default To End Turn Before The Completion Tool Ships
 
@@ -27,8 +29,8 @@ ADR 为 `approved`，实现尚未合并，下表义务一律为 `Missing`。恢�
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 新建交互节点与打开交互模式时写 `end_turn` 和 `schemaVersion: 4` | 编辑器测试：新建节点、为无策略节点打开交互模式后检查写出的 `agentConfig` | `Missing` |
-| 已有 `completionSignal` 原样保存，旧节点不补写 | 编辑器测试：分别带 `agent`、`end_turn` 与无字段的节点保存后逐字段比较 | `Missing` |
+| 新建交互节点与打开交互模式时写 `end_turn` 和 `schemaVersion: 4` | [`workflow-agent-completion-fields.test.tsx`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/src/features/workflows/editor/workflow-agent-completion-fields.test.tsx) 的 “defaults a node turned interactive to end_turn and clears the policy when turned off”；[`workflow-agent-inactivity-field.test.tsx`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/src/features/workflows/editor/workflow-agent-inactivity-field.test.tsx) 断言打开交互模式只多出 `interactive`、`schemaVersion: 4` 与 `completionSignal: "end_turn"` 三项。v2 编辑器里新建交互节点就是打开交互模式 | `Covered` |
+| 已有 `completionSignal` 原样保存，旧节点不补写 | [`workflow-agent-completion-fields.test.tsx`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/src/features/workflows/editor/workflow-agent-completion-fields.test.tsx) 的 “keeps version 4 when the last file is removed from a signal node” 与 “offers auto-accept only for the agent policy and writes it with version 4”：编辑其他字段后 `agent` 保持不变。缺口：没有测试保存一个没有该字段、且不打开交互模式的旧交互节点，也没有覆盖显式 `end_turn` | `Partial` |
 
 - 决策依据：D2（写图），不变量 1、5。
 
@@ -50,10 +52,10 @@ ADR 为 `approved`，实现尚未合并，下表义务一律为 `Missing`。恢�
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| `agent` 节点按 `end_turn` 门禁完成，会话不带宿主 MCP 与 token | Controller 运行测试（真实 PostgreSQL）：`agent` 策略的交互节点正常结束后由发起人完成，检查启动参数没有宿主列表 | `Missing` |
-| 自动接受不生效 | Controller 运行测试：开启 `autoAcceptAgentCompletion` 的节点在回合结束后保持等待，由发起人完成 | `Missing` |
-| 运行记录与编辑器把两项标为暂不生效 | Controller 测试检查运行记录的未应用设置；编辑器测试检查两个选项的提示文案，包括“上线后会开始生效” | `Missing` |
-| 执行策略不取决于运行时探测 | Controller 测试：Node 声明或不声明 `session_host_mcp_servers` 时，同一节点的执行与记录一致 | `Missing` |
+| `agent` 节点按 `end_turn` 门禁完成，会话不带宿主 MCP 与 token | Controller 运行测试（真实 PostgreSQL）：`agent` 策略的交互节点正常结束后由发起人完成，检查启动参数没有宿主列表。现有的交互运行测试与 e2e 只用 `end_turn` 或没有策略的节点 | `Missing` |
+| 自动接受不生效 | Controller 运行测试：开启 `autoAcceptAgentCompletion` 的节点在回合结束后保持等待，由发起人完成。没有直接测试 | `Missing` |
+| 运行记录与编辑器把两项标为暂不生效 | [`TestAnalysisReportsUnappliedAgentSettings`](https://github.com/ora-space/cloud/blob/2b80c023/v2-server/internal/workflow/analysis_test.go) 断言 `agent` 策略节点的未应用设置正是 `completionSignal` 与 `autoAcceptAgentCompletion`，且与运行写入 payload 的 `Agent().Unapplied` 同源；[`workflow-agent-completion-fields.test.tsx`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/src/features/workflows/editor/workflow-agent-completion-fields.test.tsx) 的 “marks the agent policy and auto-accept as not applied where the server says so” 与 [`workflow-interactive.spec.ts`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/e2e/workflow-interactive.spec.ts) 的 “the Agent inspector edits the completion rule and deliverables, and marks the agent rule as not applied”。缺口：提示只说明现在按“回合正常结束即可”执行，没有说明完成工具上线后会开始生效；也没有运行级测试检查 payload 里的这两项 | `Partial` |
+| 执行策略不取决于运行时探测 | Controller 测试：Node 声明或不声明 `session_host_mcp_servers` 时，同一节点的执行与记录一致。[`TestAnalysisReportsUnappliedAgentSettings`](https://github.com/ora-space/cloud/blob/2b80c023/v2-server/internal/workflow/analysis_test.go) 与 [`TestAgentReadsCompletionSettings`](https://github.com/ora-space/cloud/blob/2b80c023/v2-server/internal/workflow/completion_internal_test.go) 只说明结果由节点配置和位置决定，没有变化 Node 能力 | `Missing` |
 
 - 决策依据：D2（显式选择、执行、判断依据），不变量 2、3；宿主 MCP ADR D6 的适用时点（继承与修改表）。
 
@@ -73,8 +75,8 @@ ADR 为 `approved`，实现尚未合并，下表义务一律为 `Missing`。恢�
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 两个方向的导入都不改写或补写 `completionSignal` | 导入测试：三类图各自往返导入后比较 `agentConfig` | `Missing` |
-| desktop 写的 `agent` 在 Cloud v2 上按 D2 执行并标为暂不生效 | Controller 运行测试：导入的 `agent` 节点按 `end_turn` 完成，运行记录列出未应用设置 | `Missing` |
+| 两个方向的导入都不改写或补写 `completionSignal` | [`workflow-transfer.test.ts`](https://github.com/ora-space/cloud/blob/2b80c023/frontend-v2/src/lib/workflows/editor/workflow-transfer.test.ts) 的 “exports and imports the frozen snapshot policy … despite later draft edits”：v2 的导出与导入原样保留 `agentConfig`，缺失的字段仍缺失。缺口：用的是 `promptInactivity` 而不是 `completionSignal`，也没有 desktop 一侧的导入测试 | `Partial` |
+| desktop 写的 `agent` 在 Cloud v2 上按 D2 执行并标为暂不生效 | [`TestAnalysisReportsUnappliedAgentSettings`](https://github.com/ora-space/cloud/blob/2b80c023/v2-server/internal/workflow/analysis_test.go) 覆盖“标为暂不生效”；导入的 `agent` 节点按 `end_turn` 完成没有运行测试，与上一个用例的执行义务同一缺口 | `Partial` |
 
 - 决策依据：D3，不变量 4；desktop 侧显式 `end_turn` 的 legacy 执行沿用上文引用的完成信号用例。
 
