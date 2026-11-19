@@ -148,5 +148,5 @@ ADR 的两处默认值规定，并限定宿主 MCP ADR D6 的适用时点。
    `approved` 时在 `test-cases/cloud/workflow/` 补核心用例。desktop 不改代码。
 2. **`implemented`**：Cloud v2 的工作流编辑器和 v2-server 已按 D2 实现（新节点写 `end_turn`，`agent` 与
    自动接受按 `end_turn` 执行并标为暂不生效）；合并后登记它的证据，ADR 改为 `implemented`。
-3. **恢复**：由接入完成工具的使用方决策落地，它的产品版本按 D4 把编辑器默认值改回 `agent`；本 ADR 届时同步
-   正文，不另开 ADR。
+3. **恢复**：由接入完成工具的使用方决策落地，它的产品版本按 D4 把编辑器默认值改回 `agent`。使用方的 ADR 在
+   “继承与修改”表里写明“兑现本 ADR 的 D4”；本 ADR 届时只在标题下加一条 `> 历史决策：` 指向它，不改写正文。
