@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Controller 经 AgentSessionSpec 交付宿主 MCP，Node 在每次 ACP setup 附加
@@ -13,7 +13,8 @@ Server（名称、URL 与请求头），Node 把它们原样附加到该会话�
 经 Node 执行的工作流也能获得与 Desktop 相同的
 [Agent 完成信号](../../desktop/core/workflow/20261110-agent-completion-signal.md)。
 
-本决策经 owner 评审后为 `approved`。影响 `node-protocol` 的会话 spec 与能力枚举、Node 会话宿主对共享
+本决策的 Node 侧已实现并验证，状态为 `implemented`；提供宿主 Server 一方的义务（D6）随使用方接入
+另行验证。影响 `node-protocol` 的会话 spec 与能力枚举、Node 会话宿主对共享
 运行时 `SessionSetup::host_mcp_servers` 的实现、Node 对执行输入的持久投影，以及提供宿主 Server 的
 Controller 必须承担的义务（D6）；不改变 Desktop Backend 自己注入宿主能力的路径，不改变插件 MCP 的
 解析、生命周期、刷新、健康探测或失败语义，也不改变共享运行时的 setup 等待窗口。旧 Node 的
@@ -79,7 +80,8 @@ MCP”的边界。要求 Node 解析工作流语义也不合适：Node 只负责
 ]
 ```
 
-- 每项只有 `name`、`url`、`headers`；`headers` 必填，没有请求头时是空对象，未知字段拒绝。每项对象与
+- 每项是 JSON 对象（按位置写成数组的条目拒绝），只有 `name`、`url`、`headers`；`headers` 必填，没有
+  请求头时是空对象，未知字段拒绝。每项对象与
   `headers` 内出现重复的 JSON 键一律拒绝，不按“后者覆盖”处理。
 - `name`：5–64 字节，以 `ora-` 开头且其后至少一个字符，只含小写 ASCII 字母、数字和 `-`，列表内唯一，按
   UTF-8 字节序严格递增。canonical Plugin ID 总是 `<namespace>/<name>`，而宿主名不含 `/`，因此**在 ACP
@@ -147,7 +149,8 @@ Controller（不论实现语言），解码带有新能力名的 `HelloAccepted`
   不计入 16 项上限，不受插件白名单约束；“空 `mcp` 不注入任何插件 MCP”的语义不变。
 - 宿主 MCP 不改变共享运行时的 setup 等待窗口：窗口仍只按插件快照选择，只有宿主 MCP 的会话使用普通
   setup 窗口。Agent 若在回答 setup 前连接宿主 Server，而宿主 URL 不可达或无响应，setup 可能按现有
-  超时规则以 `agent_timed_out` 失败，会话无法启动；连接被立即拒绝时，是否让 setup 失败取决于 Agent。
+  超时规则超时（运行时报 `agent_timed_out`），会话按现有启动失败规则以 `agent_failed`、`detail` 为
+  `agent_start_failed` 结束，无法启动；连接被立即拒绝时，是否让 setup 失败取决于 Agent。
 - 会话内不可更新：`UpdateSessionMcp` 不携带宿主 MCP，也没有单独的更新命令。宿主 Server 的值在整个
   execution 内固定（D3、D6）。将来确实需要轮换，另立决策增加专门的更新消息。
 
@@ -167,7 +170,11 @@ Desktop 附加完成工具时的等待时间。宿主 Server 由 Controller 自�
   Agent。不得进入 ledger（包括 SQLite WAL）、会话 JSONL、Thread、日志、错误链、关闭原因或输入对象的
   `Debug`。
 - 帧解码失败也属于错误链：JSON 解码器的错误文本可能回显字符串值，Node 记录或上报 `start_agent_session`
-  的解码与校验失败时只保留错误类别和字段路径，不保留解码器的原始错误文本。
+  的解码与校验失败时最多保留错误类别和字段路径，不保留解码器的原始错误文本。实现中解码失败只记录 JSON
+  错误类别，校验失败只记录被拒绝的字段。
+- 宿主插件日志持久化的 Agent 自写 stderr 不在 D3 范围内：Agent 把收到的值写进自己的 stderr 时，Node 作为
+  插件日志宿主照常把它写入该 Agent 的插件日志；Node 不过滤 Agent 的输出（见“风险”中的“凭据到达 Agent”），
+  按值的尽力脱敏见 circus#1294。
 - 持久输入只保留 Server 名称：持久投影使用独立的形状 `host_mcp_server_names`（名称字符串的列表），
   不复用线上类型，因此没有 URL 与请求头的持久行可以正常解码；空列表不被序列化，旧行与旧 Node 的
   数据库不受影响。运行值与持久投影必须在首次数据库写入前分开。
@@ -290,7 +297,8 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
 ## 风险、本决策未解决的问题与落地顺序
 
 - **凭据到达 Agent**：宿主请求头会出现在 Agent 进程内，与插件 MCP 的 Setting 值相同；本决策不提供对恶意
-  Agent 回显凭据的内容过滤。宿主按 D6 签发只对本 execution、且只在其持久记录处于非终态时有效的凭据。
+  Agent 回显凭据的内容过滤，Agent 写到 stderr 的回显会进入 Node 持久化的插件日志（D3）。宿主按 D6
+  签发只对本 execution、且只在其持久记录处于非终态时有效的凭据。
 - **同一信任域**：见 D5；宿主 Server 必须自行鉴权，Node 不提供跨会话的隔离。
 - **可达性**：Node 不验证 URL 可达。宿主不可达时，setup 可能超时而让会话无法启动，也可能被 Agent 丢掉而让
   工具悄悄缺失，或在启动后表现为工具调用失败，取决于 Agent 何时、如何连接；宿主应从启动结果和自身是否
@@ -304,7 +312,7 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
     默认 `end_turn`。
   - Desktop 是否也对不支持 HTTP MCP 的 Agent 做 D4 的检查，另行决定。
 
-落地顺序：
+落地顺序（第 1、2 步已在 Node 完成）：
 
 1. Node 实现：`node-protocol` 增加 `host_mcp_servers` 字段、`session_host_mcp_servers` 能力与 D1 的共用
    接受/拒绝样例，Node 会话宿主实现 `host_mcp_servers()`，在首次数据库写入前分离运行值与持久名称，接入
@@ -325,4 +333,5 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
 - Controller 侧见[Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)：
   按能力派发与文法校验、端点与凭据跨 Controller 重启有效或在提供服务前结束、凭据以持久状态判定有效期、attempt 级授权。
 
-实现尚未开始，两份用例的证据一律为 `Missing`。
+Node 侧证据按 desktop 固定合并提交登记，受理后崩溃重启的结算与 `mcp_lifecycle` 会话的 load 要求两项为
+`Partial`，其余为 `Covered`；Controller 侧的使用方尚未接入，证据仍为 `Missing`。
