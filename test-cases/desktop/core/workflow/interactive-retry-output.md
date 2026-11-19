@@ -30,12 +30,12 @@
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 持久化边界、复用 ID 与真实工具状态 | 待登记直接测试 | Missing |
-| 后端拒绝普通及自动推进，后继未启动，成功恢复保留审计 | 待登记跨进程测试 | Missing |
-| 旧页面重复完成被拒绝且后继启动次数为零 | 待登记完成入口回归测试 | Missing |
-| 无重发边界的旧历史沿用原窗口，已完成节点及审计保持原值 | 待登记旧历史读取与重放证据 | Missing |
-| 强制采用空重试的产出与独立原因 | 待登记完成事务测试 | Missing |
-| 刷新或重启后展示失败和恢复入口 | 待登记投影与界面测试 | Missing |
+| 持久化边界、复用 ID 与真实工具状态 | [历史组装测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/crates/history/src/assembler_tests.rs#L560-L673) 验证重发边界、同 ID 增量路由和未完成状态。[完成快照测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/crates/backend/src/workflow/run/completion_snapshot.rs#L635-L712) 验证最终尝试内真实工具结果可用，并排除有归属歧义的完成状态。 | Covered |
+| 后端拒绝普通及自动推进，后继未启动，成功恢复保留审计 | [工作流端到端测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/e2e/tests/desktop/core/session/tests/workflow_agent_completion.rs#L720-L802) 覆盖普通完成与 agent 自动接受，断言旧信号失效、后继未启动、原会话交付有效结果后成功且原失败记录保留。 | Covered |
+| 旧页面重复完成被拒绝且后继启动次数为零 | [工作流端到端测试的重复完成入口](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/e2e/tests/desktop/core/session/tests/workflow_agent_completion.rs#L761-L780) 两次提交均返回 `WorkflowNodeIncomplete`，并检查后继节点没有启动时间。 | Covered |
+| 无重发边界的旧历史沿用原窗口，已完成节点及审计保持原值 | 缺少升级前历史夹具，尚未直接验证读回原 turn key、最终文本、已完成状态及审计。 | Missing |
+| 强制采用空重试的产出与独立原因 | [强制完成端到端测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/e2e/tests/desktop/core/session/tests/workflow_agent_completion.rs#L804-L848) 验证完成后输出为空，审计保存 `retry_without_result`。 | Covered |
+| 刷新或重启后展示失败和恢复入口 | [运行卡片测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/packages/app-shell/src/features/workflow-run/run-theater-act-card.test.tsx#L560-L590) 和[会话面板测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/packages/app-shell/src/features/workflow-run/run-node-session-chat.test.tsx#L1274-L1305) 验证失败文案和重试入口。[后端重启测试](https://github.com/ora-space/desktop/blob/8d67184e1625dc2e711af06c2dbed004d81ed479/e2e/tests/desktop/core/session/tests/workflow_agent_completion.rs#L823-L833) 验证异常停靠和 blocker 仍可读。缺少刷新或重启后从界面验证原因与恢复入口的端到端证据。 | Partial |
 
 ### 决策依据
 
