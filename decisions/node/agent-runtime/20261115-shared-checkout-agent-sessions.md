@@ -16,7 +16,7 @@ status: approved
 
 历史上没有任何现行 ADR 写下“一个 checkout 只允许一个 Agent 会话”：准入检查来自恢复围栏的代码实现（desktop `934a2cd9`），不是某份 ADR 的决策。本文因此不修改任何 ADR 的条款，只继承现行承诺并新增共享语义；已被取代的[共享进程入口与资源交接](../process/integration/0-shared-process-entry-and-resource-handoff.md) D4 记录了“资源冲突以 clone 目录为单位、交付在会话结束后开始”的历史资源语义，仅作背景引用——该 ADR 整体已被[Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md) 取代，其文本不再随实现同步，本文不恢复其地位。
 
-本决策承接本目录最新的[显式 Session MCP](20261114-explicit-session-mcp-in-agent-session-spec.md)（`approved`，ora-space/specs#289），并经它沿用[子代理投影、历史与诊断](20261020-child-projection-history-and-diagnostics.md)，不改变其 MCP 选择、子代理来源、历史或诊断规则；同时补充[共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)的每执行宿主隔离。
+本决策承接本目录最新的[显式 Session MCP](20261114-explicit-session-mcp-in-agent-session-spec.md)（Node 侧 `implemented`，经 ora-space/specs#289 批准），并经它沿用[子代理投影、历史与诊断](20261020-child-projection-history-and-diagnostics.md)，不改变其 MCP 选择、子代理来源、历史或诊断规则；同时补充[共享运行时根决策](0-shared-agent-runtime-crate-hosted-by-node.md)的每执行宿主隔离。
 
 | 前序约定 | 处理 |
 | --- | --- |

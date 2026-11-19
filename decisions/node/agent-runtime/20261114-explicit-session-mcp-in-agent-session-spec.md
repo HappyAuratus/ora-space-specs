@@ -7,7 +7,7 @@ status: implemented
 > 历史决策：以下条款已由后续 ADR 在对应范围修改，本文仅保留 `desktop#773`（`98c0414f`）交付的基线规则：
 > - D2/D3 的“一次冻结 setup”与宿主健康归属：对声明 `mcp_lifecycle: true` 的会话，[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)（Node 侧 `implemented`）D1–D4 允许独立内存更新在安全点刷新绑定，D7 新增由 Node 执行的已授权 Session 宿主健康探测；未启用生命周期模式的会话及 start 重发不更新值的规则不变。
 > - D3 的崩溃结算 `interrupted`：[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D5 继承“重启不恢复 Agent”，并为所有升级后的 Node 会话增加“先恢复围栏并取得原停止证据再结算 `interrupted`”的前提。
-> - D5 的包租约与 workload view：[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D6 将 MCP 包租约由按 ID 细化为精确版本租约（允许同 ID 多版本并存），并将 workload view 收紧为强制同文件系统硬链接、拒绝 `EXDEV`。
+> - D5 的包租约与 workload view：MCP 包租约由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md) D6 细化为精确版本租约（允许同 ID 多版本并存），view 按 `(canonical ID, 精确版本)` 区分；同文件系统硬链接与拒绝 `EXDEV` 由同一 ADR 的 D5 要求（desktop `83b450b9` 起 MCP view 与 session 的 package view 改用只做硬链接的 `hard_link_tree_no_follow`，通用 `link_tree_no_follow` 对其它调用方仍保留跨设备复制回退）。
 > - 平行字段扩展：[Controller 交付宿主 MCP](./20261118-host-mcp-servers-in-agent-session-spec.md)（Node 侧 `implemented`）在 `AgentSessionSpec` 上平行增加 `host_mcp_servers`，不改变本文的插件 `mcp` 规则。
 
 Controller 在 `start_agent_session` 的 `AgentSessionSpec.mcp` 中交付完整的 MCP 插件选择、精确版本和
@@ -139,8 +139,13 @@ Agent 发送任何 MCP Setting 值。不启动健康探测来代替 Agent 能力
 package view 后交付该 view 内的 command。view 保留同一版本字节及 assets containment；
 不修改 Node home 权限、不把 Setting 写入 view。Agent 停止后释放 view 与包租约。会话子目录使用独立
 名称，复用既有会话目录的清理，不能碰其他会话、工作区或用户文件；没有全局目录迁移义务。（`desktop#773`
-基线上的 `link_tree_no_follow` 含跨文件系统复制回退；后续已由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)
-D6 收紧为强制同文件系统硬链接拒绝 `EXDEV`，并将租约细化为精确版本租约。）
+基线上的 `link_tree_no_follow` 含跨文件系统复制回退。[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)
+D5 要求 Separate workload 目录与 Node home、installed 包目录同在**同一文件系统**，每次建 view 都核对
+并拒绝 `EXDEV`，同时不改其他调用方通用的 `linked_tree` 回退策略；desktop 从
+[`83b450b9`](https://github.com/ora-space/desktop/blob/83b450b985ee212f843015ee4f00dbf050d7b90c/crates/utils/src/fs/linked_tree.rs#L32)
+起把 MCP view 与 session 的 package view 改用只做硬链接的 `hard_link_tree_no_follow`，通用
+`link_tree_no_follow` 的复制回退保留。同一 ADR 的 D6 另把租约细化为精确版本租约，view 按
+`(canonical ID, 精确版本)` 区分，硬链接要求见 D5。）
 
 ## 不变量
 
