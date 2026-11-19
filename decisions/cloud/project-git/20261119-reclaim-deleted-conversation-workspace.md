@@ -11,8 +11,7 @@ status: proposed
 请求里直接删目录了事：删除对话的同一个事务里先登记一条**工作目录回收**，再按登记去删；删除失败或 Cloud 崩溃，
 登记还在，下次启动接着做。删的时候确认目录只属于这个对话、没有会话还在用、路径没有经符号链接逃出 checkout 根。
 
-本 ADR 为 `proposed`，第 2 轮评审稿，已按 owner 2026-11-19 在 circus #1318 的第 1 轮结论（Q1–Q6、H1、M1–M8、L1–L7）
-修改。依据是 owner 2026-11-16 在 circus #1191 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是
+本 ADR 为 `proposed`，依据 owner 2026-11-19 在 circus #1318 的评审结论，以及 owner 2026-11-16 在 circus #1191 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是
 #1119：24 小时内 101 个工作目录全部保留，其中 45 个属于已删除的普通对话。它是
 [回合交付](20261112-single-machine-turn-delivery.md)（下称“交付 ADR”）的后续决策，同时修改
 [Cloud 单进程根决策](../lifecycle/0-single-process-cloud-on-enterprise-intranet.md)（下称“A1”）的 D3 与 D7 第 3 条。
@@ -54,17 +53,21 @@ status: proposed
 
 | # | 条件 | 不满足时的原因 |
 | --- | --- | --- |
-| 1 | 会话至少有一条回合交付记录 | `legacy`：交付 ADR 落地前的旧会话，或一轮都没结束 |
-| 2 | 会话的所有回合都已结束，且这个会话没有交付义务（`v2_turn_delivery_work` 里没有它的回合，即 `HasWork` 为假，不是只看 `InProgress`） | `delivering`：还有回合在跑、在交付，或交付义务留给了下次启动 |
+| 1 | 会话的所有回合都已结束，且这个会话没有交付义务（`v2_turn_delivery_work` 里没有它的回合，即 `HasWork` 为假，不是只看 `InProgress`） | `delivering`：还有回合在跑、在交付，或交付义务留给了下次启动（含第一轮还在跑的新对话） |
+| 2 | 会话至少有一条回合交付记录 | `legacy`：没有交付记录且没有交付义务，即交付 ADR 落地前的旧会话 |
 | 3 | 最后一轮有交付记录，结果是 `delivered` 或 `empty`（用现有的 `turn_id`、`position` 列判断，不加新列） | `last_turn_undelivered`：最后一轮交付失败，或最近一条记录落在更早的回合上 |
-| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；交付树里没有和起点不同的 gitlink；checkout 里除顶层 `.git` 外没有嵌套的 `.git` | `git_state` |
+| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；指向的对象剥开（annotated tag 剥成提交）后是提交，指向非提交对象的判为不满足；交付树里没有和起点不同的 gitlink；顶层 `.git/modules/` 下没有仓库；顶层以下没有任何名为 `.git` 的条目（目录、gitfile、符号链接都算，被忽略的目录如 `vendor/` 也扫） | `git_state` |
 | 5 | 目录在最后一轮交付之后没有再变：按交付的快照规则（交付 ADR D2 的临时索引、忽略规则、物化技能剔除）重新生成树，与最后一次 `delivered` 交付提交的树相同（最后一轮是 `empty` 时与起点的树相同） | `changed_after_delivery`；内容本身无法验证（排除文件或 Git 元数据不能安全读取、改动超过交付大小上限、分不清物化的技能）时为 `unverifiable`；
   磁盘、镜像或 Git 调用临时失败不是 `unverifiable`，按 D3 重试 |
 
 - 第 4 条的检查只读：ref 与 stash 在 Agent 仓库上用 Git 查询（只运行列 ref、算祖先这类不调用外部程序的命令），命令行覆盖
   全局与系统配置、hooks、fsmonitor，不弹认证提示；Git 仍会读这个仓库自己的本地配置，但这些命令不执行 filter 等外部程序，
   第一版 Agent 与 Cloud 是同一个系统用户（A1 D2），这不扩大 Agent 的权限。gitlink 与嵌套 `.git` 按第 5 条生成的树和不跟随
-  链接的遍历检查。Agent 删掉了 `.git` 时，没有本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink。reflog 不算成果。
+  链接的遍历检查。命令行覆盖的配置至少包括 `core.fsmonitor`、`core.hooksPath`。顶层 `.git` 不存在时（Agent 删掉了它）没有
+  本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink；顶层 `.git` 存在但解析不出来（gitfile 指向不存在或越界的位置等）判为
+  `unverifiable`，不当作“没有 `.git`”跳过。reflog 和 `ORIG_HEAD`、`MERGE_HEAD`、`FETCH_HEAD` 这类伪 ref 不算成果。
+- 嵌套仓库全部判为不能恢复：`git submodule update --init`、`git worktree add` 生成的 `.git` 是 gitfile，子模块里没提交的改动
+  不改变 gitlink，只按“名为 `.git` 的目录”或只比 gitlink 会让默认的 `reclaim` 删掉它们。
 - 第 5 条生成的树只在临时 Git 目录里，不写镜像、不写交付 ref；生成期间持有交付对这个目录的锁（`DeliveryFS.LockWorkspace`），
   和交付互斥。
 - 被忽略规则（`.gitignore` 与 `.git/info/exclude`）排除的文件不算成果：交付的定义就是未被忽略的文件，验收和 patch 也
@@ -86,6 +89,8 @@ status: proposed
   - `ignored`：`recoverable` 时目录里有没有被忽略规则排除的文件，只有确实有时界面才提示；
   - `undeliveredChanges`：`undelivered` 时相对最后一次成功交付（没有时相对起点）列出未交付的改动（路径、增删），有上限，
     超过时给出总数；除 `delivering` 外都列出（`legacy` 相对起点列出）；
+  - `gitState`：原因是 `git_state` 时列出发现了什么：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
+    嵌套仓库的路径。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
   - `latestDelivery`：最近一次 `delivered` 交付的 ID，界面据此提供现有的 `…/workspace/deliveries/{id}/patch` 下载；
   - `revision`：这份预览所依据的状态的标识，包含最后一轮、最近一次交付、判定与原因、按交付规则生成的快照树和 Git 状态，
     所以同一路径、同样增删行数的内容改写也会改变它；`discard` 时要带回。
@@ -130,11 +135,14 @@ status: proposed
   - `pending`：每次执行按 D1 判定。`delivering`（两种模式都一样，`discard` 也要等交付义务清空）→ 保持 `pending`；
     `reclaim` 模式下其他不能恢复的原因 → `kept`；其余 → 进入 `deleting`。
   - `deleting`：只重查 D4 的身份与路径，不再按 D1 判定，避免删了一半却因为目录已经变了而落到 `kept`。
-- **执行时机**：删除请求在事务提交、会话确认结束后立即执行一次；Cloud 启动时在 `boot.Recover` 里、`RecoverTurnDeliveries`
+- **执行时机**：删除请求在事务提交、会话确认结束后立即执行一次。这次执行用服务生命周期的上下文（不随 HTTP 请求取消），
+  有自己的时间预算：短时限内删完就返回 `reclaimed`，删不完就返回 `pending`（原因 `in_progress`），在后台继续删完；服务关闭
+  时取消，记录留在 `deleting` 给启动。删除事务提交之后出的错，返回值里如实报告回收的状态，不报成“对话没有删除”。
+  Cloud 启动时在 `boot.Recover` 里、`RecoverTurnDeliveries`
   之后、恢复工作流和开始服务之前，把 `pending` 和 `deleting` 的再执行一遍。运行中不再另外触发：删除时还在交付的，
   留到下次启动。不加定时任务。
-- **同时只执行一次**：取一条回收执行时，用条件更新（只有状态仍是 `pending`/`deleting` 且没有被本进程占用时才取到）
-  加进程内按 `WorkspaceID` 的互斥；v2-server 是持有数据目录锁的单进程（A1），所以这两层就够。
+- **同时只执行一次**：进程内按 `WorkspaceID` 互斥，拿到后对记录的状态做 compare-and-set（只有状态仍是读到的
+  `pending`/`deleting` 才推进）；v2-server 是持有数据目录锁的单进程（A1），所以这两层就够。
 - **错误怎么处理**：
   - 判为 `kept`、不再重试：`reclaim` 模式下不能恢复；D4 的身份或路径检查不通过（越界、经过符号链接、dev/inode 不一致、
     目录被别的会话用过、有未结束的会话、登记与 `v2_workspaces` 不一致）。原因写进记录。
@@ -157,11 +165,17 @@ status: proposed
 回收只经 `workspacefs` 删除（A1 D7 第 3 条，本文修改），由 `agentruntime` 先摘掉进程内的引用。删除前依次确认：
 
 1. **数据库**：登记的路径和 `clone_execution` 与 `v2_workspaces` 里这个 `WorkspaceID` 的行一致，没有别的行用同一个路径；
-   用过这个 `WorkspaceID` 的会话只有登记的那一个，且已结束。
+   用过这个 `WorkspaceID` 的会话只有登记的那一个，且已结束（按 `v2_execution_sessions.data->>'WorkspaceID'` 查询，由表达式
+   索引支撑）。
 2. **进程内**：
-   - 项目 runtime 在时，持 `skillsMu`，在 `p.mu` 下确认 `p.owners[WorkspaceID]` 为空，从 `p.checkouts` 去掉这个工作目录，
-     再从 `<项目目录>/skill-checkouts.json` 去掉这个路径，然后删除；整个过程不放 `skillsMu`，技能投影不会在中途遍历到它。
-   - 项目 runtime 不在时，在 Driver 上按项目加锁，与这个项目 runtime 的创建互斥，再从 `skill-checkouts.json` 去掉路径并删除。
+   - 项目 runtime 在时，持 `skillsMu`，在 `p.mu` 下确认 `p.owners[WorkspaceID]` 为空、从 `p.checkouts` 去掉这个工作目录，
+     再从 `<项目目录>/skill-checkouts.json` 去掉这个路径，然后**释放** `skillsMu`。两份列表都已摘掉，之后的技能投影不会再
+     遍历到它。
+   - 项目 runtime 不在时，用按项目 ID 的锁代替 `skillsMu`：Driver 在 `d.project()` 插入新的 `projectRuntime` 之前先拿这把锁，
+     回收只在改 `skill-checkouts.json` 期间持有它。
+   - 统计和删除只持交付对这个目录的锁（`DeliveryFS.LockWorkspace`），不持 `skillsMu` 或项目锁：删一个十万级文件的目录可能要
+     几分钟，期间同项目的会话准入、`attachSkills`、`attachUserSkills`、`ApplySkill` 都不被阻塞。
+   - 加锁顺序：`LockWorkspace` → `skillsMu`（或项目锁）→ `p.mu`。
    - 兜底：技能投影遇到已经不存在的 checkout（检查和打开时的 `ENOENT`）跳过，不让整次投影失败。
 3. **路径**：checkout 根是 `<项目目录>/w/r`。登记的路径必须在它之下；从 checkout 根起经目录句柄逐级打开到 checkout，
    每一级先 `Lstat` 确认是目录、不是符号链接，打开后比对 dev/inode 与 `Lstat` 一致，任何一级在检查与打开之间被换掉都判为
@@ -219,13 +233,16 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
 | #1196 的验收 | 义务 | 不变量 |
 | --- | --- | --- |
 | 删除前后目录字节和数量的变化 | 回收前后工作目录的字节数、条目数与记录里的统计一致；`kept` 与 `none` 时不变 | 2、3 |
-| 判定 | 五条各造一例不能恢复（含 stash、没检出分支的提交、改动过的子仓库指针、嵌套 `.git`、最后一轮交付后写入、最后一轮失败、旧会话、交付中）都不删；能恢复的删 | 2、3 |
+| 判定 | 五条各造一例不能恢复（含 stash、没检出分支的提交、指向非提交对象的 ref、改动过的子仓库指针、已初始化且有未提交改动的子模块、gitfile 形式的嵌套 `.git`、最后一轮交付后写入、`unverifiable`、最后一轮失败、旧会话、第一轮还在跑的新对话判 `delivering`）都不删；交付后只改了被忽略文件或物化技能的不判 `changed_after_delivery`；能恢复的删 | 2、3 |
+| 真实 Agent | 对每种支持的 Agent，正常对话、空闲后删除的对话判为 `recoverable` 并回收（Agent 结束时往 checkout 写的设置或状态不能让它落到 `changed_after_delivery`） | 2 |
 | 活跃、他人、共享目录不被误删 | 有未结束会话的、别的用户的对话的、工作流运行共享的、任务运行的目录都不删；首轮失败回滚不登记 | 1、4、5 |
 | 路径和符号链接边界 | 路径越界、checkout 本身或某一级父目录是链接、检查后 checkout 或某一级父目录被移走并换成指向原处的链接都判 `kept` 且项目外文件不变；目录里指向外部的链接只删链接本身 | 5 |
-| 并发 | 同一条回收同时触发两次只删一次；回收与交付、技能投影同时进行时互不破坏 | 5、6 |
+| 并发 | 同一条回收同时触发两次只删一次；回收期间同项目的会话准入和技能投影不被阻塞，投影结果不含被回收的 checkout、不因它报错；回收与同目录的交付串行，交付记录不变；模式登记后不可变 | 5、6 |
+| 启动与执行 | 启动补做发生在 `RecoverTurnDeliveries` 之后、恢复工作流和开始服务之前；删除请求里大目录在时限内删不完时返回 `pending`/`in_progress`，后台删完 | 6 |
 | 崩溃后重试 | 登记后、删除前崩溃，启动时补删；删到一半崩溃（`deleting`），启动时只核对身份就删完；IO 失败、判定时镜像暂时不可读都保持原状态、计数加一，恢复后启动时回收；没有运行时时 `discard` 返回 503 且不登记 | 6 |
 | 交付读取和保留策略不变 | 回收前后交付记录、交付义务、交付 ref 不变；运维按 D6 从镜像打出的 patch 能在起点上应用；任务运行、工作流运行的交付读取不受影响 | 7 |
-| 界面和 API 说清楚 | 预览的各种结果与原因；`discard` 的 `revision` 不一致（含同路径同行数的内容改写）返回 409 且什么都不动；删除返回值；确认框的下载入口与被忽略文件提示 | 3 |
+| 界面和 API 说清楚 | 预览的各种结果与原因；`discard` 的 `revision` 不一致（含同路径同行数的内容改写）返回 409 且什么都不动；删除返回值；`git_state` 预览列出 stash 数量、ref 与提交数、嵌套仓库路径；确认框的下载入口与被忽略文件提示 | 3 |
+| 运维 | 服务运行时能列出回收记录；数据目录锁被占用时离线丢弃拒绝执行；离线丢弃按 D4 检查后删除并记原因 | 6 |
 
 ## 为什么不是这些替代方案
 
@@ -250,7 +267,9 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
 2. **多机**：单机下 Cloud 直接删磁盘上的目录（A1 D2）。多机时 Cloud 读不到 Node 的工作目录（A1 D7、交付 ADR D7），判定
    里的 Git 状态检查、树比对和删除都要改为 Node 协议请求，并让 Node 清掉账本里对应的 clone 执行。第一版 Node 账本里这条
    记录不删，接受它随对话数量增长；它只在工作流运行重启后接回目录时被读，对话不会接回（D4）。
-3. **本文落地之前已删除的对话的目录**：归属已经不可知，本文不处理；需要释放时由运维停服后整体清理。
+3. **交付清理**：回收之后，记录引用的交付 ref 是这个对话成果的唯一一份。以后清理交付的决策必须保留 `reclaimed` 记录引用的
+   交付，或者明确放弃这些成果。
+4. **本文落地之前已删除的对话的目录**：归属已经不可知，本文不处理；需要释放时由运维停服后整体清理。
 
 ## 落地顺序
 
