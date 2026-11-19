@@ -61,7 +61,7 @@ Cloud v2 工作流的 Agent 节点在 Ora Node 上执行；引入本决策前，
 `semver::Version::parse(version).to_string() == version`，因此 `v1.2.0`、非完整版本、版本范围或
 自动选最高版本都被拒绝。
 
-Controller 必须在发送前镜像这些客户端规则（属于 Controller 侧义务，随使用方接入验证）：一次会话最多
+Controller 必须在发送前镜像这些客户端规则（属于 Controller 侧义务，在[Controller 用例](../../../test-cases/controller/session/session-mcp-selection.md)登记，随使用方接入验证）：一次会话最多
 **16** 个 Server；所有 `settings` map 的紧凑 JSON UTF-8 编码长度之和最多 **64 KiB**，包括键、标点与转义；
 原始 ID 的字节序、严格 ID 解析、精确 canonical 版本字符串以及 `settings` 必填都按上一段执行。两项上限
 独立于控制帧上限：限制进程扇出和凭据驻留量；超限是 spec 校验错误，不启动 Agent。空列表不读取无关插件，
@@ -172,18 +172,17 @@ D5 要求 Separate workload 目录与 Node home、installed 包目录同在**同
 Debug 不输出值；本 ADR 不定义对恶意 Agent 在普通输出中主动回显任意凭据的通用内容过滤（Agent 写到
 stderr 的回显会进入 Node 持久化的 `plugin.log`，按已知运行时值的尽力脱敏由
 [circus#1294](https://github.com/ora-space/circus/issues/1294) 承接）。
-本决策本身不增加 live refresh、会话 restore、Node Host health probes、取消回合（#1110）或 Cloud 实现；
-前三项在 Node 侧后续已由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)（`implemented`）
-实现，在 Cloud v2 由 [circus#1171](https://github.com/ora-space/circus/issues/1171) /
-[circus#1199](https://github.com/ora-space/circus/issues/1199) 消费接入（遗留跟踪见
-[circus#1301](https://github.com/ora-space/circus/issues/1301)）。
+本决策本身不增加 live refresh、会话 restore、Node Host health probes、取消回合（#1110）或 Cloud 实现。
+Node 侧其后由[会话 MCP 刷新与宿主健康](./20261116-session-mcp-refresh-and-host-health.md)（`implemented`）
+D1–D4 提供 live refresh、D7 提供已授权会话的宿主健康探测；会话 restore 由消费该能力的 Controller
+执行，Node 只提供这些基础能力，进程重启仍不恢复 Agent。
 
-落地顺序（第 1–4 步的协议、共享解析器与 Node 实现均已随 [desktop#773](https://github.com/ora-space/desktop/pull/773) 完成；Controller 侧的选择校验与派发随使用方接入另行验证）：
+落地顺序（第 1–4 步的协议、共享解析器与 Node 实现均已随 [desktop#773](https://github.com/ora-space/desktop/pull/773) 完成；第 4 步里的 Controller 客户端镜像校验与派发属于 Controller 侧义务，尚未交付，在[Controller 用例](../../../test-cases/controller/session/session-mcp-selection.md)登记）：
 
 1. 协议字段、边界、上限与持久投影评审通过（2026-11-15），核心用例按最终实现核对登记。
 2. 提取纯解析器至共享 crate `crates/agent-runtime/src/mcp_resolver/`，以 Desktop 原行为测试证明没有选择、映射和错误漂移；宿主 store 与 health 保持原归属。
 3. Node 接入冻结输入、包租约、workload view 和无值持久投影，以真实 `session/new` 帧及失败路径验证。
-4. `session_mcp` 能力广告与上述实现和测试同批交付；验证协议兼容、数据库/JSONL/日志无值与清理隔离。Controller 的客户端镜像校验和派发随使用方接入另行验证。
+4. `session_mcp` 能力广告与上述实现和测试同批交付；验证协议兼容、数据库/JSONL/日志无值与清理隔离。Controller 的客户端镜像校验和派发不在本次交付内，见[Controller 用例](../../../test-cases/controller/session/session-mcp-selection.md)。
 
 从声明能力并接入的 Node 开始，显式 MCP 才能进入 Agent Session；Desktop 行为、Node 事件重放、
 旧 spec 的空选择和重启中断规则保持不变。
@@ -193,6 +192,7 @@ stderr 的回显会进入 Node 持久化的 `plugin.log`，按已知运行时值
 见[显式 Session MCP 用例](../../../test-cases/node/agent-runtime/session-mcp.md)：选择校验与上限、Node
 全量解析与 workload view、Setting 值的持久与诊断隔离、能力门禁与失败 code、包租约与 view 生命周期，
 以及 Desktop 解析器行为不变。Node 侧证据按 desktop 固定合并提交 [`98c0414f`](https://github.com/ora-space/desktop/commit/98c0414fdaf998ae7ede817f743e3431d94c81d7)
-逐项登记（共 21 项义务：15 项 `Covered`、5 项 `Partial`、1 项 `Missing`；其中 `Missing` 为 Controller
-发送前镜像校验，5 项 `Partial` 详见用例正文）；
+逐项登记（Node 侧共 20 项义务：13 项 `Covered`、7 项 `Partial`，无 `Missing`；7 项 `Partial` 详见用例
+正文）。只能由 Controller 验证的发送前镜像校验与按能力派发在
+[Controller 用例](../../../test-cases/controller/session/session-mcp-selection.md)登记，Node 用例不登记；
 [会话执行用例](../../../test-cases/node/agent-runtime/session-execution.md)的证据保持原范围，不推导本文新义务。
