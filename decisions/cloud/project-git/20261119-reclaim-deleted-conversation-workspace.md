@@ -60,12 +60,15 @@ status: proposed
 | 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；交付树里没有和起点不同的 gitlink；checkout 里除顶层 `.git` 外没有嵌套的 `.git` | `git_state` |
 | 5 | 目录在最后一轮交付之后没有再变：按交付的快照规则（交付 ADR D2 的临时索引、忽略规则、物化技能剔除）重新生成树，与最后一次 `delivered` 交付提交的树相同（最后一轮是 `empty` 时与起点的树相同） | `changed_after_delivery`；无法生成树（排除文件不能安全读取等，与交付失败的条件相同）时为 `unverifiable` |
 
-- 第 4 条的检查只读，沿用交付已有的加固 Git 配置（不读 Agent 仓库和系统级配置，不执行 filter、hooks、fsmonitor，不弹
-  认证提示）。Agent 删掉了 `.git` 时，没有本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink。reflog 不算成果。
+- 第 4 条的检查只读：ref 与 stash 在 Agent 仓库上用 Git 查询（只运行列 ref、算祖先这类不调用外部程序的命令），命令行覆盖
+  全局与系统配置、hooks、fsmonitor，不弹认证提示；Git 仍会读这个仓库自己的本地配置，但这些命令不执行 filter 等外部程序，
+  第一版 Agent 与 Cloud 是同一个系统用户（A1 D2），这不扩大 Agent 的权限。gitlink 与嵌套 `.git` 按第 5 条生成的树和不跟随
+  链接的遍历检查。Agent 删掉了 `.git` 时，没有本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink。reflog 不算成果。
 - 第 5 条生成的树只在临时 Git 目录里，不写镜像、不写交付 ref；生成期间持有交付对这个目录的锁（`DeliveryFS.LockWorkspace`），
   和交付互斥。
 - 被忽略规则（`.gitignore` 与 `.git/info/exclude`）排除的文件不算成果：交付的定义就是未被忽略的文件，验收和 patch 也
-  只给这些。目录里确实有被忽略的文件时，删除前告诉用户（D2）。
+  只给这些。目录里确实有被忽略的文件时，删除前告诉用户（D2）。检测时 `.opencode`、`.claude` 两个目录整体不计（物化的技能在里面），
+  这两处用户自己被忽略的文件不提示，作为已知限制。
 
 为什么只看最后一轮、再比对树：每次交付都是相对起点的完整快照（交付 ADR D2），最后一轮交付成功，说明**那一刻**的
 工作目录都在交付 ref 里；之后目录还可能变（Agent 留在后台的进程写文件、空闲会话被删除时不会再交付一次），比对树把
