@@ -14,7 +14,8 @@ Controller 接入完成工具、且它锁定的 Node 声明 `session_host_mcp_se
 写 `agent`。之前保存的 `end_turn` 是显式值，不改回，已冻结的图也不动。
 
 本决策处于 `implemented` 状态：D2 由 [cloud#403](https://github.com/ora-space/cloud/pull/403)（merge `2b80c023`）在
-Cloud v2 的工作流编辑器和 v2-server 实现，D3 不需要额外实现，D4 的恢复版本尚未出现。本决策只定默认值，以及显式
+Cloud v2 的工作流编辑器和 v2-server 实现，[cloud#417](https://github.com/ora-space/cloud/pull/417)（merge `43ad6eb2`）补齐了
+暂不生效提示与运行测试，D3 不需要额外实现，D4 的恢复版本尚未出现。本决策只定默认值，以及显式
 `agent` 在恢复版本前后怎样执行；验证义务与证据见
 [完成工具送达前的默认完成方式用例](../../../test-cases/cloud/workflow/end-turn-default-before-completion-tool.md)，
 仍为 `Partial` / `Missing` 的缺口如实保留。涉及 Cloud v2 的工作流
