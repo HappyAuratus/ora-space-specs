@@ -5,6 +5,8 @@
 所有义务都没有直接证据，状态为 `Missing`。会话命令、事件序号与终态的既有规则继续受
 [Agent 运行的协议消息用例](agent-run-messages.md)约束；结束会话时的停止责任与停止证据受
 [会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md)约束，本文不推导它们的证据。
+[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`approved`）修改了 D3 复述的停止证据：用例 11、12、13 各增加一行带“（尝试标记）”的
+义务，同样为 `Missing`，待 desktop#802 合并；它们不另占验证义务编号，一一对应关系不变。
 
 | 验证义务 | 核心用例 |
 | --- | --- |
@@ -336,20 +338,23 @@ Agent 不回应取消时，Controller 等不到结论；或者 Node 在取得停
 - 受理后 G + Q 内已写入 `TurnEnded{cancelled}` 与 `TurnCancelSettled{session_ending}`。
 - 之后不再写出任何 `session/prompt`。
 - 取得停止证据之后才写 `AgentSessionEnded{agent_failed}`，detail `turn_cancel_unanswered`。
+- 这一轮工具起的、脱离进程组但保留环境的后台作业（`cmd &`、`setsid`）在终态之前与会话的其他带标记进程一起被杀；
+  停止证明记 `lock_processes_and_marks`。
 
 ### 禁止结果
 
-结论晚于 G + Q；结论之后仍有 `session/prompt`；终态早于停止证据。
+结论晚于 G + Q；结论之后仍有 `session/prompt`；终态早于停止证据；后台作业仍存活时写终态。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 11：没有回应时按期结算，终态等停止证据 | 尚未实现，无直接证据 | Missing |
+| 11（尝试标记）：以 `session_ending` 结束时本轮的脱组后台作业在终态前被杀 | 取消导致会话结束、本轮工具起了 `setsid` 后台作业时，作业在 `AgentSessionEnded` 之前退出、证明为 `lock_processes_and_marks` 的真实 Node 测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
 
 ### 决策依据
 
-D1（正在执行）、D3、D4（本地结算期限），不变量 2、9。
+D1（正在执行）、D3、D4（本地结算期限），不变量 2、9；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4。
 
 ## Missing stop evidence never produces an early terminal or delivery
 
@@ -359,7 +364,8 @@ D1（正在执行）、D3、D4（本地结算期限），不变量 2、9。
 
 ### 前置状态与触发
 
-G 内没有回应；停止请求返回（分别覆盖成功与失败）之后，原尝试锁仍被持有或直接进程仍在。
+G 内没有回应；停止请求返回（分别覆盖成功与失败）之后，原尝试锁仍被持有、直接进程仍在，或仍有被尝试标记扫描
+认领的存活进程（例如杀不掉的脱组后台作业）。
 
 ### 必须成立
 
@@ -370,17 +376,19 @@ G 内没有回应；停止请求返回（分别覆盖成功与失败）之后，
 
 ### 禁止结果
 
-把停止请求的返回当作停止证据；期限到达就写终态；交付或恢复被放行；补发的终态改了原因。
+把停止请求的返回当作停止证据；期限到达就写终态；交付或恢复被放行；补发的终态改了原因；锁与线索干净而带标记
+进程仍存活时写终态。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 12：证据缺席时不提前发终态、不提前交付，迟到证据才补报 | 尚未实现，无直接证据 | Missing |
+| 12（尝试标记）：只剩带标记进程存活时同样缺证据 | 锁与线索都已干净、只剩被标记扫描认领的存活进程时，不写终态、期限后 `StopUnconfirmed`、交付与恢复被拒绝的测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
 
 ### 决策依据
 
-D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量 9。
+D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量 9；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D3。
 
 ## Turn boundary conformance gates the allowlist
 
@@ -394,21 +402,23 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 
 ### 必须成立
 
-只有回应之后没有任何轮次流量的版本才进入清单。
+只有回应之后没有任何轮次流量的版本才进入清单。会话被保留的取消不发任何停止信号，这一轮起的后台任务继续运行，
+测试照实记录它们在回应之后的流量，不能假定 Node 已杀掉它们。
 
 ### 禁止结果
 
-未测或测试中有残余轮次流量的版本进入清单。
+未测或测试中有残余轮次流量的版本进入清单；保留会话的取消杀掉后台任务，掩盖了回应之后的流量。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
+| 13（尝试标记）：保留会话的取消不杀任何进程 | 一致性测试中会话被保留的取消之后，带标记的后台任务与常驻进程仍存活、其流量照实记录的测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
 
 ### 决策依据
 
-D2（可依赖的轮次边界），不变量 7。
+D2（可依赖的轮次边界），不变量 7；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4，不变量 7。
 
 ## A full in-flight window delays delivery but not local settlement
 
