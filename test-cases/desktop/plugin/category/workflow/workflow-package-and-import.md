@@ -392,10 +392,10 @@ Tauri/Rust 后端或真实远程市场。`retries failed workflow document impor
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| `WorkflowSummary` DTO 提供 `sourcePluginId`（保留 `local`、改名保持、删除排除，本地导入/自建/冲突无来源，本地 `.orax` 安装不参与列表和标记） | 待实现合并后登记证据 | `Missing` |
-| 单插件与 Pack（仅 `remove` 成员）卸载确认在检查中禁用确认，列出存活导入工作流及保留可运行说明；读取失败明确提示且仍允许卸载 | 待实现合并后登记证据 | `Missing` |
-| 工作流库与创建运行菜单从同一摘要派生「来源插件已卸载」（含功能上线前已卸载），编辑、重命名、导出、删除与发起运行不受阻碍，且不参与缺依赖判定 | 待实现合并后登记证据 | `Missing` |
-| 重装同一 canonical Plugin ID 后标记消失且不重导；不同 `namespace` 同名与目录失败/加载中不误判 | 待实现合并后登记证据 | `Missing` |
+| `WorkflowSummary` DTO 提供 `sourcePluginId`（保留 `local`、改名保持、删除排除，本地导入/自建/冲突无来源，本地 `.orax` 安装不参与列表和标记） | [SQLite 仓储的来源推导测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/crates/db/src/repository_tests.rs) `list_workflows_derives_source_plugin_id_from_imported_records` 覆盖改名、软删除、自建和冲突。[真实安装、卸载和重装测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/crates/backend/src/plugin/operations/install_tests.rs) `workflow_summary_tracks_marketplace_source_across_uninstall_and_reinstall` 对照本地 .orax 与市场来源；无来源条目在前端由 [来源状态测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/state/hooks/use-uninstalled-workflow-sources.test.ts) 验证跳过。 | `Covered` |
+| 单插件与 Pack（仅 `remove` 成员）卸载确认在检查中禁用确认，列出存活导入工作流及保留可运行说明；读取失败明确提示且仍允许卸载 | [卸载弹窗测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/features/settings/plugins-settings.test.tsx) 的 `lists surviving imported workflows when uninstalling a workflow plugin from the manager` 断言等待和改名后的保留清单；同文件覆盖详情页、Pack 仅移除成员、工作流库失败仍可确认。 | `Covered` |
+| 工作流库与创建运行菜单从同一摘要派生「来源插件已卸载」（含功能上线前已卸载），编辑、重命名、导出、删除与发起运行不受阻碍，且不参与缺依赖判定 | [工作流库测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/features/workflow-editor/workflow-editor.test.tsx) 覆盖打开编辑、重命名、导出、删除、实际卸载后自动刷新；[创建运行菜单测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/features/workspace/workspace-sidebar.test.tsx) 的 `marks workflows whose source plugin is uninstalled in the create-run menu without blocking runs, and clears on reinstall` 断言能打开创建运行弹窗。缺少带来源标记的工作流真正开始调度、且画布和运行预检均独立于来源的直接断言。 | `Partial` |
+| 重装同一 canonical Plugin ID 后标记消失且不重导；不同 `namespace` 同名与目录失败/加载中不误判 | [真实安装、卸载和重装测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/crates/backend/src/plugin/operations/install_tests.rs) 断言重装后同一副本且保持来源；[来源状态测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/state/hooks/use-uninstalled-workflow-sources.test.ts) 覆盖完整 ID、目录加载中和失败；[工作流库测试](https://github.com/ora-space/desktop/blob/6824ff903cb9025f248b6e41473caa25a06819ff/packages/app-shell/src/features/workflow-editor/workflow-editor.test.tsx) 对照不同 namespace 的同名来源，只有精确重装的标记消失。 | `Covered` |
 
 ### 决策依据
 
