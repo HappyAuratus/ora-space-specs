@@ -4,6 +4,11 @@ status: approved
 
 # Node 协议增加"取消一轮"命令；一轮以取消或失败结束、且 Agent 已静止时，会话保留
 
+> 历史决策：D3 中复述的停止证据（“原尝试锁与全部直接进程线索，进程组 BestEffort”及“本决策不加强也不削弱它”）
+> 与风险表中对应的一句，已由[会话尝试的进程带环境标记](../agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
+> （`approved`）修改：停止证据加入尝试环境标记扫描，脱组但保留环境的后台作业在终态之前被杀，仍为 BestEffort。
+> 这些部分以该决策为准。
+
 Controller 新增会话命令 `CancelTurn{command_id, turn_id}`。Node 持久受理后，在有界时间内在本地确定这次取消的
 结论，每个被受理的取消恰好得到一条新的非终态事件 `TurnCancelSettled`：目标轮次正在执行时，向 Agent 发 ACP
 `session/cancel`，这一轮以 `TurnEnded{cancelled}` 结束；目标轮次已被准入、但 prompt 还没有写给 Agent 时不再写出；

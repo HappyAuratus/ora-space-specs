@@ -4,6 +4,11 @@ status: implemented
 
 # Node 保留会话身份刷新 MCP，以有界准入和停止证据隔离故障
 
+> 历史决策：D5 的停止证据与重启收口表、D6 的 Agent 替换、D8 的纳管范围表述、不变量 7 与 R6，已由
+> [会话尝试的进程带环境标记](20261120-attempt-mark-in-session-stop-evidence.md)（`approved`）修改：Linux 上尝试的
+> 每个进程带 `ORA_SESSION_ATTEMPT`，停止前冻结并杀掉带标记的进程，两次扫描干净才确认并记
+> `lock_processes_and_marks`。这些部分以该决策为准；它的实现合入前，已实现的 Node 行为仍是本文描述的版本。
+
 Controller 持久保存 Session 的显式 MCP 选择，向 Node 提交完整内存配置。Node 在安全点收敛：仅配置
 变化时用原 provider ID 执行 ACP `session/load`；包版本变化时先停止本 execution 的 Agent，再启动
 它自己的 Agent 并 load 原 provider ID；同一 Agent 进程已写出 8 次运行时 load 后，下一次也走重启路径。
