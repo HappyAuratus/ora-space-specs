@@ -12,7 +12,7 @@ status: implemented
 登记还在，下次启动接着做。删的时候确认目录只属于这个对话、没有会话还在用、路径没有经符号链接逃出 checkout 根。
 
 本 ADR 为 `implemented`：owner 2026-11-19 在 circus #1318 评审通过，由 circus #1196 的运行 #1319 实现（cloud PR #419，
-`a4fe0c1b`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
+`1e4e423d`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
 [工作目录回收用例](../../../test-cases/cloud/project-git/workspace-reclaim.md)。依据是 owner 2026-11-16 在 circus #1191
 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是 #1119：24 小时内 101 个工作目录全部保留，
 其中 45 个属于已删除的普通对话。它是[回合交付](20261112-single-machine-turn-delivery.md)（下称“交付 ADR”）的后续决策，同时修改
@@ -58,7 +58,7 @@ status: implemented
 | 1 | 会话的所有回合都已结束，且这个会话没有交付义务（`v2_turn_delivery_work` 里没有它的回合，即 `HasWork` 为假，不是只看 `InProgress`） | `delivering`：还有回合在跑、在交付，或交付义务留给了下次启动（含第一轮还在跑的新对话） |
 | 2 | 会话至少有一条回合交付记录 | `legacy`：没有交付记录且没有交付义务，即交付 ADR 落地前的旧会话 |
 | 3 | 最后一轮有交付记录，结果是 `delivered` 或 `empty`（用现有的 `turn_id`、`position` 列判断，不加新列） | `last_turn_undelivered`：最后一轮交付失败，或最近一条记录落在更早的回合上 |
-| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；指向的对象剥开（annotated tag 剥成提交）后是提交，指向非提交对象的判为不满足；交付树里没有和起点不同的 gitlink；顶层 `.git/modules/` 下没有仓库；顶层以下没有任何名为 `.git` 的条目（目录、gitfile、符号链接都算，被忽略的目录如 `vendor/` 也扫） | `git_state` |
+| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；指向的对象剥开（annotated tag 剥成提交）后是提交，指向非提交对象的判为不满足；`HEAD` 是起点或起点的祖先，或者 `HEAD` 提交的树里每个路径的内容都与比对的交付树或起点树的同路径条目相同；index 没有冲突，每个条目都等于比对的交付树、起点树或（`HEAD` 合格时）`HEAD` 的同路径条目（intent-to-add 只要求交付树里有这个路径，物化技能路径先剔除）；交付树里没有和起点不同的 gitlink；顶层 `.git/modules/` 下没有仓库；顶层以下没有任何名为 `.git` 的条目（目录、gitfile、符号链接都算，被忽略的目录如 `vendor/` 也扫） | `git_state` |
 | 5 | 目录在最后一轮交付之后没有再变：按交付的快照规则（交付 ADR D2 的临时索引、忽略规则、物化技能剔除）重新生成树，与最后一次 `delivered` 交付提交的树相同（最后一轮是 `empty` 时与起点的树相同） | `changed_after_delivery`；内容本身无法验证（排除文件或 Git 元数据不能安全读取、改动超过交付大小上限、分不清物化的技能）时为 `unverifiable`；
   磁盘、镜像或 Git 调用临时失败不是 `unverifiable`，按 D3 重试 |
 
@@ -92,6 +92,7 @@ status: implemented
   - `undeliveredChanges`：`undelivered` 时相对最后一次成功交付（没有时相对起点）列出未交付的改动（路径、增删），有上限，
     超过时给出总数；除 `delivering` 外都列出（`legacy` 相对起点列出）；
   - `git`：原因是 `git_state` 时列出发现了什么（`revision` 始终包含 Git 状态）：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
+    `HEAD` 与交付不一致（`headDiffers`，及超出起点的提交数）、index 与交付不一致（`indexDiffers`）、
     嵌套仓库的路径（顶层以下的 `.git`、`.git/modules/` 下的仓库和变动过的 gitlink 合并去重）。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
   - `latestDelivery`：最近一次 `delivered` 交付的 ID，界面据此提供现有的 `…/workspace/deliveries/{id}/patch` 下载；
   - `discardable`：只有判为 `undelivered`、不在交付中、做过内容检查并且 Git 相关内容的摘要完整时为真，界面据此决定给不给
@@ -295,11 +296,14 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
    被删除的，违反 D2“要求用户看到的就是被丢弃的”，所以新增 `discardable`，为假时返回 `409 discard_unverifiable`；这类目录
    默认保留，由运维按 D6 处理。owner 于 2026-11-19 在 circus #1319 得到告知。
 3. **检查的时限**：单次检查最长 2 分钟，超时按 `check_failed` 重试，避免嵌套仓库里的特殊文件让 Git 读取挂住、拖住启动。
-4. **执行与约束的具体值**：删除请求里等待 5 秒；模式不可变由数据库触发器保证。
+4. **`HEAD` 与 index 也要被交付覆盖**：approved 稿第 4 条只看 stash、ref、gitlink 与嵌套仓库，只在 `HEAD` 或暂存区里的内容
+   （暂存后把工作树改回、提交后把工作树和暂存区还原）会被默认的 `reclaim` 判为能恢复并删除。所以第 4 条加了 `HEAD` 与 index 的
+   条件；与起点相同的内容在快照里一直保留，所以与起点树相同也算覆盖。起点之后、`HEAD` 之前的中间提交仍按 owner 第 1 轮的口径不算。
+5. **执行与约束的具体值**：删除请求里等待 5 秒；模式不可变由数据库触发器保证。
 
 ## 落地顺序
 
 1. **ADR（circus #1196，运行 #1318）**：本文评审到 `approved`，补核心测试用例和术语。
 2. **实现（circus #1196，运行 #1319，cloud PR #419）**：回收登记与迁移 `0007`、判定与预览、删除参数与返回值、确认框与下载入口、
    精确归属的删除、启动时继续、运维子命令。
-3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `a4fe0c1b` 登记用例证据。
+3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `1e4e423d` 登记用例证据。
