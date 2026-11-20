@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Ora Desktop 只支持 Windows 和 Linux：v0.6.0 是最后一个 macOS 版本，删除 macOS 代码，取代 macOS 原生纳管
@@ -15,12 +15,11 @@ Ora Desktop 和 desktop 仓库构建、发布的全部本机组件只支持 Wind
 - [macOS 原生尽力纳管](../../node/process/containment/macos/0-native-best-effort-containment.md)整份被本文取代；
   进程纳管只剩 Linux 和 Windows 两个平台方向（D5）。
 
-本文为 `approved`：owner 于 2026-11-20 评审批准，评审中确认的四点（macOS 纳管决策整份取代、新建 `desktop/platform`
-叶子作为根决策、退役 darwin 项不校验取值且重复不报错、范围覆盖 desktop 仓库的全部本机组件）已并入正文。决策来自
-owner 2026-11-20 的结论（ora-space/circus#1365）。实现已经以
-preflight 在 desktop 分支 `refactor/1367-drop-macos`（`1f88ccce..b7cdb9c0`，desktop#804，运行 ora-space/circus#1367）
-完成，尚未合并；本文按该实现写成，评审改动决策时实现跟着改。核心用例在本 PR 一并登记，证据在 desktop 实现
-合并前都是 `Missing`，由落地运行登记。
+本文为 `implemented`。决策来自 owner 2026-11-20 的结论（ora-space/circus#1365），同日评审批准，评审中确认的四点
+（macOS 纳管决策整份取代、新建 `desktop/platform` 叶子作为根决策、退役 darwin 项不校验取值且重复不报错、范围覆盖
+desktop 仓库的全部本机组件）已并入正文。实现由 [desktop#804](https://github.com/ora-space/desktop/pull/804) 合入 desktop
+main，合并提交 [`1456af72`](https://github.com/ora-space/desktop/commit/1456af721bad5577b628ac0d5d9ead14eb8b4809)
+（评审 head `51342699`，运行 ora-space/circus#1367），与正文一致，没有偏离 approved 决策。
 
 - **涉及**：desktop 的 CI 与发布流程（`.github/workflows/`、`Taskfile.yml`、`apps/desktop/src-tauri/tauri.conf.json`）、
   `scripts/`（`setup-binary`、`sidecar-checksums.json`、更新清单生成）、Tauri 宿主（`apps/desktop/src-tauri`）、
@@ -86,9 +85,9 @@ macOS 还能不能编译、运行，文档里的“尽力”会被读成支持�
 
 desktop 删除所有只服务 macOS 的内容：`cfg(target_os = "macos")` 分支及其实现、macOS 专用测试、`dmg`/`app`
 打包目标和 `icon.icns`、darwin sidecar 校验值、宿主 triple 的 darwin 映射、`.app.tar.gz` 更新包类型、只为 macOS
-引入的依赖，以及前端的 macOS 约定（⌘/⌥/⇧ 符号，`mod` 统一显示为 Ctrl，窗口平台类型不再有 `macos`，Apple 专用
-字体回退）。Tauri 宿主里写成“非 Windows”、行为因平台而异的兜底分支，改为显式的 `target_os = "linux"`；共享
-crates 中实为 Unix 共用实现的 `cfg(not(windows))` 与 `cfg(unix)` 同样保留。
+引入的依赖，以及前端的 macOS 约定（⌘/⌥/⇧ 符号，`mod` 统一显示为 Ctrl，窗口平台类型不再有 `macos`，Apple 系统
+字体回退 `-apple-system`、`BlinkMacSystemFont`）。Tauri 宿主里写成“非 Windows”、行为因平台而异的兜底分支，改为
+显式的 `target_os = "linux"`；共享 crates 中实为 Unix 共用实现的 `cfg(not(windows))` 与 `cfg(unix)` 同样保留。
 
 保留的边界：
 
@@ -194,21 +193,24 @@ macOS adapter”继续显示为待办的长期方向。
 
 ## 落地顺序
 
-1. **specs（运行 ora-space/circus#1366）**：本文、核心用例、macOS 纳管决策改为 `superseded` 并删除其用例，其他
-   决策加 `> 历史决策：` 提示。owner 已于 2026-11-20 批准，本文为 `approved` 后合并。完成条件：引用 macOS 的 specs 文档都已
-   按本文处理或注明为历史记录。
-2. **desktop（运行 ora-space/circus#1367）**：按 D2–D4 删除 macOS 并退役 darwin target，已在
-   `refactor/1367-drop-macos`（desktop#804）完成开发，本文 `approved` 后合并。完成条件：Windows 和 Linux 的 CI 全绿；
-   合并前在该分支上跑一次 `desktop-build`（`workflow_dispatch`，不带 tag）或等价的 Windows 构建，确认 `ora-desktop`
-   在 Windows 和 Linux 上都能编译、打包，因为 PR CI 的 tauri job 只在 Linux 上跑，`test:crates` 又排除了
-   `ora-desktop`，Windows 上的 `ora-desktop` 没有其他编译证据；这次构建也是本文改为 `implemented` 的前提；`git grep -i -E 'macos|darwin|\.dmg|notariz'`
-   只剩有意保留的内容并逐条列在 PR 描述里。
-3. **落地运行**：desktop PR review 通过后，把本文改为 `implemented`，按最终实现同步正文，并登记核心用例证据。
+三步均已完成。
 
-分开的好处是决策评审不被 76 个文件的实现 diff 淹没，实现 review 时有已批准的规则可以对照。desktop PR 合并之前
-行为不变；合并后的下一个版本是第一个只有 Windows 和 Linux 的版本。
+1. **specs（运行 ora-space/circus#1366，specs#321）**：本文与核心用例；macOS 纳管决策改为 `superseded` 并删除其
+   用例；其他引用 macOS 的决策加 `> 历史决策：` 提示或注明为历史记录。
+2. **desktop（运行 ora-space/circus#1367，desktop#804）**：按 D2–D4 删除 macOS 并退役 darwin target，合并提交
+   `1456af72`。PR CI 在 Linux 和 Windows 上全绿；`git grep` 搜 macOS 相关词剩下的命中都是有意保留（支持平台说明、
+   退役 target 的兼容代码与测试、`setup-binary` 拒绝 macOS 主机的测试、第三方 `deno.lock` 条目），按类列在 PR 描述里。
+   PR CI 的 tauri job 只在 Linux 上跑，`test:crates` 又排除了 `ora-desktop`，所以合并前在 PR 分支上手动跑了一次
+   `desktop-build`（`workflow_dispatch`，`release=false`），在 Windows 上编译 `ora-desktop` 并产出 NSIS 安装包，满足
+   本文改为 `implemented` 的前提。这次运行在 fork 上执行，fork 已删除；它是运行记录，不登记为核心用例的代码证据。
+3. **落地运行（ora-space/circus#1374）**：本文改为 `implemented`，按合并后的实现同步正文，并在合并提交上登记核心
+   用例证据。
+
+决策与实现分开评审，使决策不被 76 个文件的实现 diff 淹没，实现 review 时有已批准的规则可以对照。desktop#804
+合并后的下一个版本是第一个只有 Windows 和 Linux 的版本；v0.6.0 及更早的 macOS 版本保持原样。
 
 ## 核心测试用例
 
-[支持平台的核心用例](../../../test-cases/desktop/platform/supported-platforms.md)登记本文的验证义务；desktop 实现
-合并前证据都是 `Missing`。
+[支持平台的核心用例](../../../test-cases/desktop/platform/supported-platforms.md)登记本文的验证义务，证据固定在
+desktop 合并提交 `1456af72`：更新清单、清单解析的退役与未知 triple、`setup-binary` 的平台推导有直接测试；发布矩阵
+与 bundle 目标、从 registry 清单到安装完成、darwin-only 条目的索引可安装性、sidecar 校验表内容仍缺直接证据。
