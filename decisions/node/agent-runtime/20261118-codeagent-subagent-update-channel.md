@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 扩展共享 ACP 运行时识别 CodeAgent _subagent/update 通道，复用现有子代理投影与历史模型
@@ -12,9 +12,12 @@ status: approved
 输出累加共用同一条子代理来源规则，沿用现有 JSONL schema v2、回放/交接与公共契约，不做存储迁移。
 父委托调用在本次尝试中仍未结束时，指向它的子代理帧为父 prompt 窗口续期但不暂停计时（D6）。
 
-本文处于 `approved`：D2 与 D4 依据 `codeagentcli 1.2615.02.05` / ACP `1.2605.00` 启用
-`CODEAGENT3_ACP_SUBAGENT_CHANNEL=true` 后的真实带时间戳帧序列锁定，对应核心验证义务登记在
-[子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)。
+本文处于 `implemented`：由 [desktop#783](https://github.com/ora-space/desktop/pull/783)（head `1211708d`）在
+`ora-acp`、`ora-agent-runtime`、`ora-history`、`ora-backend`、`@ora/chat` 与 `@ora/app-shell` 实现；
+D2 与 D4 依据 `codeagentcli 1.2615.02.05` / ACP `1.2605.00` 启用
+`CODEAGENT3_ACP_SUBAGENT_CHANNEL=true` 后的真实带时间戳帧序列锁定，对应核心验证义务与直接证据登记在
+[子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)，
+尚未覆盖的端到端与 `session/load` 排空等缺口如实保留。
 真实帧由直连 CodeAgentCLI 的采集脚本（ACP 客户端 `ora-capture`，`codeagent --acp`，stdio 管道）
 采得，**没有经过 Ora 的连接层，也没有 `PromptLiveness` 计时**；采集包含完整前台委托、委托开始后
 取消、以及新进程 `session/load` 回放三段，没有采到子代理授权请求和嵌套委托。影响 `ora-acp`、
@@ -251,14 +254,13 @@ Rust（`ora_history::child_source_id` / `has_child_source_namespace`）与 TypeS
   - 暖加载跟随实时更新时对 `HistoryBuilder` 入站伪造 `ora/turn-end-settled` 的隔离，以及交互式完成时
     子工具切分父流文本与实时聚合的差异对齐。
 - **落地顺序**：
-  1. **阶段 1（ADR，`approved`）**：已依据真实帧锁定 D2/D4 规则、新增 D6，并在
+  1. **阶段 1（ADR，`approved`）**：[specs#309](https://github.com/ora-space/specs/pull/309)（合并提交 `9b9fc0d4`）依据真实帧锁定 D2/D4 规则、新增 D6，并在
      [子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)
      登记对应核心用例与验证义务。
-  2. **阶段 2（实现）**：在 `ora-space/desktop` 合入 `ora-acp`、`ora-agent-runtime`、`ora-history`、
-     `ora-backend`、`@ora/chat`、`@ora/app-shell` 实现与对应单测/回归测试（含真实帧形态用例、FIFO
-     缓存淘汰测试，以及按真实间隔驱动的 D6 续期测试）。
-  3. **阶段 3（落地）**：产品代码合入 `desktop` `main` 后，将本 ADR 改为 `implemented` 并按最终实现同步
-     正文与核心用例证据。
+  2. **阶段 2（实现）**：[desktop#783](https://github.com/ora-space/desktop/pull/783)（head `1211708d`）实现 `ora-acp`、`ora-agent-runtime`、`ora-history`、
+     `ora-backend`、`@ora/chat`、`@ora/app-shell` 及中英文文档，并交付真实帧形态用例、FIFO
+     缓存淘汰测试与暂停时钟下按真实间隔驱动的 D6 续期及反向对照测试。
+  3. **阶段 3（落地，`implemented`）**：将本 ADR 改为 `implemented`，并按 `desktop#783` 的最终实现同步核心用例直接证据与剩余缺口。
 
 从实现合入起，开启 `CODEAGENT3_ACP_SUBAGENT_CHANNEL=true` 的 CodeAgent 会话获得与 OpenCode 一致的只读
 子代理卡片与历史持久化；父 prompt 计时上，子代理活动不暂停父计时，只在父委托未结束时续期（D6），这与
