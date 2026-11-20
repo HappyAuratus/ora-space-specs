@@ -12,7 +12,7 @@ status: implemented
 登记还在，下次启动接着做。删的时候确认目录只属于这个对话、没有会话还在用、路径没有经符号链接逃出 checkout 根。
 
 本 ADR 为 `implemented`：owner 2026-11-19 在 circus #1318 评审通过，由 circus #1196 的运行 #1319 实现（cloud PR #419，
-`54dac563`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
+`d4ec60d5`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
 [工作目录回收用例](../../../test-cases/cloud/project-git/workspace-reclaim.md)。依据是 owner 2026-11-16 在 circus #1191
 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是 #1119：24 小时内 101 个工作目录全部保留，
 其中 45 个属于已删除的普通对话。它是[回合交付](20261112-single-machine-turn-delivery.md)（下称“交付 ADR”）的后续决策，同时修改
@@ -71,9 +71,11 @@ status: implemented
   指向不存在的 ref 的符号引用（还没有任何提交）才跳过 `HEAD` 的比对，其余（detached 的对象 ID 解析不了、指向的 ref 存在却读不出
   提交、读不出它的树）都判 `unverifiable`；ref、stash、提交遍历遇到对象缺失或损坏同样判 `unverifiable`，其他 Git 调用失败（读不到、IO、权限、
   启动失败、超时与取消）按 `check_failed` 重试；输出里同时有 IO 或权限诊断时，按可重试处理，优先于随后的“对象缺失”类描述；
-  `HEAD` 解析失败时按诊断依次判定：超时或取消、IO 或权限诊断按可重试；明确的对象损坏、对象不存在或不是提交判
+  `HEAD` 的直接目标直接读 `HEAD` 文件得到，不依赖较新 Git 的参数；“提交缺失”还要在磁盘上确认（对象目录可读且没有这个对象、
+  pack 都能打开、没有 alternates），确认不了按可重试。`HEAD` 解析失败时按诊断依次判定：超时或取消、IO 或权限诊断按可重试；明确的对象损坏、对象不存在或不是提交判
   `unverifiable`；没有任何诊断的失败按可重试。ref 不只信 Git 列出的结果：还直接读公共 Git 目录和工作树 Git 目录里的 loose ref 与
-  `packed-refs`，内容必须是合法的对象 ID 或符号引用（先于运行 Git 校验格式，`packed-refs` 按 Git 的读法逐行校验结构），且对象 ID 形式的都出现在 Git 列出的结果里，否则判 `unverifiable`
+  `packed-refs`，只看 Git 会当作 ref 的名字（按 `check-ref-format` 的规则，跳过 `.lock` 等被中断的 Git 留下的文件），内容必须是合法的对象 ID
+  或符号引用（先于运行 Git 校验格式，`packed-refs` 按 Git 的读法逐行校验结构），且对象 ID 形式的都出现在 Git 列出的结果里，否则判 `unverifiable`
   （Git 会跳过损坏的 ref 并照样成功退出）。
 - 嵌套仓库全部判为不能恢复：`git submodule update --init`、`git worktree add` 生成的 `.git` 是 gitfile，子模块里没提交的改动
   不改变 gitlink，只按“名为 `.git` 的目录”或只比 gitlink 会让默认的 `reclaim` 删掉它们。
@@ -314,4 +316,4 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
 1. **ADR（circus #1196，运行 #1318）**：本文评审到 `approved`，补核心测试用例和术语。
 2. **实现（circus #1196，运行 #1319，cloud PR #419）**：回收登记与迁移 `0007`、判定与预览、删除参数与返回值、确认框与下载入口、
    精确归属的删除、启动时继续、运维子命令。
-3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `54dac563` 登记用例证据。
+3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `d4ec60d5` 登记用例证据。
