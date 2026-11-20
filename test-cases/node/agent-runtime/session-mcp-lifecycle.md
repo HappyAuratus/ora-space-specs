@@ -12,6 +12,11 @@ Controller/v2 的协议接线仍由 [#1171](https://github.com/ora-space/circus/
 [会话执行用例](session-execution.md)与[尝试锁用例](../git-execution/attempt-locks-and-stop-evidence.md)的
 证据保持各自范围，不推导本文新义务。
 
+[会话尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`approved`）修改了本文的停止证据：在尝试锁、重启收口、未排空升级、运维对账、
+版本重启与探测清理六个用例中补充义务，并新增[会话停止杀掉全部带标记进程](#a-session-stop-kills-every-attempt-marked-process-and-turns-kill-none)。
+实现 desktop#802 尚未合入 main，这些新增义务全部为 `Missing`，待 desktop#802 合并后登记证据；既有义务的证据按原
+固定提交保留，不因新决策改变状态。
+
 ## Lifecycle Mode Is Opt-In Per Session And Never Widens The Selection
 
 ### 风险
@@ -368,11 +373,14 @@ D4 宿主策略第 1–3 条，不变量 5；继承 Desktop ACP setup/refresh �
 - 目标合并边界是新 Agent spawn 前最后一次读取 desired：未派发的 V2 被丢弃并释放租约 / view，已派发的
   V2 先按 D5 停止确认再按最新目标准备。
 - 模型授权与 ora-git socket 跨重启保留，spawn 前复核授权；兄弟会话不受影响。
+- 替换结束旧尝试：旧尝试被标记扫描认领的全部进程（含后台作业与守护进程）先被冻结并杀掉，旧尝试取得
+  `lock_processes_and_marks` 后才启动后继。
 
 ### 禁止结果
 
 - 版本变化以运行中 load 完成；同一进程出现第 9 次运行时 load；任何重启路径发出 `session/new`；一次重试
   spawn 多个 Agent 或叠加未确认停止的旧 Agent；部分切换；重启关闭 ora-git / 模型访问；兄弟会话被停止。
+- 旧尝试带标记的后台作业或守护进程活过替换，后继却已启动。
 
 ### 验证义务与证据
 
@@ -383,6 +391,7 @@ D4 宿主策略第 1–3 条，不变量 5；继承 Desktop ACP setup/refresh �
 | 重启失败矩阵 | 按 D6 表逐行注入 spawn 失败、ready 超时、load 前崩溃、load 失败，断言每次至多一次 spawn 与 blocked 状态的测试 | Partial |
 | V2 / V3 合并 | 未派发 V2 被丢弃并释放租约、已派发 V2 先确认停止的测试 | Missing |
 | execution 资源跨重启 | 重启前后 ora-git socket 地址与模型授权不变、撤销时按原策略结束的测试 | Partial |
+| 替换先杀旧尝试的带标记进程 | 旧 Agent 的脱组后台作业在替换中被杀、旧尝试记 `lock_processes_and_marks` 后才启动后继的测试 | Missing：待 desktop#802 合并 |
 | 真实 Agent 跨进程 load 前提 | 固定 OpenCode 1.19.3 与 claude-agent-acp 0.99.1 在保留 HOME/cwd 时新进程 load 原 ID 并保留历史，记录见 [circus #1204](https://github.com/ora-space/circus/issues/1204)；空 MCP、未经 Node 重启接缝，不能替代上面的 Node 集成测试 | Partial |
 
 ### 代表性证据与剩余缺口
@@ -398,7 +407,7 @@ Node 侧验收：`Partial`。
 
 ### 决策依据
 
-D6（计数、重启表、目标合并、execution 资源），不变量 5；R4、R7、R11。
+D6（计数、重启表、目标合并、execution 资源），不变量 5；R4、R7、R11；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4。
 
 ## Exact Version Leases Protect MCP Bytes In Use
 
@@ -479,13 +488,25 @@ spawner 为插件运行时与全部宿主子进程共用。
   副本直到请求停止，先拒绝该代插件之后的宿主 spawn，再关闭副本，然后才探查锁。
 - 每个进程组在 spawn 时各记一条 pid / start_ticks / boot_id / 主机标识线索；终止与直接进程检查覆盖全部
   线索；`kill_all` / `stop_plugin` 的返回只作诊断，成功不提前确认，错误也不跳过有界证据等待。
-- 记录后、spawn 前崩溃留下已刷盘且空闲的锁，证明未启动；证据按 `StopContainment::BestEffort` 报告，
-  并假定 workload 配合（持 fd 的进程可主动解锁）。stdio 探测只有一次直接 spawn、一条线索。
+- 记录后、spawn 前崩溃留下已刷盘且空闲的锁，证明未启动；证据按 `StopContainment::BestEffort` 报告
+  （进程组 + 继承锁 + 尝试环境标记），并假定 workload 配合（持 fd 的进程可主动解锁，清空环境后成为孤儿的后代
+  不在证据内）。stdio 探测只有一次直接 spawn、一条线索。
+- Linux 上 spawner 给尝试派发的每个进程最后写入 `ORA_SESSION_ATTEMPT=<attempt>`，调用方的环境不能去掉它；
+  范围记录 `<attempt>.mark`（`since_ticks`、`uid`）与锁标记一起在登记前刷盘，账本登记时带范围记录标志。
+- 标记扫描只认领尝试开始后启动、带标记或父进程已被认领的存活进程；停止时先经 pidfd 冻结（至多 32 轮）再全部
+  杀掉，然后才终止线索进程组。
+- 带标志的尝试另需连续两次扫描既无被认领进程也无待定进程，才确认停止并记 `lock_processes_and_marks`。
+- 尝试用户的孤儿进程在 Node 同用户下读不到环境时不认领，也不使证据为 Unknown；Node 与 workload 不同用户且没有
+  `CAP_SYS_PTRACE` 时，该用户读不到的进程为待定，证据为 Unknown。Node 启动时检查这一部署前提，不满足时告警、
+  照常启动。
 
 ### 禁止结果
 
 - 宿主子进程不持锁；任一持锁进程或任一线索的直接进程存活时判 Stopped；无锁/线索证据却仅凭停止调用结果显示已停止；
   停止请求后仍有宿主 spawn 成功；锁泄漏给其他线程并发 spawn 的进程；把 BestEffort 报成 Strong。
+- 仍有被标记扫描认领的存活进程时判 Stopped；单次扫描干净即确认；先组杀后扫描，使清空环境的子进程成为孤儿；
+  向尝试开始前启动的进程或 PID 复用的进程发信号；同用户读不到环境的无关进程让停止变为 Unknown；部署前提不满足
+  时拒绝启动。
 
 ### 验证义务与证据
 
@@ -497,6 +518,12 @@ spawner 为插件运行时与全部宿主子进程共用。
 | 停止后拒绝 spawn | 停止请求后插件的宿主 spawn 请求被拒绝的测试 | Covered |
 | 登记与 spawn 的崩溃窗口 | 登记后、spawn 前崩溃重启得到空闲锁并确认未启动的测试 | Covered |
 | 锁不泄漏 | 并发 spawn 的无关进程不继承锁 fd 的测试 | Partial |
+| 每个进程带标记 | 宿主派发的每个进程（含调用方清空环境的）都带标记、范围记录与标志在登记前已持久化的测试 | Missing：待 desktop#802 合并 |
+| 脱组作业由标记覆盖 | `setsid` 后以 `&` 起、关闭锁 fd 的作业存活时判 Running，停止后被杀，确认记 `lock_processes_and_marks` 的测试 | Missing：待 desktop#802 合并 |
+| 冻结先于杀与组终止 | 冻结期间 fork 并清空环境的子进程经父进程被认领并杀掉的测试 | Missing：待 desktop#802 合并 |
+| 窗口与 PID 复用 | 尝试开始前启动的带标记进程、PID 复用的进程不被发信号的测试 | Missing：待 desktop#802 合并 |
+| 连续两次扫描 | 第一次扫描干净而第二次见到被认领进程时不确认的测试 | Missing：待 desktop#802 合并 |
+| 读不到的进程与部署前提 | 同用户不可读孤儿不认领也不导致 Unknown、外用户无 `CAP_SYS_PTRACE` 下不可读进程为 Unknown、不满足前提时启动告警且照常服务的测试 | Missing：待 desktop#802 合并 |
 
 ### 代表性证据与剩余缺口
 
@@ -507,11 +534,63 @@ Node 侧验收：`Partial`。
 - [a_durable_unstarted_lock_is_proof_but_missing_corrupt_or_foreign_boot_evidence_is_not](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L189)。
 - [stop_wait_keeps_original_bound_and_does_not_treat_request_failure_as_proof](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L13)。
 
-锁/线索和停止 helper 有直接测试；缺经生产 driver 注入 stop_plugin 错误仍等待原期限的路径（N-1），以及真实插件、Node 崩溃、各子组与并发无关 spawn 的完整组合。kill_all / stop_plugin 返回只作诊断，成功和失败都不能替代停止证据。
+锁/线索和停止 helper 有直接测试；缺经生产 driver 注入 stop_plugin 错误仍等待原期限的路径（N-1），以及真实插件、Node 崩溃、各子组与并发无关 spawn 的完整组合。kill_all / stop_plugin 返回只作诊断，成功和失败都不能替代停止证据。尝试环境标记的六项义务没有已合入证据，待 desktop#802 合并后登记。
 
 ### 决策依据
 
-D5“停止证据与记录”，不变量 7；扩展 Node 直接执行 Git 的尝试锁机制。
+D5“停止证据与记录”，不变量 7；扩展 Node 直接执行 Git 的尝试锁机制；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D1–D3、D6，不变量 1–5、11。
+
+## A Session Stop Kills Every Attempt-Marked Process And Turns Kill None
+
+### 风险
+
+Agent 工具起的后台作业（`cmd &`、`setsid`）在会话结束后仍写工作区，而停止被记为 `confirmed`（circus #1350）；
+反过来，轮次之间或保留会话的取消杀掉 LSP、MCP 等常驻进程；嵌套 Node 覆盖外层标记，外层停止漏掉内层的进程；
+伪造的标记让 Node 杀到尝试开始前就存在的进程，或产生假的停止证据。
+
+### 前置状态
+
+Linux；部署的 OpenCode 与 Claude Agent 插件；工具 shell 起了后台作业，会话中还有开发服务器、语言服务与共享
+守护进程；可能有在会话里运行的嵌套 Node；同 uid 的其他进程可以读到标记。
+
+### 触发
+
+EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、Node 被 SIGKILL 后的重启收口；一轮正常完成；会话被
+保留的取消或失败；外层尝试停止；伪造者持续启动带标记的进程。
+
+### 必须成立
+
+- 每种会话结束方式下，两个部署插件的后台作业（`cmd &` 与 `setsid`）都在 Node 报告停止之前被杀，之后不再写入；
+  作业存活时不记 `confirmed`。
+- 被杀的包括开发服务器、文件监视进程、MCP 与语言服务，以及会话中启动的共享守护进程，即使其他会话仍在使用。
+- 一轮正常完成后，以及会话被保留的取消或失败之后，Node 不发任何冻结或杀信号，带标记的常驻进程跨轮次存活。
+- 嵌套 Node 给子进程的值为 `外层:attempt`；外层尝试停止时内层 Node 及其全部尝试的进程被杀；内层 Node 只认领
+  列出自己 token 的进程。
+- 伪造标记的进程只有在尝试开始之后启动的才会被认领；持续伪造只把确认拖到 `stop_unconfirmed`，不产生停止证据。
+
+### 禁止结果
+
+- 会话报告停止后后台作业仍写入；作业存活时停止被确认；轮次之间或保留会话的取消杀掉常驻进程；内层 Node 覆盖
+  外层 token，或认领外层尝试的进程；伪造使 Node 向尝试开始前的进程发信号，或使确认提前。
+
+### 验证义务与证据
+
+| 义务 | 所需直接证据 | 状态 |
+|---|---|---|
+| 每种结束方式都杀后台作业 | 两个部署插件分别在 EndSession、导致会话结束的取消、Node 优雅关闭、SIGKILL 后重启下，`cmd &` 与 `setsid` 作业在停止报告前退出、之后不再写入的真实 Node 测试 | Missing：待 desktop#802 合并 |
+| 守护进程随会话结束 | 会话中启动、其他会话仍在使用的守护进程随该会话结束被杀的测试 | Missing：待 desktop#802 合并 |
+| 轮次之间与保留会话不杀 | 一轮正常完成后、会话被保留的取消之后带标记的常驻进程仍存活的测试 | Missing：待 desktop#802 合并；取消部分另依赖取消决策的实现 |
+| 嵌套 Node 标记链 | 外层停止杀掉内层 Node 的全部进程、内层停止不触及外层其他进程的测试 | Missing：待 desktop#802 合并 |
+| 伪造标记的边界 | 尝试开始前启动的带标记进程不被发信号、持续伪造时确认不提前而转为 `stop_unconfirmed` 的测试 | Missing：待 desktop#802 合并 |
+
+### 代表性证据与剩余缺口
+
+尚无已合入证据。desktop#802 的真实 Node 后台作业测试与标记单测合入 main 后登记；两个部署插件在四种结束方式下的
+真实复测由后续运行完成。保留会话的取消一项还需要取消决策的实现。macOS 与 Windows 不在本用例范围内。
+
+### 决策依据
+
+[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4、D5、D8，不变量 7、8；本文决策 D5“终态、转交与门禁”。
 
 ## Restart Recovery Confirms A Stop Only On The Same Kernel Or The Same Host
 
@@ -535,6 +614,9 @@ Node 重启后把“锁可取得”在另一台主机上当作停止证据；boo
 
 - boot_id 相同：锁可取得且全部线索的直接进程都已不在时按 BestEffort 立即确认并结算 interrupted；锁被占用
   或任一直接进程存活时按已验证线索终止后再查；锁缺失、损坏或不可读为 Unknown。
+- 同一 boot 上，带范围记录标志的尝试另需连续两次标记扫描干净才确认并记 `lock_processes_and_marks`；仍有被认领的
+  进程时先冻结并杀掉、再终止线索进程组，然后再查；不带标志的旧尝试不扫描，记 `lock_and_processes`；带标志而
+  范围记录缺失或损坏、procfs 不可读、扫描有待定进程时为 Unknown。
 - boot_id 不同且记录的主机标识与当前相同：同机重启，可记录宿主重启证据确认。
 - boot_id 不同且主机标识不同、缺失或不可信：Unknown，交给 `recheck` / 对账，除非部署声明单点挂载与重新
   挂载前隔离。容器镜像自带、各实例相同或为空的 machine-id 不算主机标识。
@@ -544,6 +626,8 @@ Node 重启后把“锁可取得”在另一台主机上当作停止证据；boo
 
 - 跨主机或缺主机标识时自动确认停止；PID 复用或 boot 不符时按线索发信号；锁缺失被当成未启动；重启重置
   停止时钟或返还探测额度。
+- 残留的带标记作业未被杀就确认；带标志的尝试在范围记录缺失时降级为 `lock_and_processes`；不带标志的旧尝试被记成
+  `lock_processes_and_marks`。
 
 ### 验证义务与证据
 
@@ -554,6 +638,8 @@ Node 重启后把“锁可取得”在另一台主机上当作停止证据；boo
 | 跨主机不确认 | 主机标识不同或缺失时保持 Unknown、声明单点挂载后才确认的测试 | Partial |
 | 锁缺失为 Unknown | 删除或损坏锁文件后保持 Unknown 并转交对账的测试 | Covered |
 | 时钟与恢复顺序 | 多次重启后 first_stop_at_ms 不变、围栏先于准入恢复的测试 | Partial |
+| 重启收口杀残留作业 | Node 被 SIGKILL 后留下的脱组作业在重启收口中被杀、之后才确认的测试 | Missing：待 desktop#802 合并 |
+| 范围记录与标志 | 带标志而 `.mark` 缺失或损坏为 Unknown、procfs 不可读为 Unknown、不带标志的旧尝试记 `lock_and_processes` 的测试 | Missing：待 desktop#802 合并 |
 
 ### 代表性证据与剩余缺口
 
@@ -563,11 +649,11 @@ Node 侧验收：`Partial`。
 - [a_durable_unstarted_lock_is_proof_but_missing_corrupt_or_foreign_boot_evidence_is_not](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L189)。
 - [restart_preserves_clock_identity_terminal_intent_and_resource_fence](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/crates/node-db/src/tests/session/stop.rs#L94)。
 
-原时钟和身份持久性、缺锁、跨主机拒绝有证据；真实卷迁移、单点挂载声明与重启恢复/准入排序的全路径仍缺。不能把直接函数或数据库重开当作完整宿主重启实验。
+原时钟和身份持久性、缺锁、跨主机拒绝有证据；真实卷迁移、单点挂载声明与重启恢复/准入排序的全路径仍缺。不能把直接函数或数据库重开当作完整宿主重启实验。标记扫描与范围记录标志的两项义务待 desktop#802 合并后登记。
 
 ### 决策依据
 
-D5 重启证据表与主机标识段，不变量 6、7。
+D5 重启证据表与主机标识段，不变量 6、7；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D1、D3，不变量 2、3。
 
 ## Terminal Waits For Stop Evidence And Expiry Hands Over As Stop Unconfirmed
 
@@ -708,11 +794,16 @@ D5 门禁表与交付说明，不变量 10；扩展共享 checkout 决策 D2，�
   未结束名额；只有启动收口、`recheck` 或 `after-host-reboot` 核实同机重启（参照主机标识相同、boot_id 已变），
   或部署的单点挂载保证，才结算为 interrupted；不能单凭“现在找不到进程”解除；缺证据时可能始终没有终态。
 - 不支持原地回滚旧二进制 / schema 或把账本恢复到旧备份。
+- 同一 boot 的 `lock_and_processes` 与 `lock_processes_and_marks` 都不能解除 `legacy_unknown`。
+- 停止责任表的迁移在一个事务中重建表：放宽证明 CHECK 接受 `lock_processes_and_marks`，新增范围记录标志列，全部行
+  保留且不带标志；版本排在 desktop#793 所用 schema 版本之后；旧 Node 拒绝打开新库。未排空升级时早于标记的存活
+  尝试保持 `lock_and_processes`，不新增规则。
 
 ### 禁止结果
 
 - 未排空时拒绝启动；迁移后才做排空检查；旧会话被直接结算 interrupted；accepted 旧执行被标
   `legacy_unknown`；`recheck` 仅因找不到进程就解除；回滚路径被接受。
+- 以 `lock_processes_and_marks` 解除 `legacy_unknown`；迁移丢行、改写既有证明或给旧行补上标志。
 
 ### 验证义务与证据
 
@@ -722,6 +813,8 @@ D5 门禁表与交付说明，不变量 10；扩展共享 checkout 决策 D2，�
 | legacy_unknown 登记范围 | 迁移后 running 旧会话有 `legacy_unknown` 及参照主机 / boot，accepted 与已完成的没有的测试 | Covered |
 | 围栏与出口 | legacy_unknown 挡恢复与自身交付、不挡普通会话，同机重启或单点挂载声明后才 interrupted 的测试 | Partial |
 | 不可回滚 | 旧二进制拒绝新 schema、备份回滚流程被拒的测试 | Missing |
+| 新证明不解除 legacy_unknown | 账本拒绝以 `lock_processes_and_marks` 确认 `legacy_unknown` 的测试 | Missing：待 desktop#802 合并 |
+| 标记迁移保留记录 | 上一版数据库升级后全部停止行原样保留且不带标志、旧表拒绝新证明而新表接受的迁移测试 | Missing：待 desktop#802 合并 |
 
 ### 代表性证据与剩余缺口
 
@@ -734,7 +827,7 @@ Node 侧验收：`Partial`。
 
 ### 决策依据
 
-D5“回收、部署与兼容”（升级段），沿用恢复迁移的 `legacy_unknown` 先例；R5、R9。
+D5“回收、部署与兼容”（升级段），沿用恢复迁移的 `legacy_unknown` 先例；R5、R9；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D3、D7，不变量 6、10。
 
 ## Operator Reconciliation Is Root-Only Audited And Never Forces A Release
 
@@ -759,10 +852,10 @@ Stopped；`after-host-reboot` 遇到同机重启、换主机、缺主机标识�
 - 入口是运行中 Node 提供的 root-only Unix socket，以 `SO_PEERCRED` 取得对端 UID 并只接受 UID 0；CLI 只是
   客户端，不另开数据库；每次明确 execution、原 attempt、幂等 request_id 与 reason_code，不按模糊 PID 或
   目录批量释放。
-- `recheck` 至多 10 秒核对原锁与全部线索，得到 Stopped 才确认，否则不刷新首次停止时间、不释放许可；对
-  `legacy_unknown` 只重新核对同机重启条件。
+- `recheck` 至多 10 秒核对原锁、全部线索与尝试标记扫描，必要时冻结并杀掉被认领的进程，得到 Stopped 才确认，
+  否则不刷新首次停止时间、不释放许可；对 `legacy_unknown` 只重新核对同机重启条件。
 - `after-host-reboot` 只在自动收口未确认时使用，按重启证据表同一规则核对；主机不同、缺主机标识或同 boot
-  缺锁都拒绝。
+  缺锁都拒绝；`lock_and_processes` 与 `lock_processes_and_marks` 都是同一 boot 的证明，不被它接受。
 - 先写审计请求再执行，完成后写结果（操作者 UID、request_id、原身份、原因码、证据类型、前后状态、释放的
   资源）；审计写入失败则不提交解除；重复 request_id 返回同一结果，输入不同为冲突；崩溃后重新查证。
 - 已确认且无引用的停止明细满 7 天后每小时分批（每批最多 1,000 条）回收；未确认记录永不按年龄删除；
@@ -771,7 +864,7 @@ Stopped；`after-host-reboot` 遇到同机重启、换主机、缺主机标识�
 ### 禁止结果
 
 - 非 root 或自报 UID 成功；第二进程打开数据库；无证据解除围栏或返还名额；审计含秘密、命令行或自由文本；
-  先删证据后提交确认；未确认记录被回收。
+  先删证据后提交确认；未确认记录被回收；`recheck` 在仍有被认领进程时确认；`after-host-reboot` 以同一 boot 的证明解除。
 
 ### 验证义务与证据
 
@@ -782,6 +875,8 @@ Stopped；`after-host-reboot` 遇到同机重启、换主机、缺主机标识�
 | `after-host-reboot` 语义 | 同机重启确认、换主机与缺主机标识拒绝的测试 | Partial |
 | 审计与幂等 | 审计写入失败不解除、重复 request_id 同结果、崩溃后重新查证的测试 | Partial |
 | 记录回收 | 7 天后回收已确认记录、保留未确认与被引用记录、审计 90 天的测试 | Covered |
+| `recheck` 扫描标记 | `recheck` 冻结并杀掉被认领进程、扫描不干净时不确认的测试 | Missing：待 desktop#802 合并 |
+| `after-host-reboot` 拒绝同 boot 证明 | `after-host-reboot` 拒绝 `lock_and_processes` 与 `lock_processes_and_marks` 的直接测试 | Missing：待 desktop#802 合并 |
 
 ### 代表性证据与剩余缺口
 
@@ -795,7 +890,7 @@ root socket 用例默认 #[ignore]，只在显式 root 环境运行；数据库�
 
 ### 决策依据
 
-D5“留审计记录的运维对账”与“回收、部署与兼容”首段；R5、R10。
+D5“留审计记录的运维对账”与“回收、部署与兼容”首段；R5、R10；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D3，不变量 6。
 
 ## Probes Start Their Budget At The Permit And Never Abandon Cleanup
 
@@ -825,11 +920,13 @@ checkout 绝对 cwd 已知。
   最高 attempt；自动触发用 0。新 generation 不复用旧健康，晚到结果不写回当前成员。
 - 预算内停止未确认时给出 `mcp_probe_timeout` 与 cleanup_pending，保留名额、租约、view 并登记停止责任；
   恢复出的未确认探测计入额度；名额全被占用时显示“探测容量不可用”。
+- stdio 探测尝试的进程同样带自己的尝试标记；清理时先冻结并杀掉被认领的进程，再终止进程组，确认按尝试环境标记决策 D3 记
+  `lock_processes_and_marks`。
 
 ### 禁止结果
 
 - 排队成员被判超时；探测继承 Node 管理密钥或全量环境；同身份并发两次外连；旧结果覆盖当前身份；未确认
-  清理释放名额或重启返还；探测进程加入 Agent 组或杀死兄弟。
+  清理释放名额或重启返还；探测进程加入 Agent 组或杀死兄弟；探测清理认领 Agent 尝试的带标记进程。
 
 ### 验证义务与证据
 
@@ -840,6 +937,7 @@ checkout 绝对 cwd 已知。
 | attempt 与 single-flight | 相同 / 更小 / 更大 attempt 与 Controller 丢计数后先查询再增号的测试 | Partial |
 | 清理责任与容量 | 不可回收的探测保持 cleanup_pending 占名额、重启后仍计入、8 个占满时诊断可见的测试 | Partial |
 | 直接 child 与同组后代清理 | 超时后直接子进程与同组后代都已退出的测试，不只断言返回 timeout | Covered |
+| 脱组后代清理 | stdio 探测脱离进程组的带标记后代在清理中被杀、Agent 尝试的进程不受影响的测试 | Missing：待 desktop#802 合并 |
 
 ### 代表性证据与剩余缺口
 
@@ -856,7 +954,7 @@ Node 侧验收：`Partial`。
 
 ### 决策依据
 
-D7（身份、attempt、结果模型）、D8，不变量 8；继承 Desktop Host 健康探测的完整握手。
+D7（身份、attempt、结果模型）、D8，不变量 8；继承 Desktop Host 健康探测的完整握手；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D1、D2、D4。
 
 ## HTTP Probes Follow No Redirect Use No Proxy And Read At Most One MiB
 

@@ -88,14 +88,17 @@ Controller 侧的发送前镜像校验与按能力派发在 [Controller 用例](
 ## 会话 MCP 刷新与宿主健康
 
 [会话 MCP 刷新与宿主健康决策](../../decisions/node/agent-runtime/20261116-session-mcp-refresh-and-host-health.md)于
-Node 侧已实现为 `implemented`。17 条核心用例分别维护直接证据与缺口，Node 侧验收 4、5、6、8、12 为 Passed；
+Node 侧已实现为 `implemented`。18 条核心用例分别维护直接证据与缺口，Node 侧验收 4、5、6、8、12 为 Passed；
 不把 Node 合入或验收通过外推为 Controller/v2 全链完成，也不把默认 ignored 的 root 用例算作 CI 通过。
 [显式 Session MCP 用例](agent-runtime/session-mcp.md)、[共享 checkout 会话用例](agent-runtime/shared-checkout-sessions.md)与
 [尝试锁用例](git-execution/attempt-locks-and-stop-evidence.md)的证据保持原范围，不推导本文的新义务。
+[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)为
+`approved`，在同一文件新增“会话停止杀掉全部带标记进程”用例，并在另外六个用例中补充义务；实现 desktop#802 尚未
+合入 main，这些新增义务全部为 `Missing`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| agent-runtime | [会话 MCP 刷新与宿主健康](agent-runtime/session-mcp-lifecycle.md) | 刷新扩大白名单或发送部分列表、旧 generation 回滚目标、Setting 值进入账本/日志/停止记录、准入前结算 Executed 或 MCP 门禁结束 execution、受阻轮次无界等待、刷新失败后以 session/new 重建、同一进程 load 无界累积或升级不重启、在用包版本被删、宿主子进程不持锁被判已停止、跨主机凭 boot_id 确认停止、残留挡住普通后继或放行恢复、未排空升级起不来或旧会话被直接结算、无证据的运维释放、排队探测被判超时或清理被遗弃、HTTP 探测随跳转或代理外发秘密、三层状态互相冒充 |
+| agent-runtime | [会话 MCP 刷新与宿主健康](agent-runtime/session-mcp-lifecycle.md) | 刷新扩大白名单或发送部分列表、旧 generation 回滚目标、Setting 值进入账本/日志/停止记录、准入前结算 Executed 或 MCP 门禁结束 execution、受阻轮次无界等待、刷新失败后以 session/new 重建、同一进程 load 无界累积或升级不重启、在用包版本被删、宿主子进程不持锁被判已停止、脱组后台作业活过会话结束或被判已停止、轮次之间杀掉常驻进程、跨主机凭 boot_id 确认停止、残留挡住普通后继或放行恢复、未排空升级起不来或旧会话被直接结算、无证据的运维释放、排队探测被判超时或清理被遗弃、HTTP 探测随跳转或代理外发秘密、三层状态互相冒充 |
 
 ## Node 承载的宿主 MCP
 
@@ -114,7 +117,9 @@ Partial。只能由 Controller 验证的义务在
 [取消一轮决策](../../decisions/node/protocol/20261116-cancel-turn-and-keep-session-after-turn-ends.md)为 `approved`，
 尚未实现。30 条核心用例与决策的 30 条验证义务一一对应，状态均为 `Missing`。会话命令与事件的既有规则见
 [Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
-[会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。
+[会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。用例 11、12、13
+另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
+带来的义务，同样为 `Missing`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
