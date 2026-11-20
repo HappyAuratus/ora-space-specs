@@ -16,7 +16,7 @@ ADR 为 `approved`，尚无新增承诺的直接实现证据；下列义务均�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 三平台正式包在所有失败条件下启动、本地编辑与真实 Agent 运行正常 | 尚无对应故障矩阵 | `Missing` |
+| Windows 与 Linux 正式包在所有失败条件下启动、本地编辑与真实 Agent 运行正常 | 尚无对应故障矩阵 | `Missing` |
 | 错误原因区分、恢复异步且不重放消息/任务 | 尚无宿主集成证据 | `Missing` |
 
 ## Only The Host Owns Secrets And A Single Login Transaction
@@ -32,7 +32,7 @@ ADR 为 `approved`，尚无新增承诺的直接实现证据；下列义务均�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 三平台系统安全存储、失败处理及秘密输出检查 | 尚无直接证据 | `Missing` |
+| Windows 与 Linux 系统安全存储、失败处理及秘密输出检查 | 尚无直接证据 | `Missing` |
 | 跨窗口/进程唯一登录与续期所有者，插件不能读取秘密 | 尚无并发/权限测试 | `Missing` |
 
 ## Callbacks Cannot Change The Initiating Server Or Transaction
@@ -50,7 +50,7 @@ ADR 为 `approved`，尚无新增承诺的直接实现证据；下列义务均�
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
 | 全部错误绑定/重放/并发拒绝及切换取消事务 | 尚无状态机证据 | `Missing` |
-| 三平台正式包双回调、开发/正式与多实例隔离 | 尚无真实浏览器交接证据 | `Missing` |
+| Windows 与 Linux 正式包双回调、开发/正式与多实例隔离 | 尚无真实浏览器交接证据 | `Missing` |
 | loopback 监听范围、路径/次数限制及所有路径资源释放 | 尚无真实 socket 生命周期证据 | `Missing` |
 
 ## Transport Trust And Deployment Identity Are Checked Independently

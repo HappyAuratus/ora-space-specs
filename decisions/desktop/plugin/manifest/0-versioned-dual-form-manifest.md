@@ -9,6 +9,11 @@ status: implemented
 
 > 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。D4 的配对表与正文枚举只列了前六种，以这两份决策为准；`pack` 与 `workflow` 都没有专属 section，也都不允许 target 形态。
 
+> 历史决策：D5、不变量 1 与 7、“本决策未解决的问题”中的 `HookTarget` 白名单已由[Ora Desktop 只支持 Windows 和 Linux](../../platform/0-windows-and-linux-only.md)
+> D4 修改：两个 `*-apple-darwin` triple 移出白名单，归入退役集合并单独报告；release 清单的退役项在 target 解析处
+> 丢弃，不进入域对象，其 `url`/`sha256` 取值不校验、重复不报错（结构与必填字段仍按不变量 3 检查）；只剩退役项时
+> 没有发布来源；installed 清单的退役 `[artifact].target` 被拒绝。不变量 8 不变；其余决策与状态 `implemented` 不变。
+
 **release `url` 的类型已由
 [Source 级插件包获取决策](../registry/20260904-source-configured-artifact-retrieval.md) 修改**：字段名保持不变，
 但其值现在是 HTTPS URL 或对象 key 的 `ReleaseLocator`；具体相容性由所属 Marketplace Source 的

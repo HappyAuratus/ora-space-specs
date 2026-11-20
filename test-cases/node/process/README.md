@@ -7,7 +7,9 @@ host／guardian 体系已被 [Node 直接执行 Git 决策](../../../decisions/n
 26 个用例只服务被取代的决策，已经删除，子目录为保持镜像而保留。取代者的用例见
 [Node 直接执行 Git 的核心用例](../git-execution/attempt-locks-and-stop-evidence.md)。
 
-containment 的四份决策保持 `approved`，它们的 10 个用例继续保留。
+containment 中 guarantees、linux、windows 三份决策保持 `approved`，它们的 8 个用例继续保留。macOS 的决策已被
+[Ora Desktop 只支持 Windows 和 Linux](../../../decisions/desktop/platform/0-windows-and-linux-only.md) 取代，它的 2 个用例
+只服务该决策，已经删除，`containment/macos` 子目录为保持镜像而保留。
 
 ## 用例导航
 
@@ -16,12 +18,11 @@ containment 的四份决策保持 `approved`，它们的 10 个用例继续保�
 | [containment/guarantees](containment/guarantees/capability-and-evidence.md) | 实际能力与清理证据 | 2 |
 | [containment/linux](containment/linux/cgroup-ownership-and-cleanup.md) | Linux 创建纳管、部署权限、无特权尽力清理边界 | 4 |
 | [containment/windows](containment/windows/job-ownership-and-cleanup.md) | Windows Job 归属与退出证据 | 2 |
-| [containment/macos](containment/macos/native-cleanup-and-identity.md) | macOS 原生尽力清理与身份复用 | 2 |
 
 ## 证据状态与当前范围
 
 containment 的用例描述 Strong 纳管和各平台纳管的长期方向，生产只有 Node 直接执行 Git 的 BestEffort。它们原有的
-证据来自 `process-runtime` 和 `ora-process-helper` 的测试，这些代码已随 host／guardian 一起删除，10 个用例的义务
+证据来自 `process-runtime` 和 `ora-process-helper` 的测试，这些代码已随 host／guardian 一起删除，8 个用例的义务
 现在都没有直接证据，状态均为 Missing，作为将来强纳管落地时的验收输入保留。
 
 Covered 表示义务有直接证据；Partial 保留组合或平台缺口；Missing 没有直接证据。特权测试被忽略时不算通过。

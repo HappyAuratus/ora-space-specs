@@ -4,6 +4,10 @@ status: approved
 
 # 启动前声明实际纳管保证，按证据区分清理结果
 
+> 历史决策：平台实现列表中的 macOS 已由[Ora Desktop 只支持 Windows 和 Linux](../../../../desktop/platform/0-windows-and-linux-only.md) D5 移除，
+> macOS 决策整份被取代，平台实现只剩 Linux 和 Windows。正文以原生 macOS 为例的背景与替代方案理由作为历史记录保留，
+> 不构成平台承诺；D1–D3 与不变量不变，本决策状态 `approved` 不变。
+
 Scope 在业务启动前确定并保存实际纳管保证。强能力不足时按请求拒绝或预先降级；已按强模式
 启动后不能在清理失败时降低标准。强静止、尽力清理完成和清理未完成／未知分别报告。
 

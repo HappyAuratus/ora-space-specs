@@ -167,6 +167,15 @@ acme-plugins.3f9a1c2d/image-tools
 source URL 的等价写法可以归一化到同一个 source 身份，但 URL 写法的变化不能改写已经落盘的
 canonical Plugin ID。
 
+### Retired Target（退役 target）
+
+退役 target 是 Ora 已经不再发布、但仍可能出现在已发布插件清单里的平台 target triple，当前是 `x86_64-apple-darwin`
+与 `aarch64-apple-darwin`（见[支持平台决策](../decisions/desktop/platform/0-windows-and-linux-only.md) D4）。它不是未知
+拼写：release 清单里的退役项被丢弃，不让整份清单失效；installed 清单自述退役 target 时被拒绝。任何宿主都不会选中
+退役 target。
+
+_Avoid_: 不支持的 target（指白名单外的未知 triple，仍是清单错误）
+
 ## Personal Model Access
 
 本节统一个人模型设置与 Agent 运行中的领域语言；接口和实现决策见对应 ADR。

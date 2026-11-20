@@ -1,8 +1,10 @@
 ---
-status: approved
+status: superseded
 ---
 
 # macOS 原生执行并明确采用尽力纳管
+
+> 已被取代：本决策由 [Ora Desktop 只支持 Windows 和 Linux](../../../../desktop/platform/0-windows-and-linux-only.md) 取代，原因：owner 于 2026-11-20 决定 Ora Desktop 不再支持 macOS，v0.6.0 是最后一个 macOS 版本；本决策从未实现，新的运行体系一直没有 macOS adapter。当前系统承诺以取代者为准，不再有未来的 macOS 纳管 ADR。正文里链接的核心用例只服务本决策，已随取代一并删除，链接不再有效。
 
 macOS 原生运行本机 Git 与插件，以 guardian、进程组和后代跟踪组合提供经验证的尽力清理。
 不以 Linux VM 替代原生执行，也不将进程组清空宣称为全部历史后代退出。

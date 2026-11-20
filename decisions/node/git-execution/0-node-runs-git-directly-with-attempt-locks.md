@@ -4,6 +4,11 @@ status: implemented
 
 # Node 直接执行自己的 Git：进程组终止，尝试锁给出停止证据，重启先收口，取代 host／guardian
 
+> 历史决策：Desktop 不再支持 macOS，见[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)。
+> 开头“平台”一条、D6 平台表的 macOS 一列、“保持有效”中的 macos 与“本决策未解决的问题”中的 macOS 落地均已作废：
+> Node 的平台只有 Linux（已实现）和 Windows（给出机制、未实现），`node/process/containment/macos` 已改为 `superseded`。
+> 替代方案表里提到 macOS 的理由作为历史记录保留。其余决策与状态 `implemented` 不变。
+
 Node 自己执行的 Git（clone、续作恢复、Revision 交付和 `ora-git`）不再经过 host 和 guardian，改由 Node 用
 `ora-process` 直接启动。每条有副作用的命令在派发前拿到一把**尝试锁**：一个只有 Node 能打开的锁文件，git 和它的
 所有后代继承这把锁。之后只要还能重新加上锁，就说明原命令那棵进程树已经没有进程在运行，这就是业务层需要的

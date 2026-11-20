@@ -7,7 +7,9 @@ implemented 仅表示对应 ADR 收紧后的承诺已实现和验证，不表示
 **host／guardian 已被取代。**Node 自己的 Git 改为由 Node 直接执行，见
 [Node 直接执行自己的 Git](../git-execution/0-node-runs-git-directly-with-attempt-locks.md)。本目录下 architecture、
 control、lifecycle、recovery、io、protocol、persistence、upgrade、integration 的决策整份标为 `superseded`，正文作为
-历史记录保留；containment 的决策保持 `approved`，继续定义保证等级和各平台的强纳管方向。下面各节描述的是被取代的
+历史记录保留；containment 中 guarantees、linux、windows 的决策保持 `approved`，继续定义保证等级和各平台的强纳管
+方向。macOS 的决策已被[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)取代，
+纳管平台只剩 Linux 和 Windows。下面各节描述的是被取代的
 体系；取代者已经实现，desktop 里的 host、guardian、helper 和 process 的 runtime、protocol、client 代码已经删除。
 
 本次直接修订既有 ADR 是 Eric 的明确要求；保留未来设计方向和验证缺口，不创建一批空白未来 ADR。
@@ -26,7 +28,7 @@ control、lifecycle、recovery、io、protocol、persistence、upgrade、integra
 | [Linux cgroup](containment/linux/0-cgroup-v2-containment.md) | approved | 获批方向，Strong 后续 ADR 负责实施和验收 |
 | [Linux helper](containment/linux/20260917-independent-privileged-helper.md) | approved | 预检／inspect／底层降权已有部分实现，不是 Strong 闭环 |
 | [Windows](containment/windows/0-creation-time-job-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
-| [macOS](containment/macos/0-native-best-effort-containment.md) | approved | 新运行体系无该平台 adapter；未来 ADR 负责 |
+| [macOS](containment/macos/0-native-best-effort-containment.md) | superseded | Desktop 不再支持 macOS；从未实现，不再有未来 ADR |
 | [io](io/0-bounded-output-and-fenced-input.md) | superseded | 丢弃／有界内存输出、偏移读取、控制隔离；stdin 关闭 |
 | [protocol](protocol/0-independent-local-streams-and-state-recovery.md) | superseded | 有界本机请求／查询；无订阅／结果接管协议 |
 | [persistence](persistence/0-independent-journals-and-responsibility-retirement.md) | superseded | 独立 WAL／FULL；完整存储故障矩阵未齐，无退休回收 |
@@ -39,7 +41,7 @@ control、lifecycle、recovery、io、protocol、persistence、upgrade、integra
 |---|---|---|
 | Controller 授权、密钥／令牌、Node 代次、租约、角色与同 UID 隔离 | control | 信任本机 Node，不提供此安全保证 |
 | Linux Strong、helper 启动 IPC／持久协调、权限隔离及独立清理 | containment/linux | rootless BestEffort；不自动安装或提权 |
-| Windows Job 与 macOS 原生 adapter、身份复用和强杀证明 | containment/windows、containment/macos | 不从旧 crates CI 推导支持 |
+| Windows Job adapter、身份复用和强杀证明 | containment/windows | 不从旧 crates CI 推导支持 |
 | 插件双向 I/O、输入交付未知、终端、背压／日志轮转、持久输出 | io | stdin 关闭，有界易失输出 |
 | 事件订阅、快照游标、多观察者、process 完成结果接管 | protocol | 查询原身份，不把 Events 端点当订阅 |
 | 结果责任解除、guardian／Scope 退休、GC 和旧身份拒绝压缩 | persistence | 保留记录与 guardian；成本可能持续增长 |
