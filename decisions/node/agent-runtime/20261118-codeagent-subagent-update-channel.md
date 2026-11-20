@@ -17,7 +17,7 @@ status: implemented
 D2 与 D4 依据 `codeagentcli 1.2615.02.05` / ACP `1.2605.00` 启用
 `CODEAGENT3_ACP_SUBAGENT_CHANNEL=true` 后的真实带时间戳帧序列锁定，对应核心验证义务与直接证据登记在
 [子代理投影、终态缺口与运行诊断](../../../test-cases/node/agent-runtime/child-projection-and-diagnostics.md)，
-尚未覆盖的端到端与 `session/load` 排空等缺口如实保留。
+包括 `session/load` 排空回放和恢复后记录实时更新的直接证据。剩余缺口逐项保留在用例里。
 真实帧由直连 CodeAgentCLI 的采集脚本（ACP 客户端 `ora-capture`，`codeagent --acp`，stdio 管道）
 采得，**没有经过 Ora 的连接层，也没有 `PromptLiveness` 计时**；采集包含完整前台委托、委托开始后
 取消、以及新进程 `session/load` 回放三段，没有采到子代理授权请求和嵌套委托。影响 `ora-acp`、

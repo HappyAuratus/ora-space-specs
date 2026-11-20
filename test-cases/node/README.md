@@ -50,7 +50,9 @@
 [子代理投影来源决策](../../decisions/node/agent-runtime/20261020-child-projection-history-and-diagnostics.md)为
 `implemented`，核心用例按现有测试登记证据并保留缺口；
 [CodeAgent _subagent/update 子代理进度通道决策](../../decisions/node/agent-runtime/20261118-codeagent-subagent-update-channel.md)为
-`implemented`，其新增的 11 项义务按 [desktop#783](https://github.com/ora-space/desktop/pull/783)（`1211708d`）登记证据状态（3 项 `Covered`、7 项 `Partial`、1 项 `Missing`），尚未覆盖的端到端与 `session/load` 排空等缺口逐项保留在用例里。
+`implemented`，其新增的 11 项义务按 [desktop#783](https://github.com/ora-space/desktop/pull/783)（`1211708d`）登记，
+并补入 [desktop#800](https://github.com/ora-space/desktop/pull/800)（合并提交 `217942ec`）的 `session/load` 回放隔离证据。
+现有 4 项 `Covered`、7 项 `Partial`，无 `Missing`。剩余缺口逐项保留在用例里。
 [会话执行用例](agent-runtime/session-execution.md)与[静默策略用例](../desktop/core/workflow/prompt-inactivity.md)的
 证据保持原范围，不推导来源保真或终态缺口已实现。
 
