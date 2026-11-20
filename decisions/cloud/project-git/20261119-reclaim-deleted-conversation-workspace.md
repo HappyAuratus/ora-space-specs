@@ -117,9 +117,10 @@ status: implemented
 - **删除参数** `workspace`：
   - `reclaim`（默认，调用方不带参数时也是它）：能恢复就回收；不能恢复就保留目录，对话照样删除；
   - `discard`：用户明确丢弃，不管能不能恢复都回收。请求必须带回预览的 `revision`（不带时返回 400）；删除时（结束会话之前）重新计算，
-    不一致、或会话有回合未结束，返回 `409 deletion_preview_stale`，对话和目录都不动，界面重新取预览。`discardable` 为假时
-    （`delivering`、`unverifiable`、Git 相关内容的摘要不完整，以及能恢复、没有工作目录这类没有东西可丢的情况），`discard`
-    返回 `409 discard_unverifiable`，什么都不动；默认删除照常，不能恢复的目录保留，由运维按 D6 处理。
+    不一致、或还在交付（`delivering`），返回 `409 deletion_preview_stale`，对话和目录都不动，界面重新取预览。之后判为
+    `undelivered` 而 `discardable` 为假（`unverifiable`、Git 相关内容的摘要不完整）时，返回 `409 discard_unverifiable`，什么都
+    不动；默认删除照常，不能恢复的目录保留，由运维按 D6 处理。`revision` 一致而判为 `recoverable` 或 `none` 时，`discard` 照常
+    删除对话，按判定回收或不涉及目录（这时没有未交付的东西可丢）。界面只在 `discardable` 为真时提供丢弃选项。
 - **删除的返回值** `workspace`：`reclaimed`（已回收，附释放的字节数和文件数）、`kept`（附原因）、`pending`（附原因：
   `delivering`；`in_progress`，后台继续删；`check_failed`、`removal_failed`，等启动时重试；`reclaim_unavailable`，见下）、`none`。
 - **Cloud 没有 Agent 运行时、无法判定时**（例如没有配置 Node 资产启动，但磁盘上还有以前的 checkout）：对登记过工作目录的
@@ -302,8 +303,8 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
    反例（stash 被替换、ref 改指向、暂存区被替换、嵌套仓库经 gitfile 或 `commondir` 指向的共享仓库变化、嵌套文件同大小改写并
    恢复修改时间），所以改为 D2 里的 Git 相关内容字节摘要。
 2. **`unverifiable` 与摘要不完整时不可丢弃**：approved 稿里 `delivering` 以外都可以 `discard`。摘要不完整时无法保证用户确认的就是
-   被删除的，违反 D2“要求用户看到的就是被丢弃的”，所以新增 `discardable`，为假时返回 `409 discard_unverifiable`；这类目录
-   默认保留，由运维按 D6 处理。owner 于 2026-11-19 在 circus #1319 得到告知。
+   被删除的，违反 D2“要求用户看到的就是被丢弃的”，所以新增 `discardable`：界面只在它为真时提供丢弃；直接调用 API 时，
+   判为 `undelivered` 而它为假的 `discard` 返回 `409 discard_unverifiable`。这类目录默认保留，由运维按 D6 处理。owner 于 2026-11-19 在 circus #1319 得到告知。
 3. **检查的时限**：单次检查最长 2 分钟，超时按 `check_failed` 重试，避免嵌套仓库里的特殊文件让 Git 读取挂住、拖住启动。
 4. **`HEAD` 与 index 也要被交付覆盖**：approved 稿第 4 条只看 stash、ref、gitlink 与嵌套仓库，只在 `HEAD` 或暂存区里的内容
    （暂存后把工作树改回、提交后把工作树和暂存区还原）会被默认的 `reclaim` 判为能恢复并删除。所以第 4 条加了 `HEAD` 与 index 的

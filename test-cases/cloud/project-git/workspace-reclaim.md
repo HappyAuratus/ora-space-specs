@@ -4,7 +4,7 @@
 下文的 D 编号与不变量编号都指这篇决策；交付本身的承诺见 [回合交付](turn-delivery.md)。
 
 证据读取的是 cloud `d4ec60d5`（PR #419 的 head）的 `v2-server/`，路径相对该目录；前端证据以 `frontend-v2/` 开头。需要 PostgreSQL
-的测试在设置 `TEST_DATABASE_URL` 时运行；相关包在 Git 2.34.1 与 2.53 上都通过。28 项汇总为 16 Covered / 11 Partial / 1 Missing；Partial 与 Missing 的缺口写在各行里。
+的测试在设置 `TEST_DATABASE_URL` 时运行；相关包在 Git 2.34.1 与 2.53 上都通过。28 项汇总为 14 Covered / 13 Partial / 1 Missing；Partial 与 Missing 的缺口写在各行里。
 
 ## Only A Recoverable Workspace Is Reclaimed By Default
 
@@ -91,8 +91,8 @@
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 活跃、他人、共享、任务目录不删 | `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts`：仍有活会话判 `kept`/`session_live`，别的会话用过判 `kept`/`shared`，目录都在。`TestReclaimRemovesOnlyRecoverableCheckoutsUnlessDiscarded`：没被删除的对话的目录保留。store 层他人删不了。`internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutRefusesAdmittedSessionAndDropsCachedCheckout`：进程内有会话占用时拒绝。缺口：任务运行、工作流运行的目录没有专门用例（它们不经用户删除对话登记，是结构上保证的；共享目录的一例由 `shared` 覆盖）。 | Partial |
-| 路径越界与符号链接不跟随 | `internal/workspacefs/remove_test.go`：`TestRemoveCheckoutRefusesPathsOutsideTheRoot`；`TestRemoveCheckoutRefusesSymlinks`（checkout 本身、父目录、checkout 根）；`TestRemoveCheckoutRefusesADirectorySwappedAfterTheCheck`；`TestRemoveCheckoutRefusesAParentSwappedForALinkOutOfTheRoot`（父目录被移走并换成指向原处的链接，两个注入时机）；`TestRemoveCheckoutMeasuresAndRemovesOnlyTheCheckout`（目录内指向项目外的链接只删链接本身，兄弟目录和项目外文件都在）。项目外文件都断言不变，均返回 `ErrUnsafeCheckout`。回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts` 越界路径判 `kept`/`unsafe_path`。`internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutRefusesPathOfAnotherProject`。 | Covered |
-| 登记与 `v2_workspaces` 核对 | `internal/store/workspace_reclaims_test.go` `TestCheckReclaimIdentitySeesLiveSharedAndChangedCheckouts`：同一路径另有行、`clone_execution` 不一致，都使 `Recorded` 为 false。回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts`：`clone_execution` 被改后判 `kept`/`identity_mismatch`，目录在。 | Covered |
+| 路径越界与符号链接不跟随 | 拒绝不安全路径：`internal/workspacefs/remove_test.go` 的 `TestRemoveCheckoutRefusesPathsOutsideTheRoot`、`TestRemoveCheckoutRefusesSymlinks`（checkout 本身、父目录、checkout 根）、`TestRemoveCheckoutRefusesADirectorySwappedAfterTheCheck`、`TestRemoveCheckoutRefusesAParentSwappedForALinkOutOfTheRoot`（父目录被移走并换成指向原处的链接，两个注入时机）都返回 `ErrUnsafeCheckout`，项目外文件不变；回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts` 越界路径判 `kept`/`unsafe_path`；`internal/agentruntime/remove_checkout_test.go` 的 `TestRemoveCheckoutRefusesPathOfAnotherProject`。目录内外链只删链接：`TestRemoveCheckoutMeasuresAndRemovesOnlyTheCheckout` 断言删除成功，目录内指向项目外的链接被删，外部目标、兄弟目录都在。 | Covered |
+| 登记与 `v2_workspaces` 核对 | `internal/store/workspace_reclaims_test.go` `TestCheckReclaimIdentitySeesLiveSharedAndChangedCheckouts`：同一路径另有行、`clone_execution` 不一致，都使 `Recorded` 为 false。回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts`：`clone_execution` 被改后判 `kept`/`identity_mismatch`，目录在。 缺口：没有“只有登记路径不同、`WorkspaceID` 与 `clone_execution` 一致”时保留的独立断言。 | Partial |
 
 - 决策依据：D4，不变量 1、5。
 
@@ -111,7 +111,7 @@
 |---|---|---|
 | 回收不阻塞同项目会话与投影 | `internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutDoesNotHoldTheSkillLockWhileDeleting`：删除被阻塞期间同项目的 `attachSkills` 在 5 秒内完成。`TestProjectSkillsSkipsAVanishedCheckout`：已消失的 checkout 被跳过，其他 checkout 照常得到链接。`TestRemoveCheckoutWithoutRuntimeForgetsSkillIndex` 和 `TestRemoveCheckoutRefusesAdmittedSessionAndDropsCachedCheckout`：`skill-checkouts.json` 和 `p.checkouts` 里不再有被回收的 checkout。缺口：会话准入、`attachUserSkills`、`ApplySkill` 没有单独用例（它们拿的是同一把 `skillsMu`，`attachSkills` 一例证明锁在删除期间是空闲的）；"回收与同目录交付串行、交付记录不变"没有直接用例。 | Partial |
 | 项目 runtime 不在时与创建互斥 | `TestProjectRuntimeCreationWaitsForTheSkillListRewrite`：持项目锁期间 `d.project()` 不插入新 runtime，释放后继续（用 50ms sleep 观察）。 | Covered |
-| 同一条回收只执行一次 | `internal/workspacereclaim/reclaim_test.go` `TestConcurrentReclaimsRemoveOnce`：三路并发 `Reclaim`，删除只调用一次，三路结果都是 `reclaimed`。 | Covered |
+| 同一条回收只执行一次 | `internal/workspacereclaim/reclaim_test.go` `TestConcurrentReclaimsRemoveOnce`：三路并发 `Reclaim`，删除只调用一次，三路结果都是 `reclaimed`。 缺口：没有核对并发返回的释放量与持久化记录一致。 | Partial |
 
 - 决策依据：D4、D5，不变量 5、6。
 
