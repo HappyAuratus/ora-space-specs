@@ -141,6 +141,8 @@ marketplace 索引构建解析 release 清单；本地导入与包发现解析 i
 - installed hook 必须声明 `[artifact].target`；installed agent 可以省略。
 - 两种发布形态都缺省是合法的：条目仍可被索引，只是本机不可安装。
 - target triple 必须精确匹配白名单，未知拼写不被接受。
+- 退役的 `*-apple-darwin` triple 不属于“未知拼写”：它们按
+  [支持平台用例](../../platform/supported-platforms.md)跳过或拒绝，本文不重复其义务。
 
 ### 禁止结果
 

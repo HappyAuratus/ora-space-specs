@@ -6,6 +6,11 @@ status: implemented
 
 > 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。下文的条目模型与 kind 约束只列了前六种，以这两份决策为准；`workflow` 的包内布局与导入语义由该类别根决策拥有。
 
+> 历史决策：“发布资产与 Target”中白名单 triple 的规则已由[Ora Desktop 只支持 Windows 和 Linux](../../platform/0-windows-and-linux-only.md) D4 修改：
+> `x86_64-apple-darwin`、`aarch64-apple-darwin` 退役，release 清单里的 darwin 项被跳过，只剩 darwin 项时视为无可下载
+> 资产，installed 清单的 darwin `[artifact].target` 被拒绝；其他白名单外的 triple 仍是打包错误。示例里的
+> `aarch64-apple-darwin` 条目只是历史示例。其余规则与状态 `implemented` 不变。
+
 Ora 的插件目录（marketplace）由一个或多个 **Git 仓库源**分发。后端把每个源检出到本地，扫描其
 `registry/` 目录下的插件清单，合并成一份轻量的 **派生索引** 供 UI 渲染；安装时再回到源检出中
 重新读取该条目的完整清单，取得下载地址与摘要。索引是缓存产物，源检出是唯一事实来源。
