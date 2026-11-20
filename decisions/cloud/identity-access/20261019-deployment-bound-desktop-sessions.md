@@ -4,8 +4,8 @@ status: approved
 
 # Gateway 以部署签名身份交接独立 Desktop 会话，会话策略归部署方
 
-> 历史决策：D7 完成条件与风险段中的“三平台正式包”已由[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)
-> 修改为 Windows 与 Linux 两个平台的正式包，Desktop 不再发布 macOS。其余决策与状态 `approved` 不变。
+> 历史决策：D7 完成条件与“风险、后续边界与核心用例”一节中的“三平台”已由[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)
+> 修改为 Windows 与 Linux 两个平台，Desktop 不再发布 macOS。其余决策与状态 `approved` 不变。
 
 Gateway 向 Desktop 暴露可验证的部署身份与版本/能力，经系统浏览器交接独立原生会话；
 默认连续 30 天无有效活动过期、不设绝对上限，允许部署方缩短期限或设置绝对上限。

@@ -8,7 +8,8 @@ status: implemented
 
 > 历史决策：“发布资产与 Target”中白名单 triple 的规则已由[Ora Desktop 只支持 Windows 和 Linux](../../platform/0-windows-and-linux-only.md) D4 修改：
 > `x86_64-apple-darwin`、`aarch64-apple-darwin` 退役，release 清单里的 darwin 项被跳过，只剩 darwin 项时视为无可下载
-> 资产，installed 清单的 darwin `[artifact].target` 被拒绝；其他白名单外的 triple 仍是打包错误。示例里的
+> 资产，installed 清单的 darwin `[artifact].target` 被拒绝；“选择与校验规则”第 4、8 条的 target 唯一性不再检查
+> 退役项；其他白名单外的 triple 仍是打包错误。示例里的
 > `aarch64-apple-darwin` 条目只是历史示例。其余规则与状态 `implemented` 不变。
 
 Ora 的插件目录（marketplace）由一个或多个 **Git 仓库源**分发。后端把每个源检出到本地，扫描其

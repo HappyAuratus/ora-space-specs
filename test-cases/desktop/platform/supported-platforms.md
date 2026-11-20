@@ -3,18 +3,20 @@
 依据[Ora Desktop 只支持 Windows 和 Linux](../../../decisions/desktop/platform/0-windows-and-linux-only.md)。下文的 D 编号和
 不变量编号都指这篇 ADR。
 
-ADR 为 `proposed`，实现在 desktop 分支 `refactor/1367-drop-macos`（运行 ora-space/circus#1367），尚未合并。引用未合并
+ADR 为 `proposed`，实现在 desktop#804（分支 `refactor/1367-drop-macos`，运行 ora-space/circus#1367），尚未合并。引用未合并
 代码的证据留到落地运行登记，下列义务目前都是 `Missing`。证据路径相对 desktop 仓库根目录。
 
 | 不变量 | 用例 | 状态 |
 |---|---|---|
-| 1、7 | [A Release Publishes Only Windows And Linux Artifacts](#a-release-publishes-only-windows-and-linux-artifacts) | Missing |
+| 1 | [A Release Publishes Only Windows And Linux Artifacts](#a-release-publishes-only-windows-and-linux-artifacts) | Missing |
 | 3、5 | [A Listing With Darwin And Linux Targets Installs On Linux](#a-listing-with-darwin-and-linux-targets-installs-on-linux) | Missing |
 | 3 | [A Darwin-Only Listing Has No Release](#a-darwin-only-listing-has-no-release) | Missing |
 | 4、5 | [An Installed Darwin Artifact Is Refused](#an-installed-darwin-artifact-is-refused) | Missing |
 | 2 | [A macOS Host Gets No Sidecar Target](#a-macos-host-gets-no-sidecar-target) | Missing |
 
-不变量 6（`cfg(unix)` 共用代码行为不变）没有专属用例：它由 Linux 上既有的各领域测试继续承担，删除 macOS 不新增
+不变量 7 由发布流程只操作本次 tag 的 draft Release 保证，是发布操作而不是代码行为，不登记为代码证据。
+
+不变量 6（Unix 共用代码行为不变）没有专属用例：它由 Linux 上既有的各领域测试继续承担，删除 macOS 不新增
 需要单独证明的行为；desktop PR 的 Linux CI 全绿是它的回归门槛，不登记为某条义务的直接证据。
 
 ## A Release Publishes Only Windows And Linux Artifacts
@@ -49,11 +51,11 @@ ADR 为 `proposed`，实现在 desktop 分支 `refactor/1367-drop-macos`（运�
 | 验证义务 | 直接证据 | 状态 |
 |---|---|---|
 | 更新清单只列 Windows 与 Linux，缺签名时失败且不覆盖旧清单 | 尚无已合入证据；待 desktop 实现合并后登记更新清单生成脚本的测试 | `Missing` |
-| 打包矩阵与 bundle 目标只产出 Windows、Linux 产物 | 尚无已合入证据；待合并后的首次 tag 发布运行登记其 job 列表与产物清单 | `Missing` |
+| PR CI、打包矩阵与 bundle 目标只覆盖 Windows、Linux | 尚无直接证据；需要一个检查 `tauri.conf.json` bundle targets 与 workflow 矩阵只含 Windows、Linux 的静态测试，发布运行记录归档在 circus issue | `Missing` |
 
 ### 决策依据
 
-ADR D1、D3，不变量 1、7。
+ADR D1、D3，不变量 1。
 
 ## A Listing With Darwin And Linux Targets Installs On Linux
 
@@ -105,7 +107,8 @@ ADR D4，不变量 3、5；[插件清单根决策](../../../decisions/desktop/pl
 
 ### 前置状态
 
-一份 release 清单的 `[[targets]]` 只有 darwin 项。
+一份 hook 或 agent 的 release 清单，没有顶层 `url`，`[[targets]]` 只有 darwin 项。marketplace 索引已由新版本重建（旧缓存
+可能仍带 darwin 字符串，只影响不兼容提示文案）。
 
 ### 触发
 

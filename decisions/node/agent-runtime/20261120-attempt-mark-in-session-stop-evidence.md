@@ -4,9 +4,9 @@ status: approved
 
 # 会话尝试的进程带环境标记，停止时先冻结并杀掉带标记进程，两次扫描干净才确认（Linux）
 
-> 历史决策：“本决策未解决的问题”中的 macOS 一项已由[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)关闭：
-> Desktop 不再支持 macOS，不再为 macOS 另立决策；Windows 一项不变。本决策不覆盖 macOS 的说明继续成立，其余决策与
-> 状态 `approved` 不变。
+> 历史决策：D6 已知缺口与“本决策未解决的问题”中的 macOS 项已由[Ora Desktop 只支持 Windows 和 Linux](../../desktop/platform/0-windows-and-linux-only.md)
+> 关闭：Desktop 不再支持 macOS，不再为 macOS 另立决策；Windows 项不变。本决策不覆盖 macOS 的说明继续成立。其余
+> 决策不变，本提示不改变本决策的状态。
 
 Linux 上，Node 给 Agent 尝试和 stdio 探测尝试派发的每个进程设置 `ORA_SESSION_ATTEMPT=<attempt>`，后代经
 `fork`/`execve` 继承它。尝试登记前，Node 先持久写下这次尝试的开始时刻和进程用户（范围记录）。停止尝试时，

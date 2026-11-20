@@ -16,8 +16,8 @@ Ora Desktop 和 desktop 仓库构建、发布的全部本机组件只支持 Wind
   进程纳管只剩 Linux 和 Windows 两个平台方向（D5）。
 
 本文为 `proposed`，等待 owner 评审。决策来自 owner 2026-11-20 的结论（ora-space/circus#1365）。实现已经以
-preflight 在 desktop 分支 `refactor/1367-drop-macos`（`374ec3dc..b7cdb9c0`，运行 ora-space/circus#1367）完成，
-尚未开 PR、未合并；本文按该实现写成，评审改动决策时实现跟着改。核心用例在本 PR 一并登记，证据在 desktop 实现
+preflight 在 desktop 分支 `refactor/1367-drop-macos`（`1f88ccce..b7cdb9c0`，desktop#804，运行 ora-space/circus#1367）
+完成，尚未合并；本文按该实现写成，评审改动决策时实现跟着改。核心用例在本 PR 一并登记，证据在 desktop 实现
 合并前都是 `Missing`，由落地运行登记。
 
 - **涉及**：desktop 的 CI 与发布流程（`.github/workflows/`、`Taskfile.yml`、`apps/desktop/src-tauri/tauri.conf.json`）、
@@ -61,18 +61,18 @@ specs 里没有关于“Desktop 支持哪些平台”的根决策：desktop 下�
 | [纳管保证契约](../../node/process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md) | D1–D3 与不变量继承，不变；平台列表修改 | 平台实现只有 Linux 和 Windows；正文中以原生 macOS 为例的理由作为历史记录保留，不构成平台承诺 |
 | [Linux cgroup](../../node/process/containment/linux/0-cgroup-v2-containment.md)、[Linux helper](../../node/process/containment/linux/20260917-independent-privileged-helper.md)、[Windows Job](../../node/process/containment/windows/0-creation-time-job-containment.md) | 继承，不变 | — |
 | [Node 直接执行 Git](../../node/git-execution/0-node-runs-git-directly-with-attempt-locks.md) D6、“保持有效”、未解决问题 | 修改 | D6 平台表的 macOS 一列作废，Node 平台只有 Linux（已实现）和 Windows（给出机制、未实现）；“保持有效”的 containment 决策不再含 macos；“macOS 和 Windows 的落地”只剩 Windows |
-| [插件分发](../plugin/registry/0-registry-distribution.md)“发布资产与 Target” | 修改 | 白名单外的 triple 仍是打包错误；`*-apple-darwin` 改为退役 target，按 D4 处理；示例中的 darwin 条目作为历史示例保留 |
-| [插件清单](../plugin/manifest/0-versioned-dual-form-manifest.md) D5、不变量 7、未解决问题 | 修改；不变量 8 继承，不变 | `HookTarget` 白名单去掉两个 darwin triple，另设退役集合；release 清单的退役项按 D4 跳过，installed 清单的退役 `[artifact].target` 拒绝；同一份文本在任何宿主上仍得到同一个结果 |
-| [会话尝试的进程带环境标记](../../node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) 未解决问题 | 修改 | “macOS 与 Windows”一项只剩 Windows；“本决策不覆盖 macOS”继续成立 |
-| [部署签名身份交接 Desktop 会话](../../cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) D7 与风险段 | 修改 | “三平台正式包”改为 Windows 与 Linux 两个平台的正式包 |
+| [插件分发](../plugin/registry/0-registry-distribution.md)“发布资产与 Target”、选择与校验规则第 4、8 条 | 修改 | 白名单外的 triple 仍是打包错误；`*-apple-darwin` 改为退役 target，按 D4 处理，target 唯一性不再检查退役项；示例中的 darwin 条目作为历史示例保留 |
+| [插件清单](../plugin/manifest/0-versioned-dual-form-manifest.md) D5、不变量 1 与 7、未解决问题 | 修改；不变量 8 继承，不变 | `HookTarget` 白名单去掉两个 darwin triple，另设退役集合；release 清单的退役项按 D4 丢弃，不进入域对象，取值不校验、重复不报错；installed 清单的退役 `[artifact].target` 拒绝；同一份文本在任何宿主上仍得到同一个结果 |
+| [会话尝试的进程带环境标记](../../node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D6 已知缺口、未解决问题 | 修改 | “macOS 与 Windows”两项只剩 Windows；“本决策不覆盖 macOS”继续成立 |
+| [部署签名身份交接 Desktop 会话](../../cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) D7 与“风险、后续边界与核心用例” | 修改 | “三平台”改为 Windows 与 Linux 两个平台 |
 | [进程本机协议](../../node/process/protocol/0-independent-local-streams-and-state-recovery.md)等已 `superseded` 的决策 | 不回改 | 正文是历史记录，提到的 macOS transport 不构成当前承诺 |
 
 ## 决策
 
 ### D1：支持平台只有 Windows 和 Linux，v0.6.0 是最后一个 macOS 版本
 
-Ora Desktop 和 desktop 仓库构建、发布的全部本机组件（Desktop 应用及其后端与 Controller、ora-node、ora-reaper、
-sidecar、插件宿主）只支持 Windows 和 Linux。macOS 不属于任何支持档：不构建、不跑 CI、不发布、不修 macOS 专属
+Ora Desktop 和 desktop 仓库构建、发布的全部本机组件（Desktop 应用及其后端、Controller、ora-node、ora-git、
+ora-reaper、sidecar、插件宿主）只支持 Windows 和 Linux。macOS 不属于任何支持档：不构建、不跑 CI、不发布、不修 macOS 专属
 缺陷，也不声明尽力可用。v0.6.0（`1f88ccce`）是最后一个带 macOS 产物的版本；v0.6.0 及更早的 macOS 版本保持已
 发布状态，不撤回、不改写。
 
@@ -85,12 +85,13 @@ macOS 还能不能编译、运行，文档里的“尽力”会被读成支持�
 desktop 删除所有只服务 macOS 的内容：`cfg(target_os = "macos")` 分支及其实现、macOS 专用测试、`dmg`/`app`
 打包目标和 `icon.icns`、darwin sidecar 校验值、宿主 triple 的 darwin 映射、`.app.tar.gz` 更新包类型、只为 macOS
 引入的依赖，以及前端的 macOS 约定（⌘/⌥/⇧ 符号，`mod` 统一显示为 Ctrl，窗口平台类型不再有 `macos`，Apple 专用
-字体回退）。原来写成“非 Windows”的兜底分支改为显式的 `target_os = "linux"`。
+字体回退）。Tauri 宿主里写成“非 Windows”、行为因平台而异的兜底分支，改为显式的 `target_os = "linux"`；共享
+crates 中实为 Unix 共用实现的 `cfg(not(windows))` 与 `cfg(unix)` 同样保留。
 
 保留的边界：
 
 - `cfg(unix)` 共用代码照常保留，它服务 Linux；只删其中针对 macOS 的注释和 macOS 专有 errno（目录 fsync 不再接受
-  errno 45）。
+  errno 45；Linux 上 45 是 fsync 不会返回的 `EL2NSYNC`）。
 - 未识别平台的通用降级路径（如 `HostPlatform::Other`、`WebDataIsolation::Degraded`）保留，它们不是 macOS 专用。
 - 为 macOS 编译不是受支持的配置，不承诺能编译通过。
 
@@ -125,19 +126,22 @@ target 不是未知拼写：解析时报告不同的原因（`Retired`），各�
 | 输入 | 行为 |
 |---|---|
 | release 清单的 `[[targets]]` 同时有 darwin 和受支持 target | darwin 项被丢弃，其余 target 照常校验、照常可选 |
-| release 清单的 `[[targets]]` 只有 darwin 项 | 视为没有发布来源：条目照常索引和展示，本机不可安装（“no downloadable release”） |
+| hook/agent 的 release 清单，`[[targets]]` 只有 darwin 项 | 视为没有发布来源：条目照常索引和展示，本机不可安装（“no downloadable release”） |
 | installed 清单的 `[artifact].target` 是 darwin | 拒绝，错误字段 `artifact.target`，原因为退役 target |
 | 不在白名单也不在退役集合的 triple | 仍是清单错误，规则不变 |
 | 宿主自身的 triple | 永远不会是 darwin；不在支持集合内的宿主照旧判为不兼容 |
+| Controller 下发给 Node 的安装计划 `targets` | target 作为字符串精确匹配宿主；darwin 项不报错、不被选中（行为不变，不经过退役集合） |
 
-退役项在任何校验之前丢弃：它的 `url`、`sha256` 不再校验，重复的 darwin 项也不报重复。丢弃发生在解析阶段，与
-宿主无关，同一份清单在 Windows 和 Linux 上得到同一个结果，保持清单根决策不变量 8。
+退役项在 target 解析处丢弃：TOML 结构照常检查（每项仍须含 `target`、`url`、`sha256` 字符串，缺失或类型不符
+仍是硬错误），`[[targets]]` 与 kind、顶层 `url`、installed 形态的互斥规则仍按原文本判断；被丢弃的项不校验
+`url`、`sha256` 的取值，也不参与重复检查，重复的 darwin 项不报错。丢弃与宿主无关，同一份清单在 Windows
+和 Linux 上得到同一个结果，保持清单根决策不变量 8。
 
 为什么这样分：
 
 - **不能当作未知 triple 报错。** 三个官方 agent 的已发布清单都带 darwin target；报错会让这些清单在所有平台上整份
   解析失败，Windows 和 Linux 用户因为一个不再支持的平台装不了插件。
-- **跳过而不校验。** 没有任何宿主能选中退役项，校验它们只会让一个已发布条目因为不可能被下载的字段而失效。代价是
+- **跳过而不校验取值。** 没有任何宿主能选中退役项，校验它们只会让一个已发布条目因为不可能被下载的字段而失效。代价是
   作者写错的 darwin 项不再被提示；新清单本就不应再声明 darwin，这个代价可以接受。
 - **installed 形态拒绝。** 安装包自述 darwin `[artifact]` 说明里面是 macOS 二进制，在受支持的宿主上不能运行；
   安装包没有“其余 target”可以退回，跳过等于把一个错误的包当成通用包装上。
@@ -163,7 +167,8 @@ macOS adapter”继续显示为待办的长期方向。
    darwin 项时没有发布来源。
 4. installed 清单的 darwin `[artifact].target` 一律被拒绝。
 5. 退役 triple 与未知 triple 分开报告；未知 triple 仍是清单错误。
-6. Linux 使用的 `cfg(unix)` 共用代码行为不因删除 macOS 而改变。
+6. 除删除 macOS 专有 errno 45 外（Linux 上它是 fsync 不会返回的 `EL2NSYNC`），Linux 使用的 Unix 共用代码行为不因
+   删除 macOS 而改变。
 7. v0.6.0 及更早的 macOS 版本不撤回、不改写。
 
 ## 为什么不是这些替代方案
@@ -191,8 +196,10 @@ macOS adapter”继续显示为待办的长期方向。
    决策加 `> 历史决策：` 提示。owner 批准后本文改为 `approved` 再合并。完成条件：引用 macOS 的 specs 文档都已
    按本文处理或注明为历史记录。
 2. **desktop（运行 ora-space/circus#1367）**：按 D2–D4 删除 macOS 并退役 darwin target，已在
-   `refactor/1367-drop-macos` 完成开发，本文 `approved` 后开 PR 合并。完成条件：Windows 和 Linux 的 CI 全绿，
-   `ora-desktop` 的编译以 CI 的 tauri job 和 Windows 打包为准（本机未能编译）；`git grep -i -E 'macos|darwin|\.dmg|notariz'`
+   `refactor/1367-drop-macos`（desktop#804）完成开发，本文 `approved` 后合并。完成条件：Windows 和 Linux 的 CI 全绿；
+   合并前在该分支上跑一次 `desktop-build`（`workflow_dispatch`，不带 tag）或等价的 Windows 构建，确认 `ora-desktop`
+   在 Windows 和 Linux 上都能编译、打包，因为 PR CI 的 tauri job 只在 Linux 上跑，`test:crates` 又排除了
+   `ora-desktop`，Windows 上的 `ora-desktop` 没有其他编译证据；这次构建也是本文改为 `implemented` 的前提；`git grep -i -E 'macos|darwin|\.dmg|notariz'`
    只剩有意保留的内容并逐条列在 PR 描述里。
 3. **落地运行**：desktop PR review 通过后，把本文改为 `implemented`，按最终实现同步正文，并登记核心用例证据。
 
