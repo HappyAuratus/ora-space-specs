@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Workflow 市场导入、依赖报告与卸载保留及来源提示
@@ -10,9 +10,8 @@ status: approved
 工作流依赖报告，卸载被工作流引用的 MCP / Skill 插件时列出依赖工作流并只警告不阻止，卸载 workflow
 插件时保留已导入副本、在卸载确认中列出这些工作流，并在工作流库和创建运行菜单标出「来源插件已卸载」。
 
-本决策当前为 `approved`：D1–D3、安装/升级依赖报告与 MCP/Skill 卸载警告已在 desktop 落地，本次将
-状态调回 `approved`，以承接 workflow 插件卸载确认与「来源插件已卸载」信息标记的实现；待对应实现
-合并后再转为 `implemented` 并同步证据。前序 [Workflow 插件类别根决策](0-workflow-package-format.md)
+本决策为 `implemented`。Desktop 已支持从市场导入、报告依赖并提示卸载影响。卸载后的来源提示与
+保留列表随 [desktop#792](https://github.com/ora-space/desktop/pull/792) 合入。前序 [Workflow 插件类别根决策](0-workflow-package-format.md)
 保留 `implemented`，其包格式和本地导入仍是它自己的承诺。本决策只改变 desktop 的市场导入、安装/卸载
 呈现与来源信息标记语义，不改变 Cloud 的取包、结果与运行契约，也不承担启动时全量回填旧安装的义务：
 旧安装在首次升级时按 D2 补导入，无市场来源记录的历史工作流不按名称推断或回填来源。
@@ -97,7 +96,7 @@ Plugin ID，`document_path` 是包内路径 `assets/workflows/<文件名>.json`�
 市场安装与升级、Pack 安装及卡片显式重试的响应只要包含「已导入」或「失败」文档，前端
 即弹出逐工作流的依赖报告弹窗，与本地 `.orax` 导入共用同一套依赖判定规则（`collectWorkflowDependencies`）
 和报告组件：展示每个导入工作流的 MCP / Skill 就绪状态、引用的节点标题，以及「去安装 / 去配置 /
-去查看」处理入口；处理入口在当前页跳转修复并关闭报告，不丢失当前插件管理上下文。`agentConfig`
+去查看」处理入口；所选入口在已打开的设置中立即进入市场搜索、配置编辑器、按插件 ID 筛选的已安装插件管理器或 Skills 设置，报告随之关闭。`agentConfig`
 为 `null` 时视为未绑定任何插件，不抛出异常。当响应全部为已处理或冲突跳过时，保持一行摘要提示，
 不弹出报告弹窗。
 
@@ -106,7 +105,7 @@ Plugin ID，`document_path` 是包内路径 `assets/workflows/<文件名>.json`�
 卸载插件前，所有卸载确认入口（已安装插件管理器、插件详情页、Skills 设置页中的插件 Skill 删除，
 以及 Pack 卸载确认）同时检查所有工作流的草稿图与已发布快照，列出引用了待卸载 MCP 或 Skill 插件
 的工作流及节点标题并警告「卸载后这些工作流会缺依赖，运行到引用该插件的节点时会失败」。
-本次已落地警告的身份边界是：MCP 按插件 ID 匹配；Skill 按已安装插件目录中的 `skill.name` 与工作流
+本次已落地警告的身份边界是：MCP 按插件 ID 匹配；Skill 按 Skills 目录里归属待卸载插件的条目 `name` 与工作流
 引用值精确、区分大小写匹配。该规则不采用运行时的前缀、大小写不敏感与本地优先匹配，因此可能漏报
 真实依赖或误报；Agent 插件不在本次检查范围内。
 
@@ -124,7 +123,7 @@ Plugin ID，`document_path` 是包内路径 `assets/workflows/<文件名>.json`�
 若工作流库或来源记录读取失败，必须明确提示保留列表无法完整确认；检查结束后确认按钮保持可用，
 不能把「读不到」当成「没有」，也不得因此永久阻止卸载。
 
-后端在 `WorkflowSummary` DTO 上以 `sourcePluginId` 提供由成功导入记录推出的来源插件 ID；工作流库和
+后端在 `WorkflowSummary.sourcePluginId` 返回成功市场导入记录的规范插件 ID（`<namespace>/<identifier>`），无此记录时为空。工作流库和
 工作区创建运行菜单消费同一份摘要，不由各前端使用方分别按名称或已安装目录 join 来源。「来源插件
 已卸载」不是卸载时写入的一次性事件或持久标志，而是由成功导入记录与统一已安装插件目录共同派生的
 状态：来源存在且对应 canonical Plugin ID 当前未安装时，两个入口在这些工作流旁展示信息性标记
@@ -175,15 +174,9 @@ Plugin ID，`document_path` 是包内路径 `assets/workflows/<文件名>.json`�
 
 ## 落地与验收
 
-D1–D3 市场导入与重试已在 desktop 落地；D4 中市场安装/升级依赖报告与 MCP / Skill 卸载影响警告
-已随 `67a71e37`、`f88eb206` 合入。后端来源摘要字段、workflow 插件卸载确认列表以及工作流库/
-创建运行菜单的「来源插件已卸载」标记尚待后续实现落地。核心验证义务与当前证据状态见
-[Workflow 插件包与文档导入](../../../../../test-cases/desktop/plugin/category/workflow/workflow-package-and-import.md)：
-已合并部分中，首次安装导入、升级只增不改、同名冲突只报告一次、跨卸载重装与用户删除保留、卡片重试、
-依赖报告弹窗与四处 MCP/Skill 卸载警告已有测试覆盖（前端部分采用类型化 handler）；提交边界故障
-恢复目前只有数据库事务层的直接证据，旧安装首次升级补导入、pack 成员安装失败不创建副本仍缺直接
-断言；workflow 插件卸载保留提示与来源已卸载标记的核心用例证据将在实现合入后补齐。
-本地导入的测试不能替代市场路径的证据。
+市场文档导入、逐项重试、依赖报告和卸载警告均已在 Desktop 落地。工作流摘要、卸载时的保留列表、
+工作流库和创建运行菜单的来源标记已在 [desktop#792 的合并提交](https://github.com/ora-space/desktop/commit/6824ff903cb9025f248b6e41473caa25a06819ff) 中验证。
+[核心用例](../../../../../test-cases/desktop/plugin/category/workflow/workflow-package-and-import.md) 分列 SQLite、后端生命周期与界面交互证据，并标明缺少直接验证的边界。
 
 ## 本决策未解决的问题
 
