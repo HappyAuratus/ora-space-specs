@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Ora Desktop 只支持 Windows 和 Linux：v0.6.0 是最后一个 macOS 版本，删除 macOS 代码，取代 macOS 原生纳管
@@ -15,7 +15,9 @@ Ora Desktop 和 desktop 仓库构建、发布的全部本机组件只支持 Wind
 - [macOS 原生尽力纳管](../../node/process/containment/macos/0-native-best-effort-containment.md)整份被本文取代；
   进程纳管只剩 Linux 和 Windows 两个平台方向（D5）。
 
-本文为 `proposed`，等待 owner 评审。决策来自 owner 2026-11-20 的结论（ora-space/circus#1365）。实现已经以
+本文为 `approved`：owner 于 2026-11-20 评审批准，评审中确认的四点（macOS 纳管决策整份取代、新建 `desktop/platform`
+叶子作为根决策、退役 darwin 项不校验取值且重复不报错、范围覆盖 desktop 仓库的全部本机组件）已并入正文。决策来自
+owner 2026-11-20 的结论（ora-space/circus#1365）。实现已经以
 preflight 在 desktop 分支 `refactor/1367-drop-macos`（`1f88ccce..b7cdb9c0`，desktop#804，运行 ora-space/circus#1367）
 完成，尚未合并；本文按该实现写成，评审改动决策时实现跟着改。核心用例在本 PR 一并登记，证据在 desktop 实现
 合并前都是 `Missing`，由落地运行登记。
@@ -193,7 +195,7 @@ macOS adapter”继续显示为待办的长期方向。
 ## 落地顺序
 
 1. **specs（运行 ora-space/circus#1366）**：本文、核心用例、macOS 纳管决策改为 `superseded` 并删除其用例，其他
-   决策加 `> 历史决策：` 提示。owner 批准后本文改为 `approved` 再合并。完成条件：引用 macOS 的 specs 文档都已
+   决策加 `> 历史决策：` 提示。owner 已于 2026-11-20 批准，本文为 `approved` 后合并。完成条件：引用 macOS 的 specs 文档都已
    按本文处理或注明为历史记录。
 2. **desktop（运行 ora-space/circus#1367）**：按 D2–D4 删除 macOS 并退役 darwin target，已在
    `refactor/1367-drop-macos`（desktop#804）完成开发，本文 `approved` 后合并。完成条件：Windows 和 Linux 的 CI 全绿；

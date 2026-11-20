@@ -3,7 +3,7 @@
 依据[Ora Desktop 只支持 Windows 和 Linux](../../../decisions/desktop/platform/0-windows-and-linux-only.md)。下文的 D 编号和
 不变量编号都指这篇 ADR。
 
-ADR 为 `proposed`，实现在 desktop#804（分支 `refactor/1367-drop-macos`，运行 ora-space/circus#1367），尚未合并。引用未合并
+ADR 为 `approved`，实现在 desktop#804（分支 `refactor/1367-drop-macos`，运行 ora-space/circus#1367），尚未合并。引用未合并
 代码的证据留到落地运行登记，下列义务目前都是 `Missing`。证据路径相对 desktop 仓库根目录。
 
 | 不变量 | 用例 | 状态 |
