@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 会话尝试的进程带环境标记，停止时先冻结并杀掉带标记进程，两次扫描干净才确认（Linux）
@@ -8,16 +8,19 @@ Linux 上，Node 给 Agent 尝试和 stdio 探测尝试派发的每个进程设�
 `fork`/`execve` 继承它。尝试登记前，Node 先持久写下这次尝试的开始时刻和进程用户（范围记录）。停止尝试时，
 Node 先用 SIGSTOP 冻结所有在尝试开始后启动、带标记或父进程已被认领的存活进程，反复扫描到不再出现新进程
 （至多 32 轮），再全部 SIGKILL，然后才按原线索杀进程组。确认停止除原锁与线索外，还要求连续两次标记扫描
-干净，证明记为新值 `lock_processes_and_marks`；标记出现之前登记的尝试保持 `lock_and_processes`。行为变化是：
+干净，证明记为新值 `lock_processes_and_marks`；账本为每个尝试记录“有范围记录”标志，带标志而范围记录缺失或
+损坏为 Unknown，只有不带标志、在标记出现之前登记的尝试保持 `lock_and_processes`。行为变化是：
 会话以任何方式结束、MCP 生命周期替换 Agent 进程时，Agent 启动的一切都会被杀掉，包括脱离进程组的工具后台
 作业、开发服务器和共享守护进程（Gradle、sccache）；轮次之间、保留会话的取消都不杀任何进程。保证等级仍是
 `StopContainment::BestEffort`。
 
-本 ADR 状态为 `proposed`，尚在评审，核心测试用例在转为 `approved` 后再更新。实现已在
-[desktop#802](https://github.com/ora-space/desktop/pull/802)（head `0627cfeb`）完成，待本决策批准后合入。涉及 desktop
+本 ADR 于 2026-11-20 经 owner 评审批准，状态为 `approved`：评审中的五项结论（范围记录缺失为 Unknown、接受伪造者
+拖住确认、部署前提与启动告警、未排空升级不加新规则、schema 排在 desktop#793 之后）已并入 D1、D3、D6、D7、D8。
+实现在 [desktop#802](https://github.com/ora-space/desktop/pull/802)，尚未合入 main，合入前还要按本决策补齐账本标志与
+启动检查，并把迁移改到 desktop#793 之后的 schema 版本；核心用例的义务在它合入前都是 `Missing`。涉及 desktop
 的 `crates/utils`（环境标记与 procfs 扫描）、`apps/ora-node/src/session/stop/`（派发、终止、证据）和
-`crates/node-db`（停止证明枚举与 schema）。Node Protocol、Controller 契约与 TS 生成物不变：证明名只出现在 Node
-账本和 root 对账的审计输出里。账本 schema 前向升级一版，旧 Node 不能打开新库（D7）。本决策不覆盖 macOS 与
+`crates/node-db`（停止证明枚举、范围记录标志与 schema）。Node Protocol、Controller 契约与 TS 生成物不变：证明名只
+出现在 Node 账本和 root 对账的审计输出里。账本 schema 前向升级一版，旧 Node 不能打开新库（D7）。本决策不覆盖 macOS 与
 Windows，不给 Node 自己执行的 Git 尝试加标记，不提供 Strong 纳管，也不处理“保留会话的取消后杀掉本轮新起的
 进程”（[circus #1339](https://github.com/ora-space/circus/issues/1339) 方向 B）。
 
@@ -33,21 +36,21 @@ Windows，不给 Node 自己执行的 Git 尝试加标记，不提供 Strong 纳
 | 前序约定 | 处理 |
 | --- | --- |
 | 刷新决策 D1–D4：能力逐会话选择、无值内存更新、查询、准入与轮次结算 | 继承，不变 |
-| 刷新决策 D5 停止证据与记录：锁先刷盘再登记再加锁派发；锁 OFD 交给尝试的每个进程；请求停止后拒绝该代的宿主 spawn；每个进程组一条线索 | 继承；新增范围记录，与锁标记一起在登记前刷盘，spawner 给每个进程加环境标记（D1） |
+| 刷新决策 D5 停止证据与记录：锁先刷盘再登记再加锁派发；锁 OFD 交给尝试的每个进程；请求停止后拒绝该代的宿主 spawn；每个进程组一条线索 | 继承；新增范围记录，与锁标记一起在登记前刷盘，账本登记时记“有范围记录”标志，spawner 给每个进程加环境标记（D1） |
 | 刷新决策 D5：按已验证线索终止对应进程组 | 修改：先冻结并杀掉标记扫描认领的进程，再按线索终止进程组（D2） |
-| 刷新决策 D5：原锁可取得且全部线索的直接进程都已不在，即按 BestEffort 确认（`lock_and_processes`）；“进程组加锁仍是 BestEffort，不能宣称逃逸/关 fd 后代已退出”；其继承表“不把未继承 fd 的后代算入证据” | 修改：有范围记录的尝试另需连续两次标记扫描干净，证明记 `lock_processes_and_marks`；保留环境的脱组、关 fd 后代由标记纳入证据；无范围记录的尝试保持原证据（D3、D6） |
+| 刷新决策 D5：原锁可取得且全部线索的直接进程都已不在，即按 BestEffort 确认（`lock_and_processes`）；“进程组加锁仍是 BestEffort，不能宣称逃逸/关 fd 后代已退出”；其继承表“不把未继承 fd 的后代算入证据” | 修改：有范围记录的尝试另需连续两次标记扫描干净，证明记 `lock_processes_and_marks`；保留环境的脱组、关 fd 后代由标记纳入证据；带标志而范围记录缺失或损坏为 Unknown；只有不带标志的旧尝试保持原证据（D3、D6） |
 | 刷新决策 D5：证据假定 workload 配合 | 继承；补充标记不是秘密及伪造的后果（D8） |
-| 刷新决策 D5 重启收口表 | 修改：同一 boot 的两行加入标记扫描，新增“范围记录损坏或 procfs 不可读为 Unknown”；跨 boot 两行不变（D3） |
+| 刷新决策 D5 重启收口表 | 修改：同一 boot 的两行加入标记扫描，新增“带标志而范围记录缺失或损坏、procfs 不可读为 Unknown”；跨 boot 两行不变（D3） |
 | 刷新决策 D5 `recheck` | 修改：核对与终止都加入标记扫描（D3） |
-| 刷新决策 D5 `after-host-reboot` 与 `legacy_unknown` 的证据出口 | 继承；两种同一 boot 的证明都不能解除 `legacy_unknown`，也都不是宿主重启证明（D3） |
+| 刷新决策 D5 `after-host-reboot` 与 `legacy_unknown` 的证据出口；未排空升级不拒绝启动 | 继承；两种同一 boot 的证明都不能解除 `legacy_unknown`，也都不是宿主重启证明；未排空升级不新增规则（D3、D7） |
 | 刷新决策 D5 终态、转交、门禁、10 分钟停止确认期限、`stop_unconfirmed` 与残留围栏、运维对账的审计与回收 | 继承，不变 |
 | 刷新决策 D5：schema 前向迁移，不支持原地回滚旧二进制/schema | 继承；本决策再升一版 schema，同样单向（D7） |
 | 刷新决策 D6：版本变化或第九次运行时 load 重启本 execution 的 Agent，旧 Agent 停止确认前不启动替代 | 修改：替换结束旧尝试，旧尝试的全部带标记进程（含后台作业与守护进程）被杀，取得新证明后才启动后继（D4） |
 | 刷新决策 D7 探测绑定与 HTTP 边界 | 继承，不变 |
 | 刷新决策 D8：探测预算与清理 | 继承预算；stdio 探测尝试同样带标记，清理时一并杀掉（D2、D4） |
 | 刷新决策 D8：“首版明确只提供进程组 BestEffort；恶意 setsid/脱组……不被说成 Strong”；其继承表“首版只负责直接子进程及仍处于原进程组的后代” | 修改：负责范围扩大到 Linux 上保留标记的后代（含 `setsid` 后被 init 收养的工具作业）；仍为 BestEffort，强纳管另立决策（D6） |
-| 刷新决策不变量 7 | 修改为：停止尝试锁与范围记录先刷盘再登记/派发；Agent 尝试的插件运行时及全部宿主子进程继承同一锁，Linux 上每个进程带尝试标记，Node 副本保留到请求停止；确认前冻结并杀掉带标记进程，要求原锁、全部线索与连续两次标记扫描都干净，记 `lock_processes_and_marks`（标记前登记的尝试记 `lock_and_processes`）；重启先核对原证据，跨 boot 只认同一主机，不能刷新额度、伪造停止或复活 Agent |
-| 刷新决策 R6 纳管保证 | 修改为：接受进程组 + 继承锁 + 尝试环境标记（Linux）的 BestEffort。清空环境或不可 dump 的孤儿后代不在证据内；同 uid 不可读的孤儿不计入也不使证据为 Unknown；标记可被伪造，但伪造者只能让自己在尝试开始后启动的进程被杀，或拖住确认；会话结束与 Agent 替换杀掉 Agent 启动的守护进程。强纳管后续决策 |
+| 刷新决策不变量 7 | 修改为：停止尝试锁与范围记录先刷盘再登记/派发；Agent 尝试的插件运行时及全部宿主子进程继承同一锁，Linux 上每个进程带尝试标记，Node 副本保留到请求停止；确认前冻结并杀掉带标记进程，要求原锁、全部线索与连续两次标记扫描都干净，记 `lock_processes_and_marks`（带范围记录标志而记录缺失或损坏为 Unknown，不带标志的旧尝试记 `lock_and_processes`）；重启先核对原证据，跨 boot 只认同一主机，不能刷新额度、伪造停止或复活 Agent |
+| 刷新决策 R6 纳管保证 | 修改为：接受进程组 + 继承锁 + 尝试环境标记（Linux）的 BestEffort。清空环境或不可 dump 的孤儿后代不在证据内；同 uid 不可读的孤儿不计入也不使证据为 Unknown；标记可被伪造，但伪造者只能让自己在尝试开始后启动的进程被杀，或拖住确认直到 `stop_unconfirmed`（已接受的可用性风险）；部署须满足 Node 与 workload 同用户或 Node 具备 `CAP_SYS_PTRACE`，否则启动告警；会话结束与 Agent 替换杀掉 Agent 启动的守护进程。强纳管后续决策 |
 | 刷新决策其他不变量、R1–R5、R7–R11 | 继承，不变 |
 | 取消决策 D1、D2、D4、D5、D6 | 继承，不变；保留会话的取消与失败不发任何停止信号（D4） |
 | 取消决策 D3 第 2 条：“原尝试锁与全部直接进程线索，进程组 BestEffort” | 修改：停止证据为原尝试锁、全部直接进程线索与尝试标记扫描，BestEffort，证明记 `lock_processes_and_marks`（D3） |
@@ -100,12 +103,17 @@ fsync 目录：
 同一退休前缀下，按刷新决策 D5 的规则一起回收。HTTP 本地任务没有进程，不写范围记录；Git 尝试走
 `managed/attempt_lock`，不加标记。
 
+账本登记尝试时，同一行记下**有范围记录**标志：范围记录已刷盘后才登记，所以新 Node 登记的尝试总是带标志；
+schema 迁移前已存在的行一律不带标志（D7）。标志只说明“这个尝试应当有范围记录”，判定时以它区分“记录丢了”和
+“本来就没有”（D3）。
+
 为什么用环境变量：它是 Linux 上唯一默认跨 `setsid`、被收养、关闭 fd 都保留下来的、由启动方写入的进程属性；
 进程组、会话和 fd 都由进程自己决定去留。为什么记开始时刻：内核按同一 boot 时钟记录进程开始时间并截断为
 tick，记录之后 fork 的进程不会报告更早的 tick，所以 `start_ticks >= since_ticks` 能把尝试开始前已存在的进程整体
 排除在外，标记被伪造也碰不到它们（D8）。为什么记用户：只在 Node 与尝试用户不同时，读不到的进程才可能属于本
 尝试（D6）。为什么登记前写：账本里的每个新尝试都必然有范围记录，记录后、spawn 前崩溃只留下没有进程的范围，
-扫描干净，不造成假门禁。
+扫描干净，不造成假门禁。为什么另记标志：只凭文件是否存在，新尝试的范围记录被删除或丢失时与旧尝试无法区分，
+会悄悄降级为不扫描标记的旧证明；标志让这种情况落到 Unknown。
 
 `since_ticks` 只在原 boot 上有意义。boot_id 不同时不扫描、不发信号，按刷新决策 D5 的跨 boot 规则处理（D3）。
 
@@ -154,39 +162,39 @@ procfs 无法枚举，或出现“进程已退出”以外的读取错误，整�
 
 1. 锁标记文件有效，原锁可取得（继承）；
 2. 全部线索的直接进程及其进程组都已不在（继承）；
-3. 读取范围记录：
-   - 不存在：这是标记出现之前登记的尝试，它的进程都不带标记，证明记 `lock_and_processes`；
-   - 损坏或不可读：Unknown；
-   - 存在：连续两次扫描，任一次有被认领进程即 Running；有待定进程或扫描失败即 Unknown；两次都干净，证明记
-     `lock_processes_and_marks`。
+3. 按账本的范围记录标志读取范围记录：
+   - 不带标志：这是标记出现之前登记的尝试，它的进程都不带标记，不扫描，证明记 `lock_and_processes`；
+   - 带标志，范围记录缺失、损坏或不可读：Unknown；
+   - 带标志且范围记录有效：连续两次扫描，任一次有被认领进程即 Running；有待定进程或扫描失败即 Unknown；两次
+     都干净，证明记 `lock_processes_and_marks`。
 
 为什么两次：一个进程在扫描经过它子进程的槽位时 fork 后退出，PID 又回绕，单次扫描可能漏掉这个子进程；连续两次
 扫描不可能都漏掉。
 
 | 证明 | 产生条件 | 能否解除 `legacy_unknown` | 能否用于 `after-host-reboot` |
 | --- | --- | --- | --- |
-| `lock_and_processes` | 同一 boot，无范围记录的旧尝试，锁与线索干净 | 不能 | 不能 |
-| `lock_processes_and_marks` | 同一 boot，有范围记录的尝试，锁、线索与两次扫描都干净 | 不能 | 不能 |
+| `lock_and_processes` | 同一 boot，不带范围记录标志的旧尝试，锁与线索干净 | 不能 | 不能 |
+| `lock_processes_and_marks` | 同一 boot，带标志的尝试，锁、线索与两次扫描都干净 | 不能 | 不能 |
 | `host_reboot` | 继承：同一可信主机标识，boot_id 不同 | 能 | 能 |
 | `fenced_volume` | 继承：部署声明单点挂载与存储层隔离 | 能 | 能 |
 
-`legacy_unknown` 的尝试没有尝试锁，也没有范围记录，同一 boot 的两种证明都被账本拒绝，出口仍只有同机重启与
+`legacy_unknown` 的尝试没有尝试锁，也不带范围记录标志，同一 boot 的两种证明都被账本拒绝，出口仍只有同机重启与
 单点挂载保证。`after-host-reboot` 对账要求宿主重启证据，两种同一 boot 的证明都不满足它。
 
 刷新决策 D5 的重启收口表改为：
 
 | 原尝试证据 | 处理 |
 | --- | --- |
-| boot_id 相同，原锁可取得，全部线索的直接进程都已不在，且有范围记录时连续两次标记扫描干净 | 按 BestEffort 确认已停止或从未派发；有范围记录记 `lock_processes_and_marks`，否则记 `lock_and_processes`；正常立即结算 interrupted |
+| boot_id 相同，原锁可取得，全部线索的直接进程都已不在，且带范围记录标志时连续两次标记扫描干净 | 按 BestEffort 确认已停止或从未派发；带标志记 `lock_processes_and_marks`，不带标志记 `lock_and_processes`；正常立即结算 interrupted |
 | boot_id 相同，原锁被占用、任一线索的直接进程仍存活，或仍有被标记扫描认领的存活进程 | 先按 D2 冻结并杀掉被认领的进程，再按各条已验证线索终止对应进程组，再查锁、直接进程与标记；没有取得停止证据前保留原责任 |
 | boot_id 相同，锁缺失、损坏或不可读 | Unknown，转交对账（继承） |
-| boot_id 相同，范围记录损坏、procfs 不可读，或扫描有待定进程 | Unknown，转交对账 |
+| boot_id 相同，带标志而范围记录缺失、损坏或不可读，procfs 不可读，或扫描有待定进程 | Unknown，转交对账 |
 | boot_id 不同，且记录的主机标识与当前相同 | 记 `host_reboot` 确认（继承） |
 | boot_id 不同，主机标识不同、缺失或不可信 | Unknown，除非部署满足单点挂载保证（继承） |
 
 `recheck` 在至多 10 秒内核对原锁、全部线索与标记扫描，必要时按 D2 冻结并杀掉被认领的进程、终止线索进程组，
 再观察；其余规则不变。`StopUnconfirmed` 的 `guarantee` 仍为 `BestEffort`；证明名不进入 Node Protocol，Controller
-不会看到它，只有 Node 账本和 root `reconcile-session-stop` 的审计结果记录它，审计可以据此区分有标记与无标记
+不会看到它，只有 Node 账本和 root `reconcile-session-stop` 的审计结果记录它，审计可以据此区分扫描过标记与没有标记可扫
 的尝试。
 
 ## D4：什么会被杀、何时（行为变化）
@@ -237,7 +245,7 @@ Node 自己的环境里已有非空的 `ORA_SESSION_ATTEMPT`（它本身是外�
 | 被认领进程的子进程，环境不可读 | 经父进程认领，照常冻结并杀 | 父子关系不需要读环境 |
 | 尝试用户的孤儿进程，Node 也以该用户运行，环境不可读 | 不认领，也不使证据为 Unknown | 同用户下读不到环境，说明进程把自己设为不可 dump（其 `/proc` 目录归 root）或带 file capability；ssh-agent 这类无关程序同样如此，计入会挡住所有停止 |
 | 尝试用户的进程，Node 以其他用户运行且没有 `CAP_SYS_PTRACE` | 待定，证据为 Unknown | 此时 Node 读不到这个用户的任何环境，读不到不再能说明“不属于本尝试” |
-| 范围记录损坏或不可读，procfs 无法枚举 | Unknown | 无法判断就不能当作没有进程 |
+| 带标志而范围记录缺失、损坏或不可读，procfs 无法枚举 | Unknown | 无法判断就不能当作没有进程 |
 
 以下进程不在证据内，仍是已知缺口，因此证据保持 `StopContainment::BestEffort`，不宣称 Strong 或整棵树静止：
 
@@ -245,22 +253,29 @@ Node 自己的环境里已有非空的 `ORA_SESSION_ATTEMPT`（它本身是外�
   父进程先退出后就找不到；
 - Node 的 procfs 看不到的进程，例如被移到 Node 不可见的 PID namespace 中的进程；
 - macOS 与 Windows：本决策不覆盖，各平台另行实测和决策；
-- 标记出现之前登记、升级时仍存活的尝试：没有范围记录，它们的脱组作业仍不在证据内（D7）。
+- 标记出现之前登记、升级时仍存活的尝试：不带范围记录标志，它们的脱组作业仍不在证据内（D7）。
+
+**部署前提**：Node 与 workload 以同一用户运行，或 Node 具备 `CAP_SYS_PTRACE`。Desktop 与 cloud v2 当前都以同一
+用户运行。Node 启动时检查这一前提，不满足时记录告警，但不拒绝启动：此时按上表第三行，窗口内凡有 workload 用户
+读不到的进程，停止证据就是 Unknown，结果是更多的 `stop_unconfirmed`，而不是假的停止证据。选择告警而非拒绝启动，
+是因为前提不满足只削弱确认的可用性，不破坏安全性；拒绝启动则会让一次配置偏差使整个 Workspace 不可用。
 
 ## D7：账本 schema 与单向兼容
 
-`session_stop_attempts.evidence` 的 CHECK 增加 `lock_processes_and_marks`。SQLite 不能原地放宽 CHECK，迁移在一个
-事务中重建这张表：改名旧表、按新 CHECK 建表、原样拷贝全部行、删除旧表、重建索引，并把 `user_version` 升到下一
-版（desktop#802 当前为 15）。迁移不改写任何既有行：已确认的行保留原证明，升级时仍存活的旧尝试没有范围记录，
-之后仍记 `lock_and_processes`。
+`session_stop_attempts` 做两处改动，放在同一个迁移里：`evidence` 的 CHECK 增加 `lock_processes_and_marks`，并新增
+D1 的范围记录标志列。SQLite 不能原地放宽 CHECK，迁移在一个事务中重建这张表：改名旧表、按新定义建表、拷贝全部
+行（标志一律为“不带”）、删除旧表、重建索引，并把 `user_version` 升到 desktop#793 所用版本之后的下一个 schema 版本。
+desktop#793 先合入，desktop#802 的迁移排在它之后；两项改动都尚未发布，所以标志不另占 schema 版本。迁移不改写任何
+既有值：已确认的行保留原证明，升级时仍存活的旧尝试不带标志，之后仍记 `lock_and_processes`。
 
-兼容是单向的：旧 Node 只接受到上一版的 `user_version`（包括 cloud v2-server 锁定的 `2937fc97` 在内，现有版本为
-1..=14），会拒绝打开新库，而不是
-误读新证明。这沿用刷新决策 D5“不支持原地回滚旧二进制/schema”的规则：升级后回退 Node 需要先排空并单独处理
+兼容是单向的：旧 Node 只接受到它自己的最高 `user_version`（cloud v2-server 锁定的 `2937fc97` 为 1..=14），会拒绝
+打开新库，而不是误读新证明。这沿用刷新决策 D5“不支持原地回滚旧二进制/schema”的规则：升级后回退 Node 需要先排空并单独处理
 数据库，本决策不提供降级迁移。Node Protocol、Controller 与 TS 契约不变；desktop 与 cloud 中没有代码按证明名匹配，
 cloud 不读 Node 数据库或尝试目录。
 
-升级前仍应排空会话。未排空时升级照常进行，不拒绝启动；只是旧尝试保持 `lock_and_processes`，不获得标记覆盖。
+升级前仍应排空会话。未排空升级是已接受的缺口，本决策不为它新增规则：升级照常进行、不拒绝启动；来自没有停止
+责任表的旧版本的会话，已按刷新决策 D5 标为 `legacy_unknown`；已有停止责任、但早于标记的尝试不带标志，保持
+`lock_and_processes`，不获得标记覆盖。
 
 为什么重建表而不是放宽成任意文本：封闭的 CHECK 让新旧程序对证明集合的理解一致，旧程序拒绝打开新库比把新值
 当作未知字符串静默接受更安全。为什么新增证明名而不是沿用旧名：审计需要区分“扫描过标记”与“没有标记可扫”，
@@ -274,7 +289,8 @@ cloud 不读 Node 数据库或尝试目录。
 - 伪造者不能让 Node 向尝试开始之前就存在的进程发信号：`start_ticks` 窗口把它们排除在外；把标记写进一个已存在
   的进程需要对它的 ptrace 权限，这本身已包含向它发信号的权限，不构成提权；
 - 伪造者可以持续启动带标记的进程，让扫描一直看到 Running，从而拖住确认，直到期限后登记 `stop_unconfirmed`。
-  这是可用性影响，结果是失败即封闭：残留围栏照常挡住恢复与自身交付，不会产生假的停止证据。
+  owner 接受这一可用性风险：结果是失败即封闭，残留围栏照常挡住恢复与自身交付，不会产生假的停止证据；而同 uid
+  的进程本来就能做更糟的事，例如持有继承的锁 fd，或直接改写 checkout。
 
 反方向上，workload 可以清空环境逃出标记，这与刷新决策 D5“证据假定 workload 配合”的前提一致：标记、锁和线索
 对恶意或失控 workload 都只是 BestEffort，不是对抗性隔离。
@@ -282,10 +298,10 @@ cloud 不读 Node 数据库或尝试目录。
 ## 不变量
 
 1. Linux 上，Agent 尝试与 stdio 探测尝试由宿主派发的每个进程都带 `ORA_SESSION_ATTEMPT`，其值以整段 token 列出该
-   尝试 ID；范围记录在尝试登记前已刷盘。
-2. 有范围记录的尝试，只有原锁可取得、全部线索的进程与进程组都已不在、且连续两次标记扫描既无被认领进程也无
-   待定进程时，才确认停止并记 `lock_processes_and_marks`。
-3. 范围记录损坏、procfs 不可读、扫描失败或有待定进程时，证据为 Unknown，绝不为 Stopped。
+   尝试 ID；范围记录在尝试登记前已刷盘，新登记的尝试都带范围记录标志。
+2. 带标志的尝试，只有原锁可取得、全部线索的进程与进程组都已不在、且连续两次标记扫描既无被认领进程也无待定
+   进程时，才确认停止并记 `lock_processes_and_marks`；只有不带标志的尝试记 `lock_and_processes`。
+3. 带标志而范围记录缺失或损坏、procfs 不可读、扫描失败或有待定进程时，证据为 Unknown，绝不为 Stopped。
 4. Node 只向在尝试开始之后启动、带标记或父进程已被认领的进程发冻结与杀信号，经 pidfd 发给扫描观察到的实例；
    boot_id 不同时不发任何信号。
 5. 冻结先于杀，杀先于组终止；冻结轮数有上限；任何信号的返回都不构成停止证据。
@@ -295,6 +311,7 @@ cloud 不读 Node 数据库或尝试目录。
 8. 嵌套 Node 传下的值保留外层 token；每个 Node 只认领列出自己 token 的进程。
 9. 停止保证仍为 `StopContainment::BestEffort`，不宣称 Strong 或整棵树静止。
 10. 新 schema 只能前向迁移；旧 Node 拒绝打开它。
+11. Node 与 workload 不同用户且 Node 没有 `CAP_SYS_PTRACE` 时，Node 启动告警；这种部署下的不确定只产生 Unknown。
 
 ## 为什么不是这些替代方案
 
@@ -317,9 +334,11 @@ cloud 不读 Node 数据库或尝试目录。
 - 每次停止探查都要遍历一次 procfs 并读取窗口内进程的环境，进程很多的主机上停止确认会稍慢；停止确认期限不变。
 - 进程拒绝退出（不可中断睡眠）或标记被持续伪造时，确认会被拖住，`stop_unconfirmed` 可能比以前多；这是失败即
   封闭，不产生假证据。
-- Node 以与 workload 不同的用户运行且没有 `CAP_SYS_PTRACE` 的部署中，窗口内凡有该用户读不到的进程，证据就是
-  Unknown。
-- 升级时仍存活的旧尝试不获得覆盖；新 schema 不能回退。
+- 不满足部署前提（Node 与 workload 不同用户且没有 `CAP_SYS_PTRACE`）时，Node 启动告警但照常服务，窗口内凡有该
+  用户读不到的进程，证据就是 Unknown；Desktop 与 cloud v2 当前满足前提。
+- 范围记录丢失或损坏的新尝试不会降级为旧证明，而是 Unknown，转交对账。
+- 未排空升级时仍存活、早于标记的尝试不获得覆盖，这是已接受的缺口；新 schema 不能回退，并排在 desktop#793 的
+  schema 版本之后。
 
 ## 本决策未解决的问题
 
@@ -329,47 +348,26 @@ cloud 不读 Node 数据库或尝试目录。
 - **macOS 与 Windows**：macOS 只能做标记扫描，Windows 的私有 Job 可能已覆盖，都要实测后各自决策。
 - **清空环境后成为孤儿的进程**：没有 subreaper 或 cgroup 无法覆盖。
 
-## 评审待确认
+## 核心测试用例
 
-以下几点在实现中已有默认处理，转为 `approved` 前请 owner 明确：
-
-1. 新 Node 登记的尝试若范围记录文件**缺失**（而不是损坏），与标记出现之前的旧尝试无法区分，会降级记
-   `lock_and_processes`。是否需要在账本中记录“该尝试有范围记录”，使缺失也判为 Unknown？这会再改一次 schema。
-2. D8 中伪造者可以拖住确认，是否接受为已知的可用性风险？
-3. 是否要求部署满足“Node 与 workload 同用户，或 Node 具备 `CAP_SYS_PTRACE`”，并在启动时检查，以免 D6 第三行让
-   停止普遍变为 Unknown？
-4. 未排空升级时旧尝试不获得标记覆盖，是接受这个缺口，还是对它们改判 Unknown？
-5. desktop#793（取消决策的实现）也使用 schema 15，后合入者改用下一版；落地顺序是否要固定？
-
-## 验证义务
-
-转为 `approved` 后按以下义务更新核心用例，不在本阶段登记证据：
-
-- 两个部署插件在四种会话结束方式下，`cmd &` 与 `setsid` 起的后台作业都在 Node 报告停止前被杀，之后不再写入；
-  作业存活时不记 `confirmed`。
-- 关闭锁 fd 且脱离进程组的作业存活时，同一 boot 的探查判 Running；有范围记录的尝试确认记
-  `lock_processes_and_marks`，无范围记录的旧尝试记 `lock_and_processes`。
-- 范围记录损坏、procfs 不可读、外用户无 `CAP_SYS_PTRACE` 下的不可读进程都给出 Unknown；同用户不可读的孤儿既不
-  认领也不导致 Unknown。
-- 冻结期间 fork 并清空环境的子进程经父进程被认领并杀掉；PID 复用的进程不被发信号；尝试开始前启动的带标记进程
-  不被认领。
-- Node 被 SIGKILL 后重启收口杀掉残留作业再确认；`recheck` 同样扫描并杀；`after-host-reboot` 拒绝两种同一 boot 的
-  证明；`legacy_unknown` 不被两者解除。
-- MCP 生命周期替换先杀掉旧尝试的带标记进程，取得新证明后才启动后继；轮次之间和保留会话的取消不杀 LSP、MCP 等
-  常驻进程。
-- 嵌套 Node：外层停止杀掉内层全部进程，内层只认领自己的 token。
-- schema 升级保留全部停止记录，新库接受新证明，旧程序拒绝打开新库。
+见[会话 MCP 刷新与宿主健康用例](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md)：新增
+[会话停止杀掉全部带标记进程、轮次之间不杀](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-turns-kill-none)
+（D4、D5、D8），并在尝试锁、重启收口、未排空升级、运维对账、版本重启与探测清理各用例中补充 D1–D3、D6、D7 的
+义务。[取消一轮用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)的第 11、12、13 条补充取消导致
+会话结束时的后台作业与保留会话时不杀任何进程。desktop#802 合入前，这些义务都是 `Missing`。
 
 ## 落地顺序
 
-1. **评审本 ADR**：按反馈纠正后标为 `approved`，同时更新受影响的核心用例，验证义务的证据状态如实标记。完成条件：
-   “评审待确认”各项都有结论并写入正文。
-2. **合入 desktop#802**：只在本 ADR `approved` 之后合入，与 desktop#793 的 schema 版本号先协调好。完成条件：CI
-   通过，迁移版本号与最终合入顺序一致。
-3. **登记证据**：后续运行把 desktop#802 的直接测试登记到核心用例，用真实插件复测四种结束方式；完成验证后把本
-   ADR 标为 `implemented` 并精简正文。
-4. **部署跟进**：cloud v2-server 锁定的 Node 升级到包含修复的版本，属于 cloud 侧任务，不在本仓库。
+1. **评审本 ADR**（已完成）：owner 的五项结论已写入正文，状态为 `approved`，受影响的核心用例已补充义务，证据状态
+   如实标为 `Missing`。
+2. **先合入 desktop#793**：取消决策的实现先占用下一个 schema 版本。
+3. **再合入 desktop#802**：按本决策补齐范围记录标志（带标志而记录缺失或损坏为 Unknown）与启动时的部署前提告警，
+   迁移改用 desktop#793 之后的 schema 版本，标志与 CHECK 放宽在同一次迁移中。完成条件：CI 通过，迁移版本号与
+   合入顺序一致。
+4. **登记证据**：后续运行把 desktop#802 合入后的直接测试登记到核心用例，用真实插件复测四种结束方式；完成验证后
+   把本 ADR 标为 `implemented` 并精简正文。
+5. **部署跟进**：cloud v2-server 锁定的 Node 升级到包含修复的版本，属于 cloud 侧任务，不在本仓库。
 
 这样拆分让决策先于代码通过评审，避免实现以单向 schema 先行落地；证据登记与部署升级各自可独立验收。保持不变：
-Node Protocol、Controller 行为、跨 boot 证据、残留围栏与对账流程。从第 2 步开始改变：会话结束与 Agent 替换杀掉
+Node Protocol、Controller 行为、跨 boot 证据、残留围栏与对账流程。从第 3 步开始改变：会话结束与 Agent 替换杀掉
 全部带标记进程，确认要求标记扫描干净，账本只能前向迁移。
