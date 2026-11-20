@@ -12,7 +12,7 @@ status: implemented
 登记还在，下次启动接着做。删的时候确认目录只属于这个对话、没有会话还在用、路径没有经符号链接逃出 checkout 根。
 
 本 ADR 为 `implemented`：owner 2026-11-19 在 circus #1318 评审通过，由 circus #1196 的运行 #1319 实现（cloud PR #419，
-`01fa3149`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
+`9f393d72`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
 [工作目录回收用例](../../../test-cases/cloud/project-git/workspace-reclaim.md)。依据是 owner 2026-11-16 在 circus #1191
 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是 #1119：24 小时内 101 个工作目录全部保留，
 其中 45 个属于已删除的普通对话。它是[回合交付](20261112-single-machine-turn-delivery.md)（下称“交付 ADR”）的后续决策，同时修改
@@ -67,10 +67,12 @@ status: implemented
   第一版 Agent 与 Cloud 是同一个系统用户（A1 D2），这不扩大 Agent 的权限。gitlink 与嵌套 `.git` 按第 5 条生成的树和不跟随
   链接的遍历检查。命令行覆盖的配置至少包括 `core.fsmonitor`、`core.hooksPath`。顶层 `.git` 不存在时（Agent 删掉了它）没有
   本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink；顶层 `.git` 存在但解析不出来（gitfile 指向不存在或越界的位置等）判为
-  `unverifiable`，不当作“没有 `.git`”跳过。reflog 和 `ORIG_HEAD`、`MERGE_HEAD`、`FETCH_HEAD` 这类伪 ref 不算成果。`HEAD` 解析不出可读的提交时，只有它是
+  `unverifiable`，不当作“没有 `.git`”跳过。reflog 和 `ORIG_HEAD`、`MERGE_HEAD`、`FETCH_HEAD` 这类伪 ref 不算成果。`HEAD` 解析不出可读的提交时，只有它**直接**
   指向不存在的 ref 的符号引用（还没有任何提交）才跳过 `HEAD` 的比对，其余（detached 的对象 ID 解析不了、指向的 ref 存在却读不出
-  提交、读不出它的树）都判 `unverifiable`；ref、stash、提交遍历遇到对象缺失或损坏同样判 `unverifiable`，其他 Git 调用失败按
-  `check_failed` 重试。
+  提交、读不出它的树）都判 `unverifiable`；ref、stash、提交遍历遇到对象缺失或损坏同样判 `unverifiable`，其他 Git 调用失败（读不到、IO、权限、
+  启动失败）按 `check_failed` 重试。ref 不只信 Git 列出的结果：还直接读公共 Git 目录和工作树 Git 目录里的 loose ref 与
+  `packed-refs`，内容必须是合法的对象 ID 或符号引用，且对象 ID 形式的都出现在 Git 列出的结果里，否则判 `unverifiable`
+  （Git 会跳过损坏的 ref 并照样成功退出）。
 - 嵌套仓库全部判为不能恢复：`git submodule update --init`、`git worktree add` 生成的 `.git` 是 gitfile，子模块里没提交的改动
   不改变 gitlink，只按“名为 `.git` 的目录”或只比 gitlink 会让默认的 `reclaim` 删掉它们。
 - 第 5 条生成的树只在临时 Git 目录里，不写镜像、不写交付 ref；生成期间持有交付对这个目录的锁（`DeliveryFS.LockWorkspace`），
@@ -310,4 +312,4 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
 1. **ADR（circus #1196，运行 #1318）**：本文评审到 `approved`，补核心测试用例和术语。
 2. **实现（circus #1196，运行 #1319，cloud PR #419）**：回收登记与迁移 `0007`、判定与预览、删除参数与返回值、确认框与下载入口、
    精确归属的删除、启动时继续、运维子命令。
-3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `01fa3149` 登记用例证据。
+3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `9f393d72` 登记用例证据。
