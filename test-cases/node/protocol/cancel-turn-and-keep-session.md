@@ -352,7 +352,7 @@ Agent 不回应取消时，Controller 等不到结论；或者 Node 在取得停
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 11：没有回应时按期结算，终态等停止证据 | 尚未实现，无直接证据 | Missing |
-| 11（尝试标记）：以 `session_ending` 结束时本轮的脱组后台作业在终态前被杀 | [ending_a_running_turn_kills_its_detached_tool_job](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L211)：轮次运行中以 EndSession 结束会话，本轮工具起的 `setsid` 作业在 `AgentSessionEnded` 之前退出、证明为 `lock_processes_and_marks`、之后不写入。缺口：没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，取消路径与 EndSession 共用停止确认只由代码保证 | Partial |
+| 11（尝试标记）：以 `session_ending` 结束时本轮的脱组后台作业在终态前被杀 | [ending_a_running_turn_kills_its_detached_tool_job](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L211)：轮次运行中以 EndSession 结束会话，本轮工具起的 `setsid` 作业在 `AgentSessionEnded` 之前退出、证明为 `lock_processes_and_marks`、之后不写入。缺口：仓库里没有经 `CancelTurn` 以 `session_ending` 结束会话的用例。评审在 `198cc415` 上核对取消以 `turn_boundary_unverified` 结束后进入同一停止确认，并用临时用例与真实插件复测确认作业先被杀，这些是运行记录，补进仓库后再登记 | Partial |
 
 ### 决策依据
 

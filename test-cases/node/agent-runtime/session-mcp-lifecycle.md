@@ -17,8 +17,8 @@ Controller/v2 的协议接线仍由 [#1171](https://github.com/ora-space/circus/
 这 19 项义务按 [desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head
 [`198cc415`](https://github.com/ora-space/desktop/commit/198cc41517a837ec436a897655403adc790b8c0d)（尚未合入 main）登记直接证据：
 7 项 `Covered`、10 项 `Partial`、2 项 `Missing`。既有义务的证据按原固定提交 `28da0a4e` 保留，不因新决策改变状态。
-评审方在中间版本 `07c495e0` 上用发布包 OpenCode 0.6.11 与 Claude 0.4.5 复测 EndSession 和 SIGKILL 后重启，作业都在报告
-停止前被杀；这是运行记录，不是可重复测试，不登记为证据。
+评审方在 `198cc415` 上用发布包 OpenCode 0.6.11 与 Claude 0.4.5 复测 EndSession 和导致会话结束的 CancelTurn、OpenCode 的
+SIGKILL 后重启（Claude 的重启复测在中间版本 `07c495e0`），作业都在报告停止前被杀；这是运行记录，不是可重复测试，不登记为证据。
 
 ## Lifecycle Mode Is Opt-In Per Session And Never Widens The Selection
 
@@ -568,7 +568,7 @@ Node 侧验收：`Partial`。
 
 缺口：
 - 每个进程带标记：没有直接检查子进程环境的测试，也没有覆盖 `ProcessEnvironment::Empty` 与 `remove_env_prefix` 的 spawn 仍带标记；范围记录先于登记只由 `prepare` 的调用顺序保证，没有在两者之间注入崩溃的测试。
-- 冻结先于组终止：冻结与杀的顺序有直接测试，“标记杀先于线索进程组终止”只在 `files.rs` 的终止顺序中保证，没有测试；冻结上限之后改为直接杀的分支只由看门狗测试间接覆盖。pidfd 打不开时下一轮重试没有测试。
+- 冻结先于组终止：冻结与杀的顺序有直接测试，“标记杀先于线索进程组终止”只在 `files.rs` 的终止顺序中保证，没有测试；冻结上限之后改为直接杀的分支只由看门狗测试间接覆盖。pidfd 打不开时下一轮重试、收尾时重新确认失败的冻结进程留到下一次观察，都没有测试。
 - 窗口与 PID 复用：尝试开始前的带标记进程只断言不被扫描认领，没有在 `kill` 之后断言它仍存活；同一 tick 内 PID 回绕是理论缺口，无法测试。
 - 读不到的进程：分类规则用合成候选测试，没有在 Node 与 workload 分用户的真实部署（需要 root）下扫描真实进程；启动检查检测不到 Yama `ptrace_scope` 与 LSM 拒绝，这是决策接受的范围。
 
@@ -634,9 +634,8 @@ desktop#802 `198cc415` 的真实 Node 测试用 echo-agent fixture 模拟部署�
 - [scan_claims_only_marked_processes_started_within_the_scope](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark.rs#L81)：`outer:token` 被认领，`token-other` 与尝试开始前的带标记进程不被认领。
 
 缺口：
-- 结束方式：没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，“轮次仍在运行时结束”走的是 EndSession；真实插件只在
-  `07c495e0` 上复测了 EndSession 与 SIGKILL 后重启（运行记录），优雅关闭与导致会话结束的取消没有真实插件复测，`198cc415` 上
-  没有重跑。
+- 结束方式：仓库里没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，“轮次仍在运行时结束”走的是 EndSession；评审的临时
+  用例与真实插件复测（运行记录）表明取消路径同样先杀作业，补进仓库后再登记。部署插件的优雅关闭没有真实复测。
 - 守护进程：fixture 作业与被收养的守护进程在扫描面前相同，但没有“另一会话仍在使用”的用例。
 - 轮次之间与保留会话：没有断言带标记进程跨轮次存活的测试（现有用例只在轮次结束后 pin 住作业）；保留会话的取消没有带标记进程的测试。
 - 嵌套 Node：只有标记值与匹配的单测，没有真实的嵌套 Node 用例。
