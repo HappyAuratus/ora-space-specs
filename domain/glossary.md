@@ -451,6 +451,20 @@ _Avoid_: kill sent, timeout elapsed, exit status
 停止证据的结论。
 _Avoid_: Stop Evidence, process attempt record
 
+## Node Session Stop
+
+本节是 Node 停止 Agent 会话尝试时使用的术语。尝试锁和终止线索沿用上一节的定义，决策入口见
+[会话尝试的进程带环境标记](../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)。
+
+### Attempt Environment Mark（尝试环境标记）
+
+`Attempt Environment Mark` 是 Linux 上 Node 给一次 Agent 尝试或 stdio 探测尝试派发的每个进程设置的环境项
+`ORA_SESSION_ATTEMPT=<attempt>`，后代经继承得到它；嵌套 Node 写成 `外层:attempt`。尝试登记前持久写下的
+**范围记录**（尝试开始的 boot tick 与进程用户）限定它能认领的进程：只认领尝试开始后启动、带标记或父进程已被
+认领的存活进程。它用来在停止时找到并杀掉脱离进程组、关闭了锁 fd 的后代，并作为停止证据的一部分（扫描干净），
+不是秘密，也不构成强纳管：清空环境后成为孤儿的进程不在其内。
+_Avoid_: session id, process group, secret token, cgroup
+
 ## Cloud Deployment
 
 正式 Cloud 的部署形态见 [Cloud 单进程根决策](../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)。
