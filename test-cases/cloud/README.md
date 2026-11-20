@@ -236,8 +236,8 @@ cloud#76（`ceb39bc`）与 cluster#27（`033a4ea`）合入 main 并改为 `imple
 | project-git | [回合交付](project-git/turn-delivery.md) | 回合没有交付或重复交付、交付漏文件或带进物化技能、改动 Agent 的 Git 状态、有记录无 ref 或 ref 被改写、同步动了交付 ref、交付前就进待验收、清理后看不到改动、越权读对话交付、重启后重做或晚交付、经 Cloud 入口写 ref |
 
 [删除对话时回收工作目录](../../decisions/cloud/project-git/20261119-reclaim-deleted-conversation-workspace.md)为 `implemented`：由 circus #1196 的运行 #1319
-（cloud PR #419，合并提交 `e5847807`）实现。证据按 cloud `d4ec60d5` 的 `v2-server/` 与 `frontend-v2/` 登记，28 项汇总为
-14 Covered / 13 Partial / 1 Missing。
+（cloud PR #419，合并提交 `e5847807`）实现。证据按 cloud `d4ec60d5` 的 `v2-server/` 与 `frontend-v2/` 登记，29 项汇总为
+12 Covered / 16 Partial / 1 Missing。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

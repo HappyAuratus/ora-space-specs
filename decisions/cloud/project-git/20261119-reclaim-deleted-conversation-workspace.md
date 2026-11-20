@@ -99,7 +99,8 @@ status: implemented
     登记过但目录已不存在）、`recoverable`、`undelivered`（附 D1 的原因）；
   - `ignored`：`recoverable` 时目录里有没有被忽略规则排除的文件，只有确实有时界面才提示；
   - `undeliveredChanges`：`undelivered` 时相对最后一次成功交付（没有时相对起点）列出未交付的改动（路径、增删），有上限，
-    超过时给出总数；除 `delivering` 外都列出（`legacy` 相对起点列出）；
+    超过时给出总数；只有内容检查成功时才列出（`legacy` 相对起点列出）；`delivering` 不做检查，检查判为 `unverifiable` 时也
+    不填，这时可能保留 `legacy`、`last_turn_undelivered` 等原因，空列表不代表没有未交付的改动；
   - `git`：原因是 `git_state` 时列出发现了什么（`revision` 始终包含 Git 状态）：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
     `HEAD` 与交付不一致（`headDiffers`，及超出起点的提交数）、index 与交付不一致（`indexDiffers`）、
     嵌套仓库的路径（顶层以下的 `.git`、`.git/modules/` 下的仓库和变动过的 gitlink 合并去重）。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
