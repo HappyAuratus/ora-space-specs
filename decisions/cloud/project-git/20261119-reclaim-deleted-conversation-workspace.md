@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 删除对话时回收它的工作目录：成果能由运维从交付恢复、或用户明确丢弃时才删；先在删除的事务里登记，再按精确归属删除，失败和崩溃后启动时继续
@@ -11,7 +11,8 @@ status: approved
 请求里直接删目录了事：删除对话的同一个事务里先登记一条**工作目录回收**，再按登记去删；删除失败或 Cloud 崩溃，
 登记还在，下次启动接着做。删的时候确认目录只属于这个对话、没有会话还在用、路径没有经符号链接逃出 checkout 根。
 
-本 ADR 为 `approved`：owner 2026-11-19 在 circus #1318 评审通过，由 circus #1196 的运行 #1319 实现；核心测试用例见
+本 ADR 为 `implemented`：owner 2026-11-19 在 circus #1318 评审通过，由 circus #1196 的运行 #1319 实现（cloud PR #419，
+`d4ec60d5`）；实现中对 approved 稿的修改见“实现时的修改”一节，核心测试用例见
 [工作目录回收用例](../../../test-cases/cloud/project-git/workspace-reclaim.md)。依据是 owner 2026-11-16 在 circus #1191
 选定的方案 A 第二阶段和 2026-11-19 在 #1196 列出的判断条件；实测依据是 #1119：24 小时内 101 个工作目录全部保留，
 其中 45 个属于已删除的普通对话。它是[回合交付](20261112-single-machine-turn-delivery.md)（下称“交付 ADR”）的后续决策，同时修改
@@ -57,7 +58,7 @@ status: approved
 | 1 | 会话的所有回合都已结束，且这个会话没有交付义务（`v2_turn_delivery_work` 里没有它的回合，即 `HasWork` 为假，不是只看 `InProgress`） | `delivering`：还有回合在跑、在交付，或交付义务留给了下次启动（含第一轮还在跑的新对话） |
 | 2 | 会话至少有一条回合交付记录 | `legacy`：没有交付记录且没有交付义务，即交付 ADR 落地前的旧会话 |
 | 3 | 最后一轮有交付记录，结果是 `delivered` 或 `empty`（用现有的 `turn_id`、`position` 列判断，不加新列） | `last_turn_undelivered`：最后一轮交付失败，或最近一条记录落在更早的回合上 |
-| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；指向的对象剥开（annotated tag 剥成提交）后是提交，指向非提交对象的判为不满足；交付树里没有和起点不同的 gitlink；顶层 `.git/modules/` 下没有仓库；顶层以下没有任何名为 `.git` 的条目（目录、gitfile、符号链接都算，被忽略的目录如 `vendor/` 也扫） | `git_state` |
+| 4 | Agent 仓库里没有交付带不走的 Git 状态：没有 `refs/stash`；`refs/remotes/` 之外的每个本地 ref 都指向起点提交、起点的祖先或 `HEAD` 的祖先（含 `HEAD` 本身）；指向的对象剥开（annotated tag 剥成提交）后是提交，指向非提交对象的判为不满足；`HEAD` 是起点或起点的祖先，或者 `HEAD` 提交的树里每个路径的内容都与比对的交付树或起点树的同路径条目相同；index 没有冲突，每个条目都等于比对的交付树、起点树或（`HEAD` 合格时）`HEAD` 的同路径条目（intent-to-add 只要求交付树里有这个路径，物化技能路径先剔除）；交付树里没有和起点不同的 gitlink；顶层 `.git/modules/` 下没有仓库；顶层以下没有任何名为 `.git` 的条目（目录、gitfile、符号链接都算，被忽略的目录如 `vendor/` 也扫） | `git_state` |
 | 5 | 目录在最后一轮交付之后没有再变：按交付的快照规则（交付 ADR D2 的临时索引、忽略规则、物化技能剔除）重新生成树，与最后一次 `delivered` 交付提交的树相同（最后一轮是 `empty` 时与起点的树相同） | `changed_after_delivery`；内容本身无法验证（排除文件或 Git 元数据不能安全读取、改动超过交付大小上限、分不清物化的技能）时为 `unverifiable`；
   磁盘、镜像或 Git 调用临时失败不是 `unverifiable`，按 D3 重试 |
 
@@ -66,7 +67,16 @@ status: approved
   第一版 Agent 与 Cloud 是同一个系统用户（A1 D2），这不扩大 Agent 的权限。gitlink 与嵌套 `.git` 按第 5 条生成的树和不跟随
   链接的遍历检查。命令行覆盖的配置至少包括 `core.fsmonitor`、`core.hooksPath`。顶层 `.git` 不存在时（Agent 删掉了它）没有
   本地 ref 和 stash 可查，只查嵌套 `.git` 和 gitlink；顶层 `.git` 存在但解析不出来（gitfile 指向不存在或越界的位置等）判为
-  `unverifiable`，不当作“没有 `.git`”跳过。reflog 和 `ORIG_HEAD`、`MERGE_HEAD`、`FETCH_HEAD` 这类伪 ref 不算成果。
+  `unverifiable`，不当作“没有 `.git`”跳过。reflog 和 `ORIG_HEAD`、`MERGE_HEAD`、`FETCH_HEAD` 这类伪 ref 不算成果。`HEAD` 解析不出可读的提交时，只有它**直接**
+  指向不存在的 ref 的符号引用（还没有任何提交）才跳过 `HEAD` 的比对，其余（detached 的对象 ID 解析不了、指向的 ref 存在却读不出
+  提交、读不出它的树）都判 `unverifiable`；ref、stash、提交遍历遇到对象缺失或损坏同样判 `unverifiable`，其他 Git 调用失败（读不到、IO、权限、
+  启动失败、超时与取消）按 `check_failed` 重试；输出里同时有 IO 或权限诊断时，按可重试处理，优先于随后的“对象缺失”类描述；
+  `HEAD` 的直接目标直接读 `HEAD` 文件得到，不依赖较新 Git 的参数；“提交缺失”还要在磁盘上确认（对象目录可读且没有这个对象、
+  pack 都能打开、没有 alternates），确认不了按可重试。`HEAD` 解析失败时按诊断依次判定：超时或取消、IO 或权限诊断按可重试；明确的对象损坏、对象不存在或不是提交判
+  `unverifiable`；没有任何诊断的失败按可重试。ref 不只信 Git 列出的结果：还直接读公共 Git 目录和工作树 Git 目录里的 loose ref 与
+  `packed-refs`，只看 Git 会当作 ref 的名字（按 `check-ref-format` 的规则，跳过 `.lock` 等被中断的 Git 留下的文件），内容必须是合法的对象 ID
+  或符号引用（先于运行 Git 校验格式，`packed-refs` 按 Git 的读法逐行校验结构），且对象 ID 形式的都出现在 Git 列出的结果里，否则判 `unverifiable`
+  （Git 会跳过损坏的 ref 并照样成功退出）。
 - 嵌套仓库全部判为不能恢复：`git submodule update --init`、`git worktree add` 生成的 `.git` 是 gitfile，子模块里没提交的改动
   不改变 gitlink，只按“名为 `.git` 的目录”或只比 gitlink 会让默认的 `reclaim` 删掉它们。
 - 第 5 条生成的树只在临时 Git 目录里，不写镜像、不写交付 ref；生成期间持有交付对这个目录的锁（`DeliveryFS.LockWorkspace`），
@@ -89,16 +99,29 @@ status: approved
     登记过但目录已不存在）、`recoverable`、`undelivered`（附 D1 的原因）；
   - `ignored`：`recoverable` 时目录里有没有被忽略规则排除的文件，只有确实有时界面才提示；
   - `undeliveredChanges`：`undelivered` 时相对最后一次成功交付（没有时相对起点）列出未交付的改动（路径、增删），有上限，
-    超过时给出总数；除 `delivering` 外都列出（`legacy` 相对起点列出）；
+    超过时给出总数；只有内容检查成功时才列出（`legacy` 相对起点列出）；`delivering` 不做检查，检查判为 `unverifiable` 时也
+    不填，这时可能保留 `legacy`、`last_turn_undelivered` 等原因，空列表不代表没有未交付的改动；
   - `git`：原因是 `git_state` 时列出发现了什么（`revision` 始终包含 Git 状态）：stash 数量、有问题的 ref 名和各自不在起点与 `HEAD` 祖先里的提交数、
+    `HEAD` 与交付不一致（`headDiffers`，及超出起点的提交数）、index 与交付不一致（`indexDiffers`）、
     嵌套仓库的路径（顶层以下的 `.git`、`.git/modules/` 下的仓库和变动过的 gitlink 合并去重）。这时 `undeliveredChanges` 可能为空，界面不能显示“未交付的改动：无”；
   - `latestDelivery`：最近一次 `delivered` 交付的 ID，界面据此提供现有的 `…/workspace/deliveries/{id}/patch` 下载；
-  - `revision`：这份预览所依据的状态的标识，包含最后一轮、最近一次交付、判定与原因、按交付规则生成的快照树和 Git 状态，
-    所以同一路径、同样增删行数的内容改写也会改变它；`discard` 时要带回。
+  - `discardable`：只有判为 `undelivered`、不在交付中、做过内容检查并且 Git 相关内容的摘要完整时为真，界面据此决定给不给
+    丢弃选项；
+  - `revision`：这份预览所依据的状态的标识，包含最后一轮、最近一次交付、判定与原因、按交付规则生成的快照树，以及**会随目录
+    删除、交付又带不走的 Git 相关内容的字节摘要**：顶层仓库每个 ref 的目标、`HEAD`、stash 每一条的对象 ID 和 index 文件的
+    内容；每个嵌套仓库的整棵子树（工作树和它的 Git 目录，对象在内）；嵌套仓库的 `.git` 是 gitfile、符号链接或含 `commondir`
+    的目录时，指向的 Git 目录在 checkout 内就连同整棵目标（同一目录只算一次）。摘要读文件不调 Git、不跟随链接，先 `Lstat`
+    再以不跟随、非阻塞的方式打开并复核；与交付共用字节上限，条目上限 10 万。超出上限、遇到特殊文件、读取失败、指向 checkout
+    之外或解析不了，摘要都记为不完整，并且一旦不完整不会再恢复。所以同一路径、同样增删行数的内容改写，stash 被替换、ref 改指向、
+    暂存区被替换，都会改变它；`discard` 时要带回。顶层 `.git` 含 `commondir` 时不另读共享仓库：顶层的 ref 是在 checkout 上
+    列出的，已经包含共享仓库里的全部 ref 及其目标，没有 ref 指向的对象不算会丢掉的成果。
 - **删除参数** `workspace`：
   - `reclaim`（默认，调用方不带参数时也是它）：能恢复就回收；不能恢复就保留目录，对话照样删除；
-  - `discard`：用户明确丢弃，不管能不能恢复都回收。请求必须带回预览的 `revision`；删除时（结束会话之前）重新计算，
-    不一致、或会话有回合未结束，返回 `409 deletion_preview_stale`，对话和目录都不动，界面重新取预览。
+  - `discard`：用户明确丢弃，不管能不能恢复都回收。请求必须带回预览的 `revision`（不带时返回 400）；删除时（结束会话之前）重新计算，
+    不一致、或还在交付（`delivering`），返回 `409 deletion_preview_stale`，对话和目录都不动，界面重新取预览。之后判为
+    `undelivered` 而 `discardable` 为假（`unverifiable`、Git 相关内容的摘要不完整）时，返回 `409 discard_unverifiable`，什么都
+    不动；默认删除照常，不能恢复的目录保留，由运维按 D6 处理。`revision` 一致而判为 `recoverable` 或 `none` 时，`discard` 照常
+    删除对话，按判定回收或不涉及目录（这时没有未交付的东西可丢）。界面只在 `discardable` 为真时提供丢弃选项。
 - **删除的返回值** `workspace`：`reclaimed`（已回收，附释放的字节数和文件数）、`kept`（附原因）、`pending`（附原因：
   `delivering`；`in_progress`，后台继续删；`check_failed`、`removal_failed`，等启动时重试；`reclaim_unavailable`，见下）、`none`。
 - **Cloud 没有 Agent 运行时、无法判定时**（例如没有配置 Node 资产启动，但磁盘上还有以前的 checkout）：对登记过工作目录的
@@ -109,7 +132,8 @@ status: approved
   - `recoverable`：说明工作目录会一起删除，删除后只有运维能从交付恢复；提供“下载改动（patch）”；有被忽略的文件时说明
     “被忽略规则排除的文件不在交付里，会一起删除”。
   - `undelivered`：说明原因，列出未交付的改动；默认保留工作目录，另给一个需要用户主动勾选的“同时丢弃未交付的改动”，
-    写明丢弃后无法找回；有成功交付时同样提供下载。`delivering` 时不提供丢弃，请用户等这一轮结束。
+    写明丢弃后无法找回；有成功交付时同样提供下载。`discardable` 为假时不提供丢弃，并说明原因（还在交付；或无法确认丢弃的
+    是哪些内容，请先自行处理）。
   - `none`：不提工作目录；`workspace_missing` 时说明目录已不存在。
 
 为什么 `reclaim` 不用 `revision`：`reclaim` 只删能恢复的目录，删除时重新判定，预览之后状态变了，结果只会是“删了能
@@ -130,14 +154,14 @@ status: approved
 
 - **登记**：用户删除对话时，在删除对话记录的同一个事务里写一条工作目录回收：`WorkspaceID`、项目、会话 ID、来源对话、
   路径、`clone_execution`（取自 `v2_workspaces`）、模式、登记时间，状态 `pending`。会话没有登记过工作目录的不登记。登记
-  只在用户删除对话的路径上发生；`Create` 首轮被拒后回滚对话的删除不是用户删除，不登记。模式登记后不可变，由数据库保证。
+  只在用户删除对话的路径上发生；`Create` 首轮被拒后回滚对话的删除不是用户删除，不登记。模式登记后不可变，由数据库触发器保证。
 - **状态**：`pending → deleting → reclaimed | kept`，另记尝试次数、最后一次错误、最后一次尝试时间，结束时记释放的字节数
   与文件数，`reclaimed` 时记依据的交付（交付 ID、交付提交、起点提交，供运维恢复，D6）。
   - `pending`：每次执行按 D1 判定。`delivering`（两种模式都一样，`discard` 也要等交付义务清空）→ 保持 `pending`；
     `reclaim` 模式下其他不能恢复的原因 → `kept`；其余 → 进入 `deleting`。
   - `deleting`：只重查 D4 的身份与路径，不再按 D1 判定，避免删了一半却因为目录已经变了而落到 `kept`。
 - **执行时机**：删除请求在事务提交、会话确认结束后立即执行一次。这次执行用服务生命周期的上下文（不随 HTTP 请求取消），
-  有自己的时间预算：短时限内删完就返回 `reclaimed`，删不完就返回 `pending`（原因 `in_progress`），在后台继续删完；服务关闭
+  有自己的时间预算：5 秒内删完就返回 `reclaimed`，删不完就返回 `pending`（原因 `in_progress`），在后台继续删完；服务关闭
   时取消，记录留在 `deleting` 给启动。删除事务提交之后出的错，返回值里如实报告回收的状态，不报成“对话没有删除”。
   Cloud 启动时在 `boot.Recover` 里、`RecoverTurnDeliveries`
   之后、恢复工作流和开始服务之前，把 `pending` 和 `deleting` 的再执行一遍。运行中不再另外触发：删除时还在交付的，
@@ -148,7 +172,7 @@ status: approved
   - 判为 `kept`、不再重试：`reclaim` 模式下不能恢复；D4 的身份或路径检查不通过（越界、经过符号链接、dev/inode 不一致、
     目录被别的会话用过、有未结束的会话、登记与 `v2_workspaces` 不一致）。原因写进记录。
   - 保持原状态、下次启动重试：数据库不可用、IO 错误、权限错误、上下文取消；判定时生成快照树或检查 Git 状态因磁盘、镜像、
-    Git 调用失败（记 `check_failed`，不下结论）；删除前统计时读不到某个条目（列出后消失的条目跳过、不计入）。尝试次数加一、记最后一次错误、写日志；
+    Git 调用失败（记 `check_failed`，不下结论）；删除前统计时读不到某个条目（列出后消失的条目跳过、不计入）。尝试次数加一、记最后一次错误、写日志；单次检查最长 2 分钟，超时同样记 `check_failed`。
     运维能列出（D6）。
 - **`v2_workspaces` 不删**：交付记录和重启恢复都按 `WorkspaceID` 查它；回收记录就是“这个目录已经删了”的记录。
 
@@ -272,9 +296,26 @@ ADR `approved` 后据此补核心用例，证据在落地运行登记。
    交付，或者明确放弃这些成果。
 4. **本文落地之前已删除的对话的目录**：归属已经不可知，本文不处理；需要释放时由运维停服后整体清理。
 
+## 实现时的修改
+
+实现（cloud PR #419）经两位成员多轮审查，对 approved 稿做了下面几处修改，正文已按最终实现同步：
+
+1. **`revision` 绑定字节而不是展示统计**：approved 稿写的是“快照树和 Git 状态”。审查中几次构造出预览展示不变、内容却变了的
+   反例（stash 被替换、ref 改指向、暂存区被替换、嵌套仓库经 gitfile 或 `commondir` 指向的共享仓库变化、嵌套文件同大小改写并
+   恢复修改时间），所以改为 D2 里的 Git 相关内容字节摘要。
+2. **`unverifiable` 与摘要不完整时不可丢弃**：approved 稿里 `delivering` 以外都可以 `discard`。摘要不完整时无法保证用户确认的就是
+   被删除的，违反 D2“要求用户看到的就是被丢弃的”，所以新增 `discardable`：界面只在它为真时提供丢弃；直接调用 API 时，
+   判为 `undelivered` 而它为假的 `discard` 返回 `409 discard_unverifiable`。这类目录默认保留，由运维按 D6 处理。owner 于 2026-11-19 在 circus #1319 得到告知。
+3. **检查的时限**：单次检查最长 2 分钟，超时按 `check_failed` 重试，避免嵌套仓库里的特殊文件让 Git 读取挂住、拖住启动。
+4. **`HEAD` 与 index 也要被交付覆盖**：approved 稿第 4 条只看 stash、ref、gitlink 与嵌套仓库，只在 `HEAD` 或暂存区里的内容
+   （暂存后把工作树改回、提交后把工作树和暂存区还原）会被默认的 `reclaim` 判为能恢复并删除。所以第 4 条加了 `HEAD` 与 index 的
+   条件；与起点相同的内容在快照里一直保留，所以与起点树相同也算覆盖。`HEAD` 读不出时一律保留（只有还没有任何提交的
+   unborn `HEAD` 例外），对象缺失或损坏判 `unverifiable` 而不是反复重试。起点之后、`HEAD` 之前的中间提交仍按 owner 第 1 轮的口径不算。
+5. **执行与约束的具体值**：删除请求里等待 5 秒；模式不可变由数据库触发器保证。
+
 ## 落地顺序
 
-1. **ADR（circus #1196，运行 #1318）**：本文评审到 `approved`，补核心测试用例和术语（已完成）。
-2. **实现（circus #1196，运行 #1319）**：回收登记与迁移、判定与预览、删除参数与返回值、确认框与下载入口、精确归属的删除、
-   启动时继续、运维子命令；与第 1 步并行开发，本文 `approved` 后合并。
-3. **落地**：实现 review 通过后，本文改为 `implemented`，按最终实现同步正文和用例证据。
+1. **ADR（circus #1196，运行 #1318）**：本文评审到 `approved`，补核心测试用例和术语。
+2. **实现（circus #1196，运行 #1319，cloud PR #419）**：回收登记与迁移 `0007`、判定与预览、删除参数与返回值、确认框与下载入口、
+   精确归属的删除、启动时继续、运维子命令。
+3. **落地（circus #1196，运行 #1335）**：本文改为 `implemented`，按最终实现同步正文，按 `d4ec60d5` 登记用例证据。
