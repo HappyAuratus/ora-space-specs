@@ -1,10 +1,10 @@
 # 工作目录回收：只回收能恢复或用户明确丢弃的已删对话目录、先登记后删除、精确归属、可重试、不动交付
 
-依据 [删除对话时回收工作目录](../../../decisions/cloud/project-git/20261119-reclaim-deleted-conversation-workspace.md)（`approved`）。
+依据 [删除对话时回收工作目录](../../../decisions/cloud/project-git/20261119-reclaim-deleted-conversation-workspace.md)（`implemented`）。
 下文的 D 编号与不变量编号都指这篇决策；交付本身的承诺见 [回合交付](turn-delivery.md)。
 
-实现由 circus #1196 的运行 #1319（cloud PR #419）承接，尚未合并，所以全部义务暂标 `Missing`；证据在落地运行按合并的
-commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
+证据读取的是 cloud `a4fe0c1b`（PR #419 的 head）的 `v2-server/`，路径相对该目录；前端证据以 `frontend-v2/` 开头。需要 PostgreSQL
+的测试在设置 `TEST_DATABASE_URL` 时运行。28 项汇总为 16 Covered / 11 Partial / 1 Missing；Partial 与 Missing 的缺口写在各行里。
 
 ## Only A Recoverable Workspace Is Reclaimed By Default
 
@@ -23,11 +23,11 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 能恢复的两种（`delivered` 无变化、`empty`）被回收 | 回收后目录不存在，记录 `reclaimed` 并记下依据的交付 | Missing |
-| 交付相关的不能恢复原因各一例都保留 | `delivering` 保持 `pending`；`legacy`、`last_turn_undelivered`、`changed_after_delivery` 以 `kept` 结束，目录不变 | Missing |
-| Git 状态的各种情况都保留 | stash、越界 ref、非提交 ref、改动的 gitlink、有改动的子模块、gitfile 嵌套 `.git` 各判 `git_state`；解析不出来的 `.git` 判 `unverifiable` | Missing |
-| 交付之后只改被忽略文件或物化技能不算变化 | 这两种情况判为能恢复并回收 | Missing |
-| 临时失败可重试 | 第一次镜像不可读记 `pending`/`check_failed`，恢复后启动时回收 | Missing |
+| 能恢复的两种（`delivered` 无变化、`empty`）被回收 | `internal/workspacereclaim/reclaim_test.go` `TestReclaimRemovesOnlyRecoverableCheckoutsUnlessDiscarded`：两轮对话（交付失败后再交付成功），回收后目录不存在，记录为 `reclaimed`，带交付 ID、交付提交、起点提交，释放量大于 0。`empty` 只有 store 层 `internal/store/workspace_reclaims_test.go` `TestChatCheckoutReadsTheSessionsDeliveries/empty_after_delivered` 证明读到的最后一轮状态是 `empty`；没有"最后一轮 `empty` 被回收"的端到端用例（夹具对真实仓库只做 delivered 交付）。 | Partial |
+| 交付相关的不能恢复原因各一例都保留 | `TestReclaimWaitsForDeliveryWorkThenRemovesAtStartup`：最后一轮还在交付，结果为 `pending`/`delivering`，attempts 为 0，目录在，没有调用删除。`TestReclaimRemovesOnlyRecoverableCheckoutsUnlessDiscarded`：`legacy`、`last_turn_undelivered` 以 `kept` 结束，目录在。`TestReclaimKeepsCheckoutsWithWorkNoDeliveryHolds/written_after_the_delivery`：`changed_after_delivery` 以 `kept` 结束，目录在。缺口：①"最近一条记录落在更早回合上"只有 store 层 `TestChatCheckoutReadsTheSessionsDeliveries/last_turn_unenrolled` 断言最后一轮状态为空，没有回收端的用例；②"第一轮还在跑、尚无记录"时先判 `delivering` 再判 `legacy` 的顺序，没有直接用例（现有 delivering 用例前面已有一轮交付）。 | Partial |
+| Git 状态的各种情况都保留 | 回收端，`kept`/`git_state`、目录在：`TestReclaimKeepsCheckoutsWithWorkNoDeliveryHolds` 的 `stash`、`branch_beyond_HEAD`、`nested_repository`（gitfile 形式的嵌套 `.git`）三个子用例；`TestReclaimKeepsSubmodulesAndUnverifiableCheckouts`：已初始化且有改动的子模块判 `git_state`，`.git` 是指向不存在目录的 gitfile 时判 `unverifiable`。检查层 `internal/workspacefs/reclaim_check_test.go` `TestInspectReclaimFindsWorkOnlyTheRepositoryHolds`：`two_stashes`、`branch_beyond_base_and_HEAD`（提交数 2）、`ref_to_a_blob`（`NotCommit`）、`gitlink`、`gitfile_in_an_ignored_directory`、`initialized_submodule_with_changes`，并验证提交在 HEAD 上、伪 ref 不算；`TestInspectReclaimCannotVerifyAnUnresolvableGit` 断言返回 `ErrUnverifiable`。非提交 ref 和改动的 gitlink 在检查层有证据，判定层的映射（findings 非空即 `git_state`）由前面几例覆盖。 | Covered |
+| 交付之后只改被忽略文件或物化技能不算变化 | 检查层 `TestInspectReclaimIgnoresIgnoredFilesAndMaterializedSkills`：交付后写入被忽略的 `later.log` 和物化技能，仍判 `Unchanged`，差异为 0。预览层 `TestPreviewTellsWhatDeletingDoes`：写入被忽略文件后仍判 `recoverable`，`Ignored` 为 true。缺口：没有"这两种情况下回收并删除"的回收端用例，物化技能也只在检查层出现。 | Partial |
+| 临时失败可重试 | `TestReclaimRetriesWhenTheCheckCannotRun`：镜像改名后回收得到 `pending`/`check_failed`，记录保持 `pending`，attempts 为 1，`last_error` 非空，目录在；镜像恢复后由新的 Reclaimer `Resume` 回收为 `reclaimed`。 | Covered |
 
 - 决策依据：D1、D3，不变量 2、3。
 
@@ -50,10 +50,10 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 预览各种结果与字段 | 每种状态的预览内容，`git_state` 列出 stash、ref、嵌套仓库 | Missing |
-| 过期或内容改写后的 `discard` 返回 409 且什么都不动 | 409 后对话仍在、目录不变、没有回收记录；用新 `revision` 成功 | Missing |
-| 没有运行时时不登记未经验证的丢弃 | 预览与 `discard` 返回 503 且什么都不动；默认删除登记 `pending` | Missing |
-| 界面不承诺与结果不符的事 | 预览失败禁用删除并可重试；下载入口；被忽略文件提示；`delivering` 不给丢弃 | Missing |
+| 预览各种结果与字段 | `TestPreviewTellsWhatDeletingDoes`：`recoverable`（`LatestDelivery`、revision 非空），写入被忽略文件后 `Ignored` 为 true，交付后写入 `late.txt` 后判 `changed_after_delivery` 并列出该文件、Total 为 1、revision 改变，同一状态 revision 稳定，以及 `none`/`workspace_missing` 和 `none`/`no_workspace`。`TestGitStatePreviewNamesWhatTheRepositoryHolds`：`git_state` 预览的 stash 数为 1、嵌套仓库为 `data`，再加一条 stash 后数为 2 且 revision 改变。HTTP 层：`internal/server/chat_test.go` `TestChatConversationLifecycle` 按 `chat.openapi.json` 校验 `none`/`no_workspace`、未知对话 404。缺口：①预览里 ref 及其提交数只在检查层（见用例 1）验证，没有预览层用例；②`legacy`、`last_turn_undelivered` 的预览没有专门用例；③带 `git` 字段的预览没有经过 HTTP 契约校验。 | Partial |
+| 过期或内容改写后的 `discard` 返回 409 且什么都不动 | 都经 `chat.Service`、用真实 Git 和 PostgreSQL：`TestDiscardOfRewrittenContentIsStale`（同路径、同增删行数改写后，旧 revision 返回 `ErrDeletionPreviewStale`，对话在、内容不变、没有回收记录；用新 revision 得到 `reclaimed`）；`TestDiscardIsStaleWhenTheStashIsReplaced`、`TestDiscardIsStaleWhenARefMovesWithTheSameCount`、`TestDiscardIsStaleWhenANestedFileIsRewrittenInPlace`、`TestDiscardIsStaleWhenARepositoryBehindAPointerChanges/{worktree_gitfile,link}`、`TestDiscardIsStaleWhenAStagedBlobIsReplaced/{nested_repository,checkout_repository}`、`TestDiscardIsStaleWhenASharedRepositoryNamedByCommondirChanges`（每例先断言展示内容前后相同，再断言返回 409、对话和 checkout 保留）。`internal/chat/chat_test.go` `TestDeleteRecordsAndExecutesTheCheckoutReclaim`：过期 revision、缺 revision、还在交付时都被拒，对话在、没有执行回收。409 映射到 HTTP 的 `deletion_preview_stale` 只是一行 `errors.Is`，没有单独的 HTTP 用例（真实栈脚本覆盖了）。 | Covered |
+| 没有运行时时不登记未经验证的丢弃 | `internal/chat/chat_test.go` `TestWithoutReclaimerAnExistingCheckoutIsNeverDiscarded`：预览和 discard 返回 `ErrReclaimUnavailable`，对话在、没有回收记录；默认删除得到 `pending`/`reclaim_unavailable` 并登记 `reclaim` 模式的 `pending`；没有 checkout 的对话预览为 `none`。`internal/server/chat_test.go` `TestChatDeletionWithoutReclaimerAnswersUnavailable`：HTTP 503 `workspace_reclaim_unavailable`，默认删除返回 200 `pending`/`reclaim_unavailable`。 | Covered |
+| 界面不承诺与结果不符的事 | `frontend-v2/src/features/chat/page.test.tsx`：`does not let a deletion through while the preview cannot be read, and retries it`（删除按钮禁用，重试后可删）；`deletes a recoverable conversation with its working directory, offering its patch first`（patch 下载请求，被忽略文件提示，没有丢弃选项）；`does not offer discarding while the last turn still delivers`；`names what only the repository holds when it blocks reclaiming`；`does not offer discarding a nested repository too large to confirm`；`shows the new preview when the discard turned out stale`；`deletes without discarding when the server cannot judge the working directory`。 | Covered |
 
 - 决策依据：D2，不变量 3。
 
@@ -69,9 +69,9 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 登记与删除对话在同一事务 | 事务中途失败时对话与登记都不存在或都存在；登记字段完整 | Missing |
-| 回滚与无工作目录不登记 | 首轮失败回滚后没有登记；无工作目录的对话删除后没有登记 | Missing |
-| 模式不可变 | 修改已登记回收的模式被拒绝 | Missing |
+| 登记与删除对话在同一事务 | `internal/store/workspace_reclaims_test.go` `TestDeleteChatConversationRecordsReclaimInTheSameTransaction`：删除后对话不存在，登记的工作目录 ID、项目、会话、对话、路径、模式、状态都对，判定能只凭会话进行；非法模式时什么都不做。缺口：没有"事务中途失败时两者都不存在或都存在"的故障注入用例（原子性只在代码里用单个 `pgx.BeginFunc` 保证）。 | Partial |
+| 回滚与无工作目录不登记 | `TestChatCheckoutWithoutCheckoutAndForOthers`：没有工作目录的对话经用户删除不登记；首轮被拒时 `Create` 走的回滚删除 `DeleteChatConversation` 不登记；他人删不了别人的对话，也不留登记。 | Covered |
+| 模式不可变 | `TestReclaimModeIsImmutable`：经过各个状态迁移后模式不变；直接 UPDATE 改 mode 被数据库触发器拒绝。 | Covered |
 
 - 决策依据：D3，不变量 4。
 
@@ -90,9 +90,9 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 活跃、他人、共享、任务目录不删 | 这些目录在回收后不变，回收记录 `kept` 或不存在 | Missing |
-| 路径越界与符号链接不跟随 | 越界、checkout 或父目录是链接、检查后被换成链接都 `kept`，项目外文件不变；内部外链只删链接 | Missing |
-| 登记与 `v2_workspaces` 核对 | 路径或 `clone_execution` 不一致、同路径另有行时 `kept` | Missing |
+| 活跃、他人、共享、任务目录不删 | `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts`：仍有活会话判 `kept`/`session_live`，别的会话用过判 `kept`/`shared`，目录都在。`TestReclaimRemovesOnlyRecoverableCheckoutsUnlessDiscarded`：没被删除的对话的目录保留。store 层他人删不了。`internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutRefusesAdmittedSessionAndDropsCachedCheckout`：进程内有会话占用时拒绝。缺口：任务运行、工作流运行的目录没有专门用例（它们不经用户删除对话登记，是结构上保证的；共享目录的一例由 `shared` 覆盖）。 | Partial |
+| 路径越界与符号链接不跟随 | `internal/workspacefs/remove_test.go`：`TestRemoveCheckoutRefusesPathsOutsideTheRoot`；`TestRemoveCheckoutRefusesSymlinks`（checkout 本身、父目录、checkout 根）；`TestRemoveCheckoutRefusesADirectorySwappedAfterTheCheck`；`TestRemoveCheckoutRefusesAParentSwappedForALinkOutOfTheRoot`（父目录被移走并换成指向原处的链接，两个注入时机）；`TestRemoveCheckoutMeasuresAndRemovesOnlyTheCheckout`（目录内指向项目外的链接只删链接本身，兄弟目录和项目外文件都在）。项目外文件都断言不变，均返回 `ErrUnsafeCheckout`。回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts` 越界路径判 `kept`/`unsafe_path`。`internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutRefusesPathOfAnotherProject`。 | Covered |
+| 登记与 `v2_workspaces` 核对 | `internal/store/workspace_reclaims_test.go` `TestCheckReclaimIdentitySeesLiveSharedAndChangedCheckouts`：同一路径另有行、`clone_execution` 不一致，都使 `Recorded` 为 false。回收端 `TestReclaimKeepsSharedLiveUnsafeAndForeignCheckouts`：`clone_execution` 被改后判 `kept`/`identity_mismatch`，目录在。 | Covered |
 
 - 决策依据：D4，不变量 1、5。
 
@@ -109,9 +109,9 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 回收不阻塞同项目会话与投影 | 删除被阻塞期间会话准入与投影照常完成，投影不含该 checkout | Missing |
-| 项目 runtime 不在时与创建互斥 | 持项目锁期间新 runtime 的创建等待，释放后继续 | Missing |
-| 同一条回收只执行一次 | 并发触发只有一次删除，记录与统计一致 | Missing |
+| 回收不阻塞同项目会话与投影 | `internal/agentruntime/remove_checkout_test.go` `TestRemoveCheckoutDoesNotHoldTheSkillLockWhileDeleting`：删除被阻塞期间同项目的 `attachSkills` 在 5 秒内完成。`TestProjectSkillsSkipsAVanishedCheckout`：已消失的 checkout 被跳过，其他 checkout 照常得到链接。`TestRemoveCheckoutWithoutRuntimeForgetsSkillIndex` 和 `TestRemoveCheckoutRefusesAdmittedSessionAndDropsCachedCheckout`：`skill-checkouts.json` 和 `p.checkouts` 里不再有被回收的 checkout。缺口：会话准入、`attachUserSkills`、`ApplySkill` 没有单独用例（它们拿的是同一把 `skillsMu`，`attachSkills` 一例证明锁在删除期间是空闲的）；"回收与同目录交付串行、交付记录不变"没有直接用例。 | Partial |
+| 项目 runtime 不在时与创建互斥 | `TestProjectRuntimeCreationWaitsForTheSkillListRewrite`：持项目锁期间 `d.project()` 不插入新 runtime，释放后继续（用 50ms sleep 观察）。 | Covered |
+| 同一条回收只执行一次 | `internal/workspacereclaim/reclaim_test.go` `TestConcurrentReclaimsRemoveOnce`：三路并发 `Reclaim`，删除只调用一次，三路结果都是 `reclaimed`。 | Covered |
 
 - 决策依据：D4、D5，不变量 5、6。
 
@@ -129,10 +129,10 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 启动位置与补做 | 启动顺序在交付恢复之后、服务之前；`pending` 与 `deleting` 都被处理 | Missing |
-| `deleting` 不重新判定 | 删到一半后目录内容变化，重启后仍删完 | Missing |
-| 失败可重试、计数与日志 | IO 失败保持原状态、计数加一，恢复后启动时回收 | Missing |
-| 删除请求的执行不随请求取消 | 大目录返回 `pending`/`in_progress` 后后台删完；关机后启动补完；提交后出错仍返回 200 | Missing |
+| 启动位置与补做 | `internal/boot/boot_test.go` `TestRecoverDeliversBeforeWorkflowResumeAndAdmission`：`workspace-reclaims` 排在 `deliveries` 之后、`workflow-resume` 之前，任何一步失败都会停下后续步骤。`TestReclaimRetriesFailedRemovalAtStartup`：登记后未执行（`pending`）和删除失败（`deleting`）的两条，都由 `Resume` 回收。`TestReclaimWaitsForDeliveryWorkThenRemovesAtStartup`：等交付的 `pending` 在 `Resume` 时回收。 | Covered |
+| `deleting` 不重新判定 | `TestDeletingReclaimIsFinishedWithoutJudgingAgain`：标为 `deleting` 后删掉部分内容（目录已不再与交付一致），`Resume` 仍删完并记 `reclaimed`。 | Covered |
+| 失败可重试、计数与日志 | `TestReclaimRetriesFailedRemovalAtStartup`：删除失败后结果为 `pending`/`removal_failed`，记录保持 `deleting`，attempts 为 1，`last_error` 非空；重启后回收成功。`internal/workspacefs/remove_test.go` `TestRemoveCheckoutFailsWhenAnEntryCannotBeMeasured`：统计失败返回带路径的错误，目录不动。日志内容不作断言。 | Covered |
+| 删除请求的执行不随请求取消 | `internal/chat/chat_test.go` `TestDeleteReportsASlowOrFailingReclaimAsPending`：回收慢时返回 `pending`/`in_progress`，回收失败时返回 `pending`/`removal_failed`，两种情况对话都已删除、调用不报错（替身回收器）。`internal/workspacereclaim/reclaim_test.go` `TestBackgroundRemovalStoppedAtShutdownIsFinishedAtStart`：`Start` 启动的后台删除在 `Close` 时被取消，记录留 `deleting`，下次启动删完。`internal/workspacefs/remove_test.go` `TestRemoveCheckoutStopsWhenCancelled`。缺口：没有"真实大目录返回 `in_progress` 之后后台删完"的端到端用例；"提交后出错仍返回 200"只在服务层断言了调用不报错，HTTP 层没有专门用例。 | Partial |
 
 - 决策依据：D3，不变量 6。
 
@@ -150,9 +150,9 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 交付数据不变 | 回收前后交付记录、义务、ref、`v2_workspaces` 逐项一致 | Missing |
-| 运维能从镜像恢复 | 用记录里的提交打出的 patch 能在起点上应用 | Missing |
-| 其他来源的交付读取不受影响 | 回收后任务运行、工作流运行的变更视图与 patch 照常 | Missing |
+| 交付数据不变 | 只有 `TestDeleteChatConversationRecordsReclaimInTheSameTransaction` 断言回收结束后 `v2_workspaces` 的行还在。没有回收前后交付记录、交付义务、交付 ref、快照 ref 逐项一致的断言。 | Partial |
+| 运维能从镜像恢复 | `TestReclaimRemovesOnlyRecoverableCheckoutsUnlessDiscarded`：在镜像上执行 `git diff --stat <记录的起点> <记录的交付提交>`，包含该对话的改动文件。缺口：没有断言"打出的 patch 能在起点上 `git apply`"。 | Partial |
+| 其他来源的交付读取不受影响 | 没有"回收之后读任务运行、工作流运行的变更视图和 patch"的用例。现有 `internal/server/workspace_delivery_test.go` 照常通过，但它们不包含回收。 | Missing |
 
 - 决策依据：D6，不变量 7；[回合交付](../../../decisions/cloud/project-git/20261112-single-machine-turn-delivery.md) D4、D6。
 
@@ -168,8 +168,8 @@ commit 登记。8 项汇总为 0 Covered / 0 Partial / 8 Missing。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 运行时可列出 | 服务运行时列出子命令输出全部记录与字段 | Missing |
-| 离线丢弃与服务互斥 | 数据目录锁被占用时拒绝 | Missing |
-| 离线丢弃按 D4 检查并留痕 | 只处理 `kept`，删除后记 `reclaimed` 与运维原因 | Missing |
+| 运行时可列出 | `reclaims_command_test.go` `TestReclaimsListsWhileTheServerRuns`：数据目录锁被占用时 `reclaims kept` 成功并输出表头，未知状态被拒。`TestOperatorDiscardsAKeptCheckout` 用 store 的 `WorkspaceReclaims(kept)` 列出了那条 `kept` 记录和路径。缺口：子命令测试库里没有记录，没有断言输出各条记录及其字段（原因、尝试次数、最后错误、释放量、依据的交付）。 | Partial |
+| 离线丢弃与服务互斥 | `TestDiscardKeptRefusesWhileTheServerRuns`：数据目录锁被占用时 `discard-kept` 返回"already in use"，此时还没连数据库。 | Covered |
+| 离线丢弃按 D4 检查并留痕 | `internal/workspacereclaim/reclaim_test.go` `TestOperatorDiscardsAKeptCheckout`：只处理 `kept`；删除后记录为 `reclaimed`、原因 `operator_discard`；对已回收的记录再丢弃被拒。路径检查走同一个 `RemoveCheckout`，由用例 4 的测试覆盖；`DiscardKept` 在删除前还会核对身份（登记、共享、活会话）。子命令本身走的 `agentruntime.OfflineCheckouts` 没有端到端用例。 | Covered |
 
 - 决策依据：D6，不变量 4、5、6。
