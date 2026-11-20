@@ -95,8 +95,9 @@ Node 侧已实现为 `implemented`。18 条核心用例分别维护直接证据�
 [显式 Session MCP 用例](agent-runtime/session-mcp.md)、[共享 checkout 会话用例](agent-runtime/shared-checkout-sessions.md)与
 [尝试锁用例](git-execution/attempt-locks-and-stop-evidence.md)的证据保持原范围，不推导本文的新义务。
 [会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)为
-`approved`，在同一文件新增“会话停止杀掉全部带标记进程”用例，并在另外六个用例中补充义务；实现 desktop#802 尚未
-合入 main，这些新增义务全部为 `Missing`。
+`implemented`，在同一文件新增“会话停止杀掉全部带标记进程”用例，并在另外六个用例中补充义务；19 项义务按
+[desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head `198cc415` 登记直接证据（7 项 `Covered`、10 项 `Partial`、
+2 项 `Missing`），缺口逐项保留在用例里。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -121,7 +122,7 @@ Partial。只能由 Controller 验证的义务在
 [Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。用例 11、12、13
 另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
-带来的义务，同样为 `Missing`。
+带来的义务，按 desktop#802 `198cc415` 登记为 2 项 `Partial`、1 项 `Missing`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |

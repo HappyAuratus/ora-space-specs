@@ -12,10 +12,13 @@ Controller/v2 的协议接线仍由 [#1171](https://github.com/ora-space/circus/
 [会话执行用例](session-execution.md)与[尝试锁用例](../git-execution/attempt-locks-and-stop-evidence.md)的
 证据保持各自范围，不推导本文新义务。
 
-[会话尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`approved`）修改了本文的停止证据：在尝试锁、重启收口、未排空升级、运维对账、
+[会话尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`implemented`）修改了本文的停止证据：在尝试锁、重启收口、未排空升级、运维对账、
 版本重启与探测清理六个用例中补充义务，并新增[会话停止杀掉全部带标记进程](#a-session-stop-kills-every-attempt-marked-process-and-turns-kill-none)。
-实现 desktop#802 尚未合入 main，这些新增义务全部为 `Missing`，待 desktop#802 合并后登记证据；既有义务的证据按原
-固定提交保留，不因新决策改变状态。
+这 19 项义务按 [desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head
+[`198cc415`](https://github.com/ora-space/desktop/commit/198cc41517a837ec436a897655403adc790b8c0d)（尚未合入 main）登记直接证据：
+7 项 `Covered`、10 项 `Partial`、2 项 `Missing`。既有义务的证据按原固定提交 `28da0a4e` 保留，不因新决策改变状态。
+评审方在中间版本 `07c495e0` 上用发布包 OpenCode 0.6.11 与 Claude 0.4.5 复测 EndSession 和 SIGKILL 后重启，作业都在报告
+停止前被杀；这是运行记录，不是可重复测试，不登记为证据。
 
 ## Lifecycle Mode Is Opt-In Per Session And Never Widens The Selection
 
@@ -391,7 +394,7 @@ D4 宿主策略第 1–3 条，不变量 5；继承 Desktop ACP setup/refresh �
 | 重启失败矩阵 | 按 D6 表逐行注入 spawn 失败、ready 超时、load 前崩溃、load 失败，断言每次至多一次 spawn 与 blocked 状态的测试 | Partial |
 | V2 / V3 合并 | 未派发 V2 被丢弃并释放租约、已派发 V2 先确认停止的测试 | Missing |
 | execution 资源跨重启 | 重启前后 ora-git socket 地址与模型授权不变、撤销时按原策略结束的测试 | Partial |
-| 替换先杀旧尝试的带标记进程 | 旧 Agent 的脱组后台作业在替换中被杀、旧尝试记 `lock_processes_and_marks` 后才启动后继的测试 | Missing：待 desktop#802 合并 |
+| 替换先杀旧尝试的带标记进程 | 旧 Agent 的脱组后台作业在替换中被杀、旧尝试记 `lock_processes_and_marks` 后才启动后继的测试 | Partial |
 | 真实 Agent 跨进程 load 前提 | 固定 OpenCode 1.19.3 与 claude-agent-acp 0.99.1 在保留 HOME/cwd 时新进程 load 原 ID 并保留历史，记录见 [circus #1204](https://github.com/ora-space/circus/issues/1204)；空 MCP、未经 Node 重启接缝，不能替代上面的 Node 集成测试 | Partial |
 
 ### 代表性证据与剩余缺口
@@ -404,6 +407,12 @@ Node 侧验收：`Partial`。
 - [one_start_or_refresh_attempt_replaces_at_most_once](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/crates/agent-runtime/src/plugin_replacement_tests.rs#L462)。
 
 九次正常配置 load 与版本替换有真实 Node 证据；混合失败/重连计数、V2/V3 合并、所有 spawn/ready 失败、授权/socket 不变仍不完整。固定真实 Agent 的跨进程 load 前提实验仅见原记录，不等于真实 Agent 经 Node 替换的验证。旧 supervisor 等待无独立超时，Actor 调用路径也缺专门故障测试。
+
+尝试环境标记（desktop#802 `198cc415`）：
+
+- [replacement_waits_for_retirement_before_registering_the_successor](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/replacement.rs#L19)：替换中旧尝试先记 `lock_processes_and_marks`，后继此时才登记为 `prepared`。
+
+缺口：替换用例里旧 Agent 没有脱组后台作业，“替换中杀掉旧尝试的带标记作业”只由会话结束路径的同一终止逻辑间接支撑；真实插件的版本替换没有复测。
 
 ### 决策依据
 
@@ -518,12 +527,12 @@ spawner 为插件运行时与全部宿主子进程共用。
 | 停止后拒绝 spawn | 停止请求后插件的宿主 spawn 请求被拒绝的测试 | Covered |
 | 登记与 spawn 的崩溃窗口 | 登记后、spawn 前崩溃重启得到空闲锁并确认未启动的测试 | Covered |
 | 锁不泄漏 | 并发 spawn 的无关进程不继承锁 fd 的测试 | Partial |
-| 每个进程带标记 | 宿主派发的每个进程（含调用方清空环境的）都带标记、范围记录与标志在登记前已持久化的测试 | Missing：待 desktop#802 合并 |
-| 脱组作业由标记覆盖 | `setsid` 后以 `&` 起、关闭锁 fd 的作业存活时判 Running，停止后被杀，确认记 `lock_processes_and_marks` 的测试 | Missing：待 desktop#802 合并 |
-| 冻结先于杀与组终止 | 冻结期间 fork 并清空环境的子进程经父进程被认领并杀掉的测试 | Missing：待 desktop#802 合并 |
-| 窗口与 PID 复用 | 尝试开始前启动的带标记进程、PID 复用的进程不被发信号的测试 | Missing：待 desktop#802 合并 |
-| 连续两次扫描 | 第一次扫描干净而第二次见到被认领进程时不确认的测试 | Missing：待 desktop#802 合并 |
-| 读不到的进程与部署前提 | 同用户不可读孤儿不认领也不导致 Unknown、外用户无 `CAP_SYS_PTRACE` 下不可读进程为 Unknown、不满足前提时启动告警且照常服务的测试 | Missing：待 desktop#802 合并 |
+| 每个进程带标记 | 宿主派发的每个进程（含调用方清空环境的）都带标记、范围记录与标志在登记前已持久化的测试 | Partial |
+| 脱组作业由标记覆盖 | `setsid` 后以 `&` 起、关闭锁 fd 的作业存活时判 Running，停止后被杀，确认记 `lock_processes_and_marks` 的测试 | Covered |
+| 冻结先于杀与组终止 | 冻结期间 fork 并清空环境的子进程经父进程被认领并杀掉的测试 | Partial |
+| 窗口与 PID 复用 | 尝试开始前启动的带标记进程、PID 复用的进程不被发信号的测试 | Partial |
+| 连续两次扫描 | 第一次扫描干净而第二次见到被认领进程时不确认的测试 | Covered |
+| 读不到的进程与部署前提 | 同用户不可读孤儿不认领也不导致 Unknown、外用户无 `CAP_SYS_PTRACE` 下不可读进程为 Unknown、不满足前提时启动告警且照常服务的测试 | Partial |
 
 ### 代表性证据与剩余缺口
 
@@ -534,7 +543,34 @@ Node 侧验收：`Partial`。
 - [a_durable_unstarted_lock_is_proof_but_missing_corrupt_or_foreign_boot_evidence_is_not](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L189)。
 - [stop_wait_keeps_original_bound_and_does_not_treat_request_failure_as_proof](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L13)。
 
-锁/线索和停止 helper 有直接测试；缺经生产 driver 注入 stop_plugin 错误仍等待原期限的路径（N-1），以及真实插件、Node 崩溃、各子组与并发无关 spawn 的完整组合。kill_all / stop_plugin 返回只作诊断，成功和失败都不能替代停止证据。尝试环境标记的六项义务没有已合入证据，待 desktop#802 合并后登记。
+锁/线索和停止 helper 有直接测试；缺经生产 driver 注入 stop_plugin 错误仍等待原期限的路径（N-1），以及真实插件、Node 崩溃、各子组与并发无关 spawn 的完整组合。kill_all / stop_plugin 返回只作诊断，成功和失败都不能替代停止证据。
+
+尝试环境标记（desktop#802 `198cc415`）：
+
+- [a_marked_attempt_records_lock_processes_and_marks](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L195)：经生产 `prepare` 登记的尝试带范围记录标志，脱组作业被杀后确认为 `lock_processes_and_marks`。
+- [a_detached_job_blocks_proof_until_terminate_kills_it](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L75)：`setsid` 后关闭全部继承 fd 的作业存活时判 Running，终止后才得到 `lock_processes_and_marks`。
+- [stop_confirmation_terminates_plugin_and_cli_while_lifecycle_waits](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests.rs#L144)。
+- [plugin_and_each_host_child_share_one_attempt_while_siblings_stay_running](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests.rs#L227)：插件与宿主子进程的停止证明改为 `lock_processes_and_marks`。
+- [a_forking_parent_is_frozen_before_it_can_orphan_cleared_children](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark_limits.rs#L250)：持续 fork 清空环境子进程的父进程被冻结，子进程一个不漏。
+- [kill_reaches_orphans_and_env_cleared_children_but_not_strangers](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark.rs#L114)。
+- [an_unreadable_child_of_a_claimed_parent_is_killed_with_it](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark.rs#L148)。
+- [frozen_processes_die_at_the_bound_while_a_scan_hangs](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark/freeze.rs#L206)：扫描挂住时冻结的进程在上限内被杀。
+- [frozen_processes_die_when_the_passes_finish](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark/freeze.rs#L240)。
+- [a_marked_process_whose_leader_exited_is_claimed_and_killed](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark_limits.rs#L181)：主线程已退出的线程组被认领并整体杀掉。
+- [a_window_larger_than_the_descriptor_limit_is_still_scanned_and_killed](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark_limits.rs#L72)：进程数超过 fd 软上限仍能扫描并杀掉，fd 耗尽时扫描失败而不是报干净。
+- [scan_claims_only_marked_processes_started_within_the_scope](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark.rs#L81)：尝试开始前启动的带标记进程与相近 token 的进程不被认领。
+- [a_reused_pid_is_neither_pinned_nor_frozen](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark/freeze.rs#L181)：启动 tick 不符的 PID 不被 pin 也不被冻结。
+- [a_parent_replaced_during_the_pass_lends_no_children](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark/scan.rs#L279)。
+- [evidence_needs_two_clean_scans_without_undecided_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L261)：先干净后认领为 Running，任一次待定或扫描失败为 Unknown。
+- [classification_follows_parent_links_and_counts_foreign_unreadable_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark/scan.rs#L241)：同用户扫描者的不可读孤儿不计为待定，root 扫描者的同类进程计为待定。
+- [the_mark_scan_needs_a_shared_user_or_ptrace](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/marks.rs#L149)。
+- [agent_startup_warns_when_the_mark_scan_cannot_read_the_workload](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/service/agents/tests/startup.rs#L40)：其他 workload 用户且无 `CAP_SYS_PTRACE` 时告警一次，配置照常通过。
+
+缺口：
+- 每个进程带标记：没有直接检查子进程环境的测试，也没有覆盖 `ProcessEnvironment::Empty` 与 `remove_env_prefix` 的 spawn 仍带标记；范围记录先于登记只由 `prepare` 的调用顺序保证，没有在两者之间注入崩溃的测试。
+- 冻结先于组终止：冻结与杀的顺序有直接测试，“标记杀先于线索进程组终止”只在 `files.rs` 的终止顺序中保证，没有测试；冻结上限之后改为直接杀的分支只由看门狗测试间接覆盖。pidfd 打不开时下一轮重试没有测试。
+- 窗口与 PID 复用：尝试开始前的带标记进程只断言不被扫描认领，没有在 `kill` 之后断言它仍存活；同一 tick 内 PID 回绕是理论缺口，无法测试。
+- 读不到的进程：分类规则用合成候选测试，没有在 Node 与 workload 分用户的真实部署（需要 root）下扫描真实进程；启动检查检测不到 Yama `ptrace_scope` 与 LSM 拒绝，这是决策接受的范围。
 
 ### 决策依据
 
@@ -577,16 +613,36 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 每种结束方式都杀后台作业 | 两个部署插件分别在 EndSession、导致会话结束的取消、Node 优雅关闭、SIGKILL 后重启下，`cmd &` 与 `setsid` 作业在停止报告前退出、之后不再写入的真实 Node 测试 | Missing：待 desktop#802 合并 |
-| 守护进程随会话结束 | 会话中启动、其他会话仍在使用的守护进程随该会话结束被杀的测试 | Missing：待 desktop#802 合并 |
-| 轮次之间与保留会话不杀 | 一轮正常完成后、会话被保留的取消之后带标记的常驻进程仍存活的测试 | Missing：待 desktop#802 合并；取消部分另依赖取消决策的实现 |
-| 嵌套 Node 标记链 | 外层停止杀掉内层 Node 的全部进程、内层停止不触及外层其他进程的测试 | Missing：待 desktop#802 合并 |
-| 伪造标记的边界 | 尝试开始前启动的带标记进程不被发信号、持续伪造时确认不提前而转为 `stop_unconfirmed` 的测试 | Missing：待 desktop#802 合并 |
+| 每种结束方式都杀后台作业 | 两个部署插件分别在 EndSession、导致会话结束的取消、Node 优雅关闭、SIGKILL 后重启下，`cmd &` 与 `setsid` 作业在停止报告前退出、之后不再写入的真实 Node 测试 | Partial |
+| 守护进程随会话结束 | 会话中启动、其他会话仍在使用的守护进程随该会话结束被杀的测试 | Partial |
+| 轮次之间与保留会话不杀 | 一轮正常完成后、会话被保留的取消之后带标记的常驻进程仍存活的测试 | Missing |
+| 嵌套 Node 标记链 | 外层停止杀掉内层 Node 的全部进程、内层停止不触及外层其他进程的测试 | Partial |
+| 伪造标记的边界 | 尝试开始前启动的带标记进程不被发信号、持续伪造时确认不提前而转为 `stop_unconfirmed` 的测试 | Partial |
 
 ### 代表性证据与剩余缺口
 
-尚无已合入证据。desktop#802 的真实 Node 后台作业测试与标记单测合入 main 后登记；两个部署插件在四种结束方式下的
-真实复测由后续运行完成。保留会话的取消一项还需要取消决策的实现。macOS 与 Windows 不在本用例范围内。
+desktop#802 `198cc415` 的真实 Node 测试用 echo-agent fixture 模拟部署插件的工具 shell：`setsid` 下的 `cmd &`，关闭全部
+继承 fd，被 init 收养。每个用例都由一个线程同时采样账本与作业，作业存活时一旦看到 `confirmed` 即失败，并在作业的写入时刻之后
+确认它没有写出文件：
+
+- [end_session_kills_a_detached_tool_job_and_spares_unmarked_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L150)：一轮结束后 EndSession；不带标记、带其他尝试或相近 token 的进程存活，尝试开始后伪造本尝试标记的进程被杀。
+- [ending_a_running_turn_kills_its_detached_tool_job](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L211)：轮次仍在运行时 EndSession。
+- [restart_recovery_kills_the_job_a_killed_node_left_behind](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L249)：Node 被 SIGKILL 后作业仍存活，重启收口先杀作业再记 interrupted。
+- [graceful_shutdown_kills_detached_tool_jobs_before_the_node_exits](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L301)：SIGTERM 优雅关闭，Node 退出时作业已死。
+- [an_unreadable_job_under_a_waiting_tool_shell_is_killed_with_it](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L350)：不可 dump 的作业经仍在等待它的工具 shell 被认领。
+- [marks_match_whole_tokens_under_the_exact_name](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/src/process/environment_mark.rs#L190)：嵌套值 `outer:attempt` 的生成与整段 token 匹配。
+- [scan_claims_only_marked_processes_started_within_the_scope](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark.rs#L81)：`outer:token` 被认领，`token-other` 与尝试开始前的带标记进程不被认领。
+
+缺口：
+- 结束方式：没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，“轮次仍在运行时结束”走的是 EndSession；真实插件只在
+  `07c495e0` 上复测了 EndSession 与 SIGKILL 后重启（运行记录），优雅关闭与导致会话结束的取消没有真实插件复测，`198cc415` 上
+  没有重跑。
+- 守护进程：fixture 作业与被收养的守护进程在扫描面前相同，但没有“另一会话仍在使用”的用例。
+- 轮次之间与保留会话：没有断言带标记进程跨轮次存活的测试（现有用例只在轮次结束后 pin 住作业）；保留会话的取消没有带标记进程的测试。
+- 嵌套 Node：只有标记值与匹配的单测，没有真实的嵌套 Node 用例。
+- 伪造：持续伪造把确认拖到 `stop_unconfirmed` 没有测试。
+
+macOS 与 Windows 不在本用例范围内。
 
 ### 决策依据
 
@@ -638,8 +694,8 @@ Node 重启后把“锁可取得”在另一台主机上当作停止证据；boo
 | 跨主机不确认 | 主机标识不同或缺失时保持 Unknown、声明单点挂载后才确认的测试 | Partial |
 | 锁缺失为 Unknown | 删除或损坏锁文件后保持 Unknown 并转交对账的测试 | Covered |
 | 时钟与恢复顺序 | 多次重启后 first_stop_at_ms 不变、围栏先于准入恢复的测试 | Partial |
-| 重启收口杀残留作业 | Node 被 SIGKILL 后留下的脱组作业在重启收口中被杀、之后才确认的测试 | Missing：待 desktop#802 合并 |
-| 范围记录与标志 | 带标志而 `.mark` 缺失或损坏为 Unknown、procfs 不可读为 Unknown、不带标志的旧尝试记 `lock_and_processes` 的测试 | Missing：待 desktop#802 合并 |
+| 重启收口杀残留作业 | Node 被 SIGKILL 后留下的脱组作业在重启收口中被杀、之后才确认的测试 | Covered |
+| 范围记录与标志 | 带标志而 `.mark` 缺失或损坏为 Unknown、procfs 不可读为 Unknown、不带标志的旧尝试记 `lock_and_processes` 的测试 | Covered |
 
 ### 代表性证据与剩余缺口
 
@@ -649,7 +705,16 @@ Node 侧验收：`Partial`。
 - [a_durable_unstarted_lock_is_proof_but_missing_corrupt_or_foreign_boot_evidence_is_not](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/src/session/stop/tests.rs#L189)。
 - [restart_preserves_clock_identity_terminal_intent_and_resource_fence](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/crates/node-db/src/tests/session/stop.rs#L94)。
 
-原时钟和身份持久性、缺锁、跨主机拒绝有证据；真实卷迁移、单点挂载声明与重启恢复/准入排序的全路径仍缺。不能把直接函数或数据库重开当作完整宿主重启实验。标记扫描与范围记录标志的两项义务待 desktop#802 合并后登记。
+原时钟和身份持久性、缺锁、跨主机拒绝有证据；真实卷迁移、单点挂载声明与重启恢复/准入排序的全路径仍缺。不能把直接函数或数据库重开当作完整宿主重启实验。
+
+尝试环境标记（desktop#802 `198cc415`）：
+
+- [restart_recovery_kills_the_job_a_killed_node_left_behind](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L249)：真实 Node 被 SIGKILL 后重启，残留作业先被杀，账本在作业存活时从未 `confirmed`，最终记 `lock_processes_and_marks`。
+- [a_scoped_attempt_whose_scope_is_lost_is_unknown](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L135)：带标志而 `.mark` 被删除：Unknown，到期记 `stop_unconfirmed`。
+- [a_surviving_job_or_damaged_scope_is_never_proof](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L109)：`.mark` 损坏为 Unknown。
+- [an_unscoped_attempt_keeps_lock_and_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L229)：不带标志、没有 `.mark` 的旧尝试记 `lock_and_processes`。
+- [evidence_needs_two_clean_scans_without_undecided_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L261)：扫描失败为 Unknown。
+- [a_window_larger_than_the_descriptor_limit_is_still_scanned_and_killed](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/utils/tests/environment_mark_limits.rs#L72)：fd 耗尽时扫描报错而不是报干净。
 
 ### 决策依据
 
@@ -813,8 +878,8 @@ D5 门禁表与交付说明，不变量 10；扩展共享 checkout 决策 D2，�
 | legacy_unknown 登记范围 | 迁移后 running 旧会话有 `legacy_unknown` 及参照主机 / boot，accepted 与已完成的没有的测试 | Covered |
 | 围栏与出口 | legacy_unknown 挡恢复与自身交付、不挡普通会话，同机重启或单点挂载声明后才 interrupted 的测试 | Partial |
 | 不可回滚 | 旧二进制拒绝新 schema、备份回滚流程被拒的测试 | Missing |
-| 新证明不解除 legacy_unknown | 账本拒绝以 `lock_processes_and_marks` 确认 `legacy_unknown` 的测试 | Missing：待 desktop#802 合并 |
-| 标记迁移保留记录 | 上一版数据库升级后全部停止行原样保留且不带标志、旧表拒绝新证明而新表接受的迁移测试 | Missing：待 desktop#802 合并 |
+| 新证明不解除 legacy_unknown | 账本拒绝以 `lock_processes_and_marks` 确认 `legacy_unknown` 的测试 | Covered |
+| 标记迁移保留记录 | 上一版数据库升级后全部停止行原样保留且不带标志、旧表拒绝新证明而新表接受的迁移测试 | Covered |
 
 ### 代表性证据与剩余缺口
 
@@ -824,6 +889,14 @@ Node 侧验收：`Partial`。
 - [restart_preserves_clock_identity_terminal_intent_and_resource_fence](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/crates/node-db/src/tests/session/stop.rs#L94)。
 
 真实 v13 数据库迁移、登记范围和幂等已验证；完整新二进制服务、legacy_unknown 运维出口及旧二进制/旧备份回滚拒绝的端到端证据仍缺。
+
+尝试环境标记（desktop#802 `198cc415`，schema 16）：
+
+- [undrained_v13_upgrade_marks_only_running_agents_legacy_unknown](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/node-db/src/tests/session/stop.rs#L244)：`lock_and_processes` 与 `lock_processes_and_marks` 都不能确认 `legacy_unknown`，`host_reboot` 可以。
+- [stop_marks_upgrade_keeps_rows_unflagged_and_admits_the_mark_scan_proof](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/node-db/src/tests/session/stop.rs#L414)：v15 表拒绝新证明；升级到 16 后已确认行除标志为“不带”外原样保留，新证明与标志可写可读。
+- [v14_and_v15_files_upgrade_in_one_step_with_attempts_unflagged](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/crates/node-db/src/tests/session/stop.rs#L516)：v14 与 desktop#793 的 v15 库都一次升到 16，待确认尝试不带标志并以 `lock_and_processes` 确认，v15 的取消结算保留。
+
+旧 Node 拒绝打开 schema 16 属于上表“不可回滚”一行，仍为 `Missing`。
 
 ### 决策依据
 
@@ -875,8 +948,8 @@ Stopped；`after-host-reboot` 遇到同机重启、换主机、缺主机标识�
 | `after-host-reboot` 语义 | 同机重启确认、换主机与缺主机标识拒绝的测试 | Partial |
 | 审计与幂等 | 审计写入失败不解除、重复 request_id 同结果、崩溃后重新查证的测试 | Partial |
 | 记录回收 | 7 天后回收已确认记录、保留未确认与被引用记录、审计 90 天的测试 | Covered |
-| `recheck` 扫描标记 | `recheck` 冻结并杀掉被认领进程、扫描不干净时不确认的测试 | Missing：待 desktop#802 合并 |
-| `after-host-reboot` 拒绝同 boot 证明 | `after-host-reboot` 拒绝 `lock_and_processes` 与 `lock_processes_and_marks` 的直接测试 | Missing：待 desktop#802 合并 |
+| `recheck` 扫描标记 | `recheck` 冻结并杀掉被认领进程、扫描不干净时不确认的测试 | Partial |
+| `after-host-reboot` 拒绝同 boot 证明 | `after-host-reboot` 拒绝 `lock_and_processes` 与 `lock_processes_and_marks` 的直接测试 | Covered |
 
 ### 代表性证据与剩余缺口
 
@@ -887,6 +960,14 @@ Node 侧验收：`Partial`。
 - [gc_requires_age_release_ack_and_completed_audit_and_retains_a_summary](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/crates/node-db/src/tests/session/stop.rs#L306)。
 
 root socket 用例默认 #[ignore]，只在显式 root 环境运行；数据库审计不是 SO_PEERCRED 证明。root 对账唤醒、中断审计恢复唤醒及残留过滤没有默认 CI 的独立回归（N-2）；真实非 root 对端和全部审计失败/重启矩阵仍缺。
+
+尝试环境标记（desktop#802 `198cc415`）：
+
+- [after_host_reboot_refuses_both_same_boot_proofs](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/admin.rs#L329)：`after-host-reboot` 只接受 `host_reboot` 与 `fenced_volume`，`recheck` 接受全部四种。
+- [a_deadline_narrows_the_budget_and_a_spent_one_starts_nothing](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests.rs#L410)：`recheck` 的每一步按 10 秒截止时间收紧预算，用完后不再派发。
+- [a_hung_observation_costs_its_budget_and_holds_the_worker](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests.rs#L389)。
+
+缺口：`recheck` 复用会话结束路径的观察与终止（扫描、冻结、杀由上面尝试锁与本文其他用例的证据覆盖），但没有经 `recheck` 本身杀掉被认领作业、或在扫描不干净时拒绝确认的用例；root socket 用例仍默认 ignored。
 
 ### 决策依据
 
@@ -937,7 +1018,7 @@ checkout 绝对 cwd 已知。
 | attempt 与 single-flight | 相同 / 更小 / 更大 attempt 与 Controller 丢计数后先查询再增号的测试 | Partial |
 | 清理责任与容量 | 不可回收的探测保持 cleanup_pending 占名额、重启后仍计入、8 个占满时诊断可见的测试 | Partial |
 | 直接 child 与同组后代清理 | 超时后直接子进程与同组后代都已退出的测试，不只断言返回 timeout | Covered |
-| 脱组后代清理 | stdio 探测脱离进程组的带标记后代在清理中被杀、Agent 尝试的进程不受影响的测试 | Missing：待 desktop#802 合并 |
+| 脱组后代清理 | stdio 探测脱离进程组的带标记后代在清理中被杀、Agent 尝试的进程不受影响的测试 | Missing |
 
 ### 代表性证据与剩余缺口
 
@@ -951,6 +1032,8 @@ Node 侧验收：`Partial`。
 - [version_update_replaces_agent_and_host_probes_reap_real_descendants](https://github.com/ora-space/desktop/blob/28da0a4e77ec2257468b15bffd99e166a186b31c/apps/ora-node/tests/standalone/agent_sessions/mcp_lifecycle.rs#L220)。
 
 8/2、PATH、同 flight 合并、真实后代清理和自动确认唤醒已有证据；真实 workload UID/GID、16 成员全场景、Controller 丢计数恢复及 N-2/N-3 的竞争路径仍缺。panic 导致整个 Node fail closed，重启恢复持久清理责任；没有把该故障当单 execution 隔离。
+
+尝试环境标记：desktop#802 `198cc415` 的探测清理改为从账本读范围记录标志、在阻塞 worker 上终止并判定，但没有 stdio 探测起脱组后代的测试，也没有断言探测清理不触及 Agent 尝试的进程；该义务仍为 `Missing`。
 
 ### 决策依据
 

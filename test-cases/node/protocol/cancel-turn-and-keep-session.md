@@ -5,8 +5,10 @@
 所有义务都没有直接证据，状态为 `Missing`。会话命令、事件序号与终态的既有规则继续受
 [Agent 运行的协议消息用例](agent-run-messages.md)约束；结束会话时的停止责任与停止证据受
 [会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md)约束，本文不推导它们的证据。
-[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`approved`）修改了 D3 复述的停止证据：用例 11、12、13 各增加一行带“（尝试标记）”的
-义务，同样为 `Missing`，待 desktop#802 合并；它们不另占验证义务编号，一一对应关系不变。
+[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`implemented`）修改了 D3 复述的停止证据：用例 11、12、13 各增加一行带“（尝试标记）”的
+义务，不另占验证义务编号，一一对应关系不变。这三行按 [desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head
+`198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
+30 条义务，它们的状态不在这次登记范围内。
 
 | 验证义务 | 核心用例 |
 | --- | --- |
@@ -350,7 +352,7 @@ Agent 不回应取消时，Controller 等不到结论；或者 Node 在取得停
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 11：没有回应时按期结算，终态等停止证据 | 尚未实现，无直接证据 | Missing |
-| 11（尝试标记）：以 `session_ending` 结束时本轮的脱组后台作业在终态前被杀 | 取消导致会话结束、本轮工具起了 `setsid` 后台作业时，作业在 `AgentSessionEnded` 之前退出、证明为 `lock_processes_and_marks` 的真实 Node 测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
+| 11（尝试标记）：以 `session_ending` 结束时本轮的脱组后台作业在终态前被杀 | [ending_a_running_turn_kills_its_detached_tool_job](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L211)：轮次运行中以 EndSession 结束会话，本轮工具起的 `setsid` 作业在 `AgentSessionEnded` 之前退出、证明为 `lock_processes_and_marks`、之后不写入。缺口：没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，取消路径与 EndSession 共用停止确认只由代码保证 | Partial |
 
 ### 决策依据
 
@@ -384,7 +386,7 @@ G 内没有回应；停止请求返回（分别覆盖成功与失败）之后，
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 12：证据缺席时不提前发终态、不提前交付，迟到证据才补报 | 尚未实现，无直接证据 | Missing |
-| 12（尝试标记）：只剩带标记进程存活时同样缺证据 | 锁与线索都已干净、只剩被标记扫描认领的存活进程时，不写终态、期限后 `StopUnconfirmed`、交付与恢复被拒绝的测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
+| 12（尝试标记）：只剩带标记进程存活时同样缺证据 | [a_surviving_job_or_damaged_scope_is_never_proof](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/src/session/stop/tests/marks.rs#L109)：插件进程已退出、锁与线索干净，只剩脱组作业时证据为 Running；[end_session_kills_a_detached_tool_job_and_spares_unmarked_processes](https://github.com/ora-space/desktop/blob/198cc41517a837ec436a897655403adc790b8c0d/apps/ora-node/tests/standalone/agent_sessions/background_jobs.rs#L150) 等真实 Node 用例断言作业存活期间账本从未 `confirmed`。缺口：没有作业杀不掉时终态延后、期限后 `StopUnconfirmed`、交付与恢复被拒绝的用例 | Partial |
 
 ### 决策依据
 
@@ -414,7 +416,7 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（尝试标记）：保留会话的取消不杀任何进程 | 一致性测试中会话被保留的取消之后，带标记的后台任务与常驻进程仍存活、其流量照实记录的测试 | Missing：待 desktop#802 合并；另依赖本决策的实现 |
+| 13（尝试标记）：保留会话的取消不杀任何进程 | 一致性测试中会话被保留的取消之后，带标记的后台任务与常驻进程仍存活、其流量照实记录的测试。desktop#802 `198cc415` 没有这样的测试 | Missing |
 
 ### 决策依据
 
