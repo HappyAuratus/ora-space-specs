@@ -10,6 +10,12 @@
 `198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
 30 条义务，它们的状态不在这次登记范围内。
 
+[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`proposed`，
+随本次修改一同评审）修改了验证义务 10、13，并给 D3 情况表新增 detail `turn_processes_unstopped`：用例 10、13、19 各增加一行
+带“（轮次进程栅栏）”的义务，同样不另占编号；用例 13 中原有的“（尝试标记）”一行“保留会话的取消不杀任何进程”与新决策
+相反，改写为栅栏下的一致性测试。新增的义务尚未实现，状态为 `Missing`。栅栏自身的义务见
+[轮次进程栅栏用例](turn-process-fence.md)。
+
 | 验证义务 | 核心用例 |
 | --- | --- |
 | 1 | [Cancelling a running turn keeps the session for the next turn](#cancelling-a-running-turn-keeps-the-session-for-the-next-turn) |
@@ -305,25 +311,28 @@ D2（静止条件 2），不变量 7。
 
 ### 前置状态与触发
 
-Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。
+Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。另外两种情形（轮次进程栅栏）：（插件，版本）只在其他平台
+登记；Node 运行在没有栅栏的平台（Windows）上，即使存在该（插件，版本）的条目。
 
 ### 必须成立
 
-会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。
+会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。只在其他平台登记、或在没有栅栏的平台上时同样
+如此，且不运行栅栏、不取轮次快照。
 
 ### 禁止结果
 
-会话保留。
+会话保留；在没有栅栏的平台上按其他平台的条目保留会话。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 10：不在清单中的版本走兜底 | 尚未实现，无直接证据 | Missing |
+| 10（轮次进程栅栏）：清单按平台判定，Windows 与只在其他平台登记的组合以 `turn_boundary_unverified` 结束 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D2（可依赖的轮次边界）、D3，不变量 7。
+D2（可依赖的轮次边界）、D3，不变量 7；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D5，不变量 9。
 
 ## An unanswered cancel settles in time and ends only after stop evidence
 
@@ -400,27 +409,35 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 
 ### 前置状态与触发
 
-对清单登记的每个 Agent 版本，用真实 Agent 构造：取消运行中的 shell 工具；取消带子代理和后台任务的轮次；模型请求错误。记录 prompt 回应之后到达的全部流量。
+对清单按（插件，版本，平台）登记的每个组合，在该平台上以真实的 `ora-node`（轮次进程栅栏启用）运行该版本的真实
+Agent，构造：取消运行中的 shell 工具；取消起了后台作业的一轮（新会话中的作业，以及普通 shell 里的 `cmd &`）；在被取消
+的一轮里让 Agent 懒启动 LSP 或 MCP；取消带子代理和后台任务的轮次；模型请求错误。记录 prompt 回应之后到达的全部流量、
+`TurnCancelSettled{stopped}` 之后 checkout 的写入，并在下一轮使用懒启动的进程。
 
 ### 必须成立
 
-只有回应之后没有任何轮次流量的版本才进入清单。会话被保留的取消不发任何停止信号，这一轮起的后台任务继续运行，
-测试照实记录它们在回应之后的流量，不能假定 Node 已杀掉它们。
+- 只有回应之后没有任何轮次流量、`stopped` 之后没有这一轮的进程写入、懒启动的进程在下一轮仍可用、Agent 没有自发起
+  一轮的组合，才进入清单。
+- 测试验证的是 Agent 回应与 Node 栅栏的组合：后台作业由栅栏杀掉，测试记录栅栏之后的流量和写入，不能假定 Agent 自己停下了
+  它们，也不能把另一个平台的结果当作本平台的结论。
+- Linux 上的 `official/ora-space.opencode 0.6.11` 通过后才登记；`official/ora-space.claude 0.4.5` 因后台任务被杀后自发起一轮而
+  不登记。
 
 ### 禁止结果
 
-未测或测试中有残余轮次流量的版本进入清单；保留会话的取消杀掉后台任务，掩盖了回应之后的流量。
+未测或测试中有残余轮次流量、`stopped` 之后仍有写入、懒启动进程被杀后功能退化的组合进入清单；不运行栅栏的测试结果被
+用来登记；按一个平台的结果登记另一个平台。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（尝试标记）：保留会话的取消不杀任何进程 | 一致性测试中会话被保留的取消之后，带标记的后台任务与常驻进程仍存活、其流量照实记录的测试。desktop#802 `198cc415` 没有这样的测试 | Missing |
+| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）在该平台上以真实 Node 的栅栏运行，覆盖后台作业与懒启动进程。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D2（可依赖的轮次边界），不变量 7；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4，不变量 7。
+D2（可依赖的轮次边界），不变量 7；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D5；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4（经栅栏决策修改）。
 
 ## A full in-flight window delays delivery but not local settlement
 
@@ -576,11 +593,13 @@ D2（续用方式）、D5，不变量 7。
 
 ### 前置状态与触发
 
-逐一触发 D3 表中的每一种情况，其中一部分发生时有尚未结算的 `CancelTurn`。
+逐一触发 D3 表中的每一种情况，其中一部分发生时有尚未结算的 `CancelTurn`。D3 表包括轮次进程栅栏决策新增的一行：
+栅栏在 F 内不干净，或这一轮没有快照。
 
 ### 必须成立
 
-每种情况都结束会话，终态与 D3 表一致；结束决定作出时尚未结算的 `CancelTurn` 都得到 `session_ending`。
+每种情况都结束会话，终态与 D3 表一致；结束决定作出时尚未结算的 `CancelTurn` 都得到 `session_ending`。栅栏不干净时
+detail 为 `turn_processes_unstopped`。
 
 ### 禁止结果
 
@@ -591,10 +610,11 @@ D2（续用方式）、D5，不变量 7。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 19：D3 的每种情况结束会话并结算取消 | 尚未实现，无直接证据 | Missing |
+| 19（轮次进程栅栏）：`turn_processes_unstopped` 一行同样结束会话并结算取消；各种注入见[栅栏不干净用例](turn-process-fence.md#an-unclean-fence-ends-the-session-as-turn-processes-unstopped) | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D3，不变量 2。
+D3，不变量 2；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D3。
 
 ## Sessions without either choice keep the previous behaviour
 

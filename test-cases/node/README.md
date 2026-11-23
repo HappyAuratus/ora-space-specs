@@ -122,8 +122,20 @@ Partial。只能由 Controller 验证的义务在
 [Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。用例 11、12、13
 另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
-带来的义务，按 desktop#802 `198cc415` 登记为 2 项 `Partial`、1 项 `Missing`。
+带来的义务，按 desktop#802 `198cc415` 登记为 2 项 `Partial`、1 项 `Missing`；其中用例 13 的那一项（保留会话的取消不杀
+任何进程）与下文的轮次进程栅栏决策相反，已改写为栅栏下的一致性测试，仍为 `Missing`。用例 10、13、19 另含轮次进程栅栏
+决策带来的义务，均为 `Missing`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | protocol | [取消一轮与一轮结束后保留会话](protocol/cancel-turn-and-keep-session.md) | 取消没有结论或结论晚于期限、取消误伤下一轮、上一轮的迟到更新混进下一轮、没有停止证据就写终态或放行交付、MCP 门禁中取消与超时各记一个结果、重复取消拖过期限、重启丢失原结束决定、账本不可写时把内存状态当作结论、旧 Controller 握手失败或接管新会话、只选取消的会话在失败后被保留 |
+
+## 轮次进程栅栏
+
+[保留会话前先停掉这一轮新起的进程决策](../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)为
+`proposed`，核心用例随它一同评审。实现由 circus #1340 进行，尚未合入，8 条义务均为 `Missing`。取消一轮用例与
+[会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)的证据保持原范围，不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| protocol | [轮次进程栅栏](protocol/turn-process-fence.md) | 保留会话时本轮后台作业仍在写 checkout、下一轮早于栅栏派发、杀掉懒启动的 LSP/MCP 或轮次开始前的进程、清空环境的子进程逃出栅栏、判断不清仍保留会话、栅栏位置错误让杀进程后的反应混进下一轮、结论超出 G + F + Q、正常完成也杀进程、重启后本轮进程无人清理、伪造标记借栅栏杀别人的进程 |
