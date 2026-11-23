@@ -2,9 +2,8 @@
 
 依据[保留会话前先停掉这一轮新起的进程决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)
 （`approved`）。本文的 8 个核心用例与该决策“验证义务”一节的第 1–8 条一一对应，用例标题前的编号
-就是验证义务的编号。实现是 [desktop#807](https://github.com/ora-space/desktop/pull/807)（head `25e8dae6`，尚未合入），
-所有义务都还没有可登记的直接证据，状态为 `Missing`；各表的“直接证据与缺口”一栏写明落地时拟登记的测试与现有缺口，
-由落地运行按合并提交核对后改状态。该决策对取消决策验证义务 10、13 的修改登记在
+就是验证义务的编号。决策由 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现；各义务的状态为 `Missing`，
+表中写明所需的直接证据与候选测试，由落地运行按合并提交核对后登记证据、改状态。该决策对取消决策验证义务 10、13 的修改登记在
 [取消一轮用例](cancel-turn-and-keep-session.md)的对应用例中；结束会话时停止整个尝试的义务继续由
 [会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md)约束，本文不推导它们的证据。
 
@@ -41,21 +40,24 @@ Controller 发 `CancelTurn`，Agent 在截止时刻前回应，工具调用都�
 - 事件顺序为 `TurnEnded{cancelled}` → `TurnCancelSettled{stopped}` → 下一轮的 Thread 事件；下一轮的 `session/prompt` 在
   `stopped` 之后才写出。
 - 作业在回应与被杀之间写下的内容留在 checkout 中。
+- 栅栏干净之后，Agent 这类豁免进程不发轮次流量地新起一个 `setsid` 进程，它在结算前的复扫时仍存活：会话以
+  `turn_processes_unstopped` 结束，不写 `stopped`；复扫不向它发信号，它由结束会话的停止杀掉。
 
 ### 禁止结果
 
-`stopped` 写入时作业仍存活；`stopped` 之后出现作业的写入；下一轮在栅栏完成之前写出 prompt；栅栏向 Agent 进程或其进程组
-发信号。
+`stopped` 写入时作业或栅栏之后新起的范围内进程仍存活；`stopped` 之后出现作业的写入；下一轮在栅栏与复扫完成之前写出
+prompt；栅栏向 Agent 进程或其进程组发信号；复扫发出任何信号。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 1：保留会话的取消在 `stopped` 之前杀掉这一轮新会话中的后台作业，下一轮在其后派发 | 拟登记 desktop#807 `apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_kept_cancel_kills_the_turns_setsid_job_before_it_settles`（echo-agent 的 `setsid` 作业在 `stopped` 时已不在、延迟写入没有出现、会话接着执行下一轮）。缺口：真实插件只有一致性测试的运行记录（见取消一轮用例 13），不是 CI 中运行的测试 | Missing |
+| 1：保留会话的取消在 `stopped` 之前杀掉这一轮新会话中的后台作业，下一轮在其后派发 | 需要：真实进程下，这一轮的 `setsid` 作业在 `stopped` 时已不在、延迟写入没有出现、会话接着执行下一轮的测试。候选：`apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_kept_cancel_kills_the_turns_setsid_job_before_it_settles`。真实插件的一致性运行（取消一轮用例 13）是运行记录，不算此项证据 | Missing |
+| 1（复扫）：栅栏之后豁免进程静默新起的 `setsid` 进程让会话以 `turn_processes_unstopped` 结束 | 需要：Agent 在栅栏干净之后、Q 之内不发轮次流量地新起一个 `setsid` 进程（例如延迟数百毫秒），断言没有 `stopped`、detail 为 `turn_processes_unstopped`、复扫期间该进程未收到信号、终态前它被杀的测试 | Missing |
 
 ### 决策依据
 
-D1、D2、D4，不变量 3、5。
+D1、D2（结算前的复扫）、D4，不变量 3、5。
 
 ## The fence spares lazily started processes in the Agent's own session and everything older than the turn
 
@@ -85,9 +87,9 @@ Agent 在自己的会话中懒启动了一个常驻进程（例如 LSP 或 MCP�
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 2：豁免会话中的懒启动进程与轮次开始前的进程都不收到信号 | 拟登记 desktop#807 `turn_processes.rs` 的 `the_agents_own_helper_survives_a_kept_cancel`（Agent 在自己会话中起的 helper 存活、下一轮是同一进程，旁边的 `setsid` 作业被杀）与 `jobs_of_a_finished_turn_survive_the_next_turns_cancel`（正常完成一轮留下的 `setsid` 作业在下一轮被取消后仍存活，会话结束时才被杀）。缺口：没有真实 LSP 的用例，一致性测试不专门构造懒启动 | Missing |
+| 2：豁免会话中的懒启动进程与轮次开始前的进程都不收到信号 | 需要：Agent 在自己会话中懒启动的 helper 在保留会话的取消后存活、下一轮找到同一进程；正常完成一轮留下的 `setsid` 作业在下一轮被取消后仍存活、会话结束时才被杀的测试。候选：`turn_processes.rs` 的 `the_agents_own_helper_survives_a_kept_cancel` 与 `jobs_of_a_finished_turn_survive_the_next_turns_cancel`。一致性测试不专门构造懒启动（决策 D5 末段） | Missing |
 
 ### 决策依据
 
@@ -115,7 +117,9 @@ D1（轮次范围、为什么用 sid）、D7，不变量 3。
 - 清空环境的子进程经被冻结的父进程认领，与父进程一起被杀；栅栏结论只在它们都不在之后才是干净。
 - helper 的子进程留在 helper 的会话中，不被杀。
 - 只含不带标记的更早进程的会话不豁免任何进程，留在其中的这一轮进程被杀；豁免会话只取自同一遍扫描中存活的更早被认领
-  进程，待定进程只在范围内计数。
+  进程。
+- 待定进程只在范围内计数：更早启动、读不到环境的进程不使栅栏为 Unknown；这一轮新起、不在豁免会话中、读不到环境的进程
+  使栅栏为 Unknown。
 
 ### 禁止结果
 
@@ -124,9 +128,9 @@ D1（轮次范围、为什么用 sid）、D7，不变量 3。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 3：轮次范围对后代封闭，豁免会话的后代不在范围内，豁免只来自同一遍扫描中存活的更早被认领进程 | 拟登记 desktop#807 `crates/utils/src/process/environment_mark/scan.rs` 的单测 `a_new_session_reach_spares_the_sessions_of_earlier_claimed_processes`（收窄规则与待定计数的表驱动用例）与 `crates/utils/tests/environment_mark.rs` 的 `a_new_session_scope_kills_later_jobs_and_spares_earlier_sessions`（真实进程：较晚的 `setsid` 作业被杀，较早进程及其会话中的较晚进程、helper 的子进程存活）。缺口：没有冻结期间 fork 出清空环境子进程的真实进程用例 | Missing |
+| 3：轮次范围对后代封闭，豁免会话的后代不在范围内，豁免只来自同一遍扫描中存活的更早被认领进程，待定进程只在范围内计数 | 需要：收窄规则的表驱动单测，覆盖较早的待定进程不计数（去掉启动时刻过滤时必须失败）；真实进程下较晚的 `setsid` 作业被杀、较早进程及其会话中的较晚进程与 helper 的子进程存活；范围内进程 fork 出清空环境子进程时两者一起被杀的测试。候选：`crates/utils/src/process/environment_mark/scan.rs` 的 `a_new_session_reach_spares_the_sessions_of_earlier_claimed_processes`、`crates/utils/tests/environment_mark.rs` 的 `a_new_session_scope_kills_later_jobs_and_spares_earlier_sessions` | Missing |
 
 ### 决策依据
 
@@ -146,7 +150,8 @@ D1（范围对后代封闭）、D2，不变量 3、4。
 
 分别注入：Agent 回应后不断起新的 `setsid` 作业，直到 F 用完；尝试的范围记录被删除；栅栏的扫描失败；范围内有待定进程
 （Node 与 workload 不同用户、没有 `CAP_SYS_PTRACE`）；观察排在其他会话的停止观察之后超出预算；这一轮没有开始时刻（时钟
-读取失败）；接收这一轮 prompt 的尝试在这一轮里被 MCP 生命周期替换。之后取消这一轮或让它失败，Agent 回应。
+读取失败）；接收这一轮 prompt 的尝试在这一轮里被 MCP 生命周期替换；结算前的复扫超出 R 或扫描失败。之后取消这一轮或让它
+失败，Agent 回应。
 
 ### 必须成立
 
@@ -162,9 +167,9 @@ D1（范围对后代封闭）、D2，不变量 3、4。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 4：栅栏不干净、没有开始时刻、范围记录不可用或尝试被替换时以 `turn_processes_unstopped` 结束，并按取消决策 D3 停止整个尝试 | 拟登记 desktop#807 `turn_processes.rs` 的 `jobs_that_keep_coming_back_end_the_session`（不断重起的作业使 F 用完，取消得到 `session_ending`）与 `an_unknown_fence_ends_the_session`（范围记录被删除）。缺口：扫描失败、待定进程、超出预算、时钟读取失败与这一轮里的尝试替换没有用例 | Missing |
+| 4：栅栏或复扫不干净、没有开始时刻、范围记录不可用或尝试被替换时以 `turn_processes_unstopped` 结束，并按取消决策 D3 停止整个尝试 | 需要：每种注入各一个测试，断言 detail、并入取消得到 `session_ending`、之后没有 prompt、终态在停止证据之后；时钟读取失败要求能向轮次开始注入时钟。候选：`turn_processes.rs` 的 `jobs_that_keep_coming_back_end_the_session`（不断重起的作业使 F 用完）与 `an_unknown_fence_ends_the_session`（范围记录被删除） | Missing |
 
 ### 决策依据
 
@@ -193,18 +198,19 @@ D1（轮次开始）、D2、D3，不变量 4；取消决策 D3。
 - 栅栏期间的轮次流量使会话以 `turn_not_quiescent` 结束；静默窗口 Q 从栅栏干净时起算。
 - 栅栏不因命令中断；第二个 `CancelTurn` 在栅栏返回后并入，与这次停止得到同一结论；`EndSession` 在栅栏返回后优先，
   无论栅栏是否干净，会话都以它的原因结束，未结算的取消得到 `session_ending`。
-- 结论在发起的 `CancelTurn` 受理后 G + F + Q（22 秒）内落账；失败发起时在回应后 F + Q 内落账。
+- 结算前的复扫在 Q 与空闲期流量检查之后、`stopped` 之前运行，只扫描不杀；复扫期间到达的命令在它返回后处理。
+- 结论在发起的 `CancelTurn` 受理后 G + F + Q + R（23 秒）内落账；失败发起时在回应后 F + Q + R 内落账。
 
 ### 禁止结果
 
-已决定结束会话后仍运行栅栏；Q 在栅栏之前或与之并行结束；栅栏期间的轮次流量不被计入；两个取消得到不同结论；
-`EndSession` 之后会话仍被保留；结论超出期限。
+已决定结束会话后仍运行栅栏；Q 在栅栏之前或与之并行结束；栅栏期间的轮次流量不被计入；复扫早于 Q 或晚于 `stopped`；
+两个取消得到不同结论；`EndSession` 之后会话仍被保留；结论超出期限。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 5：栅栏在静态检查之后、Q 之前，期限为 G + F + Q，并入与 `EndSession` 在栅栏返回后按取消决策处理 | 拟登记 desktop#807 `turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`（未登记时栅栏不运行）。杀后的反应被 Q 发现只有一致性测试中 Claude 0.4.5 `background` 以 `turn_not_quiescent` 结束的运行记录。缺口：静止条件 2 不成立时不运行栅栏、栅栏期间的 `CancelTurn` 与 `EndSession`、失败发起的栅栏与期限都没有用例 | Missing |
+| 5：栅栏在静态检查之后、Q 之前，复扫在 Q 之后、`stopped` 之前，期限为 G + F + Q + R，并入与 `EndSession` 在栅栏返回后按取消决策处理 | 需要：未登记或静止条件 2 不成立时栅栏没有运行的直接断言（例如没有发出任何信号、本轮作业仍存活到会话停止）；Agent 在自己的作业被杀后发轮次流量、结果为 `turn_not_quiescent` 的测试（把栅栏挪到 Q 之后时必须失败）；栅栏期间受理的 `CancelTurn` 与 `EndSession` 在栅栏干净与不干净时的测试；失败发起的栅栏与期限的测试。候选 `a_version_verified_only_on_another_platform_is_unverified` 只断言 detail，区分不出栅栏是否运行，不能单独作为此项证据；Claude 0.4.5 `background` 以 `turn_not_quiescent` 结束是一致性运行记录 | Missing |
 
 ### 决策依据
 
@@ -236,9 +242,9 @@ D4，不变量 2、6；取消决策 D1、D4。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 6：正常完成不运行栅栏；不能保留的会话不运行栅栏；轮次开始不扫描 | 拟登记 desktop#807 `turn_processes.rs` 的 `jobs_of_a_finished_turn_survive_the_next_turns_cancel`（正常完成后作业存活）。缺口：没有选择保留的会话不运行栅栏、轮次开始不扫描都没有直接断言 | Missing |
+| 6：正常完成不运行栅栏；不能保留的会话不运行栅栏；轮次开始不扫描 | 需要：正常完成后作业存活的测试；没有选择保留的会话一轮结束后作业存活到会话停止的测试；轮次开始不扫描 procfs 的直接断言。候选：`turn_processes.rs` 的 `jobs_of_a_finished_turn_survive_the_next_turns_cancel`（覆盖正常完成） | Missing |
 
 ### 决策依据
 
@@ -271,9 +277,9 @@ D1（轮次开始）、D4，不变量 1、7；标记决策 D4。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 7：重启在任何时刻都结束会话、停止整个尝试，账本 schema 不变 | desktop#807 没有改账本 schema；重启收口杀掉原尝试带标记进程的既有证据见[会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-turns-kill-none)，不推导本义务。缺口：没有在一轮开始后、栅栏中或保留会话后 SIGKILL Node 的用例 | Missing |
+| 7：重启在任何时刻都结束会话、停止整个尝试，账本 schema 不变 | 需要：分别在一轮开始后、栅栏冻结作业时、保留会话后 SIGKILL Node 并重启，断言 `interrupted`、未结算取消得到 `session_ending`、本轮作业在终态前被杀、schema 版本不变的测试。重启收口杀掉原尝试带标记进程的既有证据见[会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-finished-turns-kill-none)，不推导本义务 | Missing |
 
 ### 决策依据
 
@@ -296,7 +302,7 @@ D6，不变量 8；协议 D6；取消决策 D3、D4；标记决策 D2、D3。
 
 ### 必须成立
 
-- 轮次开始前启动的伪造进程不收到任何信号。
+- 轮次开始前启动的伪造进程不收到任何信号：它让自己所在的会话豁免。
 - 轮次开始后、新会话中的伪造进程被杀。
 - 持续 fork 时栅栏在 F 内不干净，会话以 `turn_processes_unstopped` 结束。
 
@@ -306,9 +312,9 @@ D6，不变量 8；协议 D6；取消决策 D3、D4；标记决策 D2、D3。
 
 ### 验证义务与证据
 
-| 义务 | 直接证据与缺口 | 状态 |
+| 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 8：伪造只影响伪造者自己在这一轮新会话中的进程，或让会话结束 | 持续 fork 一项拟登记 `jobs_that_keep_coming_back_end_the_session`；轮次开始前的伪造进程不被发信号由收窄规则保证（用例 3 的单测）。缺口：没有伪造标记的进程级用例 | Missing |
+| 8：伪造只影响伪造者自己在这一轮新会话中的进程，或让会话结束 | 需要：轮次开始前启动、带伪造标记的进程不收到信号，轮次开始后新会话中的伪造进程被杀，持续 fork 的伪造者让会话以 `turn_processes_unstopped` 结束的进程级测试。候选：持续 fork 一项为 `jobs_that_keep_coming_back_end_the_session` | Missing |
 
 ### 决策依据
 

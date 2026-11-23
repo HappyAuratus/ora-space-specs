@@ -133,9 +133,9 @@ Partial。只能由 Controller 验证的义务在
 ## 轮次进程栅栏
 
 [保留会话前先停掉这一轮新起的进程决策](../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)为
-`approved`，由 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现，尚未合入，8 条义务均为 `Missing`，由落地运行登记。取消一轮用例与
+`approved`，由 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现，8 条义务均为 `Missing`，由落地运行按合并提交登记。取消一轮用例与
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)的证据保持原范围，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
-| protocol | [轮次进程栅栏](protocol/turn-process-fence.md) | 保留会话时本轮后台作业仍在写 checkout、下一轮早于栅栏派发、杀掉懒启动的 LSP/MCP 或轮次开始前的进程、清空环境的子进程逃出栅栏、判断不清仍保留会话、栅栏位置错误让杀进程后的反应混进下一轮、结论超出 G + F + Q、正常完成也杀进程、重启后本轮进程无人清理、伪造标记借栅栏杀别人的进程 |
+| protocol | [轮次进程栅栏](protocol/turn-process-fence.md) | 保留会话时本轮后台作业仍在写 checkout、下一轮早于栅栏派发、杀掉懒启动的 LSP/MCP 或轮次开始前的进程、清空环境的子进程逃出栅栏、判断不清仍保留会话、栅栏位置错误让杀进程后的反应混进下一轮、栅栏之后豁免进程静默新起的进程活过 `stopped`、结论超出 G + F + Q + R、正常完成也杀进程、重启后本轮进程无人清理、伪造标记借栅栏杀别人的进程 |

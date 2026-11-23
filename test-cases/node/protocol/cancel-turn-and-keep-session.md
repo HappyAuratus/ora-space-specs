@@ -328,7 +328,7 @@ Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。�
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 10：不在清单中的版本走兜底 | 尚未实现，无直接证据 | Missing |
-| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | 拟登记 desktop#807 `apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`、`apps/ora-node/src/session/turn_cancel.rs` 的单测 `a_boundary_is_verified_for_its_exact_version_and_platform`（只认精确的插件、版本与平台；默认清单含 Linux 上的 OpenCode 0.6.11、不含 Claude 0.4.5），以及 `tests/agent_session/cancel.rs` 的 `another_version_of_a_listed_plugin_is_not_verified`。尚未合入 | Missing |
+| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | 需要：只为其他平台登记的组合以 `turn_boundary_unverified` 结束、栅栏不运行的测试，以及清单按精确插件、版本与平台匹配的单测。候选：`apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`（只断言 detail）、`apps/ora-node/src/session/turn_cancel.rs` 的单测 `a_boundary_is_verified_for_its_exact_version_and_platform`（只认精确的插件、版本与平台；默认清单含 Linux 上的 OpenCode 0.6.11、不含 Claude 0.4.5），以及 `tests/agent_session/cancel.rs` 的 `another_version_of_a_listed_plugin_is_not_verified` | Missing |
 
 ### 决策依据
 
@@ -416,7 +416,9 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 ### 必须成立
 
 - 一次运行通过，当且仅当：停止以 `stopped` 结算、会话保留；结算时这一轮在 Agent 更早进程的会话之外新起的进程都已不在；
-  结算之后作业的延迟写入没有出现；下一轮正常完成。全部场景的全部运行都通过的组合才进入清单，条目旁写明发布包摘要。
+  结算之后作业的延迟写入没有出现；下一轮正常完成。`error` 场景没有取消结论，进程在 `TurnEnded` 时采样，早于栅栏，检查的是
+  会话没有结束、Agent 失败回应时没有留下这一轮的进程、之后没有延迟写入、下一轮正常完成。全部场景的全部运行都通过的组合
+  才进入清单，条目旁写明发布包摘要。
 - 测试验证的是 Agent 回应与 Node 栅栏的组合：后台作业由栅栏杀掉，测试在栅栏之后观察进程与写入，不能假定 Agent 自己停下了
   它们，也不能把另一个平台的结果当作本平台的结论。
 - Linux 上的 `official/ora-space.opencode 0.6.11` 通过后才登记；`official/ora-space.claude 0.4.5` 因后台任务被杀后自发起一轮
@@ -431,7 +433,7 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | desktop#807 的 `apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs` 中 `turn_boundary_conformance` 是按需运行的 ignored 测试，需要外部发布包，不在 CI 中运行。#1340 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。缺口：没有在 CI 中可重复的一致性证据；aarch64 未测；一致性场景不专门构造懒启动的常驻进程 | Missing |
+| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | 候选：desktop#807 的 `apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs` 中 `turn_boundary_conformance` 是按需运行的 ignored 测试，需要外部发布包，不在 CI 中运行。#1340 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。缺口：没有在 CI 中可重复的一致性证据；aarch64 未测；一致性场景不专门构造懒启动的常驻进程 | Missing |
 
 ### 决策依据
 
