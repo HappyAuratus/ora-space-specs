@@ -8,13 +8,15 @@ status: approved
 「对已知运行时值尽力脱敏」：Host 在把 stderr 解码成记录、通过级别过滤之后，到渲染成 JSONL
 之前，对记录中**插件可控的字符串字段**做替换，把一组 Host 已知的敏感明文（插件 MCP Settings
 的有效值、宿主 MCP 的 URL 与请求头、模型 token、desktop Skill secret、desktop 工作流完成
-token）替换为固定占位符 `[REDACTED]`。desktop 与 Node 共用同一套采集与匹配实现。这是尽力而为
+工具 URL）替换为固定占位符 `[REDACTED]`。desktop 与 Node 共用同一套采集与匹配实现。这是尽力而为
 的脱敏：只匹配明文子串，不解析 JSON 转义、百分号编码或 base64；跨 64 KiB 分片的超长值会部分
 泄露；它不把「已脱敏」宣称为「日志绝不泄露」。
 
 本 ADR 目前是 `approved`。实现落在 `ora-plugin-runtime`（匹配）、`ora-plugin-lifecycle`
 （登记表订阅）、共享 `ora-agent-runtime`（交付点采集）与各宿主的 spawn 环境提供者，不改
 Plugin Protocol 的对外字段，也不改变日志的归属、级别、队列、容量与收尾语义。
+
+核心验证义务见 [核心用例](../../../../test-cases/desktop/plugin/logging/redact-known-runtime-values.md)。
 
 ## 继承与修改
 
@@ -40,9 +42,12 @@ Host 保留键除外）。
 - Host 写入的字段不参与匹配：`timestamp`、`level`、`plugin_id`、`host_session_id`、
   `generation`，以及 `context` 里的 `encoding`、`fragment`、`format_failure`。这些字段在结构上
   不可能被改写，与根决策 D3「Host 字段可信、不受插件影响」一致。
+- `target` 只在 envelope 显式提供时才参与匹配：raw 记录里的 `target`（`plugin.stderr`）和缺省
+  的 `plugin` 都是 Host 填的，不匹配，避免登记值等于 `plugin` 或 `stderr` 时改写 Host 身份。
 - raw 记录（含无效 UTF-8 的转义文本）与 v1 envelope 走同一处理：JSON 转义由序列化器自然处理，
   不发生在明文子串匹配之后。
-- `context` 键名被替换后若两个键冲突，保留先出现者，其余同名键丢弃。
+- `context` 键名被替换后若两个键同名（`serde_json::Map` 按键排序），保留字典序靠前的键，其余
+  同名键丢弃，使结果与记录内的键顺序无关。
 - 队列字节核算按脱敏后的渲染长度计算，不按脱敏前的行长预留。
 
 ### D2：脱敏值按 Plugin ID 登记进 Host 的实时注册表，交付前先登记
@@ -57,11 +62,16 @@ Host 保留键除外）。
 - **登记点**：采集放在 desktop 与 Node 共用的 `ora-agent-runtime` 交付点（MCP 映射
   `mcp_resolver`、`host_mcp_servers()`、`start_agent` 的 `model_context`），外加各宿主的 spawn
   环境提供者，使两端共用一套采集与匹配实现。
-- **只增不减**：同一进程代内，值一经登记就保留到该代结束；会话结束、刷新替换都不撤销旧值，
-  因为 Agent 仍可能回显旧值。新进程代从仍在交付的值重新登记。Node 的模型 grant 在 renew 时不
-  换 token（spawn 环境沿用同一临时 token），所以会话中不存在模型 token 轮换需撤销的问题。
-- **有界**：注册表最多 256 条、总字节最多 64 KiB。超限后新值不再登记，并记一条
-  只含计数、不含值的 Host 告警。超限不阻塞交付，也不改变插件协议。
+- **只增不减**：同一进程代内，值一经登记成功就保留到该代结束；会话结束、刷新替换都不撤销旧
+  值，因为 Agent 仍可能回显旧值。desktop 的一个 Agent 进程代长期服务多个会话，各会话的值不同，
+  注册表就是这一代已交付给其中任何一个会话的值的并集，不会随某个会话结束而收回。新进程代从
+  仍在交付的值重新登记。Node 的模型 grant 在 renew 时不换 token（spawn 环境沿用同一临时
+  token），所以会话中不存在模型 token 轮换需撤销的问题。
+- **每代重置**：注册表生命周期与进程代一致，代结束后整体丢弃；spawn 环境的值（legacy token、
+  desktop Skill secret 等）在每次 spawn 前、由 launcher / 环境提供者按该次声明的敏感子集
+  登记。注册表的键是接收这些值的 Agent 插件 ID，所以只覆盖真正收到该值的插件。
+- **有界**：注册表最多 256 条、总字节最多 64 KiB。超限或匹配器构建失败后，新值不再登记，每个
+  进程代第一次记一条只含计数、不含值的 Host 告警。超限不阻塞交付，也不改变插件协议。
 - 更新只影响之后入队的行，不回改已落盘记录。
 
 ### D3：匹配语义与代价
@@ -74,8 +84,10 @@ Host 保留键除外）。
   `[REDACTED]`。结果与登记顺序无关，任何登记值的任何字节都不会残留在被匹配的区间之外。
 - **代价**：匹配器（如 Aho-Corasick 自动机）在注册表变化时构建一次；每条记录的匹配为
   O(记录长度 + 匹配数)，与登记值个数无关；注册表为空时不做任何工作。
-- **失败语义**：匹配器构建失败或注册表超限时，按已构建的最后一版继续匹配，并记一条 Host
-  告警，不丢弃、不阻塞记录。
+- **失败语义**：只有包含该值的匹配器发布之后，值才算「登记成功」，登记成功前不算覆盖。匹配器
+  构建失败按超限处理：该值及随后超限的新值都不登记，继续用上一版已发布的匹配器匹配；每个进程
+  代第一次记一条 Host 告警（只含计数，不含值），不丢弃、不阻塞记录。因为信息都在 Host 手里，
+  构建失败不是插件的故障，只是 Host 自己的匹配器不可用，所以不降级到沿用旧语义。
 - 占位符统一为 `[REDACTED]`，与 `SessionMcpBinding` 的 `Debug` 占位一致，避免在日志里引入
   新的可识别标记。
 
@@ -87,15 +99,23 @@ Host 保留键除外）。
 | 宿主 MCP 的 `url` 与每个 `headers` 值 | Node 的 `HostMcpServer`（`NodeSessionMcp` / `HostServers` 输入），以及 desktop Backend 交付的宿主 HTTP MCP Server（含完成工具 URL），在对应 ACP setup 发出前登记 |
 | 模型 token | `AgentModelContext.token`（adapter 路由）与 legacy 环境的 `ORA_MODEL_ACCESS_TOKEN` |
 | desktop Skill Settings 中 `secret` 为真的 `String` 值 | `SkillEnvironment` 启动快照（注入 Agent 进程环境与 host-managed 子进程环境） |
-| desktop 工作流完成 token | Backend 为交互式工作流签发并随 prompt 交付的 `attemptToken`，在发送该 attempt 的 prompt 前登记 |
+| desktop 工作流完成工具 URL | Backend 为交互式工作流交付给 Agent 的完成工具 URL（宿主 HTTP MCP Server，见上行「含完成工具 URL」） |
 
 **不登记 `proxy_base_url`**：它是网关主机加固定路径（`/runtime/openai/v1`、`/runtime/anthropic/v1`），
 同一部署的所有会话都相同，且 [模型 adapter 决策](../../../node/agent-runtime/20261017-plugin-owned-model-adapters.md)
 已写明「公开 CA 和固定代理地址不是秘密」。登记它只会抹掉 Agent 的正常网络诊断；模型 token 才
 是应脱敏的秘密。
 
-desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境与会话级插件 MCP Settings；Node
-路径三者皆有。
+**不登记 `attemptToken`**：desktop 在每次发送（含重试）时撤销旧 token、签发新 UUID，而 Agent
+进程代跨会话长期存活；在 D2 的「只增不减 + 256 条上限」下，注册表会被持续轮换的 token 占满，
+导致之后的新 Setting 值不再登记。已撤销的 token 泄露无影响，所以不登记它，只保留稳定交付的
+完成工具 URL。
+
+desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境、会话级插件 MCP Settings 与
+工作流完成工具 URL；Node 路径有插件 MCP Settings、宿主 MCP 请求头与模型 token。为什么 MCP 登记
+全部 `String` 有效值、Skill 只登记 `secret` 值：MCP Setting 是 Host 逐会话解析后交付的运行时
+值，Host 无从判断哪些会被插件视为敏感，全部登记才能覆盖；Skill 值量大且多为非敏感配置，
+按 `secret` 标记只登记真正需要脱敏的子集，避免注册表被无关值占满。
 
 ### D5：尽力而为的边界与已知局限
 
@@ -108,6 +128,9 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境与�
 - 宿主 MCP 只打印 token（去掉 `Bearer ` 前缀的凭据部分）或经 URL 解析器规范化后的 URL（加
   尾斜杠、host 小写）会漏，因为 D4 只登记完整 `url` / header 值，不登记派生形式。
 - 短于 8 字节的秘密不脱敏。
+- 超限或匹配器构建失败之后登记的新值不脱敏（D2/D3 的失败语义）。
+- 转义字节的 raw 记录里，值以 `\` 结尾时（渲染前被加倍成 `\\`）匹配不上；匹配可能落在 `\xNN`
+  转义中间，破坏可追溯编码。这两类都只影响 raw 记录的局部，不改变记录结构。
 - Agent 写到自己能访问的其他文件（非 Host 拥有的 Plugin log）的不归本决策管；插件不经过
   Host 管道、直接自行写文件的不归本决策管。
 
@@ -118,14 +141,15 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境与�
 2. 脱敏值由 Host 登记，插件不能读取或覆盖；注册表为空时管道行为与未实现脱敏时完全一致。
 3. 脱敏不改写 Host 写入的字段、记录条数与入队顺序；队列字节核算按脱敏后的渲染长度计算；
    脱敏后单条记录长度增长有上界（由最小长度与占位符长度决定）。
-4. 匹配器构建失败或注册表超限时，按已构建的最后一版继续匹配并记一条 Host 告警，不丢弃、
-   不阻塞记录，不改变记录数量。
+4. 匹配器构建失败或注册表超限时，新值不算登记成功、不再登记，继续用上一版已发布的匹配器；
+   每个进程代第一次记一条 Host 告警，不丢弃、不阻塞记录，不改变记录数量。
 5. 脱敏是尽力而为的明文子串替换，不承诺覆盖 JSON 转义、百分号编码、base64 或跨分片值。
-6. 对任一已登记值 S（满足登记规则），Host 把 S 交付给插件之后，该插件进程代写到 stderr 的
-   任何包含 S 的完整帧（raw 行或 v1 envelope 的任何插件可控字段），落盘到该 Plugin ID 日志树
-   的记录中都不含 S；跨 64 KiB 分片的出现除外（D5）。
-7. 在第 6 条中，S 覆盖 Node 路径的插件 MCP Setting（含刷新后新值）、宿主 MCP 请求头、模型
-   token（adapter 与 legacy 环境），以及 desktop 路径的插件 MCP Setting、Skill secret。
+6. 对任一登记成功的值 S（满足登记规则），Host 把 S 交付给插件之后，该插件进程代写到 stderr
+   的任何包含 S 的完整帧（raw 行或 v1 envelope 的任何插件可控字段），落盘到该 Plugin ID 日志
+   树的记录中都不含 S；跨 64 KiB 分片的出现除外（D5）。
+7. 在第 6 条中，S 覆盖：Node 路径的插件 MCP Setting（含刷新后新值）、宿主 MCP 请求头、模型
+   token（adapter token 与 legacy 环境 token）；desktop 路径的插件 MCP Setting、Skill secret、
+   工作流完成工具 URL。
 8. 脱敏后的每条记录仍是合法 JSON，Host 字段与未脱敏时逐字节相同。
 
 ## 为什么不能直接改写已有日志
@@ -151,8 +175,6 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境与�
 - 远端 sink、日志导出、rotation/累计磁盘额度的脱敏与授权，留各自后续决策。
 - 对编码形式（JSON 转义、百分号、base64）的覆盖，如需要更强的保证再另开决策。
 - 跨 64 KiB 分片边界的完整匹配，需要改动分帧语义，暂不承诺。
-- desktop 复用同一运行中插件进程、各会话值不同且不经启动链交付时的合并语义（P2-2），留到
-  实现时按 D2 的「先登记后交付 + 只增不减」原则细化，可另开 PR。
 
 ## 落地顺序
 
