@@ -9,7 +9,7 @@
 [迭代节点决策](../../../../decisions/desktop/core/workflow/20260915-iteration-composite-runtime.md)。
 while 的独立轮池、上限两策略和早退见[while-Loop 决策](../../../../decisions/desktop/core/workflow/20261013-while-loop-with-durable-round-scopes.md)。
 Agent 长任务的静默容错见
-[prompt 静默策略决策](../../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)。
+[工作流有限与无限等待决策](../../../../decisions/desktop/core/workflow/20261123-workflow-agent-wait-limit.md)。
 交互式节点的完成门禁、park 快照与 force 见
 [交互式节点完成契约](../../../../decisions/desktop/core/workflow/20261021-interactive-node-completion.md)；
 节点产出物声明（`completion.files`）见
@@ -42,7 +42,7 @@ while-Loop 已实现独立轮池、上限两策略与早退清理；普通执行
 | [variable-pool-boundary.md](variable-pool-boundary.md) | 一切节点形态经声明 owner 与类型校验写入 |
 | [variable-aggregator.md](variable-aggregator.md) | 候选声明门禁、按声明顺序透传首个已赋值值、空值与无匹配失败、分支合流 |
 | [invalidation-events.md](invalidation-events.md) | 失效事件不携带工作流状态，重查收敛 |
-| [prompt-inactivity.md](prompt-inactivity.md) | 静默持续等待、冻结策略、会话隔离与取消清理 |
+| [prompt-inactivity.md](prompt-inactivity.md) | 显式无限等待、冻结策略与展示、可归属进展续期、到期收敛与节点结果 |
 | [interactive-node-completion.md](interactive-node-completion.md) | 交互式节点完成门禁、park 快照与 turn key、force 审计、cleanup 修复与区域边界 |
 | [interactive-retry-output.md](interactive-retry-output.md) | 自动重试的最终输出窗口、重复完成与自动接受门禁、原会话恢复及 force 审计 |
 | [interactive-deliverable-contract.md](interactive-deliverable-contract.md) | 产出物声明的文件判定、路径与 glob 边界、基线缺失降级、不支持字段与版本拒绝 |
