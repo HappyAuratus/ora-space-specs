@@ -601,7 +601,7 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
 - 被杀的包括开发服务器、文件监视进程、MCP 与语言服务，以及会话中启动的共享守护进程，即使其他会话仍在使用。
 - 一轮正常完成后，Node 不发任何冻结或杀信号，带标记的常驻进程跨轮次存活。会话被保留的取消或失败之后，按
   [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`proposed`）只杀
-  这一轮新起、且不在轮次开始时已有会话中的进程，常驻进程同样存活；栅栏的义务见
+  这一轮新起、且不在“这一轮开始前已启动、此刻仍存活的本尝试进程”所在会话中的进程，常驻进程同样存活；栅栏的义务见
   [轮次进程栅栏用例](../protocol/turn-process-fence.md)，本用例不重复登记。
 - 嵌套 Node 给子进程的值为 `外层:attempt`；外层尝试停止时内层 Node 及其全部尝试的进程被杀；内层 Node 只认领
   列出自己 token 的进程。
@@ -618,7 +618,7 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
 |---|---|---|
 | 每种结束方式都杀后台作业 | 两个部署插件分别在 EndSession、导致会话结束的取消、Node 优雅关闭、SIGKILL 后重启下，`cmd &` 与 `setsid` 作业在停止报告前退出、之后不再写入的真实 Node 测试 | Partial |
 | 守护进程随会话结束 | 会话中启动、其他会话仍在使用的守护进程随该会话结束被杀的测试 | Partial |
-| 轮次之间与保留会话不杀常驻进程 | 一轮正常完成后带标记的进程仍存活、会话被保留的取消之后轮次开始前的常驻进程仍存活的测试；保留会话的取消杀掉本轮进程由[轮次进程栅栏用例](../protocol/turn-process-fence.md)登记 | Missing |
+| 轮次之间与保留会话不杀常驻进程 | 一轮正常完成后带标记的进程仍存活、会话被保留的取消之后轮次开始前的常驻进程仍存活的测试；保留会话的取消杀掉本轮进程由[轮次进程栅栏用例](../protocol/turn-process-fence.md)登记。desktop#807（尚未合入）的 `jobs_of_a_finished_turn_survive_the_next_turns_cancel` 与 `the_agents_own_helper_survives_a_kept_cancel` 拟在落地时登记 | Missing |
 | 嵌套 Node 标记链 | 外层停止杀掉内层 Node 的全部进程、内层停止不触及外层其他进程的测试 | Partial |
 | 伪造标记的边界 | 尝试开始前启动的带标记进程不被发信号、持续伪造时确认不提前而转为 `stop_unconfirmed` 的测试 | Partial |
 

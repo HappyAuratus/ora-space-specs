@@ -311,24 +311,24 @@ D2（静止条件 2），不变量 7。
 
 ### 前置状态与触发
 
-Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。另外两种情形（轮次进程栅栏）：（插件，版本）只在其他平台
-登记；Node 运行在没有栅栏的平台（Windows）上，即使存在该（插件，版本）的条目。
+Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。另一种情形（轮次进程栅栏）：（插件，版本）只为其他平台登记，
+例如在 Linux Node 上只有 `windows` 条目。ora-node 目前只有 Linux 版，所以没有 Windows Node 上的场景可测。
 
 ### 必须成立
 
-会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。只在其他平台登记、或在没有栅栏的平台上时同样
-如此，且不运行栅栏、不取轮次快照。
+会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。只为其他平台登记时同样如此，且不运行栅栏。
+同一插件的其他版本不因某个版本已登记而被认可。
 
 ### 禁止结果
 
-会话保留；在没有栅栏的平台上按其他平台的条目保留会话。
+会话保留；按其他平台的条目保留会话；栅栏在未登记的组合上运行。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 10：不在清单中的版本走兜底 | 尚未实现，无直接证据 | Missing |
-| 10（轮次进程栅栏）：清单按平台判定，Windows 与只在其他平台登记的组合以 `turn_boundary_unverified` 结束 | 尚未实现，无直接证据 | Missing |
+| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | 拟登记 desktop#807 `apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`、`apps/ora-node/src/session/turn_cancel.rs` 的单测 `a_boundary_is_verified_for_its_exact_version_and_platform`（只认精确的插件、版本与平台；默认清单含 Linux 上的 OpenCode 0.6.11、不含 Claude 0.4.5），以及 `tests/agent_session/cancel.rs` 的 `another_version_of_a_listed_plugin_is_not_verified`。尚未合入 | Missing |
 
 ### 决策依据
 
@@ -409,31 +409,29 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 
 ### 前置状态与触发
 
-对清单按（插件，版本，平台）登记的每个组合，在该平台上以真实的 `ora-node`（轮次进程栅栏启用）运行该版本的真实
-Agent，构造：取消运行中的 shell 工具；取消起了后台作业的一轮（新会话中的作业，以及普通 shell 里的 `cmd &`）；在被取消
-的一轮里让 Agent 懒启动 LSP 或 MCP；取消带子代理和后台任务的轮次；模型请求错误。记录 prompt 回应之后到达的全部流量、
-`TurnCancelSettled{stopped}` 之后 checkout 的写入，并在下一轮使用懒启动的进程。
+对清单按（插件，版本，平台）登记的每个组合，在该平台上以生产构建的 `ora-node`（轮次进程栅栏启用）、真实 Deno 与该版本
+未修改的发布包运行，由回环模型驱动真实工具。每次运行：一个普通轮次 → 目标轮次（运行中取消；`error` 场景让它自己失败）
+→ 一个普通轮次。场景为 `shell`、`subagent`、`background`、`detached`、`error`，每个场景重复运行。
 
 ### 必须成立
 
-- 只有回应之后没有任何轮次流量、`stopped` 之后没有这一轮的进程写入、懒启动的进程在下一轮仍可用、Agent 没有自发起
-  一轮的组合，才进入清单。
-- 测试验证的是 Agent 回应与 Node 栅栏的组合：后台作业由栅栏杀掉，测试记录栅栏之后的流量和写入，不能假定 Agent 自己停下了
+- 一次运行通过，当且仅当：停止以 `stopped` 结算、会话保留；结算时这一轮在 Agent 更早进程的会话之外新起的进程都已不在；
+  结算之后作业的延迟写入没有出现；下一轮正常完成。全部场景的全部运行都通过的组合才进入清单，条目旁写明发布包摘要。
+- 测试验证的是 Agent 回应与 Node 栅栏的组合：后台作业由栅栏杀掉，测试在栅栏之后观察进程与写入，不能假定 Agent 自己停下了
   它们，也不能把另一个平台的结果当作本平台的结论。
-- Linux 上的 `official/ora-space.opencode 0.6.11` 通过后才登记；`official/ora-space.claude 0.4.5` 因后台任务被杀后自发起一轮而
-  不登记。
+- Linux 上的 `official/ora-space.opencode 0.6.11` 通过后才登记；`official/ora-space.claude 0.4.5` 因后台任务被杀后自发起一轮
+  （`background` 以 `turn_not_quiescent` 结束）而不登记。
 
 ### 禁止结果
 
-未测或测试中有残余轮次流量、`stopped` 之后仍有写入、懒启动进程被杀后功能退化的组合进入清单；不运行栅栏的测试结果被
-用来登记；按一个平台的结果登记另一个平台。
+有任一运行未通过的组合进入清单；不经真实 Node 栅栏的测试结果被用来登记；按一个平台的结果登记另一个平台。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）在该平台上以真实 Node 的栅栏运行，覆盖后台作业与懒启动进程。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | 尚未实现，无直接证据 | Missing |
+| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | desktop#807 的 `apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs` 中 `turn_boundary_conformance` 是按需运行的 ignored 测试，需要外部发布包，不在 CI 中运行。#1340 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。缺口：没有在 CI 中可重复的一致性证据；aarch64 未测；一致性场景不专门构造懒启动的常驻进程 | Missing |
 
 ### 决策依据
 
@@ -594,7 +592,7 @@ D2（续用方式）、D5，不变量 7。
 ### 前置状态与触发
 
 逐一触发 D3 表中的每一种情况，其中一部分发生时有尚未结算的 `CancelTurn`。D3 表包括轮次进程栅栏决策新增的一行：
-栅栏在 F 内不干净，或这一轮没有快照。
+栅栏在 F 内不干净、这一轮没有开始时刻、范围记录不可用或尝试在这一轮里被替换。
 
 ### 必须成立
 
