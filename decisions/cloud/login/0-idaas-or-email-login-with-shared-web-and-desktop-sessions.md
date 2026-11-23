@@ -260,6 +260,7 @@ A1 的“被取代的 v1 决策”一节已经把 v1 登录的三份 ADR 列为�
    加入团队。
 2. **#1084（desktop 登录）**：Cloud 一侧的确认页、授权码和 desktop 令牌，以及 desktop 一侧的实现。依赖第 1 步的
    账号模型，可以在第 1 步合并前先做 preflight。完成条件：开发版和部署版下 desktop 都能登录、调用 API、登出。
-3. 核心测试用例已随本文 `approved` 补上；两步实现合并后改为 `implemented`。
+3. 核心测试用例已随本文 `approved` 补上。两步实现都已合并，开发版已验证；部署版下的 D1–D5 和 desktop 登录要在第一次内网部署时
+   用真实 IDaaS 验证（ora-space/circus#1292）。#1292 完成后，本文改为 `implemented`。
 
 从第 1 步起，部署版只能用 IDaaS 登录；开发版的行为不变。
