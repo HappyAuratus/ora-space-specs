@@ -32,28 +32,33 @@
 
 ## Desktop Cloud Connection
 
-`Deployment Identity`（部署身份）是 Gateway 部署的稳定 deployment ID 与签名公钥身份，
-随部署数据迁移；不是 URL、TLS 证书或仅一个自声明 ID。相同 ID 换密钥不证明旧身份。
+`Desktop Token`（desktop 令牌）是 v2-server 在用户于浏览器中点「允许」后为一台 desktop 签发的不透明令牌（`ora_dt_`
+前缀），以 `Authorization: Bearer` 认人，指向与网页会话相同的账号；只存在于 desktop 宿主内存和系统安全存储，只发往签发
+它的 Cloud origin。任何带它的请求都算使用，连续 30 天未用即过期，没有绝对上限、不轮换。它不是网页 Cookie、IdP token 或
+Agent Session。根决策与 Gateway ADR 里绑定部署身份、可轮换的 `Desktop Session`（Desktop 会话）第一版暂停，不实现。
 
-`Desktop Session`（Desktop 会话）是 Gateway 为原生宿主建立的独立会话，由部署策略与
-PG 权威状态决定有效性；不是网页 Cookie、provider token、内部 JWT 或 Agent Session。
+`Desktop Login Transaction`（desktop 登录事务）是宿主拥有的一次登录：本机回环监听、随机 state、PKCE verifier 和目标
+Cloud origin，5 分钟有效，同一安装同时至多一个；回调不能改变换令牌的目标。第一版不绑定部署身份。
 
-`Desktop Login Transaction`（Desktop 登录事务）是宿主拥有的一次有限期交接，绑定部署
-身份、目标地址、state、PKCE 与回调目标；回调不能更改原换票目标。
+`Authorization Code`（授权码）是 Cloud 在用户点「允许」后经浏览器送到回环地址的一次性码，2 分钟有效，绑定批准的账号、
+PKCE challenge 与回调地址，只能换一次 desktop 令牌；它不是可调用 Cloud 的凭据，也不是 IdP 的 OAuth code。根决策与
+Gateway ADR 称之为 `Handoff Code`（交接码）。
 
-`Handoff Code`（交接码）是 Gateway 经浏览器批准后返回的短时一次性换票资格，绑定登录
-事务与账号；不是可长期调用 Cloud 的凭据，也不是 provider OAuth code。
+`Deployment Identity`（部署身份）是 Gateway 部署的稳定 deployment ID 与签名公钥身份，随部署数据迁移；不是 URL、TLS
+证书或仅一个自声明 ID。相同 ID 换密钥不证明旧身份。v2-server 没有部署身份（A6 D7），desktop 第一版不校验它。
 
-`Reported Activity`（上报活动）是正常客户端汇总的前台使用事实，用于推进空闲期限；
-Gateway 无法验证真伪，它不构成用户在场证明或恶意客户端的安全边界。
+`Reported Activity`（上报活动）是正常客户端汇总的前台使用事实，用于推进空闲期限；Gateway 无法验证真伪，它不构成用户在场
+证明或恶意客户端的安全边界。desktop 第一版不上报活动。
 
-职责与协议分别由 [Desktop 宿主连接根 ADR](../decisions/desktop/cloud-connection/0-host-owned-cloud-connection-and-session.md)
-和 [Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义。
+职责由 [Desktop 宿主连接根 ADR](../decisions/desktop/cloud-connection/0-host-owned-cloud-connection-and-session.md) 定义，
+第一版的修改见 [Desktop Cloud 连接第一版](../decisions/desktop/cloud-connection/20261121-first-version-loopback-login-and-host-held-token.md)；
+desktop 与 Cloud 之间的协议以 [登录与会话 A6](../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md) D6
+为准，[Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义暂停的完整版。
 
 ## Agent Conversation
 
 `Ora Session`（Ora 会话）是 Workspace 中一条对话的稳定身份，切换 Agent 不改变该身份与历史归属。
-它不同于登录用的 Desktop Session，也不同于 Cloud IssueRun 或一次 Workflow 节点执行。
+它不同于登录用的 desktop 令牌，也不同于 Cloud IssueRun 或一次 Workflow 节点执行。
 
 `Agent Session`（插件会话）是 Agent 插件通过 ACP 返回的 provider 会话，其 id 是不透明字符串；
 定位时必须保留插件身份和所属 Ora 会话，不能将它当作全局 Ora 身份或控制资格。
