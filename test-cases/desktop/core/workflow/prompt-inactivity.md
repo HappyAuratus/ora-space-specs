@@ -1,53 +1,65 @@
 # 工作流 prompt 静默策略
 
-本文件守住持续等待、冻结配置、会话隔离与取消清理；依据
-[静默策略决策](../../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)。
+以下用例依据[工作流有限与无限等待决策](../../../../decisions/desktop/core/workflow/20261123-workflow-agent-wait-limit.md)。已有证据来自此前实施的[静默策略](../../../../decisions/desktop/core/workflow/20261008-prompt-inactivity-policy.md)。新策略的直接证据在 Desktop 实施后登记。
 
 ## A Silent Waiting Prompt Remains Cancellable And Session Local
 
-**风险**：隐藏子代理无父会话更新时被取消重发；关闭静默计时又误关取消或让其他会话获得豁免。
+**风险与前置状态**　同一连接承载显式 `unbounded` 工作流与默认策略的普通会话。长时间静默可能触发意外重发，或使其他会话也失去超时保护。
 
-**前置状态**：同一 provider connection 上，一个 prompt 使用 `wait`，另一个使用默认策略；两者无
-有效进展更新。
+**触发与预期**　让两个回合静默跨过 30 分钟及普通会话的重试窗口。无限等待回合应保持单次发送，随后可正常完成。分别触发手动停止、释放 owning stream、工作流停止、provider 断连和宿主关闭，每条路径都须收敛并释放本轮资源。普通会话应独立执行其超时策略。禁止跨会话续期、静默触发节点重试或终止后遗留路由。
 
-**触发**：跨越全部默认窗口，再向等待 prompt 返回响应、取消或断开 provider。
+| 验证义务 | 证据与边界 | 状态 |
+| --- | --- | --- |
+| 显式 `unbounded` 长静默后完成或取消，同连接默认会话独立超时 | 原 `wait` 测试使用旧取值。需从冻结图实际传入 `unbounded`，核对发送次数、完成结果和取消确认。 | Missing |
+| 按各类终止事件清理显式无限等待回合及订阅者 | 既有生命周期用例覆盖旧策略。新取值的停止、断连、owner 释放及宿主关闭证据待登记。 | Missing |
 
-**必须成立**：等待 prompt 不自动取消或重发，恢复输出后可完成；默认 prompt 仍沿原规则超时；手动
-取消、owning stream 释放、工作流停止与宿主关闭均收敛并清理路由。
-
-**禁止结果**：跨会话保活、静默触发等待节点重试、停止后仍有持有资源的等待操作。
-
-| 验证义务                                                           | 代表性证据     | 状态    |
-| ------------------------------------------------------------------ | -------------- | ------- |
-| 真实 ACP routing 与 actor 在静默后仍可完成、取消并保持默认会话隔离 | `ora_agent_runtime::connection::prompt_policy_tests::{waiting_prompt_survives_silence_while_default_session_retries, waiting_prompt_remains_cancellable_and_reusable, child_updates_do_not_rearm_the_parent_prompt}`；暂停时钟推进两小时，经过生产 plugin transport、ACP peer、路由与 actor | Covered |
-| owning stream、provider 与最后宿主/stream owner 释放等待操作 | `ora_agent_runtime::connection::prompt_policy_tests::{dropping_a_waiting_prompt_cancels_its_owner, provider_disconnect_ends_a_waiting_prompt, releasing_the_host_and_stream_ends_a_silent_waiting_actor}` | Covered |
-| 工作流停止与真实失败重试正常收敛 | Desktop `core::session::tests::lifecycle::{workflow_cancellation_stops_the_live_node_session, confirmed_and_dropped_workflow_follow_ups_restore_awaiting_status}` 同时验证两种策略；`ora_backend::workflow::run::executor::inactivity_tests::wait_policy_preserves_real_session_failures_and_frozen_policy_across_retries` 使用实际 runtime 错误与 SQLite 验证预算耗尽 | Covered |
-
-**决策依据**：D1、D3、D4。
-
-诊断义务由 `ora_agent_runtime::connection::prompt_policy_tests::inactivity_diagnostics_record_the_window_tools_and_cancellation_result`
-完整比较结构化 WARN 字段证明（`Covered`）：策略、窗口、尝试、静默时长、当前工具数量与取消结果可观察，
-新诊断不包含 prompt 或工具参数。`unconfirmed_cancellation_fences_never_resend_the_prompt` 验证正常完成、
-请求错误与缺失取消响应均不会触发新的 provider turn，保留响应栅栏规则（`Covered`）。
+**决策依据**　D1、D3。
 
 ## Every Workflow Turn Uses The Frozen Inactivity Policy
 
-**风险**：首轮可持续等待，交互追问、重试或复合轮次却恢复默认；草稿编辑改变活动运行策略。
+**风险与前置状态**　已有图、含新取值的图和已启动的运行并存。编辑草稿或升级 Desktop 时，后续发送可能误读草稿，非法值也可能被静默降级。
 
-**前置状态**：冻结节点配置为 `wait`，随后编辑草稿；存在首次、交互追问、重试或复合轮次的发送。
+**触发与预期**　从保存、发布、导入和导出的图开始运行，随后编辑草稿并打开运行详情。首轮、追问、节点重试及 Loop/Iteration 的每次实际发送均采用运行的冻结字段。缺失或 `null` 使用默认策略，打开旧图不会补写字段。已发出的回合保留启动时的语义，升级后的下一轮按冻结值解释。禁止因读取、改无关字段或升级而自动选择无限等待。
 
-**触发**：通过生产工作流入口发送各次 prompt，并重新加载运行详情。
+| 验证义务 | 证据与边界 | 状态 |
+| --- | --- | --- |
+| 接受缺失、`null`、`timeout`、`wait`、`unbounded`，拒绝未知字符串和 `{"waitMinutes": N}` 并定位节点与字段 | 已有图解析测试 `prompt_inactivity_defaults_and_explicit_policies_survive_graph_parsing` 和 `rejects_invalid_prompt_inactivity_with_node_and_field_context` 覆盖原取值。新增取值及对象拒绝仍缺证据。 | Partial |
+| 各轮冻结、保存发布及导入导出保留策略 | `every_human_turn_uses_the_frozen_policy_after_a_draft_edit`、`wait_policy_preserves_real_session_failures_and_frozen_policy_across_retries` 和 `graph-codec.test.ts` 覆盖既有策略。新取值的跨轮、跨版本解释待验证。 | Partial |
+| 编辑器提供固定 30 分钟和明确标示需手动停止的无限等待。只读运行详情展示冻结值，有限等待显示 30 分钟 | 既有 `workflow-agent-inactivity-field.test.tsx`、`run-act-inspector.test.tsx` 覆盖旧设置和展示。两种新语义及移除分钟输入待验证。 | Partial |
+| 同一在途运行升级时，已发回合不中断，下一次实际发送按冻结值启动新窗口 | 待补升级边界的直接证据。 | Missing |
 
-**必须成立**：每次 prompt 使用冻结策略；普通会话仍默认；配置解析失败不把交互节点留在 Running；
-运行详情展示冻结值。旧图缺失或 null 使用默认且不会自动补写，显式配置经保存发布及导入导出保留。
+**决策依据**　D1。
 
-**禁止结果**：读取当前草稿决定活动策略、只覆盖首轮、配置归一化重写所有旧图、非法策略静默降级。
+## Only Attributable Progress Renews A Bounded Wait
 
-| 验证义务                                         | 代表性证据     | 状态    |
-| ------------------------------------------------ | -------------- | ------- |
-| 冻结图解析、非法值与交互后续 turn 的策略 | `ora_application::workflow_run::engine::agent_config::tests::{prompt_inactivity_defaults_and_explicit_policies_survive_graph_parsing, rejects_invalid_prompt_inactivity_with_node_and_field_context}`；`ora_backend::workflow::run::interactive::inactivity_tests::{every_human_turn_uses_the_frozen_policy_after_a_draft_edit, invalid_frozen_policy_rejects_a_human_turn_without_changing_node_state}` | Covered |
-| 首轮、追问和标题获取期间的 admission 确实传递等待策略 | Desktop `core::session::tests::lifecycle::workflow_first_and_follow_up_turns_keep_waiting_past_the_default_window` 通过外部 fake ACP 验证静默 50 秒后无重发且可取消；`ora_agent_runtime::connection::prompt_policy_tests::title_polling_admission_preserves_a_waiting_prompt_policy` 验证预抢标题请求的 turn 仍可静默两小时 | Covered |
-| 重试与 Loop/Iteration 每轮保留冻结节点策略 | `ora_backend::workflow::run::executor::inactivity_tests::wait_policy_preserves_real_session_failures_and_frozen_policy_across_retries`；`ora_backend::workflow::run::mixed_scope_tests::loop_and_iteration_dispatch_each_round_with_the_committed_pool` 比较每轮生产 dispatch 的策略与变量池 | Covered |
-| 编辑配置、旧图不改写、保存发布导入导出与运行展示 | app-shell `workflow-agent-inactivity-field.test.tsx`、`run-act-inspector.test.tsx`；`workflow-transfer.test.ts` 的 `exports and imports the frozen snapshot policy %s despite later draft edits`；`workflow-editor.test.tsx` 的 `previews imported plugin dependencies before creating and publishing`；workflow-runtime `graph-codec.test.ts` 的 `preserves the inactivity policy %s in saved and published graph snapshots` | Covered |
+**风险与前置状态**　已发送 `wait` 回合，同时存在其他会话、同轮多个委托及权限应答。遗漏真实进展会过早取消，把重复或无关更新当作进展会让回合永久挂起。
 
-**决策依据**：D1、D2。
+**触发与预期**　用可控时钟在窗口内注入下列事件。正例从事件到达时刻重新计满 30 分钟，反例保留原截止。工具执行和权限写入期间计时继续。禁止重复事件延长窗口，或父子来源之间共用计划比较状态。
+
+| 信号 | 可续期 | 保留原截止 | 直接证据 |
+| --- | --- | --- | --- |
+| 模型内容 | 本轮非空消息或思考 | 空内容、其他会话内容 | Missing |
+| 计划 | 同一来源计划条目内容、顺序、优先级或状态变化 | 重复计划、仅 `_meta` 变化。交替发送父子计划后分别重复也不续期 | Missing |
+| 父工具 | 首次报告状态、状态变化、同一工具的 `content` 或 `rawOutput` 有非空变化 | 重复状态或内容、空输出、仅修改 `title`、`kind`、`locations` | Missing |
+| 子代理 | 本次发送仍在等待的具体委托通过父工具 ID 关联，所报更新符合相同进展判据 | 只知道父会话、委托不匹配或已结束、上一轮委托、重复输出 | Missing |
+| 权限 | 确认归属本轮父工具，且自动应答成功写入 | 尚在写入、写入失败、子代理或来源不明 | Missing |
+| 其他流量 | 无 | 会话级通知、`usage_update`、load 回放、stderr、其他会话、未知或未列入清单的扩展通知 | Missing |
+
+**决策依据**　D2。
+
+## A Bounded Wait Settles Once Before Node Failure Handling
+
+**风险与前置状态**　已发出的有限等待回合带有订阅者和未决权限。静默截止临近时，正常响应、显式取消和进展可能与定时器同时就绪。旧发送尚未收敛就重试会重复产生工具副作用。
+
+**触发与预期**　推进时钟到截止，分别控制进展的到达时刻、终态响应、取消命令和 provider 取消回执。核对 owner、订阅者、节点状态与实际发送次数。禁止双重结算、迟到更新进入下一次发送，或把用户停止记录成静默超时。
+
+| 验证义务 | 证据与边界 | 状态 |
+| --- | --- | --- |
+| 正常响应与到期同时就绪时正常完成。显式取消先受理时记录用户停止，到期已结算后迟到的取消或响应不能改写终态 | 待补可控时钟下的顺序对照。 | Missing |
+| 截止前到达、调度延后处理的有效进展按到达时刻续期。恰在截止和截止后到达均不续期 | 待补三个边界的时间与结果断言。 | Missing |
+| 到期取消请求及未决权限。取消终态获确认时允许复用；宽限耗尽则隔离旧发送。旧发送结束或隔离后才交给节点失败策略，owner 和订阅者只结算一次 | 待补回执成功、缺失及迟到输出的直接证据。 | Missing |
+| 本轮不因静默重发，保留 stale-load 恢复。非交互节点只按自身失败策略决定重试 | 待分别核对 provider 发送次数、节点尝试次数和失败原因。 | Missing |
+| 交互自动首轮失败并释放执行会话，无节点重试、无停靠快照。人类回合保留会话和历史，以 `prompt_timed_out` 异常停靠，不自动重试 | [首轮确认用例](first-turn-confirmation.md)已有两种回合的异常分类。有限等待到期触发两条生产路径的证据待补。 | Partial |
+| 可观察策略、会话和发送归属、尝试、窗口、静默时长、运行及待执行工具数、终止原因和取消结果，诊断不含模型内容或工具参数 | `inactivity_diagnostics_record_the_window_tools_and_cancellation_result` 覆盖既有超时诊断。有限等待的完整字段待验证。 | Partial |
+
+**决策依据**　D3。
