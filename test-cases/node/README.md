@@ -133,7 +133,7 @@ Partial。只能由 Controller 验证的义务在
 ## 轮次进程栅栏
 
 [保留会话前先停掉这一轮新起的进程决策](../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)为
-`proposed`，核心用例随它一同评审。实现由 circus #1340 进行，尚未合入，8 条义务均为 `Missing`。取消一轮用例与
+`approved`，由 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现，尚未合入，8 条义务均为 `Missing`，由落地运行登记。取消一轮用例与
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)的证据保持原范围，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |

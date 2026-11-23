@@ -9,11 +9,11 @@ status: approved
 > （`implemented`）修改：停止证据加入尝试环境标记扫描，脱组但保留环境的后台作业在终态之前被杀，仍为 BestEffort。
 > 这些部分以该决策为准。
 
-> 历史决策：[保留会话前先停掉这一轮新起的进程](20261123-turn-process-fence-before-keeping-session.md)（`proposed`）
+> 历史决策：[保留会话前先停掉这一轮新起的进程](20261123-turn-process-fence-before-keeping-session.md)（`approved`）
 > 修改本决策的以下部分：D2 的“可依赖的轮次边界”改为 Agent 回应加 Node 轮次进程栅栏的组合，清单按（插件，版本，平台）
 > 登记，保留会话另要求栅栏干净，静默窗口改为从栅栏干净时起算；D3 情况表新增 detail `turn_processes_unstopped`；
 > D1、D4 与不变量 2 的结算期限在栅栏运行时为 G + F + Q（F 为 5 秒，共 22 秒），T 须大于它加传输余量；不变量 7、风险表中关于后台任务的一行、验证义务
-> 10 与 13 相应修改。该决策评审通过之前本文仍是当前承诺，通过之后这些部分以它为准。
+> 10 与 13 相应修改。这些部分以该决策为准。
 
 Controller 新增会话命令 `CancelTurn{command_id, turn_id}`。Node 持久受理后，在有界时间内在本地确定这次取消的
 结论，每个被受理的取消恰好得到一条新的非终态事件 `TurnCancelSettled`：目标轮次正在执行时，向 Agent 发 ACP

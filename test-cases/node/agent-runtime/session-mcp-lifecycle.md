@@ -600,7 +600,7 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
   作业存活时不记 `confirmed`。
 - 被杀的包括开发服务器、文件监视进程、MCP 与语言服务，以及会话中启动的共享守护进程，即使其他会话仍在使用。
 - 一轮正常完成后，Node 不发任何冻结或杀信号，带标记的常驻进程跨轮次存活。会话被保留的取消或失败之后，按
-  [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`proposed`）只杀
+  [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`approved`）只杀
   这一轮新起、且不在“这一轮开始前已启动、此刻仍存活的本尝试进程”所在会话中的进程，常驻进程同样存活；栅栏的义务见
   [轮次进程栅栏用例](../protocol/turn-process-fence.md)，本用例不重复登记。
 - 嵌套 Node 给子进程的值为 `外层:attempt`；外层尝试停止时内层 Node 及其全部尝试的进程被杀；内层 Node 只认领

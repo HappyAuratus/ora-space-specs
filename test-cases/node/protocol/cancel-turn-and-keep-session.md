@@ -10,8 +10,8 @@
 `198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
 30 条义务，它们的状态不在这次登记范围内。
 
-[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`proposed`，
-随本次修改一同评审）修改了验证义务 10、13，并给 D3 情况表新增 detail `turn_processes_unstopped`：用例 10、13、19 各增加一行
+[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`approved`）
+修改了验证义务 10、13，并给 D3 情况表新增 detail `turn_processes_unstopped`：用例 10、13、19 各增加一行
 带“（轮次进程栅栏）”的义务，同样不另占编号；用例 13 中原有的“（尝试标记）”一行“保留会话的取消不杀任何进程”与新决策
 相反，改写为栅栏下的一致性测试。新增的义务尚未实现，状态为 `Missing`。栅栏自身的义务见
 [轮次进程栅栏用例](turn-process-fence.md)。
