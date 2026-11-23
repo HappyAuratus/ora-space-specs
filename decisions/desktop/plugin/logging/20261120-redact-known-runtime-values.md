@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 插件日志：Host 按已知运行时值尽力脱敏
@@ -12,7 +12,7 @@ token）替换为固定占位符 `[REDACTED]`。desktop 与 Node 共用同一套
 的脱敏：只匹配明文子串，不解析 JSON 转义、百分号编码或 base64；跨 64 KiB 分片的超长值会部分
 泄露；它不把「已脱敏」宣称为「日志绝不泄露」。
 
-本 ADR 目前是 `proposed`。实现落在 `ora-plugin-runtime`（匹配）、`ora-plugin-lifecycle`
+本 ADR 目前是 `approved`。实现落在 `ora-plugin-runtime`（匹配）、`ora-plugin-lifecycle`
 （登记表订阅）、共享 `ora-agent-runtime`（交付点采集）与各宿主的 spawn 环境提供者，不改
 Plugin Protocol 的对外字段，也不改变日志的归属、级别、队列、容量与收尾语义。
 
@@ -60,7 +60,7 @@ Host 保留键除外）。
 - **只增不减**：同一进程代内，值一经登记就保留到该代结束；会话结束、刷新替换都不撤销旧值，
   因为 Agent 仍可能回显旧值。新进程代从仍在交付的值重新登记。Node 的模型 grant 在 renew 时不
   换 token（spawn 环境沿用同一临时 token），所以会话中不存在模型 token 轮换需撤销的问题。
-- **有界**：注册表的条数与总字节有上限（数值在 approved 前定）。超限后新值不再登记，并记一条
+- **有界**：注册表最多 256 条、总字节最多 64 KiB。超限后新值不再登记，并记一条
   只含计数、不含值的 Host 告警。超限不阻塞交付，也不改变插件协议。
 - 更新只影响之后入队的行，不回改已落盘记录。
 
@@ -156,8 +156,7 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境与�
 
 ## 落地顺序
 
-1. **ADR 评审**：本 ADR 由 `proposed` 评审到 `approved`，并在同一 PR 补核心用例（证据先
-   `Missing`）。
+1. **ADR 评审**：本 ADR 已评审到 `approved`，核心用例在同一 PR 补齐（证据先 `Missing`）。
 2. **实现**：`ora-plugin-lifecycle` 登记表订阅 + `ora-agent-runtime` 交付点采集 + 宿主 spawn
    环境提供者 + `ora-plugin-runtime` 管道匹配（三段各自可验收）。
 3. **落地同步**：实现验证后把 ADR 改为 `implemented`，并按最终实现同步正文与核心用例证据；
