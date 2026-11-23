@@ -53,7 +53,7 @@ prompt；栅栏向 Agent 进程或其进程组发信号；复扫发出任何信�
 | 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
 | 1：保留会话的取消在 `stopped` 之前杀掉这一轮新会话中的后台作业，下一轮在其后派发 | 需要：真实进程下，这一轮的 `setsid` 作业在 `stopped` 时已不在、延迟写入没有出现、会话接着执行下一轮的测试。候选：`apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_kept_cancel_kills_the_turns_setsid_job_before_it_settles`。真实插件的一致性运行（取消一轮用例 13）是运行记录，不算此项证据 | Missing |
-| 1（复扫）：栅栏之后豁免进程静默新起的 `setsid` 进程让会话以 `turn_processes_unstopped` 结束 | 需要：Agent 在栅栏干净之后、Q 之内不发轮次流量地新起一个 `setsid` 进程（例如延迟数百毫秒），断言没有 `stopped`、detail 为 `turn_processes_unstopped`、复扫期间该进程未收到信号、终态前它被杀的测试 | Missing |
+| 1（复扫）：栅栏之后豁免进程静默新起的 `setsid` 进程让会话以 `turn_processes_unstopped` 结束 | 需要：Agent 在栅栏干净之后、Q 之内不发轮次流量地新起一个 `setsid` 进程（例如延迟数百毫秒），断言没有 `stopped`、detail 为 `turn_processes_unstopped`、复扫期间该进程未收到信号、终态前它被杀的测试。候选：`apps/ora-node/tests/agent_session/turn_processes/order.rs` 的 `a_job_started_after_a_clean_fence_ends_the_session`，`apps/ora-node/src/session/stop/tests/turn.rs` 的 `the_recheck_finds_a_job_started_after_a_clean_fence_and_kills_nothing`（直接调用复扫，不经过判定流程） | Missing |
 
 ### 决策依据
 
@@ -169,7 +169,7 @@ D1（范围对后代封闭）、D2，不变量 3、4。
 
 | 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 4：栅栏或复扫不干净、没有开始时刻、范围记录不可用或尝试被替换时以 `turn_processes_unstopped` 结束，并按取消决策 D3 停止整个尝试 | 需要：每种注入各一个测试，断言 detail、并入取消得到 `session_ending`、之后没有 prompt、终态在停止证据之后；时钟读取失败要求能向轮次开始注入时钟。候选：`turn_processes.rs` 的 `jobs_that_keep_coming_back_end_the_session`（不断重起的作业使 F 用完）与 `an_unknown_fence_ends_the_session`（范围记录被删除） | Missing |
+| 4：栅栏或复扫不干净、没有开始时刻、范围记录不可用或尝试被替换时以 `turn_processes_unstopped` 结束，并按取消决策 D3 停止整个尝试 | 需要：每种注入各一个测试，断言 detail、并入取消得到 `session_ending`、之后没有 prompt、终态在停止证据之后；时钟读取失败要求能向轮次开始注入时钟。候选：`turn_processes.rs` 的 `jobs_that_keep_coming_back_end_the_session`（不断重起的作业使 F 用完）与 `an_unknown_fence_ends_the_session`（范围记录被删除）；`turn_processes/order.rs` 的 `a_cancel_accepted_during_an_unclean_fence_shares_its_end`；`apps/ora-node/src/session/stop/tests/turn.rs` 的 `a_turn_without_a_recorded_start_is_never_stopped`（注入失败的时钟）、`an_attempt_replaced_during_the_turn_is_never_stopped` 与 `observations_back_off_until_one_is_clean_or_the_bound_passes`（F 内退避再观察） | Missing |
 
 ### 决策依据
 
@@ -189,8 +189,8 @@ D1（轮次开始）、D2、D3，不变量 4；取消决策 D3。
 ### 触发
 
 分别构造：回应时仍有未终态的工具调用；版本未为本平台登记；栅栏杀掉作业后 Agent 发来一条轮次流量（例如自发起一轮）；
-栅栏期间受理第二个 `CancelTurn`；栅栏期间受理 `EndSession`（栅栏分别干净与不干净）；一轮因 ACP 错误失败（选择了
-`keep_session_on_failure`），栅栏运行到接近 F。
+栅栏期间受理第二个 `CancelTurn`；栅栏期间受理 `EndSession`（栅栏分别干净与不干净）；复扫期间分别受理第二个
+`CancelTurn` 与 `EndSession`；一轮因 ACP 错误失败（选择了 `keep_session_on_failure`），栅栏运行到接近 F。
 
 ### 必须成立
 
@@ -198,19 +198,22 @@ D1（轮次开始）、D2、D3，不变量 4；取消决策 D3。
 - 栅栏期间的轮次流量使会话以 `turn_not_quiescent` 结束；静默窗口 Q 从栅栏干净时起算。
 - 栅栏不因命令中断；第二个 `CancelTurn` 在栅栏返回后并入，与这次停止得到同一结论；`EndSession` 在栅栏返回后优先，
   无论栅栏是否干净，会话都以它的原因结束，未结算的取消得到 `session_ending`。
-- 结算前的复扫在 Q 与空闲期流量检查之后、`stopped` 之前运行，只扫描不杀；复扫期间到达的命令在它返回后处理。
+- 结算前的复扫在 Q 与空闲期流量检查之后、`stopped` 之前运行，只扫描不杀，不因命令中断。复扫期间受理的 `CancelTurn`
+  在它返回后并入这次停止，与它同为 `stopped`（复扫不干净时同为 `session_ending`）；复扫期间受理的 `EndSession` 优先，
+  不写 `stopped`，会话以它的原因结束，未结算的取消得到 `session_ending`。
 - 结论在发起的 `CancelTurn` 受理后 G + F + Q + R（23 秒）内落账；失败发起时在回应后 F + Q + R 内落账。
 
 ### 禁止结果
 
 已决定结束会话后仍运行栅栏；Q 在栅栏之前或与之并行结束；栅栏期间的轮次流量不被计入；复扫早于 Q 或晚于 `stopped`；
-两个取消得到不同结论；`EndSession` 之后会话仍被保留；结论超出期限。
+两个取消得到不同结论；复扫期间受理的 `CancelTurn` 得到 `already_ended`；复扫期间受理 `EndSession` 后仍写出 `stopped`；
+`EndSession` 之后会话仍被保留；结论超出期限。
 
 ### 验证义务与证据
 
 | 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 5：栅栏在静态检查之后、Q 之前，复扫在 Q 之后、`stopped` 之前，期限为 G + F + Q + R，并入与 `EndSession` 在栅栏返回后按取消决策处理 | 需要：未登记或静止条件 2 不成立时栅栏没有运行的直接断言（例如没有发出任何信号、本轮作业仍存活到会话停止）；Agent 在自己的作业被杀后发轮次流量、结果为 `turn_not_quiescent` 的测试（把栅栏挪到 Q 之后时必须失败）；栅栏期间受理的 `CancelTurn` 与 `EndSession` 在栅栏干净与不干净时的测试；失败发起的栅栏与期限的测试。候选 `a_version_verified_only_on_another_platform_is_unverified` 只断言 detail，区分不出栅栏是否运行，不能单独作为此项证据；Claude 0.4.5 `background` 以 `turn_not_quiescent` 结束是一致性运行记录 | Missing |
+| 5：栅栏在静态检查之后、Q 之前，复扫在 Q 之后、`stopped` 之前，期限为 G + F + Q + R，并入与 `EndSession` 在栅栏返回后按取消决策处理 | 需要：未登记或静止条件 2 不成立时栅栏没有运行的直接断言（例如没有发出任何信号、本轮作业仍存活到会话停止）；Agent 在自己的作业被杀后发轮次流量、结果为 `turn_not_quiescent` 的测试（把栅栏挪到 Q 之后时必须失败）；栅栏期间受理的 `CancelTurn` 与 `EndSession` 在栅栏干净与不干净时的测试；复扫期间受理的 `CancelTurn` 与 `EndSession` 的测试；失败发起的栅栏与期限的测试。候选：`turn_processes/order.rs` 的 `turn_traffic_caused_by_the_fence_ends_the_session`、`a_cancel_accepted_during_a_clean_fence_settles_stopped`、`a_cancel_accepted_during_an_unclean_fence_shares_its_end`、`an_end_session_accepted_during_the_fence_takes_precedence` 与 `a_job_started_after_a_clean_fence_ends_the_session`。候选 `a_version_verified_only_on_another_platform_is_unverified` 只断言 detail，区分不出栅栏是否运行，不能单独作为此项证据；Claude 0.4.5 `background` 以 `turn_not_quiescent` 结束是一致性运行记录 | Missing |
 
 ### 决策依据
 
@@ -279,7 +282,7 @@ D1（轮次开始）、D4，不变量 1、7；标记决策 D4。
 
 | 义务 | 所需直接证据与候选测试 | 状态 |
 |---|---|---|
-| 7：重启在任何时刻都结束会话、停止整个尝试，账本 schema 不变 | 需要：分别在一轮开始后、栅栏冻结作业时、保留会话后 SIGKILL Node 并重启，断言 `interrupted`、未结算取消得到 `session_ending`、本轮作业在终态前被杀、schema 版本不变的测试。重启收口杀掉原尝试带标记进程的既有证据见[会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-finished-turns-kill-none)，不推导本义务 | Missing |
+| 7：重启在任何时刻都结束会话、停止整个尝试，账本 schema 不变 | 需要：分别在一轮开始后、栅栏冻结作业时、保留会话后 SIGKILL Node 并重启，断言 `interrupted`、未结算取消得到 `session_ending`、本轮作业在终态前被杀、schema 版本不变的测试。候选：`apps/ora-node/tests/standalone/agent_sessions/turn_fence_restart.rs` 的 `a_node_killed_during_the_fence_ends_the_session_and_stops_the_attempt`（栅栏运行时 SIGKILL；还需断言当时确有被冻结的作业，另两个时刻没有用例）。重启收口杀掉原尝试带标记进程的既有证据见[会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-finished-turns-kill-none)，不推导本义务 | Missing |
 
 ### 决策依据
 
