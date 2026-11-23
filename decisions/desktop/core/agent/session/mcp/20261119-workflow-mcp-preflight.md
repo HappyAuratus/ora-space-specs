@@ -24,11 +24,11 @@ Desktop 在 `start`、`restart` 以及保留或切换快照的 `resume` 开始�
 
 `startWorkflowRun`、`restartWorkflowRun` 和 `resumeWorkflowRunFromFailure` 在即将开始新一轮调度时，遍历目标快照中各节点的 `enabled: true` MCP 绑定，按完整插件 ID 查询 session setup 使用的已安装插件目录。未选、禁用及空集合沿用显式选择语义。保存草稿、发布或创建运行时不增加这项 MCP 校验。
 
-`Pending` 的 start、允许重启的运行（含 `Succeeded`），以及可恢复的 `Failed` 或 `Cancelled` 运行进入这道门禁。已在运行时重复 start 仍返回当前运行；restart 一个 `Running` 运行仍返回 `workflow_run_not_restartable`。这两条路径上卸载插件也不会把原来的结果改为依赖错误。
+`Pending` 的 start、允许重启的运行（含 `Succeeded`），以及可恢复的 `Failed` 或 `Cancelled` 运行进入这道门禁。已在运行时重复 start 仍返回当前运行；restart 一个 `Running` 运行仍返回 `workflow_run_not_restartable`。这两条路径上卸载插件也不会把原来的结果改为依赖错误。resume 先按原有规则判断运行是否可以恢复，不可恢复的运行返回 `workflow_run_not_resumable`，依赖缺失不会优先于它报出。
 
 ### D2：把安装可用性与配置资格分开
 
-缺少安装包、安装包无效、相同 ID 的插件没有提供 MCP 时，预检都拒绝派发。提示说明节点所需的 MCP 不可用，用户可以安装或恢复符合该 ID 的 MCP。已安装的有效 MCP 即使配置不完整、Agent 不支持该 transport 或健康探测失败，也通过这项安装检查。
+缺少安装包、安装包无效、相同 ID 的插件没有提供 MCP 时，预检都拒绝派发。提示说明节点所需的 MCP 不可用，用户可以安装或恢复符合该 ID 的 MCP。已安装的有效 MCP 即使配置不完整、Agent 不支持该 transport 或健康探测失败，也通过这项安装检查。Agent 是否安装不属于预检：runtime 在节点启动 Session 时解析冻结的 Agent 身份，缺失时以 `agent_not_installed` 失败。
 
 运行已经派发后，若插件在后续节点开始前被移除，按前序 D1 在 session setup 以 `session_mcp_setup_failed` 报告节点失败。预检与第一次派发之间发生卸载也由这层检查兜底。配置不完整、能力不足同样在 session setup 失败；恢复既有 Session 遵从前序 D2，不能缩减已选集合继续执行。
 
@@ -39,6 +39,8 @@ Desktop 在 `start`、`restart` 以及保留或切换快照的 `resume` 开始�
 ### D4：错误足以定位节点和依赖
 
 `workflow_mcp_not_found` 携带节点 id、节点标题和 MCP id；节点标题为空白时，`node_title` 直接回退填入节点 id，使界面统一显示可定位的名称。参数只暴露这些身份；command、arguments、env、URL、headers 和其他 Setting 实值不会进入此错误。
+
+**与批准版本的偏离**：批准版把回退放在界面——标题缺省时由界面显示节点 id。最终实现改在后端：`workflow_mcp_not_found` 与同类的 Skill 依赖错误共用 `node_display_name`，节点标题为空白时直接把它填成节点 id，界面只显示收到的 `node_title`。原因是画布、运行视图和其他消费方都读同一个 `node_title`，回退写在一处即可覆盖所有表面，空白标题也不会进入诊断参数。
 
 ## 后果
 
