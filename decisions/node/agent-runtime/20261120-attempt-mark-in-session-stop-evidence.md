@@ -452,7 +452,7 @@ desktop#802 在评审中按以下方式偏离或细化了 approved 文本。每�
 ## 核心测试用例
 
 见[会话 MCP 刷新与宿主健康用例](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md)：
-[会话停止杀掉全部带标记进程、轮次之间不杀](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-turns-kill-none)
+[会话停止杀掉全部带标记进程、轮次之间不杀](../../../test-cases/node/agent-runtime/session-mcp-lifecycle.md#a-session-stop-kills-every-attempt-marked-process-and-finished-turns-kill-none)
 （D4、D5、D8），以及尝试锁、重启收口、未排空升级、运维对账、版本重启与探测清理各用例中 D1–D3、D6、D7 的义务；
 [取消一轮用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)的第 11、12、13 条另含取消导致会话结束时的
 后台作业与保留会话时不杀任何进程。22 项义务按 desktop#802 head `198cc415` 登记证据：7 项 `Covered`、12 项 `Partial`、
