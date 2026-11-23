@@ -4,6 +4,8 @@ status: approved
 
 # 登录与会话：部署版只走华为 IDaaS、凭一次性邀请链接入队，开发版用无密码邮箱，由 `V2_LOGIN` 二选一；网页和 desktop 两种会话落在同一个账号上；取代 v1 Gateway 的登录与 desktop 会话
 
+> 实现情况：D6 的 Cloud 侧与 desktop 侧都已实现（ora-space/cloud#432、ora-space/desktop#806，含 [desktop Cloud 连接第一版](../../desktop/cloud-connection/20261121-first-version-loopback-login-and-host-held-token.md) 对 D6 契约新增的 `POST /auth/desktop/deny`），开发版下的 desktop 登录、调用 API、登出已在 Linux 与 Windows 上验证。D1–D5 以及部署版 desktop 登录的真实 IDaaS 验证由 ora-space/circus#1292 承接；它完成后本决策再改为 `implemented`，在那之前保持 `approved`。
+
 Cloud 进程自己处理登录，没有独立的 Gateway。同一个程序有两种登录方式，由启动配置 `V2_LOGIN` 二选一：`idaas` 是部署版
 （内网演示和正式部署），只能用华为 IDaaS 登录，没有邮箱登录的入口；`email` 是开发版（公网演示），沿用现在的无密码
 邮箱登录。IDaaS 账号只以 IDaaS 的 `uuid` 认人：任何员工都能登录并自动得到账号，但打开管理员生成的一次性邀请链接

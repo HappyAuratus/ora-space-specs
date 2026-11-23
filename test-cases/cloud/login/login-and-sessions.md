@@ -6,6 +6,7 @@
 证据读取的是 cloud `0ca0a9a0` 的 `v2-server/`（路径相对该目录）；“Exactly One Login Method Is Open” 的 `V2_LOGIN` 必填部分读取的是
 cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密码邮箱登录，没有
 `V2_LOGIN` 之外的 IDaaS、邀请链接、移出成员和 desktop 令牌，所以多数用例是 Missing；开发版已有的行为引用现有测试。
+desktop 令牌的三个用例（#1084）读取的是 cloud `a85d1fbc`（ora-space/cloud#432）。
 
 ## Exactly One Login Method Is Open
 
@@ -116,7 +117,14 @@ cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密�
 - 必须成立：不点“允许”就没有授权码；授权码只能用一次，三项都匹配才能换成令牌，否则作废；回调地址只接受回环地址；
   2 分钟后授权码失效；数据库只存令牌的 SHA-256，令牌 30 天不用即过期。
 - 禁止结果：未经确认签发令牌；同一个授权码换出两个令牌；令牌发往非回环地址。
-- 验证义务与证据：**Missing** — 由 #1084 实现。
+- 验证义务与证据：**Partial** — `internal/server/desktop_login_test.go` 的 `TestDesktopLoginIssuesATokenForTheApprovingAccount`、
+  `TestDesktopCodeIsSingleUseAndBound`、`TestDesktopApprovalAcceptsOnlyLoopbackAndS256`、`TestDesktopApprovalNeedsTheWebSession`；
+  `desktop_login_internal_test.go` 的 `TestDesktopCodesExpireAfterTwoMinutes`、`TestDesktopCodesStayBounded`；
+  `internal/store/desktop_tokens_test.go` 的 `TestDesktopTokenExpiresAfterThirtyIdleDays`；`frontend-v2` 的
+  `src/features/desktop-authorize/page.test.tsx`（「允许」之前不调用批准接口）。已覆盖：只有网页会话、本站 `Origin` 且不带
+  `Bearer` 的批准才产生授权码；授权码第一次兑换即作废，verifier 或回调地址不符一律 `invalid_grant`；回调地址只接受带端口和
+  路径的 `127.0.0.1` / `[::1]`，拒绝 `localhost`、自定义 scheme、查询串、fragment、用户信息和其他主机；2 分钟后授权码失效；
+  令牌 30 天不用过期、按小时顺延、过期后不复活。仍缺：没有测试直接断言数据库只存令牌的 SHA-256。
 - 决策依据：D6，不变量 6、9。
 
 ## A Declined Desktop Sign-In Only Returns To The Loopback
@@ -128,7 +136,12 @@ cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密�
 - 必须成立：只接受网页会话且 `Origin` 是本站；回调地址与批准用同一条回环校验；回答是回调地址加 `error=access_denied` 和
   原样的 `state`；不签发授权码或令牌。
 - 禁止结果：跳往非回环地址；无会话、跨站或带 `Bearer` 的调用成功；取消后存在可兑换的授权码。
-- 验证义务与证据：**Missing** — 由 #1084 实现（ora-space/cloud#432），合并后补证据。
+- 验证义务与证据：**Partial** — `internal/server/desktop_login_test.go` 的 `TestDesktopDenialReturnsToTheLoopback`；`frontend-v2`
+  的 `src/features/desktop-authorize/page.test.tsx`（「取消」只带 `redirectUri` 和 `state` 调 `deny` 并跳回；服务器拒绝时页面停住）；
+  desktop 一侧的 Windows 11 真机实测（ora-space/circus#1379：确认页「取消」后 desktop 显示已取消、不写条目）。已覆盖：回答恰好是
+  回调地址加 `error=access_denied` 和原样的 `state`、不带授权码；非回环、`localhost`、带空 fragment 的回调地址与空 `state` 被拒绝；
+  无会话 `401`、带 `Bearer` `403 web_session_required`。仍缺：`deny` 本身的跨站 `Origin` 用例（同一个会话路由包装在批准接口上有
+  测试）。
 - 决策依据：D6；[desktop Cloud 连接第一版](../../../decisions/desktop/cloud-connection/20261121-first-version-loopback-login-and-host-held-token.md)
   的“继承与修改”（对 A6 D6 Cloud 契约的新增）与 D2。
 
@@ -141,5 +154,11 @@ cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密�
 - 必须成立：两种会话读到同一个账号、同样的团队和权限；带 Bearer 时只按令牌判定；账号停用或删除后，两种会话的下一个
   请求都返回 `401`；desktop 登出只吊销自己的令牌。
 - 禁止结果：desktop 专用权限；停用后任一会话仍能访问；desktop 登出让网页会话失效。
-- 验证义务与证据：**Missing** — 由 #1084 实现。
+- 验证义务与证据：**Partial** — `internal/server/desktop_login_test.go` 的 `TestDesktopLoginIssuesATokenForTheApprovingAccount`、
+  `TestBearerHeaderAloneDecidesTheCaller`、`TestDesktopLogoutAndAccountState`；`internal/server/session_test.go` 的
+  `TestDisablingAnAccountEndsItsSession`；`internal/store/desktop_tokens_test.go` 的 `TestDesktopTokenIsItsOwnKindOfCredential`、
+  `TestDesktopTokenFollowsTheAccount`。已覆盖：令牌与批准它的网页会话是同一个账号，读到同样的团队列表；带 `Bearer` 时只按令牌
+  判定（别人的 Cookie 不能顶替，坏令牌不回落到 Cookie）；desktop 登出只吊销自己的令牌，网页登出不影响 desktop 令牌；账号停用后
+  desktop 令牌和网页会话的下一个请求都是 `401`，停用前批准的授权码也换不出令牌。仍缺：账号删除后 desktop 令牌失效的用例；
+  以 `Bearer` 访问团队资源与权限的逐项对照。
 - 决策依据：D5、D6，不变量 7、8。
