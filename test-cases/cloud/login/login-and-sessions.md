@@ -119,6 +119,19 @@ cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密�
 - 验证义务与证据：**Missing** — 由 #1084 实现。
 - 决策依据：D6，不变量 6、9。
 
+## A Declined Desktop Sign-In Only Returns To The Loopback
+
+- 风险：确认页的「取消」被当成开放跳转，把浏览器送到任意地址；取消路径被跨站页面或 desktop 令牌调用；取消也签出授权码。
+- 前置状态：浏览器里有网页会话；desktop 在回环地址上等回调。
+- 触发：在确认页点「取消」（`POST /auth/desktop/deny`）；用非回环、带 fragment、`localhost` 的回调地址或空 `state` 调它；
+  不带网页会话、带别的 `Origin`、或带 `Bearer` 调它。
+- 必须成立：只接受网页会话且 `Origin` 是本站；回调地址与批准用同一条回环校验；回答是回调地址加 `error=access_denied` 和
+  原样的 `state`；不签发授权码或令牌。
+- 禁止结果：跳往非回环地址；无会话、跨站或带 `Bearer` 的调用成功；取消后存在可兑换的授权码。
+- 验证义务与证据：**Missing** — 由 #1084 实现（ora-space/cloud#432），合并后补证据。
+- 决策依据：D6；[desktop Cloud 连接第一版](../../../decisions/desktop/cloud-connection/20261121-first-version-loopback-login-and-host-held-token.md)
+  的“继承与修改”（对 A6 D6 Cloud 契约的新增）与 D2。
+
 ## Web Session And Desktop Token Resolve To The Same Account And Lose Access Together
 
 - 风险：desktop 令牌拿到和网页不同的身份或更大的权限；账号停用后某种会话还能用。
