@@ -10,6 +10,12 @@
 `198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
 30 条义务，它们的状态不在这次登记范围内。
 
+[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`approved`）
+修改了验证义务 10、13，并给 D3 情况表新增 detail `turn_processes_unstopped`：用例 10、13、19 各增加一行
+带“（轮次进程栅栏）”的义务，同样不另占编号；用例 13 中原有的“（尝试标记）”一行“保留会话的取消不杀任何进程”与新决策
+相反，改写为栅栏下的一致性测试。新增的义务尚未实现，状态为 `Missing`。栅栏自身的义务见
+[轮次进程栅栏用例](turn-process-fence.md)。
+
 | 验证义务 | 核心用例 |
 | --- | --- |
 | 1 | [Cancelling a running turn keeps the session for the next turn](#cancelling-a-running-turn-keeps-the-session-for-the-next-turn) |
@@ -305,25 +311,28 @@ D2（静止条件 2），不变量 7。
 
 ### 前置状态与触发
 
-Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。
+Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。另一种情形（轮次进程栅栏）：（插件，版本）只为其他平台登记，
+例如在 Linux Node 上只有 `windows` 条目。ora-node 目前只有 Linux 版，所以没有 Windows Node 上的场景可测。
 
 ### 必须成立
 
-会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。
+会话以 `turn_boundary_unverified` 结束，即使会话选择了对应的保留字段。只为其他平台登记时同样如此，且不运行栅栏。
+同一插件的其他版本不因某个版本已登记而被认可。
 
 ### 禁止结果
 
-会话保留。
+会话保留；按其他平台的条目保留会话；栅栏在未登记的组合上运行。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 10：不在清单中的版本走兜底 | 尚未实现，无直接证据 | Missing |
+| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | 需要：只为其他平台登记的组合以 `turn_boundary_unverified` 结束、栅栏不运行的测试，以及清单按精确插件、版本与平台匹配的单测。候选：`apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`（只断言 detail）、`apps/ora-node/src/session/turn_cancel.rs` 的单测 `a_boundary_is_verified_for_its_exact_version_and_platform`（只认精确的插件、版本与平台；默认清单含 Linux 上的 OpenCode 0.6.11、不含 Claude 0.4.5），以及 `tests/agent_session/cancel.rs` 的 `another_version_of_a_listed_plugin_is_not_verified` | Missing |
 
 ### 决策依据
 
-D2（可依赖的轮次边界）、D3，不变量 7。
+D2（可依赖的轮次边界）、D3，不变量 7；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D5，不变量 9。
 
 ## An unanswered cancel settles in time and ends only after stop evidence
 
@@ -400,27 +409,36 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 
 ### 前置状态与触发
 
-对清单登记的每个 Agent 版本，用真实 Agent 构造：取消运行中的 shell 工具；取消带子代理和后台任务的轮次；模型请求错误。记录 prompt 回应之后到达的全部流量。
+对清单按（插件，版本，平台）登记的每个组合，在该平台上以生产构建的 `ora-node`（轮次进程栅栏启用）、真实 Deno 与该版本
+未修改的发布包运行，由回环模型驱动真实工具。每次运行：一个普通轮次 → 目标轮次（运行中取消；`error` 场景让它自己失败）
+→ 一个普通轮次。场景为 `shell`、`subagent`、`background`、`detached`、`error`，每个场景重复运行。
 
 ### 必须成立
 
-只有回应之后没有任何轮次流量的版本才进入清单。会话被保留的取消不发任何停止信号，这一轮起的后台任务继续运行，
-测试照实记录它们在回应之后的流量，不能假定 Node 已杀掉它们。
+- 一次运行通过，当且仅当：停止以 `stopped` 结算、会话保留；结算时这一轮在 Agent 更早进程的会话之外新起的进程都已不在；
+  结算之后作业的延迟写入没有出现；下一轮正常完成。`error` 场景没有取消结论，进程在下一轮的第一个事件到达时采样，此时
+  Node 已判定完失败的一轮、运行过栅栏与复扫；检查的是会话没有结束、那一刻这一轮的进程都已不在、之后没有延迟写入、
+  下一轮正常完成。全部场景的全部运行都通过的组合
+  才进入清单，条目旁写明发布包摘要。
+- 测试验证的是 Agent 回应与 Node 栅栏的组合：后台作业由栅栏杀掉，测试在栅栏之后观察进程与写入，不能假定 Agent 自己停下了
+  它们，也不能把另一个平台的结果当作本平台的结论。
+- Linux 上的 `official/ora-space.opencode 0.6.11` 通过后才登记；`official/ora-space.claude 0.4.5` 因后台任务被杀后自发起一轮
+  （`background` 以 `turn_not_quiescent` 结束）而不登记。
 
 ### 禁止结果
 
-未测或测试中有残余轮次流量的版本进入清单；保留会话的取消杀掉后台任务，掩盖了回应之后的流量。
+有任一运行未通过的组合进入清单；不经真实 Node 栅栏的测试结果被用来登记；按一个平台的结果登记另一个平台。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（尝试标记）：保留会话的取消不杀任何进程 | 一致性测试中会话被保留的取消之后，带标记的后台任务与常驻进程仍存活、其流量照实记录的测试。desktop#802 `198cc415` 没有这样的测试 | Missing |
+| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | 候选：desktop#807 的 `apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs` 中 `turn_boundary_conformance` 是按需运行的 ignored 测试，需要外部发布包，不在 CI 中运行。#1340 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。缺口：没有在 CI 中可重复的一致性证据；aarch64 未测；一致性场景不专门构造懒启动的常驻进程 | Missing |
 
 ### 决策依据
 
-D2（可依赖的轮次边界），不变量 7；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4，不变量 7。
+D2（可依赖的轮次边界），不变量 7；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D5；[尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md) D4（经栅栏决策修改）。
 
 ## A full in-flight window delays delivery but not local settlement
 
@@ -576,11 +594,13 @@ D2（续用方式）、D5，不变量 7。
 
 ### 前置状态与触发
 
-逐一触发 D3 表中的每一种情况，其中一部分发生时有尚未结算的 `CancelTurn`。
+逐一触发 D3 表中的每一种情况，其中一部分发生时有尚未结算的 `CancelTurn`。D3 表包括轮次进程栅栏决策新增的一行：
+栅栏在 F 内不干净、这一轮没有开始时刻、范围记录不可用或尝试在这一轮里被替换。
 
 ### 必须成立
 
-每种情况都结束会话，终态与 D3 表一致；结束决定作出时尚未结算的 `CancelTurn` 都得到 `session_ending`。
+每种情况都结束会话，终态与 D3 表一致；结束决定作出时尚未结算的 `CancelTurn` 都得到 `session_ending`。栅栏不干净时
+detail 为 `turn_processes_unstopped`。
 
 ### 禁止结果
 
@@ -591,10 +611,11 @@ D2（续用方式）、D5，不变量 7。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 19：D3 的每种情况结束会话并结算取消 | 尚未实现，无直接证据 | Missing |
+| 19（轮次进程栅栏）：`turn_processes_unstopped` 一行同样结束会话并结算取消；各种注入见[栅栏不干净用例](turn-process-fence.md#an-unclean-fence-ends-the-session-as-turn-processes-unstopped) | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D3，不变量 2。
+D3，不变量 2；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D3。
 
 ## Sessions without either choice keep the previous behaviour
 
