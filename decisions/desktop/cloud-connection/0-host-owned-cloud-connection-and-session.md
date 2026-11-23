@@ -4,6 +4,8 @@ status: approved
 
 # Desktop 宿主拥有 Cloud 连接、信任与会话，本地工作独立可用
 
+> 历史决策：本决策由 [Desktop Cloud 连接第一版](20261121-first-version-loopback-login-and-host-held-token.md) 修改，当前承诺以“本决策 + 该后续 ADR”为准。被修改的部分：认证与会话协议的权威改为 [A6](../../cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md) D6；不变量 3 改为令牌只发往登录时规范化的 Cloud origin、不跟随重定向；启动和回到前台的检查计为使用；退出与改地址先清本机再吊销；开发包与正式包共用安全存储条目；落地边界以后续 ADR 的落地顺序为准。暂停的条目：部署签名身份、TOFU 与能力协商、证书固定与显式内网 HTTP、同身份换地址迁移、活动上报与续期和轮换恢复、在线 60 秒发现吊销、deep link；要恢复，需要在 `cloud/login` 与 `desktop/cloud-connection` 两侧各写后续 ADR。其余决策不变。
+
 Desktop 宿主直接管理可配置的自建 Cloud 连接及认证生命周期，凭据绑定部署签名身份与账号，
 通过系统浏览器与 Gateway 完成登录。本地工作不依赖 Cloud 登录或在线状态；首版每个安装实例
 同时只有一个活动 server 和账号，多窗口共享选择。
