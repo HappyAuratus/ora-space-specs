@@ -401,6 +401,14 @@ _Avoid_: Controller checkout, local worktree, task worktree
 `WorkspaceLocation` 和生命周期；删除 task worktree 不得删除或重置 main worktree。
 _Avoid_: main worktree, workspace root, task checkout as a separate identity
 
+### Workspace Git Capability（Workspace Git 能力）
+
+Desktop 本机目录 Workspace 在被列出时刻实测得到的“Git 审阅操作能否作用于该目录”，取值
+`repository` / `notRepository` / `unknown`；它不是项目属性，不存储，`unknown` 表示无法确定而非否定。
+Desktop 项目可以是普通目录，此时其 Main Workspace 没有 main worktree。定义来源是
+[Desktop 本机目录项目决策](../decisions/desktop/core/workspace/0-local-directory-project-with-probed-git-capability.md)。
+_Avoid_: repository kind, Git project flag, plain project as a project type
+
 ## Node Process
 
 本节用于区分进程运行责任与上层业务身份，决策入口见
