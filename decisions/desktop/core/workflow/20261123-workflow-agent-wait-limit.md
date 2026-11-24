@@ -23,7 +23,7 @@ status: implemented
 | `"wait"` | 从每次实际发送起计满 30 分钟。只有 D2 的进展能续满同一个窗口。运行详情按冻结值显示「持续等待，无进展 30 分钟后失败」。 |
 | `"unbounded"` | 无 prompt 静默期限。编辑器标明「无限等待（需手动停止）」，运行详情展示冻结选择。 |
 
-其他值在执行前拒绝。打开图或修改无关字段保留原字段。已发布图和运行快照无需迁移。升级 Desktop 会重启服务进程，在途回合随进程结束；重启恢复后的下一次实际发送仍按运行快照冻结的 `promptInactivity` 解释。旧 Desktop 拒绝新取值。Cloud 的发布门禁继续拒绝非 null 的 `promptInactivity`。
+其他值在执行前拒绝。打开图或修改无关字段保留原字段。已发布图和运行快照无需迁移。升级 Desktop 会重启服务进程，在途回合随进程结束；重启恢复后的下一次实际发送按恢复后运行快照中的 `promptInactivity` 解释（恢复时没有切换快照的，即原冻结值）。旧 Desktop 拒绝新取值。Cloud 的发布门禁继续拒绝非 null 的 `promptInactivity`。
 
 ## D2　只有本轮可归属的信号续期
 
@@ -73,4 +73,4 @@ status: implemented
 
 [Desktop #803](https://github.com/ora-space/desktop/pull/803) 已合并。[四组核心用例](../../../../test-cases/desktop/core/workflow/prompt-inactivity.md) 按固定产品版本记录验证结果。取消未确认后，同一连接重新挂载原 provider 会话仍可能收到旧回合的迟到更新和权限请求。该路径与既有超时和显式取消恢复共用，由 [#1392](https://github.com/ora-space/circus/issues/1392) 单独承接，对应隔离义务为 `Partial`。
 
-Desktop 升级后启动时按既有规则清理中断的节点，恢复时开启新的节点尝试。跨版本恢复后首次实际发送仍缺冻结策略的直接证据，由 [#1421](https://github.com/ora-space/circus/issues/1421) 验证。Cloud 混合版本支持及无法归属具体委托的 provider 适配另行处理。
+Desktop 升级后启动时按既有规则清理中断的节点：外层节点在显式恢复时开启新的节点尝试；复合区域内被中断的轮次由复合节点吸收，结算为失败轮。跨版本恢复后首次实际发送仍缺冻结策略的直接证据，由 [#1421](https://github.com/ora-space/circus/issues/1421) 验证。Cloud 混合版本支持及无法归属具体委托的 provider 适配另行处理。
