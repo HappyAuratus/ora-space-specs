@@ -15,4 +15,4 @@
 | 文件 | 覆盖的风险面 |
 | --- | --- |
 | [probe-classification.md](probe-classification.md) | 三态分类、损坏仓库不报普通目录、嵌套目录、重新探测、时限、清理租约与语言环境 |
-| [git-entry-degradation.md](git-entry-degradation.md) | Git 审阅操作守卫、`unknown` 保持原有行为、变更面板、worktree 入口、拒绝后重探、定时任务表单 |
+| [git-entry-degradation.md](git-entry-degradation.md) | 添加普通目录项目不初始化 Git、Git 审阅操作守卫、`unknown` 保持原有行为、变更面板、worktree 入口、拒绝后重探、定时任务表单 |

@@ -109,7 +109,7 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
 | --- | --- | --- |
 | `checking` | 共享 Workspace 列表尚未加载 | 依赖 Git 的读取暂不发出：需要 Git 数据的视图（变更面板、worktree 对话框的分支列表）显示加载态，会话中的 diff 链接等待结果；侧栏与输入框中的新建 worktree 入口保持可见 |
 | `notRepository` | 列表中目标 Workspace 为 `present` 且 `git: notRepository` | 按 D6 降级 |
-| `available` | 其余一切：`repository`、`unknown`、`missing`、`remote`、目标不在列表中、列表请求失败 | 原有行为 |
+| `available` | 其余一切：`repository`、`unknown`、`missing`、`remote`、目标不在列表中、列表请求失败 | 原有行为，即与 Git 项目相同：入口照常显示、请求照常发出，失败时显示操作自身的错误；本文其他处的“原有行为”均指此义 |
 
 决定可用性的 Workspace：给定 Workspace 时取该 Workspace；按项目判断（例如“能否新建 worktree”）时取该项目的
 主 Workspace，因为 worktree 从它分出。
@@ -181,16 +181,16 @@ active；只有其 D4 与不变量 12 把“必须以 Git 仓库为目标”限�
 
 ### D8：本决策只覆盖 Desktop 本机目录，不预判 Cloud 是否支持目录项目
 
-Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、回合交付与删除回收都以 Git 为前提
-（见 [外部仓库拉取决策](../../../cloud/project-git/0-external-repository-pull-and-encrypted-token.md)）。Cloud 是否
-以及如何支持非 Git 的目录项目由 ora-space/circus#1444 交 owner 决定，候选为：A 真正的目录项目、B 导入后在受管
-副本上建内部 Git 种子、C Cloud 暂不支持。
+Cloud 方向已在 ora-space/circus#1444 定为暂不支持（C），Cloud v2 仍以外部 Git 仓库为前提：项目绑定一个外部
+HTTPS 仓库分支，会话目录、回合交付与删除回收都以 Git 为前提（见
+[外部仓库拉取决策](../../../cloud/project-git/0-external-repository-pull-and-encrypted-token.md)）。将来有需求时
+优先考虑 B（导入后在受管副本上建内部 Git 种子），届时另立决策。这里只引用该结论，不构成 Cloud 规则。
 
 本决策的边界：
 
 - 只约束 Desktop 本机目录的 Workspace；非本机 checkout 报告为 `remote`，不探测、不降级，保持原有行为。
 - `WorkspaceGit` 三态与 `workspace_not_git_repository` 是 Desktop 内部契约，不作为 Cloud 或 Node 协议的一部分，
-  也不意味着 Cloud 要采用“读取时探测”的模型；Cloud 侧的能力来源由 #1444 及其后续 ADR 决定。
+  也不意味着 Cloud 要采用“读取时探测”的模型；若 Cloud 将来支持目录项目，其能力来源由届时的决策定义。
 - D1 反对自动 `git init` 的理由针对的是用户自己的目录，不评价 #1444 选项 B（在受管副本上建内部 Git 种子）。
 - Cloud 侧决策落地后若需要 Desktop 呈现 Cloud 目录项目，应另立后续 ADR，说明它与本决策三态的关系。
 
@@ -227,8 +227,8 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
 
 ## 本决策未解决的问题
 
-- **Cloud 目录项目**：是否支持及采用 A、B、C 哪条路，由 ora-space/circus#1444 交 owner 决定；选 A 或 B 时由
-  承接的 Cloud ADR 定义能力来源与降级，必要时另立 Desktop 后续 ADR 说明呈现方式。本决策不预置任何 Cloud 协议。
+- **Cloud 目录项目**：ora-space/circus#1444 定为 Cloud 暂不支持。将来 Cloud 支持目录项目时（优先 B）需另立决策，
+  定义能力来源与降级，必要时另立 Desktop 后续 ADR 说明呈现方式。本决策不预置任何 Cloud 协议。
 - **普通目录上的变更审阅替代**：普通目录目前没有“Agent 改了什么”的审阅视图。若需要基于文件快照的审阅，涉及
   快照存储与回收，属于后续决策。
 - **定时任务 Git 资格的错误类型**：后端对普通目录项目（以及粗判定失败的 `unknown` 目录）的定时任务保存以通用的
@@ -246,7 +246,7 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
 
 - [探测分类](../../../../test-cases/desktop/core/workspace/probe-classification.md)：三态分类、损坏仓库不报普通目录、
   嵌套目录、重新探测、时限、清理租约与语言环境。
-- [入口降级](../../../../test-cases/desktop/core/workspace/git-entry-degradation.md)：Git 审阅操作守卫、`unknown`
+- [入口降级](../../../../test-cases/desktop/core/workspace/git-entry-degradation.md)：添加普通目录项目不初始化 Git、Git 审阅操作守卫、`unknown`
   保持原有行为、变更面板、worktree 入口、拒绝后重探与定时任务表单。
 
 非 Git 目标不能保存为 active 的义务继续由
@@ -258,5 +258,5 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
 1. **desktop**：ora-space/desktop#812 实现 D1–D7（契约、后端探测与守卫、gitlancer 分类、前端各入口降级与文档），
    ora-space/desktop#818 补上未冻结旧任务的表单拦截；二者合并后的 desktop `c9a76541` 是本文的核对基线。已有 Git
    项目的行为不变，普通目录项目从该版本起按本决策降级。
-2. **后续**：ora-space/circus#1472 处理普通目录上未冻结已启用任务的停用，其缺口在核心用例中标为 `Missing`；
-   ora-space/circus#1444 有结论后按其选项决定是否另立 ADR，本决策的 Desktop 本机范围不随之改变。
+2. **后续**：ora-space/circus#1472 处理普通目录上未冻结已启用任务的停用，其缺口在核心用例中标为 `Missing`。
+   本决策的 Desktop 本机范围不随 Cloud 方向改变。

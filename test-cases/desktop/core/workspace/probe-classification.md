@@ -81,7 +81,7 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 清理期间列表不等待、报 `unknown`，释放后报 `repository` | `ora_backend::workspace::git_capability_tests::listing_skips_the_probe_of_a_checkout_being_cleaned_up`、`ora_backend::git_cleanup::keyed_locks::tests::try_shared_yields_to_writers_without_waiting` | `Covered` |
-| 超过时限的 Git 被 kill 并按超时报告，子进程占着管道时也一样（全平台运行） | `gitlancer::exec::runner::tests::kills_a_command_that_outlives_its_deadline`、`gitlancer::exec::runner::tests::deadline_covers_output_held_open_by_a_child_process` | `Partial` |
+| 超过时限的 Git 被 kill 并按超时报告，子进程占着管道时也一样（全平台运行） | `gitlancer::exec::runner::tests::kills_a_command_that_outlives_its_deadline`、`gitlancer::exec::runner::tests::deadline_covers_output_held_open_by_a_child_process` | `Covered` |
 | 探测超时最终报为 `unknown` | 缺口：没有经过 `probe_workspace_git` 或列表的端到端测试，只有 runner 层的超时测试；超时映射为 `unknown` 目前只能从“任何错误都是 `unknown`”的分支推出 | `Partial` |
 
 ## Probe Classification Is Independent Of The User's Locale

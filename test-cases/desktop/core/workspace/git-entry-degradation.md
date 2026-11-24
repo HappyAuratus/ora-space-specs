@@ -1,5 +1,21 @@
 # 依赖 Git 的入口降级
 
+## Adding A Plain Folder Project Must Not Initialize Git
+
+- 风险：添加项目时要求目录是 Git 仓库，或替用户执行 `git init`，在用户目录留下未要求的 `.git`。
+- 前置状态：一个存在的普通目录，不在任何仓库内。
+- 触发：以该目录创建项目，然后列出 Workspace。
+- 必须成立：项目创建成功；列出时主 Workspace 报 `present` + `notRepository`，即目录里没有被创建 `.git`。
+- 禁止结果：创建被拒；创建后目录变成仓库。
+- 决策依据：根决策 D1，不变量 1。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 普通目录可以添加为项目，列出为 `notRepository` | `ora_backend::workspace::git_capability_tests::plain_folder_reports_not_git_and_refuses_git_operations_until_initialized`、`ora_backend::project::tests::upgrade_lets_the_folder_decide_a_project_created_before_its_folder` | `Covered` |
+| 添加后目录里没有 `.git` | 缺口：没有直接断言 `.git` 不存在，由列出结果为 `NotRepository` 推出 | `Partial` |
+
 ## Git Review Operations Refuse A Plain Folder Before The Baseline Check
 
 - 风险：普通目录上的 diff、提交、推送在 Git 深处失败，客户端只能看到内部错误；或者先报出与根因无关的基准缺失。
@@ -31,8 +47,9 @@
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 列表失败、目标不在列表中时，变更面板照常加载 diff | `packages/app-shell/src/features/diff/task-diff-view.not-git.test.tsx` 的 `loads the diff as before when the workspace list fails`、`loads the diff as before when the workspace is absent from the list` | `Covered` |
+| 探测报 `repository` 或 `unknown` 时，变更面板照常加载 diff 与 status | `packages/app-shell/src/features/diff/task-diff-view.not-git.test.tsx` 的 `it.each(["repository", "unknown"])` `loads the diff as before when the probe reports %s` | `Covered` |
 | Git 项目上新建 worktree 入口保留 | `packages/app-shell/src/features/workspace/sidebar-create-menu.test.tsx` 的 `keeps the worktree task for a Git project`、`packages/app-shell/src/features/chat/composer-context-bar.test.tsx` 的 `keeps creating a worktree for a Git project` | `Partial` |
-| `git: "unknown"`、`missing`、`remote` 时前端行为不变 | 缺口：没有显式使用这些值的前端用例；只能从 `use-workspace-git.ts` 的二值映射推出 | `Partial` |
+| `unknown`、`missing`、`remote` 时其他入口行为不变，列表加载中新建 worktree 入口保持可见 | 缺口：`missing`、`remote` 没有前端用例；侧栏、输入框、worktree 对话框与定时任务表单在 `unknown` 下没有前端用例；侧栏与输入框在列表加载中保持入口可见没有直接断言 | `Partial` |
 
 ## The Changes Panel Explains A Plain Folder And Issues No Git Reads
 
@@ -81,7 +98,7 @@
 | --- | --- | --- |
 | 侧栏和输入框的入口隐藏 | `packages/app-shell/src/features/workspace/sidebar-create-menu.test.tsx` 的 `leaves out the worktree task for a project folder that is not Git`、`packages/app-shell/src/features/chat/composer-context-bar.test.tsx` 的 `leaves out creating a worktree once the project folder is not Git` | `Covered` |
 | 对话框只给说明，不能提交，不查分支 | `packages/app-shell/src/features/workspace/workspace-dialogs.test.tsx` 的 `explains the folder is not Git and offers no submit or branch lookup` | `Covered` |
-| 后端拒绝映射为 `worktree_requires_git_repository`，前端显示原因 | `ora_backend::error::tests::maps_semantics_without_inspecting_the_source_chain`、`workspace-dialogs.test.tsx` 的 `explains that worktree mode requires a Git repository` | `Covered` |
+| 后端拒绝映射为 `worktree_requires_git_repository`，前端显示原因 | `ora_application::error::tests::worktree_provisioner_errors_keep_their_dedicated_application_variants`、`ora_backend::error::tests::maps_semantics_without_inspecting_the_source_chain`、`workspace-dialogs.test.tsx` 的 `explains that worktree mode requires a Git repository` | `Covered` |
 
 ## The Scheduled-Task Form Blocks Only Saves The Backend Must Refuse On A Plain Folder
 
