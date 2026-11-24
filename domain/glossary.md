@@ -503,6 +503,16 @@ _Avoid_: attempt scope record, process group, all processes started during the t
 栅栏不向它们发信号。这里的会话是内核的进程会话，与 Agent 会话、ACP session 无关。
 _Avoid_: ACP session, agent session, session snapshot
 
+### Turn Failure（一轮失败）
+
+`Turn Failure` 是一个被准入的轮次因运行时先观察到的失败而结束：Agent 以 ACP 错误回应、无进展看门狗放弃、Agent 进程
+退出或 ACP 连接断开，或 Ora 自己的内部错误。它记在这一轮的 `TurnEnded.failure` 中，带封闭集合里的原因码；原因来自 ACP
+错误回应时另带 ACP 错误码与 Agent 报告的、经过清洗且有长度上限的文字。`stop_reason` 仍是 `cancelled`。它不同于调用方取消
+与会话结束时的取消（`TurnEnded.ended_by`），也不同于 MCP 门禁中没有被准入就失败的轮次（`SessionTurnFailed`）。选择了
+`keep_session_on_failure` 的会话，Node 在判定之后以 `TurnFailureSettled` 告知会话保留（`kept`）还是不会保留
+（`session_ending`）；这条事件只说判定，不带原因。
+_Avoid_: cancelled turn, session failure, agent_failed
+
 ## Cloud Deployment
 
 正式 Cloud 的部署形态见 [Cloud 单进程根决策](../decisions/cloud/lifecycle/0-single-process-cloud-on-enterprise-intranet.md)。

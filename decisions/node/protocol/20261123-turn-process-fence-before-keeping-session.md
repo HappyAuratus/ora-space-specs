@@ -4,6 +4,11 @@ status: implemented
 
 # 一轮以取消或失败结束后，Node 先停掉这一轮新起的进程再判定是否保留会话（轮次进程栅栏，Linux）；轮次边界清单按平台登记
 
+> 历史决策：D4 第 1 步“写 `TurnEnded{cancelled}`”、第 8 步与不变量 6，由
+> [一轮的失败与取消分开记录](20261124-turn-failure-reason-distinct-from-cancel.md)（`proposed`）修改：`TurnEnded` 带 `ended_by`
+> 或 `failure`；选择了失败后保留、因失败而停的一轮，第 8 步先写 `TurnFailureSettled{kept}` 再写并入的取消；不变量 6 的期限
+> 同样约束 `TurnFailureSettled`。该决策评审通过之前本文仍是当前承诺，通过之后这些部分以它为准。其余决策不变。
+
 一轮以取消或失败结束、Agent 已经回应之后，Node 在判定会话能否保留之前，先停掉这一轮新起的进程。范围是本尝试
 被认领的进程（带 `ORA_SESSION_ATTEMPT` 标记，或经被认领的父进程认领）中，启动时刻不早于这一轮开始、且所在会话 id
 （sid）不属于“这一轮开始前就已启动、此刻仍存活的本尝试进程”所在会话的那些。Node 复用尝试环境标记的冻结、pidfd
