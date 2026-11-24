@@ -12,7 +12,7 @@ Desktop 每个正式版本有一份中英文[更新日志](../../../domain/gloss
 - 用户更新后能看到新版本的变化，也能在设置页离线查看历史（D4、D5）。
 - 更新前弹窗和公开版 `latest.json` 的日志放在第二步（D6）。
 
-本文为 `approved`：方案已批准，尚未实现。
+本文为 `approved`：2026-11-24 经 owner 批准，尚未实现；核心用例见[更新日志的打包与展示](../../../test-cases/desktop/release-notes/packaging-and-display.md)。
 
 - **涉及**：desktop 的 `release-notes/`、打包脚本与现有测试、前端构建、`packages/app-shell` 的更新后提示与设置页，以及宿主向
   前端提供“数据库是否本次新建”（D5）；第二步还有更新清单生成脚本与 Tauri 更新模块。
