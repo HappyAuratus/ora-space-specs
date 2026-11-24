@@ -12,8 +12,8 @@ ADR 为 `approved`，desktop 尚未实现，下列义务目前都是 `Missing`�
 | 4、5 | [Bundled Notes Need No Network](#bundled-notes-need-no-network) | Missing |
 | — | [The Update Card Lists Each Unseen Version Once](#the-update-card-lists-each-unseen-version-once) | Missing |
 | — | [Fresh Installs And Upgrades Without A Record Are Told Apart](#fresh-installs-and-upgrades-without-a-record-are-told-apart) | Missing |
-| 6、8 | [Notes Are Rendered As Plain Text](#notes-are-rendered-as-plain-text) | Missing |
-| 7、8 | [Broken Notes Never Block The App Or Updates](#broken-notes-never-block-the-app-or-updates) | Missing |
+| 6 | [Notes Are Rendered As Plain Text](#notes-are-rendered-as-plain-text) | Missing |
+| 7 | [Broken Notes Never Block The App Or Updates](#broken-notes-never-block-the-app-or-updates) | Missing |
 
 ## Tagged Packaging Refuses Missing Or Invalid Notes
 
@@ -25,7 +25,7 @@ ADR 为 `approved`，desktop 尚未实现，下列义务目前都是 `Missing`�
 ### 前置状态
 
 一个 desktop 检出，`release-notes/` 里有本版本和历史版本的日志。可以分别制造：缺少本版本文件、某个历史文件格式错误、文件名与
-`version` 不符、版本重复、条目超长或含禁止的字符、目录里有修改、删除、未跟踪或被忽略的文件、目录不在 git 检出里。
+`version` 不符、版本重复、条目超长或含禁止的字符、某个版本超过 50 条、目录里有修改、删除、未跟踪或被忽略的文件、目录不在 git 检出里。
 
 ### 触发
 
@@ -216,16 +216,17 @@ ADR D5、D7。
 
 ### 前置状态
 
-日志条目含 HTML、Markdown、链接、控制字符或双向覆盖字符；分别来自内置文件和更新清单。
+日志条目含 HTML、Markdown、链接、控制字符或双向覆盖字符，来自内置文件。
 
 ### 触发
 
-在卡片、历史页和更新前弹窗里展示。
+在卡片和历史页里展示；清单日志在“可更新”区块里的展示见
+[更新前的清单日志](manifest-notes-before-update.md)。
 
 ### 必须成立
 
 - 所有位置都把条目原样当文本显示，不产生元素、样式或链接。
-- 来自更新清单的日志超过长度或条数限制时不会原样展示。
+- 来自更新清单的日志超过长度或条数限制时整组隐藏，由[更新前的清单日志](manifest-notes-before-update.md#unusable-manifest-notes-are-hidden-as-a-whole)验证。
 
 ### 禁止结果
 
@@ -236,11 +237,10 @@ ADR D5、D7。
 | 验证义务 | 直接证据 | 状态 |
 |---|---|---|
 | 卡片与历史页只按纯文本 | 尚无 | `Missing` |
-| 更新前弹窗只按纯文本，清单日志限长限条数 | 尚无；属于第二步 | `Missing` |
 
 ### 决策依据
 
-ADR D1、D6，不变量 6、8。
+ADR D1、D5，不变量 6。不变量 8 的义务由[更新前的清单日志](manifest-notes-before-update.md)承担。
 
 ## Broken Notes Never Block The App Or Updates
 
@@ -250,28 +250,27 @@ ADR D1、D6，不变量 6、8。
 
 ### 前置状态
 
-内置日志注入失败或无法解析；更新清单没有日志、日志格式错误或超限。
+内置日志注入失败或无法解析。
 
 ### 触发
 
-启动应用、打开历史页、检查更新、下载、安装。
+启动应用、打开历史页。
 
 ### 必须成立
 
 - 只有日志被隐藏，应用照常启动，历史页不报错。
-- 更新的检查、下载、安装结果与没有日志时相同。
+- 清单日志不影响更新，由[更新前的清单日志](manifest-notes-before-update.md#manifest-notes-never-change-an-update)验证。
 
 ### 禁止结果
 
-- 因为日志使检查更新报错，或使安装按钮不可用。
+- 因为日志使应用无法启动，或使历史页报错。
 
 ### 验证义务与证据
 
 | 验证义务 | 直接证据 | 状态 |
 |---|---|---|
 | 内置日志损坏只隐藏日志 | 尚无 | `Missing` |
-| 清单日志缺失、损坏或超限不影响检查、下载和安装 | 尚无；属于第二步 | `Missing` |
 
 ### 决策依据
 
-ADR D4、D6，不变量 7、8。
+ADR D4、D6，不变量 7。

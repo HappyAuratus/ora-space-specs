@@ -4,6 +4,10 @@ status: approved
 
 # Desktop 更新日志随 main 维护，打包时检查并内置到安装包
 
+> 历史决策：本文由[更新清单携带最近 10 个版本的日志](20261124-manifest-notes-before-update.md)修改，当前承诺以“本文 + 该后续 ADR”为准。
+> 被修改的部分：D1 和 D3、不变量 2 加上每个版本最多 50 条；D5 的设置页在历史列表之上另加“可更新”区块；D6 的更新前弹窗改为这个区块；
+> 不变量 5 只约束历史列表。
+
 Desktop 每个正式版本有一份中英文[更新日志](../../../domain/glossary.md#release-notes更新日志)，存为 desktop `main` 里的普通
 文件 `release-notes/<版本>.json`。日志由准备发版的人在本地用 AI 生成、人工改好，经普通 PR 合并；
 `scripts/package-desktop.ts --tag` 打包时检查日志，安装包内置全部日志，客户端在更新后提示和设置页历史里展示。可观察的变化：
