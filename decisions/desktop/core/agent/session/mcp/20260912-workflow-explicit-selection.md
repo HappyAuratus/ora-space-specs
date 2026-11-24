@@ -6,7 +6,7 @@ status: implemented
 
 > 历史决策：D1、D4 中「已选 MCP 缺失」的判断已由[派发前预检](20261119-workflow-mcp-preflight.md)提前到 Desktop 运行派发前。派发后的 session setup 与既有 Session 恢复仍按本文处理。
 
-> 历史决策：D4 中“Skill 保持 Effect 物化语义：安装后可物化到 Workspace”已由[Skill 按存储路径以会话清单交给 Agent](../skill/0-skill-catalog-from-storage-paths.md)（`proposed`）修改：已安装 Skill 以存储路径进入每个会话的清单，不写入 Workspace。节点启用表示该节点必须使用该 Skill、不是安全白名单的规则不变。
+> 历史决策：D4 中“Skill 保持 Effect 物化语义：安装后可物化到 Workspace”已由[Skill 按存储路径以会话清单交给 Agent](../skill/0-skill-catalog-from-storage-paths.md)（`approved`）修改：已安装 Skill 以存储路径进入每个会话的清单，不写入 Workspace。节点启用表示该节点必须使用该 Skill、不是安全白名单的规则不变。
 
 工作流 Agent 节点把冻结的 `mcps` 绑定作为显式 MCP 白名单。普通聊天继续自动选择当前合格插件；工作流只解析已启用的完整插件 ID，空集合表示不注入任何 MCP。Ora 在发送边界记录不含秘密的选择身份，便于区分 Host 选择错误与 Agent 未按会话落实 MCP 的错误。
 

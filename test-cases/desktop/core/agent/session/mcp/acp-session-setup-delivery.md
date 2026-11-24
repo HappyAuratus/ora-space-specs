@@ -183,7 +183,7 @@ MCP refresh 占用该 Agent 的 Agent Session Barrier；同时 Skill Catalog 发
 
 - Session MCP 根决策 D4：Session Runtime 提供 Agent Session Barrier，但不共享 readiness；其中与 Effect
   共享的部分已由 [Skill 会话清单决策](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
-  D7（`proposed`）修改。
+  D7（`approved`）修改。
 - 不变量 6、11。
 
 ## MCP Lifecycle Must Not Touch Workspace Files Or Claim Ready

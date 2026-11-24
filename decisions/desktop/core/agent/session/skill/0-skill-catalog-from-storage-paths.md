@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Skill 按存储路径以会话清单交给 Agent，取代 Effect 物化
@@ -18,7 +18,10 @@ desktop host 返回已安装 Skill 和存储根，ora-node host 返回空。`ses
 - 同名 Skill 可以同时出现在清单里，按路径区分，不再因物化目录冲突而阻塞。
 - 运行中的工作流只冻结 skill ID 和调用名，运行中升级 Skill 后，后续节点读到新内容。
 
-本文为 `proposed`，等待评审；对应的决策记录是 ora-space/circus#1458，实现由 ora-space/circus#1460 承接。
+本文为 `approved`：评审已接受下文决策，desktop 实现尚未开始，由 ora-space/circus#1460 承接；对应的决策记录是
+ora-space/circus#1458。核心用例见
+[`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/)，
+尚无实现证据，全部义务标为 `Missing`。
 
 - **涉及**：desktop 的 `crates/agent-runtime`（host 扩展点、清单前缀与增量、ACP setup 字段）、`crates/backend`
   （desktop host、工作流 Skill 解析、升级清理）、`crates/db`（删除 Effect 表的前向迁移）、`apps/desktop`（删除
@@ -216,7 +219,7 @@ Session actor；已告知清单必须与 actor 的生命周期一致，放在 ba
    读取范围。
 3. **可选的原生 Skill 接入**：同一 setup 请求以 Ora 命名空间的 `_meta` 字段携带当前清单中各 Skill 的包目录，例如
    `_meta["ora/skillDirectories"]`（键名随插件协议改动确定）。插件可以把它们接到 Agent 的原生 Skill 机制（例如
-   Claude Code 的原生 Skill 工具和 `/skill名` 入口），也可以忽略。插件不得写入这些目录。
+   Claude Code 的原生 Skill 工具和 `/skill名` 入口），也可以忽略。插件不得写入这些目录。清单为空时不带该字段。
 4. 原生接入只反映 setup 时刻的清单；会话中途的变化只通过 D4 的提示词增量告知。原生机制与提示词清单指向同一批路径，
    不会产生两份内容不同的 Skill。
 
@@ -315,17 +318,19 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 
 ## 落地顺序
 
-1. **本 ADR 评审**：纠偏后标记 `approved`，在
+1. **本 ADR 评审**（已完成）：标记 `approved`，在
    [`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/)
-   补充核心用例，覆盖首条全量、增量与重置、斜杠命令位置、可读目录能力协商、Node 不变、工作流解析与升级清理。
+   补充核心用例，覆盖首条全量、增量与重置、斜杠命令位置、可读目录能力协商、Node 不变、工作流解析、升级清理与旧
+   `effectResources` 兼容。
 2. **desktop 交付与退役同一版本发布**：runtime 扩展点、清单前缀与增量、ACP setup 字段、工作流按存储路径解析、升级
    清理与删除 Effect 表的迁移、删除 Effect 模块与前端门禁。交付与退役必须在同一版本：只有交付会让 Agent 同时看到
    副本和清单，只有退役会让 Skill 消失。完成条件是新会话的 Workspace 中没有任何 Ora 写入的 Skill 文件，Agent 能按
    清单读取 Skill，旧受管目录按 D9 清理。
 3. **插件 SDK 与 Agent 插件**：去掉 `effectResources` 与 `effect/*` handler，按需接原生 Skill 与可读目录。由于 host
    忽略旧字段，这一步可以晚于第 2 步独立发布。
-4. **实现后**：按最终实现同步本文并标记 `implemented`；desktop 中引用 Effect 规格与核心用例的文档和测试注释随 Effect
-   代码一并删除。
+4. **实现后**：按最终实现同步本文并标记 `implemented`，同时更新本文核心用例的证据。`test-cases/desktop/core/effect/`
+   下的 Effect 核心用例在这一步删除：desktop 中引用它们的测试注释与文档随 Effect 代码一并删除，两边同一轮完成，
+   避免规格先删、代码仍引用。在此之前这些用例保留，作为现有 Effect 实现的证据。
 
 保持不变的行为：Skill Catalog 的增删改与导入、Skill 插件的包格式与发现、Skill Settings 的启动环境、MCP 的会话交付、
 Node 会话。从第 2 步开始改变的行为：Workspace 不再接收 Skill 目录，发送不再等待 Skill，会话通过清单得知 Skill，
