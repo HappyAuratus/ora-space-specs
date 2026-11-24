@@ -240,13 +240,17 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
 
 ## 核心测试用例
 
-本 ADR 获批后，在 `test-cases/desktop/core/workspace/` 补充核心用例，至少覆盖：探测三态的分类（明确消息且无
-`.git` 才是 `notRepository`；损坏、不可读、符号链接上方损坏、超时、清理中都是 `unknown`；嵌套目录是
-`repository`）；能力每次列出重新探测、`git init` 后翻转；六个 Git 审阅操作的统一拒绝及先于基准检查；`unknown`
-与列表失败保持原有行为；变更面板、diff 链接、worktree 入口与对话框的降级；拒绝后重新探测；定时任务表单只在
-`notRepository` 时拦截后端必然拒绝的保存，以及未冻结已启用任务的停用缺口（ora-space/circus#1472）；探测不受语言
-环境影响。证据钉在 desktop `c9a76541`，非 Git 目标不能保存为 active 的义务继续由
-`test-cases/desktop/core/scheduled-task/admission-and-approval.md` 承担，本目录只链接，不重复登记。
+本 ADR 的核心用例维护在 [`test-cases/desktop/core/workspace/`](../../../../test-cases/desktop/core/workspace/README.md)，
+证据钉在 desktop `c9a76541`：
+
+- [探测分类](../../../../test-cases/desktop/core/workspace/probe-classification.md)：三态分类、损坏仓库不报普通目录、
+  嵌套目录、重新探测、时限、清理租约与语言环境。
+- [入口降级](../../../../test-cases/desktop/core/workspace/git-entry-degradation.md)：Git 审阅操作守卫、`unknown`
+  保持原有行为、变更面板、worktree 入口、拒绝后重探与定时任务表单。
+
+非 Git 目标不能保存为 active 的义务继续由
+[Scheduled Task 接纳与授权](../../../../test-cases/desktop/core/scheduled-task/admission-and-approval.md#local-activation-must-require-a-git-project-and-explicit-consent)
+承担，本目录只链接，不重复登记。
 
 ## 落地顺序
 
