@@ -1,10 +1,10 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 工作流 Agent 单次发送默认按进展等待，超长静默须显式选择
 
-工作流 Agent 的 `wait` 从本次实际发送或最后一次可归属进展起计时，连续静默 30 分钟后结束本轮。确需容忍长时间静默的 Desktop 节点可显式选择 `unbounded`。本 ADR 已批准。Desktop 实施前仍执行现行规则。
+工作流 Agent 的 `wait` 从本次实际发送或最后一次可归属进展起计时，连续静默 30 分钟后结束本轮。确需容忍长时间静默的 Desktop 节点可显式选择 `unbounded`。Desktop 已实施该策略，重新挂载的隔离边界见下文。
 
 ## 继承与修改
 
@@ -69,10 +69,8 @@ status: approved
 | 继续让旧图无限等待或按总时长终止 | 前者保留已知挂起路径，后者会中止持续报告进展的长任务。 |
 | `waitForever`、`0` / `null` 哨兵、`manual` | `unbounded` 与旧 `wait` 区分明确。哨兵会与默认值或分钟数混淆，`manual` 容易被读成等待人工输入。 |
 
-## 未解决问题与落地顺序
+## 实施边界
+
+[Desktop #803](https://github.com/ora-space/desktop/pull/803) 已合并。[四组核心用例](../../../../test-cases/desktop/core/workflow/prompt-inactivity.md) 按固定产品版本记录验证结果。取消未确认后，同一连接重新挂载原 provider 会话仍可能收到旧回合的迟到流量。该路径与既有超时和显式取消恢复共用，由 [#1392](https://github.com/ora-space/circus/issues/1392) 单独承接，对应隔离义务为 `Partial`。
 
 Cloud 混合版本支持及无法归属具体委托的 provider 适配另行处理。
-
-1. 规格批准时，在[核心用例](../../../../test-cases/desktop/core/workflow/prompt-inactivity.md)中固定四组验证义务，并记录现有证据的边界。
-2. Desktop 实现基于包含 `CancelTurn` 的 `main`，按冻结配置、续期判据和到期顺序验证运行时、工作流与界面。
-3. 产品变更合并后，用固定版本测试补充证据，更新实施注记并将本 ADR 转为 `implemented`。
