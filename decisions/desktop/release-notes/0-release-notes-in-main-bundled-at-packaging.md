@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Desktop 更新日志随 main 维护，打包时检查并内置到安装包
