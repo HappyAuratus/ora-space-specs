@@ -391,7 +391,8 @@ _Avoid_: worktree as the domain identity, checkout path as Workspace identity
 `main worktree` 是 Project 的 Main Workspace 在目标 Node 所在环境中对应的主 Git checkout。
 Main Workspace 本身是一个独立的 Workspace，具有自己的 `WorkspaceId` 和 `WorkspaceLocation`；
 当前实现不为它建立 `worktrees` 表记录；第一版要求该 Workspace 及其 checkout 预先存在，Ora
-只以它为基准创建 task worktree。
+只以它为基准创建 task worktree。Desktop 普通目录项目没有 main worktree，见
+[Workspace Git Capability](#workspace-git-capabilityworkspace-git-能力)。
 _Avoid_: Controller checkout, local worktree, task worktree
 
 ### Task Worktree
@@ -403,11 +404,12 @@ _Avoid_: main worktree, workspace root, task checkout as a separate identity
 
 ### Workspace Git Capability（Workspace Git 能力）
 
-Desktop 本机目录 Workspace 在被列出时刻实测得到的“Git 审阅操作能否作用于该目录”，取值
-`repository` / `notRepository` / `unknown`；它不是项目属性，不存储，`unknown` 表示无法确定而非否定。
-Desktop 项目可以是普通目录，此时其 Main Workspace 没有 main worktree。定义来源是
+Desktop 列出一个目录存在的本机 Workspace 时，对该目录做一次 Git 工作树探测得到的结果，取值
+`repository`（从该目录运行的 Git 命令作用于某个工作树）、`notRepository`（Git 明确回答不在任何仓库内，且目录
+及其祖先都没有 `.git` 条目）或 `unknown`（无法确定，不等于否定）。它属于这次列出的 Workspace 目录，不是项目
+属性，也不存储。Desktop 项目可以是普通目录，此时其 Main Workspace 没有 main worktree。定义来源是
 [Desktop 本机目录项目决策](../decisions/desktop/core/workspace/0-local-directory-project-with-probed-git-capability.md)。
-_Avoid_: repository kind, Git project flag, plain project as a project type
+_Avoid_: repository kind, Git project flag, Desktop plain folder as a project type
 
 ## Node Process
 

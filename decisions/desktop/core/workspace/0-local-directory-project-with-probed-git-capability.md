@@ -9,10 +9,10 @@ Desktop 的项目是一个本机目录：添加项目只要求目录存在，会
 `unknown` 三态之一，不从存储的项目数据推断、也不缓存。只有 Git 明确回答“不在任何仓库内”且目录及其祖先都没有
 `.git` 条目时才判为 `notRepository`；其余无法确定的情况一律是 `unknown`，客户端按原有行为处理。依赖 Git 的入口
 据此降级：变更面板改为说明、worktree 任务入口隐藏、Git 操作在后端返回带类型的 `workspace_not_git_repository`、
-定时任务表单拦截后端必然拒绝的保存。
+定时任务表单在 `notRepository` 时提前拦截后端必然拒绝的保存。
 
-本 ADR 为 `proposed`，等待 owner 评审。所述行为已由 ora-space/desktop#812 实现并合并；该 PR 先于本决策合并是
-owner 在 ora-space/circus#1400 下的安排。涉及的模块是 Desktop 的 workspace/project（契约 `WorkspaceDirectory`、
+本 ADR 为 `proposed`，等待 owner 评审。所述行为已由 ora-space/desktop#812 与 ora-space/desktop#818 实现并合并，
+本文核对的证据基线是 desktop `c9a76541`；实现先于本决策合并是 owner 在 ora-space/circus#1400 下的安排。涉及的模块是 Desktop 的 workspace/project（契约 `WorkspaceDirectory`、
 `WorkspaceGit`，后端 Workspace 列表与 Git 审阅操作，gitlancer 的工作树探测）以及使用它的变更面板、worktree
 任务入口和定时任务表单。兼容性边界：已有 Git 项目的行为不变；`unknown`、目录缺失、远程 Workspace 和列表失败
 都回落到原有行为。本 ADR 只覆盖 Desktop 本机目录，不决定 Cloud 是否支持目录项目（见 D8），也不承担任何数据
@@ -33,8 +33,9 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
   前提上。
 - 自动 `git init` 会在用户目录里留下用户没要求的 `.git`，改变其他工具（编辑器、同步盘、外层仓库）对该目录的
   判断，且无法安全地自动撤销。
-- 项目存储不记录“这是不是 Git 项目”作为事实：用户可以随时在 Ora 之外 `git init` 或删除 `.git`，任何存储的标记
-  都会过期（见 D2）。
+- 项目存储里没有可信的“这是不是 Git 项目”标记：项目的 `repository_kind` 由 `Project::new` 固定写为 `"git"`，
+  不描述目录的任何实际状态；即便存储真实标记，用户也可以随时在 Ora 之外 `git init` 或删除 `.git`，标记会过期
+  （见 D2）。
 
 ### D2：Git 能力在读取时按目录探测，三态表达，不存储
 
@@ -52,15 +53,18 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
 - 探测对象是每个列出的 Workspace（项目主 Workspace 与 worktree 任务的隔离 Workspace）在列出时刻解析出的目录；
   目录不存在时为 `{ kind: "missing", path }`，非本机 checkout 为 `{ kind: "remote" }`，二者都不携带 Git 能力。
 - 每次列出都重新探测，结果不缓存、不写库；同一次列出内各 Workspace 以有限并发探测。
-- 单次探测有固定时限（5 秒），超时记为 `unknown`。时限约束 Git 进程及其输出，目录 `stat` 不在其内。
+- 单次探测有固定时限（5 秒），超时记为 `unknown`。时限约束 Git 进程的运行与等待其输出（含 Git 退出后仍占着
+  输出管道的子进程）；不约束超时 kill 之后操作系统迟迟无法回收的 Git 进程（例如卡在不可中断的文件系统等待），
+  也不约束探测前后的 `.git` `stat` 检查。
 - 探测在 Workspace 目录内启动 Git 进程，因此与其他 checkout 读取者一样持有 worktree 使用租约；但它只“尝试”取得
   共享租约：清理正持有或等待该 Workspace 时不等待，直接记为 `unknown`。列表不能被一次删除阻塞，正被清理的
   checkout 也没有值得报告的能力。
 
 为什么在读取时探测而不存储：
 
-- 能力的真实来源是磁盘上的目录与 Git 本身。项目表里的 `repository_kind` 之类数据只描述“添加时是什么”，与当前
-  磁盘状态没有同步机制；据此隐藏或展示入口会在用户 `git init` 或删 `.git` 后给出错误判断。
+- 能力的真实来源是磁盘上的目录与 Git 本身。项目表里的 `repository_kind` 对所有 Desktop 项目都是 `"git"`，
+  不携带目录信息；任何存储标记与磁盘状态之间也没有同步机制，据此隐藏或展示入口会在用户 `git init` 或删 `.git`
+  后给出错误判断。
 - 每个 Workspace 一次轻量 `rev-parse` 的代价可控，且与 D5 的操作守卫共用同一判定，客户端看到的能力与操作实际
   的行为一致。
 - 隔离 Workspace 也探测，而不是按“它是 Ora 建的 worktree”跳过：跳过就是从存储数据推断，正是本决策排除的做法。
@@ -73,7 +77,7 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
 | --- | --- | --- |
 | 退出 0，输出 `true` | — | `repository` |
 | 退出 0，输出 `false`（裸仓库、元数据目录） | — | `unknown` |
-| 非 0 退出，stderr 含 `not a git repository (or any` | 规范化后的目录及其所有祖先都没有任何 `.git` 条目 | `notRepository` |
+| 非 0 退出，stderr 含 `not a git repository (or any`（即向上发现失败的两种措辞：`… (or any of the parent directories)` 与在文件系统边界停下的 `… (or any parent up to mount point <path>)`） | 规范化后的目录及其所有祖先都没有任何 `.git` 条目 | `notRepository` |
 | 同上 | 任一层存在 `.git` 条目（含损坏的目录、悬空的符号链接） | `unknown` |
 | 同上 | 规范化路径或检查 `.git` 时出现 IO 错误（如无权限） | `unknown` |
 | 其他非 0 退出（所有权不受信任、配置损坏、`not a git repository: <path>` 形式的断链 `.git` 文件） | — | `unknown` |
@@ -88,10 +92,13 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
   上方损坏的 `.git`。
 - **嵌套在外层 checkout 内的普通子目录判为 `repository`**：从该目录运行的 diff、status、commit 实际作用于外层
   checkout，能力报告必须与操作行为一致；把它说成普通目录会隐藏实际可用、且确实会修改外层仓库的操作。
-- **消息分类不受用户语言影响**：探测命令单独设置 `LC_ALL=C`，使 Git 的诊断保持英文。只对按消息文本分类的
-  命令这样做，其他 Git 命令及其钩子保留用户的语言环境。
-- **探测判定刻意比“能否尝试操作”的判定严格**：worktree 任务创建前的仓库校验把任何非 0 退出都当作“不是仓库”，
-  因为它只决定是否尝试；探测的结果会展示给用户，必须只接受 Git 的明确回答。两者不得合并。
+- **消息分类不受用户语言影响**：gitlancer 的所有 Git 命令默认导出 `LANG=C`，但调用方环境里的 `LC_ALL` 会压过它。
+  探测命令（以及同样按 stderr 文本分类的未跟踪文件 diff）额外设置 `LC_ALL=C`；其他命令不额外设置 `LC_ALL`，
+  以免覆盖用户钩子与路径处理所依赖的 `LC_CTYPE`。
+- **探测判定刻意比“能否尝试操作”的判定严格**：worktree 任务创建前的仓库校验与定时任务的 Git 资格校验（解析
+  基准分支、校验 active 目标）都使用 `discover_repository` 这一粗判定，把任何非 0 退出都当作“不是仓库”，因为
+  它们只决定是否尝试；探测的结果会展示给用户，必须只接受 Git 的明确回答。两者不得合并。已知局限：损坏或不受
+  信任的仓库在这两处得到的是“需要 Git 仓库”一类的拒绝，而不是指出仓库损坏（见“本决策未解决的问题”）。
 
 ### D4：`unknown` 与任何缺少答案的状态都保持原有行为
 
@@ -99,7 +106,7 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
 
 | 可用性 | 来源 | 行为 |
 | --- | --- | --- |
-| `checking` | 共享 Workspace 列表尚未加载 | 依赖 Git 的读取暂不发出，入口保持加载态 |
+| `checking` | 共享 Workspace 列表尚未加载 | 依赖 Git 的读取暂不发出：需要 Git 数据的视图（变更面板、worktree 对话框的分支列表）显示加载态，会话中的 diff 链接等待结果；侧栏与输入框中的新建 worktree 入口保持可见 |
 | `notRepository` | 列表中目标 Workspace 为 `present` 且 `git: notRepository` | 按 D6 降级 |
 | `available` | 其余一切：`repository`、`unknown`、`missing`、`remote`、目标不在列表中、列表请求失败 | 原有行为 |
 
@@ -137,13 +144,25 @@ Desktop 项目以一个本机目录作为主 Workspace 的位置。添加项目�
 | worktree 任务对话框（被旧状态打开时） | 显示说明，不列分支、不可提交；分支列表等探测结果出来后才请求 | 避免对普通目录发出 Git 分支查询 |
 | 后端创建 worktree 任务 | 沿用既有的 `worktree_requires_git_repository` 拒绝 | 创建前的仓库校验先于本决策存在；见 D3 末条 |
 | Git 审阅操作 | 后端返回 `workspace_not_git_repository` | D5 |
-| 定时任务 | 后端拒绝需要解析或使用项目分支的保存（新建、换到该项目）以及启用；不涉及这些的保存（例如已冻结基准分支的停用任务改名）照常允许。表单恰好拦截后端会拒绝的保存，并在项目选择旁说明原因；列表上的启用开关对普通目录项目改为打开表单；停用始终可用 | 见下 |
+| 定时任务 | 后端拒绝四类保存：新建任务；把任务换到普通目录项目；未冻结基准分支（`worktreeBaseBranch` 为空的旧任务）的任何保存；启用。已冻结基准分支、项目不变且保持停用的任务可以保存。表单只在 `notRepository` 时、只拦截上述后端必然拒绝的保存，并在项目选择旁说明原因；列表上的启用开关对普通目录项目改为打开表单 | 见下 |
 
-定时任务的规则继承[定时任务执行归属根决策](../scheduled-task/0-local-and-cloud-execution-ownership.md)：其 D4、
-D8 与不变量 12 已要求保存为 active 的 local 任务以 Git 仓库为目标、每次接纳再次检查、不得降级为直接在原目录
-执行。本决策不修改这些规则，只规定普通目录下的表现：后端以既有的定时任务资格校验拒绝（公开错误为 `invalid_request`），
-而不是因分支解析失败报告内部错误；前端用 D4 的可用性提前说明，不让用户提交必然失败的保存。前端拦截以后端规则为准，二者不一致时
-修正前端，不放宽后端。
+定时任务的 Git 资格来自[定时任务执行归属根决策](../scheduled-task/0-local-and-cloud-execution-ownership.md)。
+其 D8 写的是“保存 local 任务时检查目标项目目录存在、是 Git 仓库且模型配置可用；每次接纳时再次检查”，没有限定
+active；只有其 D4 与不变量 12 把“必须以 Git 仓库为目标”限定为保存为 active 的 local 任务。现有实现允许已冻结
+基准分支、保持停用的任务在普通目录上保存，这是与 D8 字面不一致的既有行为；本决策只记录它，不修改，D8 措辞的
+对齐留给 scheduled-task 叶子的后续决策或 ora-space/circus#1472。
+
+普通目录下的表现：
+
+- 后端拒绝时返回通用的 `invalid_request`，而不是因分支解析失败报告内部错误。这也是用户在 `unknown` 时看到的
+  错误：资格校验用 D3 末条的粗判定，`unknown` 的目录可能同样被拒，此时表单不拦截，后端的拒绝照常显示。是否
+  改用带类型的错误码由 scheduled-task 叶子的后续决策或 ora-space/circus#1472 承接。
+- 表单只在 `notRepository` 时拦截，并且只拦截后端必然拒绝的保存：新建与换项目必然解析基准分支（当前 Desktop
+  项目不持久化 `default_branch`，只能从目录解析），未冻结的旧任务保存时同样要解析，启用则要校验 active 目标。
+  表单与后端规则不一致时修正表单，不放宽后端。
+- 已启用且未冻结基准分支的旧任务，在普通目录上目前不能通过保存或列表开关停用：停用也走保存，会先解析分支而被
+  拒。当前可用的停止路径是撤销无人值守同意（按定时任务根决策 D8，撤销即自动停用，不解析分支）或删除任务。
+  停用是否应跳过分支解析，见“本决策未解决的问题”，由 ora-space/circus#1472 承接。
 
 不受影响的入口：会话、Agent 读写、文件面板等不依赖 Git 的功能在普通目录上照常工作，不读取 Git 能力。
 
@@ -170,14 +189,15 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
 
 - 只约束 Desktop 本机目录的 Workspace；非本机 checkout 报告为 `remote`，不探测、不降级，保持原有行为。
 - `WorkspaceGit` 三态与 `workspace_not_git_repository` 是 Desktop 内部契约，不作为 Cloud 或 Node 协议的一部分，
-  也不意味着 Cloud 要采用“读取时探测”的模型。选 B 时 Cloud 项目在执行侧总是 Git 仓库，选 A 时其能力来源也
-  可能是项目类型而非探测，这些由 #1444 及其后续 ADR 决定。
+  也不意味着 Cloud 要采用“读取时探测”的模型；Cloud 侧的能力来源由 #1444 及其后续 ADR 决定。
+- D1 反对自动 `git init` 的理由针对的是用户自己的目录，不评价 #1444 选项 B（在受管副本上建内部 Git 种子）。
 - Cloud 侧决策落地后若需要 Desktop 呈现 Cloud 目录项目，应另立后续 ADR，说明它与本决策三态的关系。
 
 ## 不变量
 
 1. 添加 Desktop 项目不要求目录是 Git 仓库，Ora 从不自动在用户目录中执行 `git init`。
-2. Workspace 的 Git 能力只来自列出时刻对磁盘目录的探测，从不读取或写入存储的项目数据。
+2. Workspace Git 能力只来自列出时刻对磁盘目录的探测，从不读取或写入存储的项目数据。（定时任务资格按其根决策
+   读取冻结的基准分支，不属于 Workspace Git 能力。）
 3. 只有 Git 明确回答“不在任何仓库内”且规范化目录及其所有祖先都没有 `.git` 条目时，能力才是 `notRepository`。
 4. 损坏、不可读或不受信任的仓库、IO 错误、超时、Git 缺失和清理进行中都报告为 `unknown`，从不报告为 `notRepository`。
 5. 嵌套在外层 checkout 内的目录报告为 `repository`，Git 审阅操作作用于外层 checkout。
@@ -187,14 +207,15 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
    不先报告基准缺失。
 8. 列表探测从不等待 worktree 清理；正在清理的 checkout 报告为 `unknown`。
 9. 在 `notRepository` 项目上不提供新建 worktree 任务的入口，变更面板不发出 diff 与 status 查询。
-10. 定时任务表单拦截的保存与后端拒绝的保存一致；active 的 local 定时任务必须以 Git 仓库为目标的规则不变。
-11. 探测结果的分类不受用户语言环境影响，其他 Git 命令的语言环境不被改动。
+10. 定时任务表单只在 `notRepository` 时拦截，且只拦截后端必然拒绝的保存；`unknown` 时后端的拒绝照常显示。
+    active 的 local 定时任务必须以 Git 仓库为目标的规则不变。
+11. 探测结果的分类不受用户语言环境影响；只有按 stderr 文本分类的命令额外设置 `LC_ALL`。
 
 ## 为什么不是这些替代方案
 
 | 方案 | 取舍 |
 | --- | --- |
-| 从存储的项目数据（如 `repository_kind`、默认分支）推断能力 | 零进程开销，但只反映添加时的状态；用户在 Ora 外 `git init` 或删 `.git` 后判断即失效，违反不变量 2。隔离 Workspace 按“Ora 建的 worktree”跳过探测同理 |
+| 从存储的项目数据（如 `repository_kind`、默认分支）推断能力 | 零进程开销；但 `repository_kind` 对所有 Desktop 项目都是 `"git"`，不含目录信息，任何存储标记在用户于 Ora 外 `git init` 或删 `.git` 后也会失效，违反不变量 2。隔离 Workspace 按“Ora 建的 worktree”跳过探测同理 |
 | 添加普通目录时自动 `git init` | 后续所有功能都能沿用 Git 链路，实现最省；但在用户目录留下未要求的 `.git`，改变外层仓库、编辑器与同步工具的行为，且无法安全撤销，违反不变量 1 |
 | 嵌套在外层 checkout 内的目录当作普通目录 | 更贴合“我添加的是这个子目录”的直觉；但 diff、commit 实际作用于外层仓库，隐藏入口不能阻止 Agent 或用户在那里使用 Git，能力报告会与操作行为相悖，违反不变量 5 |
 | 任何 Git 失败都当作普通目录 | 分类最简单，界面也更“干净”；但损坏或不受信任的仓库会被告知“不是 Git 仓库”，诱导重新 `git init`，并掩盖真正需要修复的错误，违反不变量 4 |
@@ -209,23 +230,33 @@ Cloud v2 的项目当前绑定一个外部 HTTPS 仓库分支，会话目录、�
   承接的 Cloud ADR 定义能力来源与降级，必要时另立 Desktop 后续 ADR 说明呈现方式。本决策不预置任何 Cloud 协议。
 - **普通目录上的变更审阅替代**：普通目录目前没有“Agent 改了什么”的审阅视图。若需要基于文件快照的审阅，涉及
   快照存储与回收，属于后续决策。
-- **定时任务 Git 资格的错误类型**：后端对普通目录项目的定时任务保存以通用的 `invalid_request` 拒绝（前端依据
-  能力提前说明，不依赖错误码）。是否为此单列带类型的错误码，留待定时任务模块后续决策。
+- **定时任务 Git 资格的错误类型**：后端对普通目录项目（以及粗判定失败的 `unknown` 目录）的定时任务保存以通用的
+  `invalid_request` 拒绝，前端在 `notRepository` 时依据能力提前说明，不依赖错误码。是否单列带类型的错误码，由
+  scheduled-task 叶子的后续决策或 ora-space/circus#1472 承接。
+- **停用未冻结的已启用任务**：普通目录上，已启用且未冻结基准分支的旧任务停用会因解析分支被拒，目前只能撤销同意
+  或删除。停用是否应跳过分支解析，以及定时任务根决策 D8 的措辞如何与既有行为对齐，由 ora-space/circus#1472 承接。
+- **区分“不是仓库”与“仓库损坏”**：worktree 任务创建与定时任务资格使用粗判定 `discover_repository`，损坏或不受
+  信任的仓库得到“需要 Git 仓库”的拒绝。是否让这两处也区分损坏的仓库，留待后续决策；本决策不改代码。
 
 ## 核心测试用例
 
 本 ADR 获批后，在 `test-cases/desktop/core/workspace/` 补充核心用例，至少覆盖：探测三态的分类（明确消息且无
 `.git` 才是 `notRepository`；损坏、不可读、符号链接上方损坏、超时、清理中都是 `unknown`；嵌套目录是
 `repository`）；能力每次列出重新探测、`git init` 后翻转；六个 Git 审阅操作的统一拒绝及先于基准检查；`unknown`
-与列表失败保持原有行为；变更面板、diff 链接、worktree 入口与对话框的降级；拒绝后重新探测；定时任务表单拦截与
-后端拒绝一致；探测不受语言环境影响。
+与列表失败保持原有行为；变更面板、diff 链接、worktree 入口与对话框的降级；拒绝后重新探测；定时任务表单只在
+`notRepository` 时拦截后端必然拒绝的保存，以及未冻结已启用任务的停用缺口（ora-space/circus#1472）；探测不受语言
+环境影响。证据钉在 desktop `c9a76541`，非 Git 目标不能保存为 active 的义务继续由
+`test-cases/desktop/core/scheduled-task/admission-and-approval.md` 承担，本目录只链接，不重复登记。
 
 ## 落地顺序
 
-1. **desktop**：ora-space/desktop#812 已实现并合并 D1–D7（契约、后端探测与守卫、gitlancer 分类、前端各入口
-   降级与文档）。已有 Git 项目的行为保持不变；从该版本起普通目录项目按本决策降级。
+1. **desktop**：ora-space/desktop#812 实现 D1–D7（契约、后端探测与守卫、gitlancer 分类、前端各入口降级与文档），
+   ora-space/desktop#818 补上未冻结旧任务的表单拦截、清理租约下的列表测试与时限说明；二者合并后的 desktop
+   `c9a76541` 是本文的证据基线。已有 Git 项目的行为保持不变；从该版本起普通目录项目按本决策降级。
 2. **specs / 评审**：owner 评审本 ADR，按反馈纠偏后标为 `approved`，并补充上节核心用例与其证据。
 3. **specs / 落地状态**：实现已先于评审合并，核对通过后可在同一变更中直接标为 `implemented`，并按生命周期
    精简正文（删除仅为评审服务的推测与实现细节）。若评审改变了已实现的行为，先在 desktop 修正实现，再转为
    `implemented`。
-4. **后续**：ora-space/circus#1444 有结论后，按其选项决定是否另立 ADR；本决策的 Desktop 本机范围不随之改变。
+4. **后续**：ora-space/circus#1472 处理未冻结已启用任务的停用与相关文档，不阻塞本 ADR 的状态推进，其缺口在核心
+   用例中如实标为 `Missing`；ora-space/circus#1444 有结论后，按其选项决定是否另立 ADR；本决策的 Desktop 本机范围
+   不随之改变。
