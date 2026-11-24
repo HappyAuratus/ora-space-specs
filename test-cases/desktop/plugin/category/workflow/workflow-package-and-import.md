@@ -149,7 +149,7 @@
 - Workflow 插件类别根决策 D4。
 - Workflow 插件类别根决策不变量 4。
 - [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
-  D2、D4：市场同名冲突持久跳过，安装与逐文档结果分开呈现。
+  D2、D4：市场同名冲突持久跳过，安装与逐文档结果分开呈现；冲突的可恢复性已由下一条冲突恢复决策修改。
 - [市场工作流冲突恢复后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261124-marketplace-workflow-conflict-recovery.md)
   D1–D3：市场冲突可恢复并由安装和卡片重试、以及升级首次冲突打开「未导入」报告弹窗。
 - [cloud/plugin-marketplace 后续决策](../../../../../decisions/cloud/plugin-marketplace/20261016-workflow-plugin-assets.md) D5：
@@ -200,13 +200,14 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 卸载只清理插件 Skill 投影与 agent 声明，不触碰工作流 | `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again`（待按新规则改写，收窄为存活副本不重导）走过卸载与重装，重装后工作流库里仍有卸载前导入的存活副本；Skill 投影与 agent 声明的清理范围仍由 `PluginHost::uninstall` 的实现路径保证 | `Partial` |
+| 卸载只清理插件 Skill 投影与 agent 声明，不触碰工作流 | `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again`（在新规则下仍成立，只覆盖存活副本）走过卸载与重装，重装后工作流库里仍有卸载前导入的存活副本；Skill 投影与 agent 声明的清理范围仍由 `PluginHost::uninstall` 的实现路径保证 | `Partial` |
 | 市场首次安装导入全部可用文档；pack 按成员身份导入 | `crates/backend` 的 `marketplace_install_imports_workflow_documents`; `crates/backend` 的 `pack_install_imports_workflow_documents_of_its_members` | `Covered` |
 | 升级只增不改：同路径内容变更跳过，新版本新增的路径独立导入 | `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` | `Covered` |
 | 用户对副本的编辑、改名和归档在升级后保持不变 | `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` 断言升级不重写已交付副本的图；改名与归档仍无直接断言 | `Partial` |
 | 来源键隔离不同 namespace 的同名插件，且跨版本稳定 | `crates/db` 的 `commits_the_copy_and_its_record_together` 与 `crates/backend` 的 `marketplace_upgrade_imports_only_new_documents` 证明同一来源路径跨版本只认一次；不同 namespace 使用相同 identifier 的隔离仍无直接断言 | `Partial` |
 | 旧安装首次升级补导入；历史本地导入及自建同名保留，首次冲突弹窗而已知冲突在升级保持中性摘要 | 旧测试 `crates/backend` 的 `marketplace_install_reports_a_name_conflict_once` 仍按前序「冲突一次后转为 `SkippedProcessed`」语义断言，待在 Desktop 实现运行改写；「旧安装没有来源记录时的首次升级补导入」与「已知冲突升级中性摘要」尚无直接断言 | `Missing` |
-| 存活副本来源记录跨卸载重装、重启保留；当前安装周期内已删除副本不复活且升级可与存活跳过区分 | 旧测试 `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again`、`a_deleted_workflow_is_not_resurrected_by_an_upgrade_or_retry` 与 `crates/db` 的 `a_record_survives_the_workflow_delete_and_a_later_reinstall` 按前序「卸载重装永久不恢复」语义编写，待在 Desktop 实现运行改写；重装恢复已删除副本、升级已删除副本可与 `SkippedProcessed` 区分以及进程重启后读取尚无直接断言 | `Missing` |
+| 存活副本来源记录跨卸载重装保留且不重复导入 | `crates/backend` 的 `reinstalling_the_package_does_not_import_the_documents_again` 卸载后重装，存活副本返回 `SkippedProcessed` 且没有第二份副本；`workflow_summary_tracks_marketplace_source_across_uninstall_and_reinstall` 断言重装后仍是同一存活副本并保持来源。进程重启后的读取尚无直接断言 | `Partial` |
+| 当前安装周期内已删除副本不复活，升级结果可与存活副本的 `SkippedProcessed` 区分；重装恢复已删除副本 | 旧测试 `a_deleted_workflow_is_not_resurrected_by_an_upgrade_or_retry` 断言升级与重试返回 `SkippedProcessed`，与新规则不符，待在 Desktop 实现运行改写；`crates/db` 的 `a_record_survives_the_workflow_delete_and_a_later_reinstall` 只证明删除副本时记录仍是 `imported`（断言消息待更新）；重装恢复尚无直接断言 | `Missing` |
 | 本地导入不受市场来源记录抑制，同名仍失败 | `crates/backend` 的 `importing_the_same_document_name_twice_refuses_the_second_import` 证明本地导入仍按同名拒绝；与市场来源记录共存的场景仍无直接断言 | `Partial` |
 | 导入副本是 `local` 命名空间的普通工作流，插件身份不进入它的身份 | `crates/backend` 的 `imports_workflow_package_documents_alongside_the_plugin` 断言插件 id 为 `local/ora.workflows` | `Covered` |
 
@@ -304,7 +305,7 @@ pack 的 workflow 成员卡片与单包卡片是同一个已安装卡片组件�
 
 ### 必须成立
 
-- 市场安装、Pack 安装与卡片重试响应含 `imported`、`failed` 或任意 `SkippedConflict` 时，以及升级响应含 `imported`、`failed` 或首次冲突时，弹出报告弹窗：对 `imported` 工作流沿用与本地 `.orax` 共用判定的逐工作流 MCP / Skill 依赖判定与去安装 / 去配置 / 去查看入口（当前页可直接跳转修复并关闭报告）；对 `SkippedConflict` 在独立的「未导入」分组逐项列出 `source_file`、冲突工作流名及恢复方法（Pack 条目同时显示成员身份并指向该 canonical Plugin ID 的已安装卡片）。每当报告弹窗因 `imported`、`failed` 或首次冲突打开时，同批次中的已知冲突也一并列入「未导入」分组并标为「仍未解决」；「未导入」条目不参与 MCP / Skill 依赖判定。安装/重试仅含存活副本 `SkippedProcessed`（及已删除副本），或升级仅含存活副本 `SkippedProcessed`、已知冲突与在装期间已删除副本时，不弹出报告弹窗，保持一行摘要。
+- 市场安装、Pack 安装与卡片重试响应含 `imported`、`failed` 或任意 `SkippedConflict` 时，以及升级响应含 `imported`、`failed` 或首次冲突时，弹出报告弹窗：对 `imported` 工作流沿用与本地 `.orax` 共用判定的逐工作流 MCP / Skill 依赖判定与去安装 / 去配置 / 去查看入口（当前页可直接跳转修复并关闭报告）；对 `SkippedConflict` 在独立的「未导入」分组逐项列出 `source_file`、冲突工作流名及恢复方法（Pack 条目同时显示成员身份并指向该 canonical Plugin ID 的已安装卡片）。每当报告弹窗因 `imported`、`failed` 或首次冲突打开时，同批次中的已知冲突也一并列入「未导入」分组并标为「仍未解决」；「未导入」条目不参与 MCP / Skill 依赖判定。安装仅含存活副本 `SkippedProcessed`、卡片重试仅含存活副本或已删除副本，或升级仅含存活副本 `SkippedProcessed`、已知冲突与在装期间已删除副本时，不弹出报告弹窗，保持一行摘要。
 - `agentConfig: null` 与 `undefined` 一致视为无插件绑定，既不使依赖报告弹窗崩溃，也不在卸载检查中
   误计为不可读。
 - 四个卸载入口均同时扫描工作流的草稿与已发布快照，列出引用待卸载插件的工作流与节点并给出警告，但
@@ -326,7 +327,7 @@ pack 的 workflow 成员卡片与单包卡片是同一个已安装卡片组件�
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 市场卡片、详情页、升级、Pack 安装与卡片重试在含导入/失败或需弹窗的冲突时弹出报告弹窗（分别展示依赖与「未导入」分组并支持修复跳转） | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `reports workflow dependencies after a marketplace install`、`reports workflow dependencies after a marketplace update`、`reports workflow dependencies after installing from the detail page`、`reports workflow dependencies after upgrading from the detail page`、`reports workflow dependencies after a Pack install`、`resolves dependencies in-pane when upgrading from the plugin manager`、`opens the MCP configuration editor from a marketplace card report`；`retries failed workflow document imports from the installed card` 在一条 `skipped_processed` 与一条 `failed` 并存时只断言弹窗打开，未断言修复跳转；安装/卡片重试冲突、升级首次冲突、已知冲突在弹窗开时标为「仍未解决」、Pack 成员卡片指向及「未导入」不进依赖判定尚无直接断言 | `Partial` |
-| 安装与重试仅含跳过/已删除副本，或升级仅含存活跳过、已知冲突与已删除副本时保持摘要、不弹出报告 | 没有测试断言「无弹窗触发项时保持摘要不弹窗」（含全跳过、升级仅已知冲突与升级仅已删除副本），上述任何入口都没有；也没有测试调用 `marketplaceWorkflowReportInput` 或 `marketplaceReportOutcomes` | `Missing` |
+| 安装仅含存活跳过、卡片重试仅含存活跳过或已删除副本，或升级仅含存活跳过、已知冲突与已删除副本时保持摘要、不弹出报告 | 没有测试断言「无弹窗触发项时保持摘要不弹窗」（含全跳过、升级仅已知冲突与升级仅已删除副本），上述任何入口都没有；也没有测试调用 `marketplaceWorkflowReportInput` 或 `marketplaceReportOutcomes` | `Missing` |
 | `agentConfig: null` 按无绑定处理，安装报告与卸载检查口径一致 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `reports a marketplace install whose Agent node has a null agent config`；`packages/app-shell/src/features/settings/workflow-dependency-impact.test.ts` 的 `reads an explicit null agent config as a workflow with no dependencies` | `Covered` |
 | 四个卸载确认入口扫描草稿与已发布快照，列出依赖工作流与节点并只警告不阻止 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `names the workflows that depend on a plugin before uninstalling it`、`names affected workflows before uninstalling from the detail page`、`names the workflows a Pack uninstall would break`、`names workflows whose published snapshot still binds a removed plugin`；`packages/app-shell/src/features/settings/atoms-settings.test.tsx` 的 `names workflows that depend on a plugin Skill before uninstalling from Skills settings`；`packages/app-shell/src/features/settings/workflow-dependency-impact.test.ts` | `Covered` |
 | 检查与刷新期间禁用确认按钮，目录/单图异常与空目标分支行为准确且不阻断卸载 | `packages/app-shell/src/features/settings/plugins-settings.test.tsx` 的 `disables uninstall confirmation until the workflow impact check finishes`、`re-checks and disables uninstall confirmation while cached workflow data refreshes`、`allows uninstall with an explicit warning when workflow catalogs fail to load`、`keeps confirmed dependents visible when another workflow draft fails to load`、`does not reuse cached draft graphs when the refresh fails`、`skips fetching workflow drafts when the removed plugin owns no Skill or MCP targets`；`packages/app-shell/src/features/settings/use-workflow-uninstall-impact.test.ts` 的 `skips the workflow library when the catalogs resolve no bindable target` | `Covered` |
@@ -494,7 +495,7 @@ Tauri/Rust 后端或真实远程市场。`retries failed workflow document impor
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 成功重装恢复在装期间删除、卸载后才删除以及 0.6.0 遗留 `imported` 的已删除副本，同时保留存活（含改名/编辑）副本及其来源且不建重复副本 | Desktop 实现待补测试（同时改写旧 `reinstalling_the_package_does_not_import_the_documents_again` 与 `a_record_survives_the_workflow_delete_and_a_later_reinstall`） | `Missing` |
+| 成功重装恢复在装期间删除、卸载后才删除以及 0.6.0 遗留 `imported` 的已删除副本，同时保留存活（含改名/编辑）副本及其来源且不建重复副本 | Desktop 实现待补测试（为 `reinstalling_the_package_does_not_import_the_documents_again` 补充已删除副本分支，更新 `a_record_survives_the_workflow_delete_and_a_later_reinstall` 的断言消息；需要按新语义改写的是 `marketplace_install_reports_a_name_conflict_once` 与 `a_deleted_workflow_is_not_resurrected_by_an_upgrade_or_retry`） | `Missing` |
 | Pack 安装仅对 `InstallOutcome::PackInstalled.members` 中实际安装的成员开启新周期，已在装或失败成员的已删除副本不被恢复 | Desktop 实现待补测试 | `Missing` |
 | 重装恢复已删除副本遇同名（`COLLATE NOCASE`）时记录本周期 `conflict_skipped`、打开「未导入」报告，消除冲突后可经卡片重试或升级导入 | Desktop 实现待补测试 | `Missing` |
 | 重装恢复已删除副本遇非同名失败时条件删除旧 `imported` 记录回到「无记录」，随后卡片重试和升级可直接重试；条件删除自身失败时退回「修复后卸载重装」兜底 | Desktop 实现待补测试 | `Missing` |
