@@ -161,6 +161,18 @@ Catalog 行不进入清单。
 
 _Avoid_: 用“物化”“同步”描述当前的 Skill 交付；用“Skill 就绪”描述发送前提。
 
+## Agent 插件发现
+
+规则见[Agent 插件发现契约](../decisions/desktop/plugin/agent/0-discovery-contract.md)（`proposed`，评审通过前不构成系统承诺）。
+
+`Pre-session Discovery`（会话前发现）是在没有 Ora 会话 provider 时，由 Agent 插件回答一个 Workspace 中该 Agent 提供
+哪些模型和命令。它不创建 Ora 会话，不写会话历史。
+
+`Discovery Probe`（探测）是插件为一次会话前发现启动的、独立的一次性 Agent 进程及其中的临时 ACP 会话。它不是 Ora
+会话，不使用 Ora 正在使用的连接。
+
+`Agent Command`（命令）是 Agent 通过 ACP 上报的条目，Agent 自带的 skill 也以命令上报。它不是 Ora 管理的 Skill。
+
 ## Plugin
 
 插件相关术语必须区分“插件叫什么”“插件属于谁”和“插件的完整身份”。除非明确讨论某个旧版
