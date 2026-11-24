@@ -5,7 +5,7 @@
 
 ADR 为 `implemented`，证据固定在 desktop 合并提交
 [`4d89d2a8`](https://github.com/ora-space/desktop/commit/4d89d2a8343208f83d0485c0b55f76cd489a69ab)，路径相对 desktop 仓库根目录，行号指测试
-函数、`it` 或 `Deno.test` 的起始行。20 项义务中 12 项 `Covered`、
+函数、`it` 或 `Deno.test` 的起始行。21 项义务中 13 项 `Covered`、
 5 项 `Partial`、3 项 `Missing`；5 个用例都是 `Partial`。
 
 | 不变量 | 用例 | 状态 |
@@ -103,7 +103,10 @@ ADR D3、D5，不变量 4、7。
 
 ### 前置状态
 
-清单的日志分别：超过 10 个版本、某版超过 50 条、文字超过 500 码点、分类未知、缺一种语言、含控制或双向控制字符、含孤立的 UTF-16 代理项、同一版本出现多次、日期不存在、`schema` 未知；另有带未知字段、没有日志字段的清单。
+清单的日志分别：超过 10 个版本、某版超过 50 条、文字超过 500 码点、分类未知、缺一种语言、含控制或双向控制字符、同一版本出现多次、日期不存在、`schema` 未知；另有带未知字段、没有日志字段的清单。
+
+以上都是更新器能成功解析的清单。含孤立的 UTF-16 代理项的清单会被更新器整份拒绝，读取日志之前就失败，所以由生成端拦截：这样的日志文件
+被拒绝，不写出清单。
 
 ### 触发
 
@@ -127,7 +130,8 @@ ADR D3、D5，不变量 4、7。
 |---|---|---|
 | 每种不合规则的情形都整组隐藏 | [`apps/desktop/src-tauri/src/update/release_notes.rs:269`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L269) `hides_all_notes_when_any_of_them_is_unusable`、[`apps/desktop/src-tauri/src/update/release_notes.rs:249`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L249) `enforces_the_content_rules_of_the_notes_files`、[`apps/desktop/src-tauri/src/update/release_notes.rs:320`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L320) `hides_notes_that_repeat_a_version` | `Covered` |
 | 未知字段忽略、未知 `schema` 隐藏 | [`apps/desktop/src-tauri/src/update/release_notes.rs:353`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L353) `ignores_unknown_fields_and_hides_unknown_schemas` | `Covered` |
-| 打包检查与客户端共用样例 | [`scripts/release-notes.test.ts:161`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/scripts/release-notes.test.ts#L161) `the shared case with …` 与 [`apps/desktop/src-tauri/src/update/release_notes.rs:249`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L249) `enforces_the_content_rules_of_the_notes_files` 读同一份样例，包括孤立代理项、合法代理对、只有 U+FEFF 和 `+build` | `Covered` |
+| 打包检查与客户端共用样例 | [`scripts/release-notes.test.ts:161`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/scripts/release-notes.test.ts#L161) `the shared case with …` 与 [`apps/desktop/src-tauri/src/update/release_notes.rs:249`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/apps/desktop/src-tauri/src/update/release_notes.rs#L249) `enforces_the_content_rules_of_the_notes_files` 读同一份样例，包括合法代理对、只有 U+FEFF 和 `+build`；孤立代理项在客户端一侧是 JSON 解析失败 | `Covered` |
+| 含孤立代理项的日志在生成端被拒绝，不写出清单 | [`scripts/create-desktop-update-manifest.test.ts:167`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/scripts/create-desktop-update-manifest.test.ts#L167) `no updater manifest is written when a text holds a lone surrogate` | `Covered` |
 | “可更新”区块只按纯文本 | [`packages/app-shell/src/features/workspace/pending-update.test.tsx:53`](https://github.com/ora-space/desktop/blob/4d89d2a8343208f83d0485c0b55f76cd489a69ab/packages/app-shell/src/features/workspace/pending-update.test.tsx#L53) `shows the notes as plain text before the user installs` | `Covered` |
 | 隐藏的原因写进 Desktop 日志 | 没有断言日志内容的测试 | `Missing` |
 
