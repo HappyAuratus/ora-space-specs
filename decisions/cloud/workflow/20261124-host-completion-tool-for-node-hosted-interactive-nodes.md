@@ -32,7 +32,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 | 完成信号 ADR D7：不支持工具调用的 Agent 靠 `force` 兜底，不探测能力 | 按宿主 MCP ADR D4 的修改继承 | 不声明 HTTP MCP 的 Agent 以 `host_mcp_http_capability_missing` 失败（D4） |
 | 宿主 MCP ADR D1：文法、上限与共用样例，发送前逐字符校验 | 继承，不变 | D1 |
 | 宿主 MCP ADR D6：按能力派发、启动前准入 | 继承并扩展 | D4；“从失败处继续”是否同样准入见 O4 |
-| 宿主 MCP ADR D6：先持久化再发送，或重启时结束所有受影响的 execution | 选择后者 | D2；停靠会话算满足 |
+| 宿主 MCP ADR D6：先持久化再发送，或重启时结束所有受影响的 execution | 选择后者 | D2；停靠会话的旧 execution 怎样结算、是否记录原因见 O8 |
 | 宿主 MCP ADR D6：凭据只在持久 execution 记录处于非终态时有效 | 继承，不变 | D3 |
 | 宿主 MCP ADR D6：token 随 prompt 进入 Node 持久的会话命令输入，由使用方规定是否接受 | 决定：接受 | D7 |
 | 宿主 MCP ADR D2：“首次停住前没有收到 `initialize` / `tools/list`”由使用方处理 | 未定 | O1 |
@@ -69,8 +69,8 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
   的全部旧 Node，停不掉就不启动。所以重启必然换 Node，旧凭据没有一个仍有效。跨重启等待的节点保留完成策略与停住那一轮的信号；它的下一轮启动新 Agent，拿到新凭据。
   重建后的轮次与信号记录的 `turnKey` 不一致时，信号丢弃。
 - 同一 execution 的 start 若重发，必须携带逐字节相同的宿主列表；不靠重发轮换凭据。
-- 宿主 MCP ADR D6 的 execution 指 Node 协议的 execution：停靠的 `agent` 节点跨重启保留持久会话记录，旧 execution 已随
-  旧 Node 结束，下一轮是新的 execution，因此满足“重启时结束所有受影响的 execution”。
+- 宿主 MCP ADR D6 的 execution 指 Node 协议的 execution：停靠的 `agent` 节点跨重启保留持久会话记录，重启必然换 Node、
+  旧凭据全部失效，下一轮是新的 execution，因此满足“重启时结束所有受影响的 execution”。旧 execution 的结算与原因记录见 O8。
 
 **为什么不持久化凭据**：宿主 MCP ADR D6 允许“重启时结束所有受影响的 execution”代替持久化；Cloud 重启本来就中断
 全部执行，持久化只会多一处保存秘密。代价是 Cloud 以后若让 execution 活过重启，本条必须重新决定。
@@ -160,7 +160,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 
 ## 待 owner 决定
 
-下列取舍没有结论，本文不替 owner 选择；编号沿用评审过程，O2、O5 已写进 D2、D5。每项写明当前实现的做法，便于评审，它不等于决定。
+下列取舍没有结论，本文不替 owner 选择；编号沿用评审过程，O2、O5 的结论已写进 D2、D5。每项写明当前实现的做法，便于评审，它不等于决定。
 
 | # | 问题 | 选项 | 当前实现 |
 | --- | --- | --- | --- |
@@ -168,7 +168,8 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 | O3 | Agent 到不了 Cloud 端点的部署（多机、容器、沙箱） | A：不提供宿主能力，编辑器仍默认 `agent`，显式 `agent` 在启动准入被拒绝；B：这类部署的编辑器默认写 `end_turn`；C：出现这类部署时另立决策 | 只有单机部署，没有实现 |
 | O4 | “从失败处继续”是否与启动同样准入 | A：同样准入，缺能力即拒绝；B：只在派发时失败 | A |
 | O6 | 插件刷新在当前 prompt 结束后、下一条 prompt 获准进入 Agent 前重启进程。已结束轮次的 token 按 D3 失效。如果下一轮已排队并已签发 token，是否要在它交给新 Agent 前重签？完成信号 ADR D1 要求 Agent 替换时签发新 token，Node 目前不通知 Controller 这次重启 | A：沿用为该轮签发的 token，端点凭据随 execution 有效；B：重签该轮 token，需要 Node 协议通知重启 | A |
-| O7 | 端点凭据（URL 路径）是否会留在 Node 或 Agent 的可读存储里，留存时是否接受 | A：接受，与 D7 同一信任域；B：不接受，另行决定承载方式。先以检索结果为准 | 没有留存：一次真实 Node 与 OpenCode 的运行里，凭据不在 Node 的会话文件与数据库、OpenCode 的数据库与日志、Cloud 的数据库里；Claude Code 没有证据 |
+| O7 | 是否接受 Agent 自己的存储或宿主插件日志中的 Agent 自写 stderr 留存端点凭据（URL 路径）？Node 自身的持久输入与诊断继续遵守宿主 MCP ADR D3 | A：接受这两处的留存风险，与 D7 同一信任域；B：要求避免这两处留存，另行决定承载方式 | 一次真实 Node 与 OpenCode 的运行中，在检查的 Node 会话文件与数据库、OpenCode 数据库与日志、Cloud 数据库中未发现凭据；未验证 Claude Code |
+| O8 | 停靠会话跨重启时，旧 execution 是否要由 Cloud 在宿主 Server 开始服务前经正常结束路径结算，并记录有名字的原因（宿主 MCP ADR D6“启动时检查可恢复性”与 Controller 用例） | A：不要求，换 Node、凭据失效即可，Node 下次启动时自己把旧 execution 结算为 `interrupted`；要在继承表写明修改 D6 的这一条；B：保留会话，另由 Cloud 在提供服务前结算旧 execution 并记录重启原因；C：重启时连会话一起结束，放弃跨重启等待 | 非停靠会话在提供服务前结束并记录重启原因；停靠会话只保留，Cloud 不持久化 Node execution，不结算、不记录原因；Node 之后上报的结束事件没有对应会话，Cloud 只确认收到 |
 
 ## 风险与落地顺序
 
@@ -179,7 +180,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 
 落地顺序：
 
-1. **本 ADR 评审**：owner 定 O1、O3、O4、O6、O7，按结论改正文后转为 `approved`。同一变更在默认值 ADR 标题下加
+1. **本 ADR 评审**：owner 定 O1、O3、O4、O6–O8，按结论改正文后转为 `approved`。同一变更在默认值 ADR 标题下加
    `> 历史决策：` 指向本文，并依据最终方案补核心用例：工作流侧放在 `test-cases/cloud/workflow/`，Controller 侧
    的义务继续登记在[Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)。
 2. **`implemented`**：实现合入、证据齐备后，按最终实现同步本文与用例证据，缺口如实保留为 `Partial` / `Missing`。
