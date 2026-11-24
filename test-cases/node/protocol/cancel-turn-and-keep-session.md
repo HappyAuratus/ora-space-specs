@@ -10,10 +10,12 @@
 `198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
 30 条义务，它们的状态不在这次登记范围内。
 
-[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`approved`）
+[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`implemented`）
 修改了验证义务 10、13，并给 D3 情况表新增 detail `turn_processes_unstopped`：用例 10、13、19 各增加一行
 带“（轮次进程栅栏）”的义务，同样不另占编号；用例 13 中原有的“（尝试标记）”一行“保留会话的取消不杀任何进程”与新决策
-相反，改写为栅栏下的一致性测试。新增的义务尚未实现，状态为 `Missing`。栅栏自身的义务见
+相反，改写为栅栏下的一致性测试。这三行按 [desktop#807](https://github.com/ora-space/desktop/pull/807) 的合并提交
+[`447a59de`](https://github.com/ora-space/desktop/commit/447a59de6722500cae0be011860e63e5127a3b23) 登记：10、19 为
+`Covered`，13 为 `Partial`。取消决策自身的义务不在这次登记范围内。栅栏自身的义务见
 [轮次进程栅栏用例](turn-process-fence.md)。
 
 | 验证义务 | 核心用例 |
@@ -328,7 +330,7 @@ Agent 插件版本不在轮次边界清单中，一轮取消或失败结束。�
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 10：不在清单中的版本走兜底 | 尚未实现，无直接证据 | Missing |
-| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | 需要：只为其他平台登记的组合以 `turn_boundary_unverified` 结束、栅栏不运行的测试，以及清单按精确插件、版本与平台匹配的单测。候选：`apps/ora-node/tests/agent_session/turn_processes.rs` 的 `a_version_verified_only_on_another_platform_is_unverified`（只断言 detail）、`apps/ora-node/src/session/turn_cancel.rs` 的单测 `a_boundary_is_verified_for_its_exact_version_and_platform`（只认精确的插件、版本与平台；默认清单含 Linux 上的 OpenCode 0.6.11、不含 Claude 0.4.5），以及 `tests/agent_session/cancel.rs` 的 `another_version_of_a_listed_plugin_is_not_verified` | Missing |
+| 10（轮次进程栅栏）：清单按（插件，版本，平台）判定，只为其他平台登记的组合以 `turn_boundary_unverified` 结束 | [`a_boundary_is_verified_for_its_exact_version_and_platform`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/turn_cancel.rs#L111)：只认精确的插件、版本与平台，默认清单认可 Linux 上的 OpenCode 0.6.11，不认可同插件的 0.6.12、Claude 0.4.5 与只为 Windows 登记的版本；[`a_version_verified_only_on_another_platform_is_unverified`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L298)：只为 Windows 登记时，取消以 `turn_boundary_unverified` 结束会话；[`another_version_of_a_listed_plugin_is_not_verified`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L677)：清单只有同插件的另一版本时同样结束；[`a_stop_that_cannot_keep_the_session_runs_no_fence`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/limits.rs#L56)：未登记的版本被取消时，结束决定写入的那一刻本轮作业仍存活，栅栏没有运行 | Covered |
 
 ### 决策依据
 
@@ -434,7 +436,7 @@ D3（沿用会话 MCP 刷新 D5）、D4（Controller 等待终态），不变量
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 13：轮次边界一致性测试决定清单 | 尚未实现，无直接证据 | Missing |
-| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | 候选：desktop#807 的 `apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs` 中 `turn_boundary_conformance` 是按需运行的 ignored 测试，需要外部发布包，不在 CI 中运行。#1340 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。缺口：没有在 CI 中可重复的一致性证据；aarch64 未测；一致性场景不专门构造懒启动的常驻进程 | Missing |
+| 13（轮次进程栅栏）：一致性测试按（插件，版本，平台）经真实 Node 的栅栏运行五个场景，全部通过才登记。原“（尝试标记）”一行“保留会话的取消不杀任何进程”已被该决策取代 | [`turn_boundary_conformance`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/standalone/agent_sessions/turn_boundary.rs#L286)：以独立进程运行的 Node 驱动安装好的发布包，执行 `shell`、`subagent`、`background`、`detached`、`error` 五个场景与前后的普通轮次，按决策 D5 的通过条件判定；它标为 `#[ignore]`，需要外部发布包与 Deno，只按需运行。[circus #1340](https://github.com/ora-space/circus/issues/1340) 在 x86_64 Linux 上用它测得 OpenCode 0.6.11 五个场景各 5/5、Claude 0.4.5 `background` 0/3，这是运行记录，不作为证据登记。清单内容由 [`a_boundary_is_verified_for_its_exact_version_and_platform`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/turn_cancel.rs#L111) 断言：只登记 Linux 上的 OpenCode 0.6.11，Claude 0.4.5 不登记（由 [circus #1381](https://github.com/ora-space/circus/issues/1381) 承接）。缺口：一致性测试不在 CI 中运行，没有可重复的证据；aarch64 未测；场景不专门构造懒启动的常驻进程。后续：TODO(issue) | Partial |
 
 ### 决策依据
 
@@ -611,7 +613,7 @@ detail 为 `turn_processes_unstopped`。
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 19：D3 的每种情况结束会话并结算取消 | 尚未实现，无直接证据 | Missing |
-| 19（轮次进程栅栏）：`turn_processes_unstopped` 一行同样结束会话并结算取消；各种注入见[栅栏不干净用例](turn-process-fence.md#an-unclean-fence-ends-the-session-as-turn-processes-unstopped) | 尚未实现，无直接证据 | Missing |
+| 19（轮次进程栅栏）：`turn_processes_unstopped` 一行同样结束会话并结算取消；各种注入见[栅栏不干净用例](turn-process-fence.md#an-unclean-fence-ends-the-session-as-turn-processes-unstopped) | [`jobs_that_keep_coming_back_end_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L237)、[`an_unknown_fence_ends_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L264) 与 [`a_recheck_past_its_budget_ends_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/order.rs#L374)：栅栏或复扫不干净时会话以 `agent_failed`、detail `turn_processes_unstopped` 结束，尚未结算的取消得到 `session_ending`；[`a_cancel_accepted_during_an_unclean_fence_shares_its_end`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/order.rs#L109)：两个并入的取消都得到 `session_ending`。只在栅栏层断言的注入及其缺口见栅栏不干净用例 | Covered |
 
 ### 决策依据
 

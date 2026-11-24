@@ -17,6 +17,10 @@ Controller/v2 的协议接线仍由 [#1171](https://github.com/ora-space/circus/
 这 19 项义务按 [desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head
 [`198cc415`](https://github.com/ora-space/desktop/commit/198cc41517a837ec436a897655403adc790b8c0d)（尚未合入 main）登记直接证据：
 7 项 `Covered`、10 项 `Partial`、2 项 `Missing`。既有义务的证据按原固定提交 `28da0a4e` 保留，不因新决策改变状态。
+其中“轮次之间与保留会话不杀常驻进程”一项随[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)
+的实现，按 [desktop#807](https://github.com/ora-space/desktop/pull/807) 的合并提交
+[`447a59de`](https://github.com/ora-space/desktop/commit/447a59de6722500cae0be011860e63e5127a3b23) 改登记为 `Covered`，
+这 19 项现为 8 项 `Covered`、10 项 `Partial`、1 项 `Missing`。
 评审方在 `198cc415` 上用发布包 OpenCode 0.6.11 与 Claude 0.4.5 复测 EndSession 和导致会话结束的 CancelTurn、OpenCode 的
 SIGKILL 后重启（Claude 的重启复测在中间版本 `07c495e0`），作业都在报告停止前被杀；这是运行记录，不是可重复测试，不登记为证据。
 
@@ -600,7 +604,7 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
   作业存活时不记 `confirmed`。
 - 被杀的包括开发服务器、文件监视进程、MCP 与语言服务，以及会话中启动的共享守护进程，即使其他会话仍在使用。
 - 一轮正常完成后，Node 不发任何冻结或杀信号，带标记的常驻进程跨轮次存活。会话被保留的取消或失败之后，按
-  [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`approved`）只杀
+  [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`implemented`）只杀
   这一轮新起、且不在“这一轮开始前已启动、此刻仍存活的本尝试进程”所在会话中的进程，常驻进程同样存活；栅栏的义务见
   [轮次进程栅栏用例](../protocol/turn-process-fence.md)，本用例不重复登记。
 - 嵌套 Node 给子进程的值为 `外层:attempt`；外层尝试停止时内层 Node 及其全部尝试的进程被杀；内层 Node 只认领
@@ -618,7 +622,7 @@ EndSession、Agent 失败、导致会话结束的取消、Node 优雅关闭、No
 |---|---|---|
 | 每种结束方式都杀后台作业 | 两个部署插件分别在 EndSession、导致会话结束的取消、Node 优雅关闭、SIGKILL 后重启下，`cmd &` 与 `setsid` 作业在停止报告前退出、之后不再写入的真实 Node 测试 | Partial |
 | 守护进程随会话结束 | 会话中启动、其他会话仍在使用的守护进程随该会话结束被杀的测试 | Partial |
-| 轮次之间与保留会话不杀常驻进程 | 一轮正常完成后带标记的进程仍存活、会话被保留的取消之后轮次开始前的常驻进程仍存活的测试；保留会话的取消杀掉本轮进程由[轮次进程栅栏用例](../protocol/turn-process-fence.md)登记。候选测试为 desktop#807 的 `jobs_of_a_finished_turn_survive_the_next_turns_cancel` 与 `the_agents_own_helper_survives_a_kept_cancel` | Missing |
+| 轮次之间与保留会话不杀常驻进程 | 一轮正常完成后带标记的进程仍存活、会话被保留的取消之后轮次开始前的常驻进程仍存活的测试；保留会话的取消杀掉本轮进程由[轮次进程栅栏用例](../protocol/turn-process-fence.md)登记。证据（desktop#807 `447a59de`）：[`jobs_of_a_finished_turn_survive_the_next_turns_cancel`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L195) 与 [`the_agents_own_helper_survives_a_kept_cancel`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L157) | Covered |
 | 嵌套 Node 标记链 | 外层停止杀掉内层 Node 的全部进程、内层停止不触及外层其他进程的测试 | Partial |
 | 伪造标记的边界 | 尝试开始前启动的带标记进程不被发信号、持续伪造时确认不提前而转为 `stop_unconfirmed` 的测试 | Partial |
 
@@ -640,8 +644,10 @@ desktop#802 `198cc415` 的真实 Node 测试用 echo-agent fixture 模拟部署�
 - 结束方式：仓库里没有经 `CancelTurn` 以 `session_ending` 结束会话的用例，“轮次仍在运行时结束”走的是 EndSession；评审的临时
   用例与真实插件复测（运行记录）表明取消路径同样先杀作业，补进仓库后再登记。部署插件的优雅关闭没有真实复测。
 - 守护进程：fixture 作业与被收养的守护进程在扫描面前相同，但没有“另一会话仍在使用”的用例。
-- 轮次之间与保留会话：没有断言带标记进程跨轮次存活的测试（现有用例只在轮次结束后 pin 住作业）；保留会话的取消没有带标记进程的测试，
-  它的行为由轮次进程栅栏决策修改，相关测试随该决策的实现补齐。
+- 轮次之间与保留会话：已由 desktop#807 `447a59de` 补齐。[`jobs_of_a_finished_turn_survive_the_next_turns_cancel`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L195) 断言正常完成的一轮
+  留下的带标记 `setsid` 作业与 Agent 会话中的 helper 跨轮次存活，并活过下一轮保留会话的取消，会话结束时作业才被杀；
+  [`the_agents_own_helper_survives_a_kept_cancel`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L157) 断言 Agent 在被取消的一轮里于自己会话中起的 helper 活过保留会话的取消，
+  下一轮找到同一进程。
 - 嵌套 Node：只有标记值与匹配的单测，没有真实的嵌套 Node 用例。
 - 伪造：持续伪造把确认拖到 `stop_unconfirmed` 没有测试。
 
