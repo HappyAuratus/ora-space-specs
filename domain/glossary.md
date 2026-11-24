@@ -92,8 +92,8 @@ Plugin ID、精确 package version 与 Configuration revision。它用于合并�
 是否过期，不是持久化 ownership 或 Server 健康证据。
 
 `Session MCP Snapshot` 是 Host 针对一个 Agent、一个 Workspace `cwd` 和一次 ACP `session/new` 或
-`session/load` 解析出的有序 `mcpServers`。它是只在内存与该次 setup 帧中存在的运行输入，不是 Effect
-Desired State、持久化 Session 属性或 Workspace Resource。
+`session/load` 解析出的有序 `mcpServers`。它是只在内存与该次 setup 帧中存在的运行输入，不是持久化
+Session 属性，也不写入 Workspace。
 
 `Active Session MCP Revision` 是 Live Session 最近一次成功 `session/new` 或 `session/load` 接受的
 Desired Session MCP Revision。停止的 Ora Session 没有 provider channel，因而没有 Active revision。
@@ -102,8 +102,9 @@ Desired Session MCP Revision。停止的 Ora Session 没有 provider channel，�
 Session 从旧 Active revision 切换到最新 Desired revision。变化提交后开始的 prompt 必须先完成该收敛，
 或在进入 Agent 前明确失败。
 
-`Agent Session Barrier` 是 Effect Resource mutation、Agent replacement 与 MCP refresh 共用的协调
-seam。它等待已经开始的 prompt 到达安全点，并阻止新 prompt 穿过未完成的变更窗口。
+`Agent Session Barrier` 是同一 Agent 上 MCP refresh 的协调 seam。它等待已经开始的 prompt 到达安全点，
+并阻止新 prompt 穿过未完成的变更窗口。Skill 变化不占用它；它曾同时服务 Effect Resource mutation 与 Effect
+引起的 Agent replacement，二者随 Effect 退役删除（见下文 Session Skill）。
 
 `Host MCP Health` 是 Host 对配置完整的已安装 MCP 执行有界握手得到的运行健康事实。它不是配置完整、
 不是 Active Session MCP Revision，也不是 Agent 在会话内已经连上 Server 或工具已经可用。会话横幅只
@@ -111,6 +112,34 @@ seam。它等待已经开始的 prompt 到达安全点，并阻止新 prompt 穿
 
 `MCP Health Probe` 是一次完整的 MCP 客户端会话：按该成员的 transport 完成 `initialize` 与
 `tools/list`，然后拆除连接。它只证明 Host 视角下该绑定产物此刻可以握手。
+
+## Session Skill
+
+Desktop 不再把 Skill 物化到 Workspace，而是按存储路径以会话清单告诉 Agent。规则见
+[Skill 会话清单决策](../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`proposed`）。
+此前的 Effect（Workspace 内 Skill 目录的声明式收敛）已整体退役，相关决策保留为 `superseded` 历史记录。
+
+`Skill Storage Location`（Skill 存储位置）是 Skill package 的权威目录：本地导入的 Skill 在应用数据目录的
+`atoms/skills/<name>/`，插件提供的 Skill 在插件安装目录的 `assets/<skill>/`。它也是交付位置，Ora 不复制或
+链接到 Workspace。
+
+`Session Skill Catalog`（会话 Skill 清单）是某一时刻全部 Available Skill 的条目集合，每项只有名称、描述和
+`SKILL.md` 的绝对路径，以该路径为条目身份。同名 Skill 按路径区分。它不是 Skill Catalog 本身：Unavailable 的
+Catalog 行不进入清单。
+
+`Notified Skill Catalog`（已告知清单）是 runtime 在内存中为一个 Live Session 记录的、已经告知该 Agent 的条目
+集合。它不持久化；Live Session actor 新建或 Agent 报告上下文压缩后视为不存在，下一条用户 prompt 携带全量清单。
+
+`Skill Catalog Delta`（清单增量）是当前清单与已告知清单按 `SKILL.md` 路径比较得出的新增与移除条目。路径不变的
+原地更新不产生增量。
+
+`Skill Read Roots`（Skill 可读根）是 desktop host 在 ACP `session/new` 与 `session/load` 中作为
+`additionalDirectories` 交给 Agent 的稳定存储根：本地 Skill 根与插件安装根。它授予读取便利，不是安全边界。
+
+`Legacy Managed Skill Directory`（旧受管 Skill 目录）是 Effect 曾在 Workspace 中物化、带 `.ora-managed.json`
+标记并登记在 Effect 账本中的目录。升级时只删除标记与账本完全匹配的这类目录，其余内容保留。
+
+_Avoid_: 用“物化”“同步”描述当前的 Skill 交付；用“Skill 就绪”描述发送前提。
 
 ## Plugin
 

@@ -70,4 +70,4 @@
 
 ### 决策依据
 
-[派发预检 D3](../../../../../../decisions/desktop/core/agent/session/mcp/20261119-workflow-mcp-preflight.md)及[Plugin Skill 来源和物化规则](../../../../../../decisions/desktop/core/effect/skill/0-plugin-skill-source.md)。
+[派发预检 D3](../../../../../../decisions/desktop/core/agent/session/mcp/20261119-workflow-mcp-preflight.md)及[Skill 会话清单决策 D8](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`proposed`；Skill 依赖按 Catalog 解析与存储路径存在判定）。

@@ -4,6 +4,8 @@ status: implemented
 
 # 工作流派发前拒绝缺失的已选 MCP
 
+> 历史决策：D3 与“继承与修改”中提到的 Skill 物化规则已由[Skill 按存储路径以会话清单交给 Agent](../skill/0-skill-catalog-from-storage-paths.md)（`proposed`）D8 修改：Skill 依赖检查改为 skill ID 能在 Catalog 中解析、且存储路径下的 `SKILL.md` 存在；D3 链接的 Plugin Skill Source 决策已改为 `superseded`。MCP 预检与检查顺序不变。
+
 Desktop 在 `start`、`restart` 以及保留或切换快照的 `resume` 开始派发前，检查本次要执行的整张冻结图。任何节点启用的 MCP 无法在已安装插件目录中解析时，命令返回 `workflow_mcp_not_found`，运行保留原状态。切换快照的检查顺序见 D3。
 
 本决策只约束 Desktop。Cloud 延用自己的[工作流发布与启动门禁](../../../../../cloud/workflow/0-cloud-side-scheduler-owns-workflow-execution.md)，两者都在运行期判断环境是否可用，用户可以先编辑草稿。
