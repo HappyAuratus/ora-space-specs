@@ -117,8 +117,9 @@ Partial。只能由 Controller 验证的义务在
 
 ## 取消一轮与一轮结束后保留会话
 
-[取消一轮决策](../../decisions/node/protocol/20261116-cancel-turn-and-keep-session-after-turn-ends.md)为 `approved`，
-尚未实现。30 条核心用例与决策的 30 条验证义务一一对应，状态均为 `Missing`。会话命令与事件的既有规则见
+[取消一轮决策](../../decisions/node/protocol/20261116-cancel-turn-and-keep-session-after-turn-ends.md)为 `implemented`，
+由 desktop `2fc5e2ca` 与 `447a59de` 实现 Node 一侧。30 条核心用例与决策的 30 条验证义务一一对应，按 desktop main `447a59de`
+登记为 3 项 `Covered`、25 项 `Partial`、2 项 `Missing`。会话命令与事件的既有规则见
 [Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。用例 11、12、13
 另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
