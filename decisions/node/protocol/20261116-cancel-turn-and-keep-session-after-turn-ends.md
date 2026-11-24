@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # Node 协议增加"取消一轮"命令；一轮以取消或失败结束、且 Agent 已静止时，会话保留
@@ -30,9 +30,13 @@ D5 在取得停止证据之后才发出。新行为由 Node 与 Controller 在�
 会话和旧对端保持原行为，没有声明 `turn_cancel` 的 Controller 看到的
 握手内容不变，不具备该能力的 Controller 不能接管已选择新行为的会话。
 
-本 ADR 已通过评审，状态为 `approved`，尚无实现。"验证义务"一节的每一条都已转为
-[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)，编号一一对应，证据状态均为 `Missing`，
-随实现补齐。影响 desktop 的 `crates/node-protocol`（消息、事件、握手字段、能力、
+本 ADR 状态为 `implemented`：Node 一侧由 desktop main 的提交 `2fc5e2cacdf3c47ca840785e141167ff947aa5aa` 实现（协议、账本、
+共享运行时、会话执行、握手与接管），当时轮次边界清单为空；提交 `447a59de6722500cae0be011860e63e5127a3b23` 加入
+[轮次进程栅栏](20261123-turn-process-fence-before-keeping-session.md)并登记 Linux 上的 `official/ora-space.opencode 0.6.11`，
+运行中被取消的一轮自此可以保留会话。该状态表示 Node 侧的机制已经落地，不表示 Controller 已接入、失败后保留已启用
+（“落地顺序”第 3、4 步），也不表示每条验证义务都有完整的直接证据：
+[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)与“验证义务”编号一一对应，逐条记
+`Covered`、`Partial`、`Missing`。实现与批准文本不同或更具体的地方汇总在“实现与批准文本的差异”。影响 desktop 的 `crates/node-protocol`（消息、事件、握手字段、能力、
 会话输入字段）、`crates/node-db`（受理新命令、持久化新事件）与 `apps/ora-node/src/session/`（会话执行）；共享
 `crates/agent-runtime` 已有取消当前一轮、取消宽限期、丢弃空闲期流量与续用 provider 会话的能力；本决策要它
 区分用户取消与看门狗取消的宽限期、在准入提交处和看门狗重发前认取消、识别已失效的 provider 会话，并向
@@ -217,8 +221,8 @@ provider 会话，下一轮通过 `session/load`（Agent 支持时）或带 Ora 
 按 OpenCode（`@opencode/cli` 2.0.32）与 Claude Code（`@agentclientprotocol/claude-agent-acp` 0.107.0）的源码，
 两者的主轮次都具备这一边界：OpenCode 每一轮只转发自己投递之后的事件，Claude Code 丢弃被中断工作的后续输出。
 两者都不保证子代理和后台任务的边界：OpenCode 的子代理在取消后继续运行，Claude Code 的后台子代理在取消后
-继续运行并可能发出权限请求。所以静止条件 2 排除启动过子代理的轮次。两者能否进入清单，以一致性测试为准，
-`approved` 版本写明结论。
+继续运行并可能发出权限请求。所以静止条件 2 排除启动过子代理的轮次。两者能否进入清单，以一致性测试为准；
+清单的现行内容与登记规则见轮次进程栅栏决策 D5。
 
 **静止条件**，Node 在发出下一轮之前逐条检查，任何一条不满足就按 D3 结束会话（detail `turn_not_quiescent`）：
 
@@ -253,13 +257,13 @@ prompt 发出之后才到达的 A 的无身份更新，与 B 的更新在协议�
   | OpenCode | 中断后自己最多等 5 秒，shell 工具再过 3 秒强制终止，约 8 秒 | 同左 |
   | Claude Code | 中断通常很快 | SDK 无响应时 30 秒后强制回 `cancelled`，此时 provider 会话状态本身可疑 |
 
-  第一版暂定 G 为 15 秒，实测后定值，写入 `approved` 版本；当前共享运行时的 5 秒短于 OpenCode 的正常取消耗时，
+  G 为 15 秒；共享运行时原有的 5 秒短于 OpenCode 的正常取消耗时，
   不能沿用。G 只是上限，Agent 回应后立即结束等待。看门狗取消的宽限期不随之加长，仍按运行时既有规则，以免
   模型无输出时的重发被拖慢；看门狗取消没有得到回应时同样按 D3 结束会话。看门狗取消期间并入的第一个 `CancelTurn` 把截止时刻改为它的受理
   时刻加 G，之后不再改变（D1）。
-- **Q（静默窗口）**：第一版暂定 2 秒，按实测的残余流量分布定值。它只用于发现违约，不是隔离的依据。只在一轮
+- **Q（静默窗口）**：Q 为 2 秒，没有残余流量分布的实测来进一步收窄。它只用于发现违约，不是隔离的依据。只在一轮
   以取消或失败结束后检查，一轮正常完成后不等待，不影响正常对话的延迟。取消后立刻提交下一轮是最常见的用法，
-  Q 直接加在这次等待上，所以取能发现残余轮次流量的最小值；实测没有残余轮次流量时可以取 0。
+  Q 直接加在这次等待上，所以应取能发现残余轮次流量的最小值；以后的实测没有残余轮次流量时可以取 0。
 - 取得停止证据的等待不属于取消的期限：它从 Node 决定结束会话时开始，上限是会话 MCP 刷新 D5 的停止确认期限，
   只影响终态，不影响 `TurnCancelSettled`（D3、D4）。
 
@@ -434,6 +438,20 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 认证"。取消后保留没有这个缺口：Controller 以 `TurnCancelSettled` 知道这是自己请求的取消，而一轮失败时，只选择了
 `keep_session_on_cancel` 的会话仍按原规则结束并带 detail。
 
+## 实现与批准文本的差异
+
+| 批准文本 | 实际采用 | 原因 |
+| --- | --- | --- |
+| D2 跨轮次检测、不变量 8：可归属上一轮的迟到更新“不记入任何一轮” | 该更新不进入 Thread 事件和实时预览，会话以 `turn_leak_detected` 结束，但它已经写入会话 JSONL | 运行时先写会话记录，Node 才能拦截；要在写入之前拦截须改变共享运行时的记录顺序，由后续决策承担 |
+| D1、D4“先到者为准” | 写出 `session/cancel` 之前先取已经排队的回应：有则保留这次回应自己的成功或失败，取消得到 `already_ended`；`session/cancel` 写出之后的任何成功回应（包括 `end_turn`）都按 `cancelled` 走 D2 | 取消写出之后，Agent 自报正常完成不能证明它没有停在半途，不能据此绕过 D2 |
+| D1“排队：还没有被准入” | 包含准入之前的整个准备阶段：恢复 prior revision、布置工作负载、模型授权期间，取消立即结算，准备照常继续 | 这些步骤耗时没有上限，等它们结束会超过 G + Q |
+| D1 取消与 MCP 等候超时“以先提交的为准” | 等候已满 300 秒、超时任务还没有提交时，取消和准入都先按等候超时结算，无论这一轮在队首还是排在后面 | 否则取消或准入会绕过会话 MCP 刷新 D4 的等候上限 |
+| D2 续用方式、D3 第一行“Agent 进程退出” | MCP 生命周期模式下达到 load 次数阈值而替换 Agent 进程，以及替换失败，都按会话 MCP 刷新 D6 处理，不结束会话 | 替换由 Node 主动发起，保留同一执行与原 provider ID，不是 Agent 退出 |
+| D2“把这类回应视为 provider 会话已失效” | 按一组固定的错误文字精确匹配（不区分大小写）；带会话 ID 的文字匹配不上 | ACP 没有为此规定错误码；匹配不上时下一轮的 prompt 会再次失败 |
+| D3 模型授权被撤销 | 授权进入 Ending 时先停 Agent，等 `EndSession` 的真实原因再写结束决定；有未结算的取消时最多等到它的受理时刻加 G，之后以 `model_access_revoked` 落账 | 结束决定落账后不能改写（D3），取消又必须按期结算 |
+| D3 重启收口 | 重启时先写完整的结束决定与取消结论，只有终态等停止证据 | 结论不等停止证据（D4） |
+| D5 未协商的连接 | 未协商 `turn_cancel` 的连接发 `CancelTurn`，或启动任一保留字段为 `true` 的会话，按协议违规关闭连接，不进入持久受理 | 否则它之后会收到不理解的事件，违反不变量 10 |
+
 ## 不变量
 
 1. 一个被受理的 `SubmitUserTurn` 恰好以下列之一结束：带其 `turn_id` 的一个 `TurnEnded`；被 `CancelTurn` 丢弃，命令
@@ -496,8 +514,19 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 
 按 OpenCode（`@opencode/cli` 2.0.32）与 Claude Code（`@agentclientprotocol/claude-agent-acp` 0.107.0）的 ACP
 实现核对：取消、模型请求错误、要求重新认证、看门狗取消后回 `end_turn`，以及取消时有进行中的工具调用或挂起的
-权限请求，这些情况之后两者都能在同一个 ACP 会话上继续，上下文保留。下列风险只靠源码不能排除，在实现阶段用
-真实 Agent 实测，结论写入 `approved` 版本：
+权限请求，这些情况之后两者都能在同一个 ACP 会话上继续，上下文保留。
+
+实现阶段的真实 Agent 实测用的是部署的发布包 OpenCode 0.6.11（CLI 1.19.3）和 Claude 0.4.5（ACP 0.99.1），不是上述两个
+源码核对版本，结论只对实测的版本成立：
+
+- 运行中的普通 shell、前台子代理、模型错误三个场景，没有观察到回应之后的轮次流量或写入，两者都能接下一轮；
+- 后台 shell 在回应之后仍会写工作目录、且不再有任何轮次流量，两个包都不能只凭本决策的三层检查登记。轮次进程栅栏
+  决策据此改写轮次边界，并登记 Linux 上的 OpenCode 0.6.11；
+- 取消得到回应的耗时为数十到数百毫秒，只是少量观察，没有时间分布，所以 G 与 Q 保持批准时的取值；
+- 没有实测：OpenCode 内部异常后 server 端是否仍在执行、Claude Code 内部或传输错误后 provider 会话被关闭、被取消
+  轮次中用过子代理的比例。
+
+下表保留批准时列出的风险与处理；标为待实测而上面没有结论的仍未实测：
 
 | 风险 | 影响 | 处理 |
 | --- | --- | --- |
@@ -514,7 +543,8 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 
 ## 验证义务
 
-已逐条转为[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)，每项都要有直接证据：
+已逐条转为[核心用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)，证据状态以用例为准。10、13 的现行文字以
+轮次进程栅栏决策为准：
 
 1. 取消正在执行的一轮后，同一会话可以接着 `SubmitUserTurn`，上下文保留；事件顺序为 `TurnEnded` →
    `TurnCancelSettled{stopped}` → 下一轮。
@@ -609,13 +639,13 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
    取消与准入、MCP 等候超时共用准入提交的锁；按 D2 检查轮次边界清单、静止条件与跨轮次泄漏，按 D3 区分一轮失败与
    必须结束会话的情况，结束会话沿用已有的停止责任路径；连接层按 D5 只向声明了能力的 Controller 返回能力，并拒绝
    不具备能力的 Controller 接管。
-   完成条件："验证义务"中的每一项都有直接测试；"已知风险与待实测"中的每一项都有真实 Agent 的实测结论，据此
-   确定 G、Q 与轮次边界清单。
-3. **Controller 接入**：各 Controller 在握手中声明 `turn_cancel`；可能连接 Node 的全部 Controller 实例都具备能力
+   第 1、2 步已落地。批准时的完成条件是“验证义务”每一项都有直接测试、“已知风险与待实测”每一项都有真实 Agent 的
+   实测结论；两者没有全部满足，缺口逐条记在核心用例和“已知风险与待实测”中。
+3. **Controller 接入**（不属于 Node 侧实现，由各 Controller 落地）：各 Controller 在握手中声明 `turn_cancel`；可能连接 Node 的全部 Controller 实例都具备能力
    后，才为新会话选择 `keep_session_on_cancel`，停止改用 `CancelTurn`，按 D4 的进展规则等待结论，收到 `session_ending` 后按停止责任
    等待终态。
 
-4. **启用失败后保留**：失败原因上报的后续决策落地、Controller 能展示失败和原因之后，才为新会话选择
+4. **启用失败后保留**（尚未启用）：失败原因上报的后续决策落地、Controller 能展示失败和原因之后，才为新会话选择
    `keep_session_on_failure`。
 
 保持不变：已有消息、已有会话、两个字段都没有选择的会话，以及没有结束决定时 Node 重启后的 `interrupted`。从第 3 步
