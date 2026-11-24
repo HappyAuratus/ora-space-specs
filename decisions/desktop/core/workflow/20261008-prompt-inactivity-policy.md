@@ -4,7 +4,7 @@ status: implemented
 
 # Agent 节点可持续等待静默 prompt，以冻结配置保留取消与会话隔离
 
-> 历史决策：D1 与不变量 2 中的无限等待现由 `unbounded` 承接。`wait` 从最后一次可归属进展起最多等待 30 分钟。见[已实施的工作流等待策略](20261123-workflow-agent-wait-limit.md)。
+> 历史决策：D1 与不变量 2 中的无限等待现由 `unbounded` 承接。`wait` 从本次实际发送或最后一次可归属进展起最多等待 30 分钟。见[已实施的工作流等待策略](20261123-workflow-agent-wait-limit.md)。
 
 Agent 节点可以选择持续等待长时间没有上报进展的 prompt，避免隐藏子代理仍在工作时被取消和重发。
 这项选择承认 Ora 无法从静默推断 provider 已卡死，因此保留手动停止、真实错误与资源清理，而不伪造
