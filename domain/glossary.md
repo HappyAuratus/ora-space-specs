@@ -407,7 +407,7 @@ _Avoid_: main worktree, workspace root, task checkout as a separate identity
 Desktop 列出一个目录存在的本机 Workspace 时，对该目录做一次 Git 工作树探测得到的结果，取值
 `repository`（从该目录运行的 Git 命令作用于某个工作树）、`notRepository`（Git 明确回答不在任何仓库内，且目录
 及其祖先都没有 `.git` 条目）或 `unknown`（无法确定，不等于否定）。它属于这次列出的 Workspace 目录，不是项目
-属性，也不存储。Desktop 项目可以是普通目录，此时其 Main Workspace 没有 main worktree。定义来源是
+属性，也不存储。定义来源是
 [Desktop 本机目录项目决策](../decisions/desktop/core/workspace/0-local-directory-project-with-probed-git-capability.md)。
 _Avoid_: repository kind, Git project flag, Desktop plain folder as a project type
 
