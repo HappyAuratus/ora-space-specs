@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 一轮的失败与取消分开记录：`TurnEnded` 带归属与失败原因，失败后会话是否保留由 `TurnFailureSettled` 告知；看门狗被回 `end_turn` 时以无进展失败
@@ -15,11 +15,11 @@ ACP 错误码与 Agent 报告的文字（JSON-RPC 的 `message`，以及字符�
 回应时为 `turn_cancel_unanswered`，一轮进行中 Agent 进程退出或 ACP 连接断开时为 `agent_unavailable`（这两处使实现与
 取消决策 D3 一致），Agent 以 ACP 错误码 `-32000` 回应时为 `agent_authentication_required`（detail 跟随 `failure.code`）。
 
-本 ADR 状态为 `proposed`，按 [circus#1138](https://github.com/ora-space/circus/issues/1138) 的 owner 结论（2026-11-24）起草：
+本 ADR 状态为 `approved`：2026-11-24 经 owner 评审批准（[specs#335](https://github.com/ora-space/specs/pull/335)），依据 [circus#1138](https://github.com/ora-space/circus/issues/1138) 的 owner 结论（2026-11-24）：
 Agent 的错误文字以有界文字单独携带，owner 接受它随会话 JSONL 进入 Revision 归档；新增经协商的 `TurnFailureSettled`；
 看门狗被回 `end_turn` 时以 `no_progress` 失败、不重发；两处 detail 按取消决策 D3 改代码；`ended_by` 本版只有两个值。
 评审中补充的规则（取 `data` 中的补充文字、清洗范围、`-32000` 的 detail、取消写出后 Agent 消失的归属、`kept` 与并入取消
-同一事务、重启后补写结论、`turn_cancel_unanswered` 对所有会话生效）是作者按评审建议提出的方案，待 owner 在评审中确认。
+同一事务、重启后补写结论、`turn_cancel_unanswered` 对所有会话生效）由 owner 在评审中确认。
 它是[保留会话前先停掉这一轮新起的进程](20261123-turn-process-fence-before-keeping-session.md)（下称“栅栏决策”，
 `implemented`）的后续，修改
 [取消一轮并在轮次结束后保留会话](20261116-cancel-turn-and-keep-session-after-turn-ends.md)（下称“取消决策”，`implemented`）

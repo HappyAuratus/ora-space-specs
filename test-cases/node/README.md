@@ -147,7 +147,7 @@ Partial。只能由 Controller 验证的义务在
 ## 一轮失败的原因
 
 [一轮的失败与取消分开记录决策](../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md)为
-`proposed`，核心用例随它一同评审。决策尚未实现，15 条义务均为 `Missing`。取消一轮用例与轮次进程栅栏用例的证据保持原范围，
+`approved`。决策尚未实现，15 条义务均为 `Missing`。取消一轮用例与轮次进程栅栏用例的证据保持原范围，
 不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |

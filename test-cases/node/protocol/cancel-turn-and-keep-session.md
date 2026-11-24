@@ -21,8 +21,8 @@ desktop main [`447a59de`](https://github.com/ora-space/desktop/commit/447a59de67
 `Covered`，13 为 `Partial`。取消决策自身的义务不在这次登记范围内。栅栏自身的义务见
 [轮次进程栅栏用例](turn-process-fence.md)。
 
-[一轮的失败与取消分开记录决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md)（`proposed`，
-随本次修改一同评审）修改了验证义务 6、18、19、20、30：`TurnEnded` 带 `ended_by` 或 `failure`，选择了失败后保留的会话在
+[一轮的失败与取消分开记录决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md)（`approved`）
+修改了验证义务 6、18、19、20、30：`TurnEnded` 带 `ended_by` 或 `failure`，选择了失败后保留的会话在
 失败之后有 `TurnFailureSettled`，`keep_session_on_failure` 另要求协商 `turn_failure`，终态 detail 有三处变化（两处按 D3 表修正，
 ACP 错误码 `-32000` 为 `agent_authentication_required`），对所有会话生效。用例 6、18、19、
 20、30 各增加一行带“（失败原因）”的义务，不另占编号。新增的义务尚未实现，状态为 `Missing`。失败原因自身的义务见
