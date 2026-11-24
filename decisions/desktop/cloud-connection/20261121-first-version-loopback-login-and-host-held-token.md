@@ -169,7 +169,7 @@ desktop 一侧的规则。依据是 owner 2026-11-12 在 ora-space/circus#1084 �
 - TLS 使用操作系统的信任库（desktop 已用的平台证书校验）。企业私有 CA 只要装进系统信任库就能用；第一版不提供“信任这个
   自签证书”的入口，也不关闭证书校验。浏览器不信任 Cloud 证书时登录页本身打不开，desktop 同样不绕过。
 - 代理按环境变量：客户端先关掉 HTTP 库自己从环境变量取代理的行为，只用宿主按规则选出的那一个——Cloud 地址是回环地址
-  或命中 `NO_PROXY` 时直连，否则走 `HTTPS_PROXY` / `HTTP_PROXY`。不用设置里的网络代理：那个设置只作用于选择使用它的 marketplace 源，强加给内网
+  或命中 `NO_PROXY` 时直连，否则走 `HTTPS_PROXY` / `HTTP_PROXY`，都没有时退到 `ALL_PROXY`。不用设置里的网络代理：那个设置只作用于选择使用它的 marketplace 源，强加给内网
   Cloud 反而可能连不上。
 
 这条代替根决策不变量 3 的“部署签名身份”：v2-server 没有部署签名身份（A6 D7），第一版能守住的是“令牌只发给用户登录时
@@ -269,9 +269,8 @@ HTTPS 时等价于浏览器的信任边界。回环地址必须直连：开发�
   「Cloud 连接」、中英文文档）。核心用例的证据登记在
   [宿主连接、回调与本地独立](../../../test-cases/desktop/cloud-connection/host-connection-and-session.md) 和
   [登录与会话](../../../test-cases/cloud/login/login-and-sessions.md)。
-- **真实环境**：开发版（`V2_LOGIN=email`）下，Linux（GNOME、gnome-keyring 的 Secret Service）和 Windows 11 真机都完成了
-  “登录 → 重启后仍登录 → Cloud 停用账号后提示重新登录 → 退出登录”；Windows 上条目为 `CRED_PERSIST_LOCAL_MACHINE`，确认页
-  「取消」、只监听 `127.0.0.1`、环境代理不影响回环请求也在真机上看过（ora-space/circus#1379）。
+- **真实环境**：开发版（`V2_LOGIN=email`）的 debug 构建。Linux 真实栈跑在 desktop `e17c4f82`，之后协调器与安全存储有改写；
+  Windows 11 真机跑在 desktop `63aee9b8`、cloud `15161217`，代码与合并提交相同（ora-space/circus#1379）。验证与证据见核心用例。
 - **仍未验证**：正式安装包（NSIS）的界面与升级；“不漫游”只有 Persist 位作证，没有在第二台电脑上验；部署版 IDaaS 的端到端
-  随第一次内网部署（ora-space/circus#1292）。A6 在 #1292 完成前保持 `approved`。
+  随第一次内网部署（ora-space/circus#1292）。A6 在 ora-space/circus#1292 完成前保持 `approved`。
 - 未配置 Cloud 的用户看不到任何行为变化。
