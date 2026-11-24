@@ -55,6 +55,26 @@ Gateway ADR 称之为 `Handoff Code`（交接码）。
 desktop 与 Cloud 之间的协议以 [登录与会话 A6](../decisions/cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md) D6
 为准，[Gateway 原生会话 ADR](../decisions/cloud/identity-access/20261019-deployment-bound-desktop-sessions.md) 定义暂停的完整版。
 
+## Desktop Release
+
+### Release Notes（更新日志）
+
+一个 Desktop 正式版本面向用户的中英文变更说明，手写来源是 desktop `main` 里该版本的 `release-notes/<版本>.json`
+（见[更新日志决策](../decisions/desktop/release-notes/0-release-notes-in-main-bundled-at-packaging.md)）。它不是 GitHub Release
+的正文，也不是提交或 PR 列表。
+
+### Update Manifest（更新清单）
+
+Desktop 检查更新时读取的 `latest.json`，列出最新版本及各平台的安装包与签名。签名只覆盖安装包，不覆盖清单本身。
+
+_Avoid_: 与 Plugin Manifest、Release Manifest（插件的清单）混用
+
+### Yellow-Zone Build（黄区包）
+
+同时满足下列三条的 Desktop 安装包：用 `scripts/package-desktop.ts --tag` 打包；源码与所用的 desktop 提交只差本地替换的
+`FIRST_INSTALL_SQL`（首次安装数据，公开包为空）；只在本地交付，不上传 GitHub Release。“黄区”只指这类安装包的交付环境，
+不表示该环境能否访问某个公网地址。
+
 ## Agent Conversation
 
 `Ora Session`（Ora 会话）是 Workspace 中一条对话的稳定身份，切换 Agent 不改变该身份与历史归属。
