@@ -37,15 +37,17 @@ writer、JSONL 身份与接收时间由 Host 填写、SDK 五个 console 方法�
 stderr 字节经 `decode → filter(level) → render JSONL → 有界队列 → 写文件`。脱敏作用在
 `decode_frame` 产出记录、级别过滤通过之后、`to_json_line` 渲染之前，作用于记录中所有插件
 可控的字符串：`message`、`target`、`method`、`error`（递归），以及 `context`（递归，含键名；
-Host 保留键除外）。
+`context` 顶层 Host 保留键除外）。
 
-- Host 写入的字段不参与匹配：`timestamp`、`level`、`plugin_id`、`host_session_id`、
-  `generation`，以及 `context` 里的 `encoding`、`fragment`、`format_failure`。这些字段在结构上
-  不可能被改写，与根决策 D3「Host 字段可信、不受插件影响」一致。
-- `target` 只在 envelope 显式提供时才参与匹配：raw 记录里的 `target`（`plugin.stderr`）和缺省
-  的 `plugin` 都是 Host 填的，不匹配，避免登记值等于 `plugin` 或 `stderr` 时改写 Host 身份。
-- raw 记录（含无效 UTF-8 的转义文本）与 v1 envelope 走同一处理：JSON 转义由序列化器自然处理，
-  不发生在明文子串匹配之后。
+- Host 写入的顶层字段不参与匹配：`timestamp`、`level`。`target` 只在 envelope 显式提供时才
+  匹配；raw 记录的 `target`（`plugin.stderr`）和 envelope 缺省的 `plugin` 都是 Host 填的，
+  不匹配，避免登记值等于 `plugin` 或 `stderr` 时改写 Host 身份。
+- `context` 的**顶层**保留键不参与匹配（`RESERVED_CONTEXT_KEYS` 的 9 项：`plugin_id`、
+  `host_session_id`、`generation`、`request_id`、`trace_id`、`span`、`encoding`、`fragment`、
+  `format_failure`），这些由 Host 清除并拥有；嵌套对象内与保留键同名的键属于插件可控字段，
+  仍参与递归脱敏。
+- raw 记录（含无效 UTF-8 的转义文本）与 v1 envelope 走同一处理：JSON 转义发生在明文子串匹配
+  **之后**，由 `to_json_line` 序列化器自然完成，不发生在匹配之前。
 - `context` 键名被替换后若两个键同名（`serde_json::Map` 按键排序），保留字典序靠前的键，其余
   同名键丢弃，使结果与记录内的键顺序无关。
 - 队列字节核算按脱敏后的渲染长度计算，不按脱敏前的行长预留。
@@ -69,7 +71,9 @@ Host 保留键除外）。
   token），所以会话中不存在模型 token 轮换需撤销的问题。
 - **每代重置**：注册表生命周期与进程代一致，代结束后整体丢弃；spawn 环境的值（legacy token、
   desktop Skill secret 等）在每次 spawn 前、由 launcher / 环境提供者按该次声明的敏感子集
-  登记。注册表的键是接收这些值的 Agent 插件 ID，所以只覆盖真正收到该值的插件。
+  登记。注册表的键是接收这些值的 Agent 插件 ID，所以只覆盖真正收到该值的插件。每个进程代持有
+  独立的匹配器订阅：旧代 stderr reader 保留本代匹配器直到读完或收尾超时被中止，新一代的重置
+  与登记不影响旧代收尾。
 - **有界**：注册表最多 256 条、总字节最多 64 KiB。超限或匹配器构建失败后，新值不再登记，每个
   进程代第一次记一条只含计数、不含值的 Host 告警。超限不阻塞交付，也不改变插件协议。
 - 更新只影响之后入队的行，不回改已落盘记录。
@@ -79,15 +83,15 @@ Host 保留键除外）。
 只登记 `String` 类型的值，Number / Boolean 永不登记。最小长度定为 **8 个 UTF-8 字节**：低于
 此长度的值误伤率高，且作为秘密本身已不可靠；短于阈值不脱敏，并列进 D5 的已知局限。
 
-- **匹配语义**：在原字符串上一次找出所有登记值的全部出现位置（允许重叠，如 `abcXYZ` 与
-  `XYZdef` 同时出现在 `abcXYZdef` 中），合并相交或相邻的区间，每个合并后的区间替换为一个
+- **匹配语义**：在原字符串上一次找出所有登记值的全部出现位置（允许重叠，如 `abcdWXYZ` 与
+  `WXYZefgh` 同时出现在 `abcdWXYZefgh` 中），合并相交或相邻的区间，每个合并后的区间替换为一个
   `[REDACTED]`。结果与登记顺序无关，任何登记值的任何字节都不会残留在被匹配的区间之外。
 - **代价**：匹配器（如 Aho-Corasick 自动机）在注册表变化时构建一次；每条记录的匹配为
   O(记录长度 + 匹配数)，与登记值个数无关；注册表为空时不做任何工作。
-- **失败语义**：只有包含该值的匹配器发布之后，值才算「登记成功」，登记成功前不算覆盖。匹配器
-  构建失败按超限处理：该值及随后超限的新值都不登记，继续用上一版已发布的匹配器匹配；每个进程
-  代第一次记一条 Host 告警（只含计数，不含值），不丢弃、不阻塞记录。因为信息都在 Host 手里，
-  构建失败不是插件的故障，只是 Host 自己的匹配器不可用，所以不降级到沿用旧语义。
+- **失败语义**：只有包含该值的匹配器发布之后，值才算「登记成功」，登记成功前不算覆盖。首次
+  超限或匹配器构建失败即拒绝本次新增的值，并停止该进程代后续新值登记，不将其视为登记成功；
+  日志继续用上一版已成功发布的匹配器覆盖已登记值。每个进程代第一次记一条只含计数、不含值的
+  Host 告警，不丢弃、不阻塞记录。
 - 占位符统一为 `[REDACTED]`，与 `SessionMcpBinding` 的 `Debug` 占位一致，避免在日志里引入
   新的可识别标记。
 
@@ -95,11 +99,10 @@ Host 保留键除外）。
 
 | 值 | 来源与登记时点 |
 | --- | --- |
-| 插件 MCP Settings 的 `String` 有效值 | 绑定进 stdio `env`/`args` 与 http `url`/`headers` 的 setting 值（`resolve_mcp_transport` 产物），在对应 ACP setup 发出前登记 |
-| 宿主 MCP 的 `url` 与每个 `headers` 值 | Node 的 `HostMcpServer`（`NodeSessionMcp` / `HostServers` 输入），以及 desktop Backend 交付的宿主 HTTP MCP Server（含完成工具 URL），在对应 ACP setup 发出前登记 |
+| 插件 MCP Settings 的 `String` 有效值 | 共享 `mcp_resolver` 从本次实际参与传输绑定（stdio `args`/`env`、HTTP `headers`）的 `EligibleMcpMember.values` 采集拼接前后缀之前的原始 `SettingValue::String` 有效值，在携带 `mcpServers` 的 ACP `session/new` / `session/load` / 刷新发出前登记 |
+| 宿主 MCP 的 `url` 与每个 `headers` 值 | Node 的 `HostMcpServer`（`NodeSessionMcp` / `HostServers` 输入的 `url` 与 `headers`），以及 desktop Backend 交付的宿主 HTTP MCP Server 及其工作流完成工具 URL，在对应 ACP setup / load / 刷新发出前登记 |
 | 模型 token | `AgentModelContext.token`（adapter 路由）与 legacy 环境的 `ORA_MODEL_ACCESS_TOKEN` |
 | desktop Skill Settings 中 `secret` 为真的 `String` 值 | `SkillEnvironment` 启动快照（注入 Agent 进程环境与 host-managed 子进程环境） |
-| desktop 工作流完成工具 URL | Backend 为交互式工作流交付给 Agent 的完成工具 URL（宿主 HTTP MCP Server，见上行「含完成工具 URL」） |
 
 **不登记 `proxy_base_url`**：它是网关主机加固定路径（`/runtime/openai/v1`、`/runtime/anthropic/v1`），
 同一部署的所有会话都相同，且 [模型 adapter 决策](../../../node/agent-runtime/20261017-plugin-owned-model-adapters.md)
@@ -112,10 +115,10 @@ Host 保留键除外）。
 完成工具 URL。
 
 desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境、会话级插件 MCP Settings 与
-工作流完成工具 URL；Node 路径有插件 MCP Settings、宿主 MCP 请求头与模型 token。为什么 MCP 登记
-全部 `String` 有效值、Skill 只登记 `secret` 值：MCP Setting 是 Host 逐会话解析后交付的运行时
-值，Host 无从判断哪些会被插件视为敏感，全部登记才能覆盖；Skill 值量大且多为非敏感配置，
-按 `secret` 标记只登记真正需要脱敏的子集，避免注册表被无关值占满。
+工作流完成工具 URL；Node 路径有插件 MCP Settings、宿主 MCP URL 与请求头、模型 token。为什么
+MCP 登记全部 `String` 有效值、Skill 只登记 `secret` 值：MCP Setting 是 Host 逐会话解析后交付
+的运行时值，Host 无从判断哪些会被插件视为敏感，全部登记才能覆盖；Skill 值量大且多为非敏感
+配置，按 `secret` 标记只登记真正需要脱敏的子集，避免注册表被无关值占满。
 
 ### D5：尽力而为的边界与已知局限
 
@@ -129,8 +132,9 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境、�
   尾斜杠、host 小写）会漏，因为 D4 只登记完整 `url` / header 值，不登记派生形式。
 - 短于 8 字节的秘密不脱敏。
 - 超限或匹配器构建失败之后登记的新值不脱敏（D2/D3 的失败语义）。
-- 转义字节的 raw 记录里，值以 `\` 结尾时（渲染前被加倍成 `\\`）匹配不上；匹配可能落在 `\xNN`
-  转义中间，破坏可追溯编码。这两类都只影响 raw 记录的局部，不改变记录结构。
+- 转义字节的 raw 记录里，任何含 `\` 的值都匹配不上（渲染前整条消息里的所有 `\` 都被加倍成
+  `\\`）；匹配还可能落在 `\xNN` 转义中间，破坏可追溯编码。这两类都只影响 raw 记录的局部，
+  不改变记录结构。
 - Agent 写到自己能访问的其他文件（非 Host 拥有的 Plugin log）的不归本决策管；插件不经过
   Host 管道、直接自行写文件的不归本决策管。
 
@@ -141,15 +145,17 @@ desktop 路径没有 Host 注入的模型 token，但有 Skill secret 环境、�
 2. 脱敏值由 Host 登记，插件不能读取或覆盖；注册表为空时管道行为与未实现脱敏时完全一致。
 3. 脱敏不改写 Host 写入的字段、记录条数与入队顺序；队列字节核算按脱敏后的渲染长度计算；
    脱敏后单条记录长度增长有上界（由最小长度与占位符长度决定）。
-4. 匹配器构建失败或注册表超限时，新值不算登记成功、不再登记，继续用上一版已发布的匹配器；
-   每个进程代第一次记一条 Host 告警，不丢弃、不阻塞记录，不改变记录数量。
+4. 匹配器构建失败或注册表超限时，本次新增的值不算登记成功，并停止该进程代后续新值登记，日志
+   继续用上一版已成功发布的匹配器；每个进程代第一次记一条 Host 告警，不丢弃、不阻塞记录，
+   不改变记录数量。
 5. 脱敏是尽力而为的明文子串替换，不承诺覆盖 JSON 转义、百分号编码、base64 或跨分片值。
 6. 对任一登记成功的值 S（满足登记规则），Host 把 S 交付给插件之后，该插件进程代写到 stderr
    的任何包含 S 的完整帧（raw 行或 v1 envelope 的任何插件可控字段），落盘到该 Plugin ID 日志
-   树的记录中都不含 S；跨 64 KiB 分片的出现除外（D5）。
-7. 在第 6 条中，S 覆盖：Node 路径的插件 MCP Setting（含刷新后新值）、宿主 MCP 请求头、模型
-   token（adapter token 与 legacy 环境 token）；desktop 路径的插件 MCP Setting、Skill secret、
-   工作流完成工具 URL。
+   树记录的**插件可控字段**中都不含 S；Host 写入字段按不变量 8 逐字节保留，D5 所列跨 64 KiB
+   分片、`escaped-bytes` 含 `\` 的边界除外。
+7. 在第 6 条中，S 覆盖：Node 路径的插件 MCP Setting（含刷新后新值）、宿主 MCP URL 与请求头、
+   模型 token（adapter token 与 legacy 环境 token）；desktop 路径的插件 MCP Setting、Skill
+   secret、工作流完成工具 URL。
 8. 脱敏后的每条记录仍是合法 JSON，Host 字段与未脱敏时逐字节相同。
 
 ## 为什么不能直接改写已有日志
