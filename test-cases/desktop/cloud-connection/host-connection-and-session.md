@@ -4,7 +4,7 @@
 [第一版后续 ADR](../../../decisions/desktop/cloud-connection/20261121-first-version-loopback-login-and-host-held-token.md)
 （下称“第一版 ADR”）。根决策中暂停的义务（部署身份、TOFU 与能力协商、证书固定与内网 HTTP、换地址迁移、活动上报与
 轮换、60 秒发现吊销、deep link）不在本文；它们恢复时由新的后续 ADR 补回用例。
-证据读取的是 desktop `6dab87e8`（ora-space/desktop#806）与 cloud `a85d1fbc`（ora-space/cloud#432）。真实环境验证都用开发版
+证据读取的是合并后的 desktop `7fc4544f`（ora-space/desktop#806）与 cloud `1635cc7d`（ora-space/cloud#432）。真实环境验证都用开发版
 （`V2_LOGIN=email`）的 debug 构建，正式安装包没有验证过。
 
 ## Local Work Remains Available Across Every Cloud Failure

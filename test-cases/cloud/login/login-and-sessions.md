@@ -6,7 +6,7 @@
 证据读取的是 cloud `0ca0a9a0` 的 `v2-server/`（路径相对该目录）；“Exactly One Login Method Is Open” 的 `V2_LOGIN` 必填部分读取的是
 cloud `85bc9a5f`（含 cloud#362）。v2-server 现在只有开发版的无密码邮箱登录，没有
 `V2_LOGIN` 之外的 IDaaS、邀请链接、移出成员和 desktop 令牌，所以多数用例是 Missing；开发版已有的行为引用现有测试。
-desktop 令牌的三个用例（#1084）读取的是 cloud `a85d1fbc`（ora-space/cloud#432）。
+desktop 令牌的三个用例（#1084）读取的是合并后的 cloud `1635cc7d`（ora-space/cloud#432）。
 
 ## Exactly One Login Method Is Open
 

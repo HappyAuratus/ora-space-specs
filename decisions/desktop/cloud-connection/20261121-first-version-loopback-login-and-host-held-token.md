@@ -19,7 +19,7 @@ Desktop 宿主让用户填一个 Cloud 地址，点「登录」后用系统浏�
 [登录与会话根决策](../../cloud/login/0-idaas-or-email-login-with-shared-web-and-desktop-sessions.md)（下称“A6”）D6 的安排写
 desktop 一侧的规则。依据是 owner 2026-11-12 在 ora-space/circus#1084 定的第一版范围（填地址、系统浏览器登录、回环回调、
 系统安全存储、显示连接状态与登出、Cloud 吊销后提示重新登录；deep link、内网 HTTP、自签证书信任、换地址迁移、会话轮换
-不做）。同步时读取的版本为 desktop `6dab87e8`、cloud `a85d1fbc`。
+不做）。同步时读取的版本为合并后的 desktop `7fc4544f`（ora-space/desktop#806）、cloud `1635cc7d`（ora-space/cloud#432）。
 
 - **涉及**：desktop 宿主（`apps/desktop/src-tauri`）、契约与逻辑操作（`crates/contracts`、`xtask`）、本地配置
   （`crates/user-config`）、通用 HTTP 能力（`crates/utils`）、app-shell 的设置界面与中英文文档。
