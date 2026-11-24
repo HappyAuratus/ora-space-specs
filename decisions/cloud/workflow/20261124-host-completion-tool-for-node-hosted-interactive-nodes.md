@@ -28,11 +28,11 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 | 默认值 ADR：升级前已启动的会话在结束前保持 `end_turn` | 继承，不变 | D6 |
 | 默认值 ADR 风险：Agent 到不了 Controller 端点的部署，默认值留给使用方决策 | 承接 | 待 owner 决定 O3 |
 | 完成信号 ADR D1、D2：token 绑定会话与 attempt，`session/new`、`session/load` 时重新推导 | 按宿主 MCP ADR 已改的方式继承 | 宿主值在 start 时给定、整个 execution 内固定；token 仍按轮签发（D2、D3） |
-| 完成信号 ADR D3–D6：两个信号 blocker、`signalId` 确认、自动接受、`requester` 由服务端推导 | 继承，不变 | D5 |
+| 完成信号 ADR D2–D6：失败、崩溃、超时、取消的一轮丢弃请求；两个信号 blocker、`signalId` 确认、自动接受、`requester` 由服务端推导 | 继承，不变 | D5；desktop 的实现在异常停靠时仍绑定请求，Cloud 按 ADR 文字丢弃 |
 | 完成信号 ADR D7：不支持工具调用的 Agent 靠 `force` 兜底，不探测能力 | 按宿主 MCP ADR D4 的修改继承 | 不声明 HTTP MCP 的 Agent 以 `host_mcp_http_capability_missing` 失败（D4） |
 | 宿主 MCP ADR D1：文法、上限与共用样例，发送前逐字符校验 | 继承，不变 | D1 |
 | 宿主 MCP ADR D6：按能力派发、启动前准入 | 继承并扩展 | D4；“从失败处继续”是否同样准入见 O4 |
-| 宿主 MCP ADR D6：先持久化再发送，或重启时结束所有受影响的 execution | 选择后者 | D2；停靠会话是否算“受影响的 execution”见 O2 |
+| 宿主 MCP ADR D6：先持久化再发送，或重启时结束所有受影响的 execution | 选择后者 | D2；停靠会话算满足 |
 | 宿主 MCP ADR D6：凭据只在持久 execution 记录处于非终态时有效 | 继承，不变 | D3 |
 | 宿主 MCP ADR D6：token 随 prompt 进入 Node 持久的会话命令输入，由使用方规定是否接受 | 决定：接受 | D7 |
 | 宿主 MCP ADR D2：“首次停住前没有收到 `initialize` / `tools/list`”由使用方处理 | 未定 | O1 |
@@ -65,9 +65,12 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 - 端点凭据在 URL 路径里，是 128 位随机值，按 Node execution 签发，会话换成新的 execution 时旧凭据
   作废。Node 在同一 execution 内重启 Agent 时，新进程拿到原样的宿主列表，凭据继续有效。
 - 凭据和 token 只在 Cloud 进程内存中。重启时没跑完的执行按 lifecycle ADR D3 标为中断；除跨重启等待的停靠会话外，都在宿主
-  Server 监听之前结束。旧 Agent 即使还没有退出，手里的凭据也没有一个仍有效。跨重启等待的节点保留完成策略与停住那一轮的信号；它的下一轮启动新 Agent，拿到新凭据。
+  Server 监听之前结束。Cloud 进程被杀时 Node 可能残留；下次启动在恢复执行和提供宿主 Server 之前，先停掉本数据目录下
+  的全部旧 Node，停不掉就不启动。所以重启必然换 Node，旧凭据没有一个仍有效。跨重启等待的节点保留完成策略与停住那一轮的信号；它的下一轮启动新 Agent，拿到新凭据。
   重建后的轮次与信号记录的 `turnKey` 不一致时，信号丢弃。
 - 同一 execution 的 start 若重发，必须携带逐字节相同的宿主列表；不靠重发轮换凭据。
+- 宿主 MCP ADR D6 的 execution 指 Node 协议的 execution：停靠的 `agent` 节点跨重启保留持久会话记录，旧 execution 已随
+  旧 Node 结束，下一轮是新的 execution，因此满足“重启时结束所有受影响的 execution”。
 
 **为什么不持久化凭据**：宿主 MCP ADR D6 允许“重启时结束所有受影响的 execution”代替持久化；Cloud 重启本来就中断
 全部执行，持久化只会多一处保存秘密。代价是 Cloud 以后若让 execution 活过重启，本条必须重新决定。
@@ -89,7 +92,8 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 ## D4：启动准入先确认 Node 能力，缺了就拒绝，不降级
 
 - 冻结图里有 `agent` 策略的根作用域交互节点时，启动先确认项目的 Node 声明宿主能力；Node 没有运行则先启动它。
-  不具备时返回 `workflow_completion_tool_unavailable`，没有节点开始运行，运行状态不变。
+  不具备时返回 `workflow_completion_tool_unavailable`，没有节点开始运行，运行状态不变。Node 起不来之类的临时故障按执行服务
+  不可用报告，不算缺少完成工具。
 - 派发时再查一次：准入之后 Node 换成不具备能力的，节点以 `host_mcp_node_capability_missing` 失败。
 - Agent 不声明 HTTP MCP 时，会话以 Node 的 `host_mcp_http_capability_missing` 结束，节点失败。
 - 任何一种情况都不按 `end_turn` 执行。
@@ -102,12 +106,15 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 - `agent_signal_pending`、`agent_confirmation_pending`、`confirmAgentCompletion{signalId}`、`requester` 与
   `confirmation` 的含义与完成信号 ADR D3–D6 相同；过期的 `signalId` 返回 `workflow_node_signal_changed`，`force`
   不能越过它。首轮的 `turn_unconfirmed` 必须由人确认。
-- 一轮被停止、被时限截断、Agent 丢失或结局不明时，按完成信号 ADR D2 丢弃它的上报；Agent 自己结束的一轮保留。
+- 只有正常结算的一轮才保留与该轮 attempt 匹配的上报。轮次被停止、被截断、被拒绝、Agent 丢失或结局不明时，丢弃该轮
+  上报，强制完成记 `requester: human`，沿用完成信号 ADR D2、D3 的结算与停靠规则。
 - 节点通过完成门禁并提交完成结果后，后继节点才可启动；满足完成信号 ADR D3 的 `force` 路径也可推进。
+- 开启自动接受的节点接受同一信任域内的残余风险：伪造的一次上报能让人发起、正常结束的一轮直接完成节点，但改不了产出，
+  同一系统用户的进程本来就在同一信任域里。
 - 自动接受由服务端在一轮停住后走同一门禁，只在这一轮由人发起、正常结束、只剩 `agent_confirmation_pending` 时
   生效；首轮与异常停靠不自动接受，被门禁拒绝时留给发起人。
 
-本条没有新的取舍，只声明 Cloud 与 desktop 在同一份语义上。
+除自动接受的残余风险外，本条没有新的取舍。
 
 ## D6：恢复版本起新节点默认 `agent`，已保存的值不动
 
@@ -123,10 +130,11 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 - 接受 attempt token 随 prompt 进入 Node 的会话文件与 ledger，以及 Agent 自己的存储：它们与 Cloud 在同一信任域
   （宿主 MCP ADR D5），token 只在一轮内有效，且受 D3 限制。
 - Cloud 自己的日志、事件、数据库、会话历史、最终回答与 Node 事件诊断文件里不得出现凭据或 token。token 块从发布的
-  历史里去掉，其余位置的值换成固定占位符；写入诊断文件之前替换，而不是事后清理。
+  历史里去掉，其余位置的值换成固定占位符；写入诊断文件之前替换，而不是事后清理。重启或 Node 重建后重放的事件属于本进程
+  不认识的 execution，按结构脱敏。
 
 **为什么接受**：不持久化的承载方式需要改 Node 协议，而它挡不住同一身份下读取当前 prompt 的进程。开启自动接受的
-节点没有人工兜底，影响更大，见 O5。
+节点没有人工兜底，影响更大，仍接受（D5）。本条只接受 token，端点凭据见 O7。
 
 ## 不变量
 
@@ -152,27 +160,26 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 
 ## 待 owner 决定
 
-下列取舍没有结论，本文不替 owner 选择。每项写明当前实现的做法，便于评审，它不等于决定。
+下列取舍没有结论，本文不替 owner 选择；编号沿用评审过程，O2、O5 已写进 D2、D5。每项写明当前实现的做法，便于评审，它不等于决定。
 
 | # | 问题 | 选项 | 当前实现 |
 | --- | --- | --- | --- |
 | O1 | 宿主 MCP ADR D2 建议把“首次停住前没有收到 `initialize` / `tools/list`”当作宿主能力缺失的信号，由使用方处理 | A：不单独识别，节点停在 `agent_signal_pending`，由人继续或“仍然完成”；B：识别后在节点上显示工具没有连上；C：识别后让节点失败 | A |
-| O2 | 跨重启等待的停靠会话：持久的会话记录仍未结束，而它的旧 execution 与凭据已不在。这是否满足宿主 MCP ADR D6“重启时结束所有受影响的 execution” | A：满足，D6 的 execution 指 Node 上的那次执行，停靠会话下一轮是新的执行；B：不满足，停靠的 `agent` 节点也要在重启时结束会话，与跨重启等待冲突；C：A，但宿主 Server 再推迟到工作流清扫之后才监听 | 除停靠会话外，所有执行在宿主 Server 监听之前结束并记录重启原因；停靠会话保留；工作流运行与节点的清扫在监听之后 |
 | O3 | Agent 到不了 Cloud 端点的部署（多机、容器、沙箱） | A：不提供宿主能力，编辑器仍默认 `agent`，显式 `agent` 在启动准入被拒绝；B：这类部署的编辑器默认写 `end_turn`；C：出现这类部署时另立决策 | 只有单机部署，没有实现 |
 | O4 | “从失败处继续”是否与启动同样准入 | A：同样准入，缺能力即拒绝；B：只在派发时失败 | A |
-| O5 | 自动接受没有人工兜底，同一信任域里伪造的一次调用会直接完成节点 | A：接受，与 D7 同一理由；B：经 Node 承载时不提供自动接受；C：仅在隔离的部署提供 | A |
-| O6 | Node 在同一 execution 内重启 Agent（插件刷新）时，当前轮的 token 是否轮换。完成信号 ADR D1 要求 Agent 替换时签发新 token，而 Node 不通知 Controller 这次重启 | A：不轮换，token 按轮有效，端点凭据随 execution 有效；B：轮换，需要 Node 协议通知重启 | A |
+| O6 | 插件刷新在当前 prompt 结束后、下一条 prompt 获准进入 Agent 前重启进程。已结束轮次的 token 按 D3 失效。如果下一轮已排队并已签发 token，是否要在它交给新 Agent 前重签？完成信号 ADR D1 要求 Agent 替换时签发新 token，Node 目前不通知 Controller 这次重启 | A：沿用为该轮签发的 token，端点凭据随 execution 有效；B：重签该轮 token，需要 Node 协议通知重启 | A |
+| O7 | 端点凭据（URL 路径）是否会留在 Node 或 Agent 的可读存储里，留存时是否接受 | A：接受，与 D7 同一信任域；B：不接受，另行决定承载方式。先以检索结果为准 | 宿主 MCP ADR D3 规定 Node 不持久化 URL；Agent 的存储尚无证据 |
 
 ## 风险与落地顺序
 
 - **工具没有接上却没有提示**：Agent 可能丢掉连不上的 Server 而照常启动，节点只表现为一直没有上报（O1）。
-- **同一信任域**：见 D7 与 O5；D3 只能防误用和重放，挡不住同一系统用户下的恶意进程。
+- **同一信任域**：见 D5、D7；D3 只能防误用和重放，挡不住同一系统用户下的恶意进程。
 - **默认值改变用户习惯**：新节点要等上报，编辑器在完成判定旁说明这一点。
 - **未解决**：多机或隔离部署的端点与转发（O3）；宿主值的会话内轮换；desktop 是否也检查 HTTP MCP。
 
 落地顺序：
 
-1. **本 ADR 评审**：owner 定 O1–O6，按结论改正文后转为 `approved`。同一变更在默认值 ADR 标题下加
+1. **本 ADR 评审**：owner 定 O1、O3、O4、O6、O7，按结论改正文后转为 `approved`。同一变更在默认值 ADR 标题下加
    `> 历史决策：` 指向本文，并依据最终方案补核心用例：工作流侧放在 `test-cases/cloud/workflow/`，Controller 侧
    的义务继续登记在[Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)。
 2. **`implemented`**：实现合入、证据齐备后，按最终实现同步本文与用例证据，缺口如实保留为 `Partial` / `Missing`。
