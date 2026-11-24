@@ -9,7 +9,7 @@ status: implemented
 > （`implemented`）修改：停止证据加入尝试环境标记扫描，脱组但保留环境的后台作业在终态之前被杀，仍为 BestEffort。
 > 这些部分以该决策为准。
 
-> 历史决策：[保留会话前先停掉这一轮新起的进程](20261123-turn-process-fence-before-keeping-session.md)（`approved`）
+> 历史决策：[保留会话前先停掉这一轮新起的进程](20261123-turn-process-fence-before-keeping-session.md)（`implemented`）
 > 修改本决策的以下部分：D2 的“可依赖的轮次边界”改为 Agent 回应加 Node 轮次进程栅栏的组合，清单按（插件，版本，平台）
 > 登记，保留会话另要求栅栏与结算前的复扫都干净，静默窗口改为从栅栏干净时起算；D3 情况表新增 detail `turn_processes_unstopped`；
 > D1、D4 与不变量 2 的结算期限在栅栏运行时为 G + F + Q + R（F 为 5 秒、R 为 1 秒，共 23 秒），T 须大于它加传输余量；不变量 7、风险表中关于后台任务的一行、验证义务

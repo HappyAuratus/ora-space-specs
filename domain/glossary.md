@@ -467,8 +467,9 @@ _Avoid_: Stop Evidence, process attempt record
 
 ## Node Session Stop
 
-本节是 Node 停止 Agent 会话尝试时使用的术语。尝试锁和终止线索沿用上一节的定义，决策入口见
-[会话尝试的进程带环境标记](../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)。
+本节是 Node 停止 Agent 会话尝试、以及保留会话前停掉一轮新起进程时使用的术语。尝试锁和终止线索沿用上一节的定义，
+决策入口见[会话尝试的进程带环境标记](../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
+与[保留会话前先停掉这一轮新起的进程](../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)。
 
 ### Attempt Environment Mark（尝试环境标记）
 
@@ -478,6 +479,29 @@ _Avoid_: Stop Evidence, process attempt record
 认领的存活进程。它用来在停止时找到并杀掉脱离进程组、关闭了锁 fd 的后代，并作为停止证据的一部分（扫描干净），
 不是秘密，也不构成强纳管：清空环境后成为孤儿的进程不在其内。
 _Avoid_: session id, process group, secret token, cgroup
+
+### Turn Process Fence（轮次进程栅栏）
+
+`Turn Process Fence` 是 Linux 上一轮以取消或失败结束、Agent 已经回应之后，Node 在决定保留会话之前对这一轮的轮次范围
+执行的冻结、杀与判定：复用尝试环境标记的扫描、冻结与 pidfd 杀，连续两次扫描既无范围内的被认领进程、也无范围内的待定
+进程才算干净；静默窗口之后、写 `stopped` 之前，再对同一范围只扫描不杀地复查一次。栅栏或复查不干净时，会话以
+`turn_processes_unstopped` 结束。它不停止尝试，不终止进程组，一轮正常完成后不运行。取消一轮时可依赖的轮次边界由
+Agent 回应与这个栅栏共同构成，按（插件，版本，平台）登记。
+_Avoid_: session stop, attempt stop, process group kill
+
+### Turn Scope（轮次范围）
+
+`Turn Scope` 是栅栏每一遍扫描时从本尝试的认领结果中收窄出的进程：被本尝试认领、启动时刻不早于这一轮开始、且所在会话
+id 不属于豁免会话的进程。轮次开始是准入提交之后、prompt 写出之前在内存中记下的 boot tick，不写账本。范围对后代封闭；
+认领仍用整个尝试的范围，所以范围外的父进程照样能借出它的子进程。它不同于尝试的范围记录（尝试开始时刻与进程用户）。
+_Avoid_: attempt scope record, process group, all processes started during the turn
+
+### Exempt Session（豁免会话）
+
+`Exempt Session` 是同一遍扫描中，某个在这一轮开始前启动、此刻仍存活且被本尝试认领的进程所在的会话 id（sid）。它在
+栅栏的每一遍扫描时现取，不在轮次开始时快照；在豁免会话中启动的进程（例如 Agent 懒启动的 LSP、MCP）不在轮次范围内，
+栅栏不向它们发信号。这里的会话是内核的进程会话，与 Agent 会话、ACP session 无关。
+_Avoid_: ACP session, agent session, session snapshot
 
 ## Cloud Deployment
 
