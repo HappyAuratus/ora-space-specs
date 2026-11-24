@@ -250,7 +250,7 @@ Agent 回应之后，Node 按以下顺序处理一轮的取消或失败：
   `session_ending`，会话在下一次处理队列时以 `EndSession` 的原因结束。这一保证来自账本的拒绝，不依赖读取时机。
 - **已知窗口**：第 8 步逐条写并入的取消。`EndSession` 恰好在两条之间受理时，先写的取消已是 `stopped`，后面的得到
   `session_ending`，同一次停止的并入取消结论不同。窗口只在两次账本写入之间，取消决策的实现原本就有，栅栏没有扩大它；
-  根治需要一次事务写完全部并入的取消，留给后续修复，在核心用例中登记为缺口。
+  根治需要一次事务写完全部并入的取消，留给后续修复（[circus#1403](https://github.com/ora-space/circus/issues/1403)），在核心用例中登记为缺口。
 - **Controller 的等待上限**：取消决策 D4 的 T 改为必须大于 G + F + Q + R 加上传输余量。cloud v2-server 等结论的窗口是
   30 秒，每收到一条消息重新计时，大于 23 秒，不需要改动。
 
@@ -379,7 +379,7 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 | --- | --- | --- |
 | D2：提前返回的不干净观察在 F 剩余时退避再观察 | 只重试 Running，以及扫描失败、待定进程造成的 Unknown；没有开始时刻、尝试已被替换时不观察，范围记录不可用时这次观察即结束栅栏 | 这三种情况重来也不会变干净，重试只会把结束会话推迟到 F 用完 |
 | D4 第 7 步：复扫干净之后最后一次处理队列，已受理的 `EndSession` 优先 | 不变，并写明第 7 步读取之后、第 8 步写完之前受理的 `EndSession` 由账本拒绝 `session_ending` 以外的取消结论来保证不写 `stopped` | 读取与写入之间仍有间隙；账本的拒绝是唯一不依赖时机的保证 |
-| D4 第 8 步：并入的取消与这次停止同一结论 | 逐条写入；`EndSession` 恰好落在两条之间时，先写的为 `stopped`，其余为 `session_ending` | 取消决策的实现原本就有这个窗口，栅栏没有扩大它；一次事务写完全部并入的取消要改取消结算的路径，留给后续修复 |
+| D4 第 8 步：并入的取消与这次停止同一结论 | 逐条写入；`EndSession` 恰好落在两条之间时，先写的为 `stopped`，其余为 `session_ending` | 取消决策的实现原本就有这个窗口，栅栏没有扩大它；一次事务写完全部并入的取消要改取消结算的路径，留给后续修复（[circus#1403](https://github.com/ora-space/circus/issues/1403)） |
 | D5：平台取值 `linux` 与 `windows` | 平台由 Node 的构建目标决定；为其他目标构建的 Node 没有可匹配的平台，不认可任何版本 | 清单只能命名有栅栏设计的平台，其他目标不能借 Linux 的结果放行 |
 | D5：清单编译在 Node 中 | 清单是 `TurnCancelConfig` 的默认值，与 G、Q、F（`process_fence`）、R（`process_recheck`）同在一处，部署不能另行配置；条目旁的注释写明发布包 sha256、所测架构与测量所在的运行 issue | 放宽登记必须随 Node 版本评审发布；测试可以缩短期限而不改生产默认值 |
 | D5：一致性测试经真实 Node 运行 | 不变，测试是按需运行的 `#[ignore]` Node 测试，需要安装好的发布包与 Deno，不在 CI 中运行 | 发布包与 Agent CLI 不在仓库中；它的结果是登记依据的运行记录，进程级行为由 echo-agent fixture 的 Node 测试证明 |
@@ -439,7 +439,7 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 | Node 与 workload 不同用户、且 Node 没有 `CAP_SYS_PTRACE` | 豁免会话集合恒为空，这一轮留下的任何存活进程（包括懒启动的 LSP）都让栅栏为 Unknown，保留会话的取消总会结束会话 | 失败即封闭；部署前提见标记决策 D6，Desktop 与 cloud v2 当前满足（D7） |
 | 冻结期间某个进程组成为孤儿进程组，而组内有被冻结的成员 | 内核向整组发 SIGHUP 与 SIGCONT，被冻结的进程被唤醒，在被杀之前可能 fork 出清空环境的子进程 | 继承自标记决策的冻结手段；唤醒的进程仍在冻结集合中，随后被 SIGKILL；漏掉的清空环境子进程属于标记决策 D6 的已知缺口 |
 | 只在 x86_64、回环模型上测量 | aarch64、v2 的隔离部署与 model proxy 路径、真实模型下的行为未验证 | 登记键不含架构（D5）；部署时在 v2 上复测（落地顺序第 3 步） |
-| `EndSession` 恰好落在并入取消的两次结算写入之间 | 同一次停止的并入取消一部分为 `stopped`、一部分为 `session_ending` | 窗口只在两次账本写入之间，会话仍以 `EndSession` 的原因结束；一次事务写完全部并入的取消留给后续修复（D4） |
+| `EndSession` 恰好落在并入取消的两次结算写入之间 | 同一次停止的并入取消一部分为 `stopped`、一部分为 `session_ending` | 窗口只在两次账本写入之间，会话仍以 `EndSession` 的原因结束；一次事务写完全部并入的取消留给后续修复（D4，[circus#1403](https://github.com/ora-space/circus/issues/1403)） |
 
 ## 验证义务
 
@@ -448,7 +448,7 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 “（轮次进程栅栏）”行登记，不另占编号。证据按 desktop#807 的合并提交 `447a59de` 登记：栅栏用例的 21 项义务中 14 项
 `Covered`、6 项 `Partial`、1 项 `Missing`；取消一轮用例的 10、19 为 `Covered`，13 为 `Partial`。缺口主要是几种注入只在
 栅栏层断言、没有经会话判定的测试，取消发起时 G + F + Q + R 的总期限没有断言，复扫不干净时的并入取消与上文的已知窗口
-没有测试，账本 schema 不变只有结构性事实，以及一致性测试不在 CI 中运行。
+没有测试，账本 schema 不变只有结构性事实，以及一致性测试不在 CI 中运行；测试缺口由 [circus#1407](https://github.com/ora-space/circus/issues/1407) 承接，一致性测试的可重复证据由 [circus#1408](https://github.com/ora-space/circus/issues/1408) 承接。
 
 1. 会话被保留的取消：这一轮工具起的新会话后台作业在 `TurnCancelSettled{stopped}` 写入之前已不在，之后不再写 checkout；
    下一轮的 prompt 在 `stopped` 之后才写出。栅栏干净之后，豁免进程（例如 Agent）不发轮次流量地新起一个 `setsid` 进程，
