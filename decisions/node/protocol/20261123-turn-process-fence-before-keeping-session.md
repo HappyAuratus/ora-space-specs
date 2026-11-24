@@ -24,7 +24,7 @@ Node 验证这个组合。首个登记是 Linux 上的 `official/ora-space.openc
 实现对批准文本的细化与偏离已写进对应决策，汇总见“实现与批准文本的差异”。偏离有两项：栅栏只重试可能自行消失的不干净
 结论；并入的取消逐条结算，`EndSession` 落在两条之间时结论不同（D4 已知窗口，[circus#1403](https://github.com/ora-space/circus/issues/1403)）。“验证义务”各条已转为核心用例并按该合并提交
 登记证据。它修改
-[取消一轮并在轮次结束后保留会话](20261116-cancel-turn-and-keep-session-after-turn-ends.md)（下称“取消决策”，`approved`）的
+[取消一轮并在轮次结束后保留会话](20261116-cancel-turn-and-keep-session-after-turn-ends.md)（下称“取消决策”，`implemented`）的
 D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边界与保留条件、D3 的情况表、不变量 2 与 7、风险表中关于
 后台任务的一行、验证义务 10 与 13，以及
 [会话尝试的进程带环境标记](../agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（下称“标记决策”，
