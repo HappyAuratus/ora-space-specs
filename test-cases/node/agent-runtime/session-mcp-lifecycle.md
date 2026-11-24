@@ -5,9 +5,9 @@ Node 实现依据固定合并提交 [`28da0a4e`](https://github.com/ora-space/de
 Node 侧验收结论按第三轮复审：第 4、5、6、8、12 条为 `Passed`，其余为 `Partial`。
 `Passed` 是该轮 Node 侧验收结论，不表示跨仓库义务全部完成，也不替代表内逐项的
 `Covered / Partial / Missing`。表内保留原验证目标，下面列固定源码的代表性直接证据及不能由它推导的缺口。
-测试运行与变异结果保存在 [#1218](https://github.com/ora-space/circus/issues/1218)，
-本次证据核对与 Low 处置保存在 [#1231](https://github.com/ora-space/circus/issues/1231)。
-Controller/v2 的协议接线仍由 [#1171](https://github.com/ora-space/circus/issues/1171) 承接；旧门禁测试不算接线通过。
+测试运行与变异结果保存在 [circus#1218](https://github.com/ora-space/circus/issues/1218)，
+本次证据核对与 Low 处置保存在 [circus#1231](https://github.com/ora-space/circus/issues/1231)。
+Controller/v2 的协议接线仍由 [circus#1171](https://github.com/ora-space/circus/issues/1171) 承接；旧门禁测试不算接线通过。
 [显式 Session MCP 用例](session-mcp.md)、[共享 checkout 会话用例](shared-checkout-sessions.md)、
 [会话执行用例](session-execution.md)与[尝试锁用例](../git-execution/attempt-locks-and-stop-evidence.md)的
 证据保持各自范围，不推导本文新义务。
@@ -399,7 +399,7 @@ D4 宿主策略第 1–3 条，不变量 5；继承 Desktop ACP setup/refresh �
 | V2 / V3 合并 | 未派发 V2 被丢弃并释放租约、已派发 V2 先确认停止的测试 | Missing |
 | execution 资源跨重启 | 重启前后 ora-git socket 地址与模型授权不变、撤销时按原策略结束的测试 | Partial |
 | 替换先杀旧尝试的带标记进程 | 旧 Agent 的脱组后台作业在替换中被杀、旧尝试记 `lock_processes_and_marks` 后才启动后继的测试 | Partial |
-| 真实 Agent 跨进程 load 前提 | 固定 OpenCode 1.19.3 与 claude-agent-acp 0.99.1 在保留 HOME/cwd 时新进程 load 原 ID 并保留历史，记录见 [circus #1204](https://github.com/ora-space/circus/issues/1204)；空 MCP、未经 Node 重启接缝，不能替代上面的 Node 集成测试 | Partial |
+| 真实 Agent 跨进程 load 前提 | 固定 OpenCode 1.19.3 与 claude-agent-acp 0.99.1 在保留 HOME/cwd 时新进程 load 原 ID 并保留历史，记录见 [circus#1204](https://github.com/ora-space/circus/issues/1204)；空 MCP、未经 Node 重启接缝，不能替代上面的 Node 集成测试 | Partial |
 
 ### 代表性证据与剩余缺口
 
@@ -584,7 +584,7 @@ D5“停止证据与记录”，不变量 7；扩展 Node 直接执行 Git 的�
 
 ### 风险
 
-Agent 工具起的后台作业（`cmd &`、`setsid`）在会话结束后仍写工作区，而停止被记为 `confirmed`（circus #1350）；
+Agent 工具起的后台作业（`cmd &`、`setsid`）在会话结束后仍写工作区，而停止被记为 `confirmed`（circus#1350）；
 反过来，轮次之间或保留会话的取消杀掉 LSP、MCP 等常驻进程（保留会话的取消只杀这一轮的栅栏范围，见下文）；嵌套 Node 覆盖外层标记，外层停止漏掉内层的进程；
 伪造的标记让 Node 杀到尝试开始前就存在的进程，或产生假的停止证据。
 

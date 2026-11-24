@@ -32,7 +32,7 @@ sccache）；轮次之间、保留会话的取消都不杀任何进程。保证�
 （停止证明枚举、范围记录标志与 schema 16）。Node Protocol、Controller 契约与 TS 生成物不变：证明名只出现在 Node
 账本和 root 对账的审计输出里。账本 schema 前向升级一版，旧 Node 不能打开新库（D7）。本决策不覆盖 macOS 与
 Windows，不给 Node 自己执行的 Git 尝试加标记，不提供 Strong 纳管，也不处理“保留会话的取消后杀掉本轮新起的
-进程”（[circus #1339](https://github.com/ora-space/circus/issues/1339) 方向 B）。
+进程”（[circus#1339](https://github.com/ora-space/circus/issues/1339) 方向 B）。
 
 ## 继承与修改
 
@@ -71,10 +71,10 @@ Windows，不给 Node 自己执行的 Git 尝试加标记，不提供 Strong 纳
 
 ## 问题与约束
 
-[circus #1350](https://github.com/ora-space/circus/issues/1350) 报告：Agent 工具起的后台作业（OpenCode bash 工具与
+[circus#1350](https://github.com/ora-space/circus/issues/1350) 报告：Agent 工具起的后台作业（OpenCode bash 工具与
 Claude Bash 里的 `cmd &`）在 Node 结束会话之后仍然存活并继续写工作区，而 Node 同时把这次停止记为
 `confirmed` / `lock_and_processes`。正常 EndSession、导致会话结束的取消、Node 被 SIGKILL 后的重启恢复、Node
-优雅关闭四条路径都会漏出；[circus #1340](https://github.com/ora-space/circus/issues/1340) 用真实 `ora-node` 和部署
+优雅关闭四条路径都会漏出；[circus#1340](https://github.com/ora-space/circus/issues/1340) 用真实 `ora-node` 和部署
 的 OpenCode 0.6.11、Claude 0.4.5 插件复现，作业在 Node 报告结束后 6–20 秒写出文件。
 
 刷新决策 D5 的三种手段在这里同时失效：
@@ -273,7 +273,7 @@ Node 退出时，服务返回之后最多再等 5 秒被放弃的观察，然后
 
 - 轮次之间：一轮正常完成后，带标记的进程照常存活，供下一轮使用；
 - 取消决策中会话被保留的取消（`TurnCancelSettled{stopped}`）与会话被保留的失败：这一轮工具起的后台作业继续
-  运行，进入下一轮。按轮次清理属于 #1339 方向 B，见“本决策未解决的问题”。
+  运行，进入下一轮。按轮次清理属于 circus#1339 方向 B，见“本决策未解决的问题”。
 
 为什么以尝试为界：尝试是 Node 能持久证明归属的最小单位。Node 无法区分“用户希望它活过会话的守护进程”和
 “漏掉的后台作业”，二者同样可能写 checkout；在会话结束时一律杀掉，才能让终态之后 checkout 不再被这个会话的
@@ -290,7 +290,7 @@ Node 自己的环境里已有非空的 `ORA_SESSION_ATTEMPT`（它本身是外�
 - 匹配按整段 token，`inner-2` 或 `XORA_SESSION_ATTEMPT` 都不会命中 `inner`。
 
 为什么保留外层 token：否则内层 Node 给子进程写的值会覆盖外层标记，外层尝试的停止就漏掉内层的整棵进程树，
-回到 #1350 的问题。为什么不让内层认领外层：内层 Node 只对自己的尝试负责，认领外层会让它杀掉不归它管的进程。
+回到 circus#1350 的问题。为什么不让内层认领外层：内层 Node 只对自己的尝试负责，认领外层会让它杀掉不归它管的进程。
 
 ## D6：读不到环境的进程与已知缺口
 
@@ -412,7 +412,7 @@ desktop#802 在评审中按以下方式偏离或细化了 approved 文本。每�
 | 方案 | 优势与取舍 |
 | --- | --- |
 | Node 设为 child subreaper（`PR_SET_CHILD_SUBREAPER`），孤儿收养到 Node 而不是 init | 不依赖环境，`env -i` 的孤儿也能被 Node 看到并回收。但 Node 崩溃后 subreaper 随之消失，孤儿仍被 init 收养，重启收口得不到任何增益；一个 Node 承载多个会话，被收养的孤儿不说明属于哪个尝试；还要新增与 tokio 子进程回收并存的回收循环（约 200 行）。本次不做，可在标记之上作为后续补强 |
-| 每个 execution 一个 cgroup v2 子树 | 进程无法在没有权限时离开 cgroup，是唯一能给出 Strong 的方向，[Linux cgroup 决策](../process/containment/linux/0-cgroup-v2-containment.md)已批准该方向。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都不具备，要改部署才能落地；#1350 是 p1 缺陷，不能等部署变更。留给强纳管的后续决策 |
+| 每个 execution 一个 cgroup v2 子树 | 进程无法在没有权限时离开 cgroup，是唯一能给出 Strong 的方向，[Linux cgroup 决策](../process/containment/linux/0-cgroup-v2-containment.md)已批准该方向。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都不具备，要改部署才能落地；circus#1350 是 p1 缺陷，不能等部署变更。留给强纳管的后续决策 |
 | 按会话 id（sid）杀 | 实现最小。但作业的 sid 正是 Agent 工具 shell 用 `setsid` 新建的，与 Node 记录的任何 sid 都不同，杀不到，与按进程组杀失效的原因相同 |
 | 修插件或上游 Agent：保留 fd、不 `setsid`、自己清理后台作业 | 不改 Node。但行为由上游 Agent 和模型生成的命令决定，各插件版本都要改，用户命令里的 `setsid`/`nohup` 仍会逃逸；Node 的停止证据不能建立在 workload 的配合上 |
 | 扫描后直接 SIGKILL，不先冻结 | 少一步。但会先把清空环境的子进程变成孤儿，之后再也认领不到（D2） |
@@ -441,7 +441,7 @@ desktop#802 在评审中按以下方式偏离或细化了 approved 文本。每�
 
 ## 本决策未解决的问题
 
-- **保留会话的取消后清理本轮新起的进程**（#1339 方向 B）：需要按轮次而不是按尝试划界，涉及取消决策 D2 的保留
+- **保留会话的取消后清理本轮新起的进程**（circus#1339 方向 B）：需要按轮次而不是按尝试划界，涉及取消决策 D2 的保留
   条件，另立决策；本决策提供的扫描手段可以复用。
 - **Strong 纳管**：cgroup 子树或 subreaper，需要部署能力，按[纳管保证决策](../process/containment/guarantees/0-explicit-containment-and-cleanup-evidence.md)另立决策。
 - **macOS 与 Windows**：macOS 只能做标记扫描，Windows 的私有 Job 可能已覆盖，都要实测后各自决策。

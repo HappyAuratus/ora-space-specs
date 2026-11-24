@@ -16,8 +16,8 @@ Node 验证这个组合。首个登记是 Linux 上的 `official/ora-space.openc
 一轮正常完成后仍不发任何信号。
 
 本 ADR 状态为 `implemented`：2026-11-23 经 owner 评审批准（[specs#326](https://github.com/ora-space/specs/pull/326)），
-依据 [circus #1339](https://github.com/ora-space/circus/issues/1339) 的 owner 结论（方向 B）与
-[circus #1380](https://github.com/ora-space/circus/issues/1380) 中的后续裁定：F 为 5 秒，F 内按退避再观察；豁免会话在栅栏
+依据 [circus#1339](https://github.com/ora-space/circus/issues/1339) 的 owner 结论（方向 B）与
+[circus#1380](https://github.com/ora-space/circus/issues/1380) 中的后续裁定：F 为 5 秒，F 内按退避再观察；豁免会话在栅栏
 扫描时取；一致性测试不专门构造懒启动场景；栅栏之后、`stopped` 之前只扫描不杀地复查一次。由
 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现，合并提交
 [`447a59de`](https://github.com/ora-space/desktop/commit/447a59de6722500cae0be011860e63e5127a3b23)。正文按最终实现同步；
@@ -32,7 +32,7 @@ D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边�
 提交时记下轮次开始、D2 判定中的栅栏、新 detail、按平台的清单）与 `crates/utils` 的标记扫描（在认领结果上按轮次收窄，
 读出 sid）。Node Protocol 的消息形状不变，只给既有的 `agent_failed` 增加一个 detail 值；账本 schema 不变（D6）；取消结论的
 本地结算期限变为 G + F + Q + R = 23 秒（D4）。本决策不处理 Windows Node、Claude 插件的 A2
-（[circus #1381](https://github.com/ora-space/circus/issues/1381)）、Strong 纳管，也不弥补清空环境后成为孤儿的进程这一已知
+（[circus#1381](https://github.com/ora-space/circus/issues/1381)）、Strong 纳管，也不弥补清空环境后成为孤儿的进程这一已知
 缺口。
 
 放在 `protocol` 叶子目录，因为本决策改变的是取消决策的会话保留条件、协议可见的终态 detail 与结论期限，是取消决策的
@@ -74,7 +74,7 @@ D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边�
 ## 问题与约束
 
 取消决策 D2 只对“回应之后不再有任何本轮工作”的 Agent 保留会话，并把这一点当作上游 Agent 的属性，由一致性测试按
-版本证明。[circus #1340](https://github.com/ora-space/circus/issues/1340) 用部署的两个发布包实测，两者都不具备这一属性：
+版本证明。[circus#1340](https://github.com/ora-space/circus/issues/1340) 用部署的两个发布包实测，两者都不具备这一属性：
 Agent 回应 `cancelled`、工具状态已是 `completed`，工具起的后台 shell 在回应之后仍写工作目录，之后也没有任何本轮的
 消息。Node 的三层检测（回应栅栏、静止条件、跨轮次检测）只看 Agent 发来的流量，看不到这种写入，所以清单只能为空，
 部署版在运行中取消一轮时会话一律结束（`turn_boundary_unverified`）。
@@ -299,10 +299,10 @@ checkout 不再被上一轮的进程修改。为什么栅栏不因命令中断�
   会话之外新起的进程都已不在、之后没有延迟写入、下一轮正常完成。每个场景重复运行，全部通过的组合才进入清单，测量保存在
   运行 issue 中，条目旁写明发布包摘要与所测架构。一致性测试是按需运行的 Node 测试：它需要安装好的发布包，不在 CI 中
   运行，所以它的结果是登记依据的运行记录，不替代 Node 的进程级测试。
-- **首个登记**：Linux 上的 `official/ora-space.opencode 0.6.11`（OpenCode CLI 1.19.3）。#1340 在 x86_64 上经真实 Node
+- **首个登记**：Linux 上的 `official/ora-space.opencode 0.6.11`（OpenCode CLI 1.19.3）。circus#1340 在 x86_64 上经真实 Node
   运行，五个场景各 5/5 通过。`official/ora-space.claude 0.4.5` 不登记：`background` 0/3，栅栏杀掉它的后台任务后它自己发起
   一轮，被 Q 发现，会话以 `turn_not_quiescent` 安全结束；这是栅栏范围之外的轮次流量，它的 A2（关闭后台任务、发新插件
-  版本）由 #1381 承担，发版并通过测试后再登记。
+  版本）由 circus#1381 承担，发版并通过测试后再登记。
 
 为什么边界改为组合：实测两个 Agent 自身都不满足“回应之后没有本轮工作”，原定义下清单只能为空；它们违约的方式恰好
 是 Node 能看到、能杀掉的进程。把栅栏算进边界后，一致性测试验证的是部署中真正起作用的组合，而不是一个已知不成立的
@@ -389,7 +389,7 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 
 以下要点按批准文本实现，不是偏离：F 为 5 秒、R 为 1 秒（`TurnCancelConfig::process_recheck`）、结论期限 G + F + Q + R 为
 23 秒；豁免会话在栅栏的每一遍扫描时取；detail 为 `turn_processes_unstopped`；清单按（插件，版本，平台）登记，只登记 Linux
-上的 OpenCode 0.6.11，Claude 0.4.5 不登记，由 [circus #1381](https://github.com/ora-space/circus/issues/1381) 承担它的 A2。
+上的 OpenCode 0.6.11，Claude 0.4.5 不登记，由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承担它的 A2。
 
 ## 不变量
 
@@ -416,11 +416,11 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 | 方案 | 优势与取舍 |
 | --- | --- |
 | A1：Claude 桥接走 ACP 的 JetBrains AIR async-task 扩展，取消时先停掉本轮任务（owner 已否决） | 实测可行，由 Agent 自己停后台任务，Node 不必杀进程。但它是私有扩展；桥接要把取消回应压到停止完成之后再转发、吞掉多出来的消息；管不到普通的 `cmd &`；OpenCode 没有对应的钩子 |
-| 只在插件侧解决（A2 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，或各插件在取消回应前自己清理） | 不改 Node，边界仍是 Agent 的属性。但 OpenCode 没有排在取消回应之前的钩子；A2 只去掉 Claude 的后台任务，普通 Bash 里的 `cmd &` 仍会逃逸；每个插件版本各自实现，Node 无法验证，违背“不依赖 Agent 配合”。A2 对 Claude 仍然需要，是栅栏之外的补充（#1381） |
+| 只在插件侧解决（A2 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，或各插件在取消回应前自己清理） | 不改 Node，边界仍是 Agent 的属性。但 OpenCode 没有排在取消回应之前的钩子；A2 只去掉 Claude 的后台任务，普通 Bash 里的 `cmd &` 仍会逃逸；每个插件版本各自实现，Node 无法验证，违背“不依赖 Agent 配合”。A2 对 Claude 仍然需要，是栅栏之外的补充（circus#1381） |
 | 本轮新起的进程一律杀，不按 sid 豁免 | 规则最简单，Agent 懒启动的东西也被清理。但实测会杀掉懒启动的 `deno lsp`，OpenCode 之后一直报告过期诊断，保留下来的会话不可用 |
 | 轮次开始时快照豁免会话集合（本 ADR 初稿） | 一轮里先前成员全部退出的会话仍被豁免，少杀一些进程。但每轮多一次 procfs 扫描，多出“开始时扫描失败”这种只为快照存在的故障；快照里的会话之后可能消失、编号被这一轮新建的会话复用，造成漏杀。owner 裁定在栅栏扫描时取（D1） |
 | 只观察不杀：回应时仍有本轮新起的进程就结束会话 | Node 不在保留会话的路径上发信号。但开发服务器、后台作业很常见，几乎每次取消都结束会话，而结束会话会停止整个尝试，进程照样被杀；用户既失去会话又失去进程，比“杀掉并保留”严格更差 |
-| 每轮一个 cgroup v2 子树，或 Node 做 child subreaper 加启动时刻 | cgroup 是唯一能给出 Strong 的方向，进程无权离开。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都没有（标记决策的否决理由相同）；subreaper 只让孤儿挂到 Node 下，不说明属于哪一轮，Node 崩溃后失效，还要新的回收循环。两者都还要另行区分懒启动的 LSP 与工具作业，豁免规则不可省；#1340 的原型用它们验证了 sid 规则，落地选用已实现的标记扫描 |
+| 每轮一个 cgroup v2 子树，或 Node 做 child subreaper 加启动时刻 | cgroup 是唯一能给出 Strong 的方向，进程无权离开。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都没有（标记决策的否决理由相同）；subreaper 只让孤儿挂到 Node 下，不说明属于哪一轮，Node 崩溃后失效，还要新的回收循环。两者都还要另行区分懒启动的 LSP 与工具作业，豁免规则不可省；circus#1340 的原型用它们验证了 sid 规则，落地选用已实现的标记扫描 |
 | 先等静默窗口 Q，再运行栅栏；或两者并行 | 取消后少等至多 F。但杀掉进程引起的 Agent 反应（补发输出、自发起一轮）会在下一轮 prompt 之后到达，无法与下一轮区分（D4） |
 | 栅栏时间计入 G | Controller 的 T 不变。但栅栏可用的时间取决于 Agent 回应得多快，回应慢时栅栏来不及，本可保留的会话被结束（D4） |
 | F 取 10 秒，容得下一次用满预算后的第二次观察（本 ADR 初稿） | 排队或挂住一次后仍有机会保留会话。但最坏期限变为 27 秒，逼近 v2-server 30 秒的等待窗口；owner 定为 5 秒（D4） |
@@ -480,7 +480,7 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 
 ## 本决策未解决的问题
 
-- **Claude 插件**：被杀的后台任务之后自发起一轮，栅栏无法消除；A2 与新插件版本的登记由 #1381 承担。
+- **Claude 插件**：被杀的后台任务之后自发起一轮，栅栏无法消除；A2 与新插件版本的登记由 circus#1381 承担。
 - **Windows Node**：ora-node 还没有 Windows 版；Windows 上的栅栏（例如私有 Job Object 加进程创建时间）需要实测后另立决策。
 - **豁免会话中代办的工作**：MCP 服务、LSP 或宿主代这一轮起的后台进程不在范围内，需要能区分“谁请求的”来源，超出进程
   属性能表达的范围。
@@ -491,17 +491,17 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 
 ## 落地顺序
 
-1. **评审本 ADR**（运行 1，[circus #1380](https://github.com/ora-space/circus/issues/1380)）：
+1. **评审本 ADR**（运行 1，[circus#1380](https://github.com/ora-space/circus/issues/1380)）：
    [specs#326](https://github.com/ora-space/specs/pull/326) 按评审意见纠正，2026-11-23 经 owner 批准为 `approved`，同时补齐
    核心用例。
-2. **实现**（运行 2，#1340，[desktop#807](https://github.com/ora-space/desktop/pull/807)）：准入提交时记下轮次开始、扫描的
+2. **实现**（运行 2，circus#1340，[desktop#807](https://github.com/ora-space/desktop/pull/807)）：准入提交时记下轮次开始、扫描的
    按轮次收窄、只作用于轮次范围的冻结与杀、F 与先后、结算前的复扫、新 detail、按平台的清单，并登记 Linux 上的
    OpenCode 0.6.11。
    完成条件：“验证义务”第 1–8 条与取消决策第 10 条有直接测试；一致性测试的测量写入运行 issue。在本 ADR 合并为
    `approved` 之后合并。2026-11-23 合并为 `447a59de`。
 3. **部署**：v2-server 锁定的 Node 更新到含 desktop#807 的版本；它等结论的 30 秒窗口大于 G + F + Q + R，不需要改动。
    完成条件：部署版运行中取消一轮后会话保留，可以接着对话。
-4. **落地**（运行 3，[circus #1401](https://github.com/ora-space/circus/issues/1401)）：本 ADR 改为 `implemented`，按
+4. **落地**（运行 3，[circus#1401](https://github.com/ora-space/circus/issues/1401)）：本 ADR 改为 `implemented`，按
    `447a59de` 同步正文与核心用例证据。
 
 保持不变：一轮正常完成、未选择保留的会话、未登记的组合，以及会话结束与 Node 重启时停止整个尝试的规则。从第 3 步
