@@ -532,7 +532,7 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 | --- | --- | --- |
 | 主轮次回应之后仍有无身份的更新到达 | 静默窗口之后到达时会混进下一轮 | 由轮次边界一致性测试判定，现行登记规则见轮次进程栅栏决策 D5；未登记的版本取消与失败一律走兜底（D2） |
 | OpenCode 的子代理、Claude Code 的后台任务可能在回应之后继续运行，并发出轮次之外的更新和权限请求 | 启动过子代理的轮次由静止条件 2 排除；不报告的后台任务 Node 无法观察 | 已实测成立。栅栏范围内的后台进程由 Node 在保留会话前停掉，范围之外的仍由一致性测试排除（轮次进程栅栏决策） |
-| OpenCode 内部异常时，ACP 层返回错误，但 server 端的执行可能仍在进行 | 下一轮混入上一轮未停的工作 | 尚未实测，由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接；成立时把这类错误归入兜底分支。取消写出后到达的同类错误按取消判定，所以只选择了 `keep_session_on_cancel` 的会话也受影响；启用失败后保留之前必须有结论（“落地顺序”第 4 步） |
+| OpenCode 内部异常时，ACP 层返回错误，但 server 端的执行可能仍在进行 | 下一轮混入上一轮未停的工作 | 尚未实测，由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接；成立时把这类错误归入兜底分支。取消写出后到达的同类错误按取消判定，所以只选择了 `keep_session_on_cancel` 的会话也受影响；启用失败后保留之前必须有结论（“落地顺序”第 4 步）；取消后保留由 owner 接受这一风险先行启用（“落地顺序”第 3 步） |
 | Claude Code 内部或传输错误后关闭 provider 会话，Agent 进程仍在 | 下一轮发到已失效的会话 | 按 D2 识别后 `session/load` 恢复；真实 Agent 上的实测由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承接 |
 | G 短于 Agent 正常取消的耗时，或 Q 短于 Agent 回应后残余流量的间隔 | 本可续用的会话被结束，或违约未被静默窗口发现 | G 15 秒、Q 2 秒是暂定值，没有分布实测；OpenCode 的耗时与残余流量分布由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接，Claude 的由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承接 |
 | 一轮失败后保留会话，会话存在的时间变长 | 同一 checkout 承载多个会话时，会更久地占用 checkout 的会话名额 | 由 Controller 的空闲超时与 `EndSession` 释放；checkout 名额的规则不在本决策内 |
@@ -647,6 +647,10 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 3. **Controller 接入**（不属于 Node 侧实现，由各 Controller 落地）：各 Controller 在握手中声明 `turn_cancel`；可能连接 Node 的全部 Controller 实例都具备能力
    后，才为新会话选择 `keep_session_on_cancel`，停止改用 `CancelTurn`，按 D4 的进展规则等待结论，收到 `session_ending` 后按停止责任
    等待终态。
+   上文 OpenCode 内部异常一行的风险不作为本步的前置条件：owner 接受这一风险，先行启用取消后保留。依据是 v2 在真实 Node 上的
+   实测（[circus#1404](https://github.com/ora-space/circus/issues/1404)）：OpenCode 0.6.11 在取消开始后 12–24 ms 内中止这一轮的模型请求，
+   晚于取消送达的文本与工具调用都不会进入被保留的会话或下一轮。内部异常这条更窄的路径仍由
+   [circus#1415](https://github.com/ora-space/circus/issues/1415) 实测，成立时归入兜底分支。
 
 4. **启用失败后保留**（尚未启用）：前置条件是失败原因上报的后续决策（[circus#1138](https://github.com/ora-space/circus/issues/1138)）落地、Controller 能展示失败和原因，
    并且 OpenCode 内部异常后的执行状态已实测（[circus#1415](https://github.com/ora-space/circus/issues/1415)），必要时归入兜底。都满足之后，才为新会话选择 `keep_session_on_failure`。
