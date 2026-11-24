@@ -157,7 +157,7 @@ provider 会话，下一轮通过 `session/load`（Agent 支持时）或带 Ora 
     之后才生效的 `CancelTurn` 也是如此。
   - 准入先提交：这一轮已经开始，取消按"已准入"或"正在执行"处理，MCP 等候超时不再适用于它。
 
-  初始轮次没有命令可结算，这三种结果对它同样互斥，各至多记录一次。
+  初始轮次没有命令可结算，这三种结果对它同样互斥，各至多记录一次。等候已满 300 秒而超时任务还没有提交的轮次，见差异表。
 - **一次停止只有一个截止时刻**：等待 Agent 回应的截止时刻在一次停止开始时确定，之后不延长。
   - `CancelTurn` 发起的停止：截止时刻是这个命令的受理时刻加 G。
   - 一轮失败发起的停止：Agent 已经回应，没有回应截止时刻，只有静默窗口。
@@ -443,12 +443,12 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 | 批准文本 | 实际采用 | 原因 |
 | --- | --- | --- |
 | D2 跨轮次检测、不变量 8：可归属上一轮的迟到更新“不记入任何一轮” | 该更新不进入 Thread 事件和实时预览，会话以 `turn_leak_detected` 结束，但它已经写入会话 JSONL | 运行时先写会话记录，Node 才能拦截；要在写入之前拦截须改变共享运行时的记录顺序，由 [circus#1414](https://github.com/ora-space/circus/issues/1414) 决定 |
-| D1、D4“先到者为准” | 写出 `session/cancel` 之前先取已经排队的回应：有则保留这次回应自己的成功或失败，取消得到 `already_ended`；`session/cancel` 写出之后的任何成功回应（包括 `end_turn`）都按 `cancelled` 走 D2 | 取消写出之后，Agent 自报正常完成不能证明它没有停在半途，不能据此绕过 D2 |
+| D1、D4“先到者为准” | 写出 `session/cancel` 之前先取已经排队的回应：成功回应保留原停止原因，取消得到 `already_ended`；ACP 请求错误按失败走 D2，保留会话时返回 `already_ended`，否则返回 `session_ending`。写出取消后，在截止时刻前收到的成功回应（含 `end_turn`）或 ACP 请求错误（`RequestFailed`）都按 `cancelled` 走 D2 | 取消写出之后，Agent 的回应不能证明这一轮已经静止，仍须通过 D2 的保留判定 |
 | D1“排队：还没有被准入” | 包含准入之前的整个准备阶段：恢复 prior revision、布置工作负载、模型授权期间，取消立即结算，准备照常继续 | 这些步骤耗时没有上限，等它们结束会超过 G + Q |
 | D1 取消与 MCP 等候超时“以先提交的为准” | 等候已满 300 秒、超时任务还没有提交时，取消和准入都先按等候超时结算，无论这一轮在队首还是排在后面 | 否则取消或准入会绕过会话 MCP 刷新 D4 的等候上限 |
 | D2 续用方式、D3 第一行“Agent 进程退出” | MCP 生命周期模式下达到 load 次数阈值而替换 Agent 进程，以及替换失败，都按会话 MCP 刷新 D6 处理，不结束会话 | 替换由 Node 主动发起，保留同一执行与原 provider ID，不是 Agent 退出 |
 | D2“把这类回应视为 provider 会话已失效” | 按一组固定的错误文字精确匹配（不区分大小写）；带会话 ID 的文字匹配不上 | ACP 没有为此规定错误码；匹配不上时下一轮的 prompt 会再次失败 |
-| D3 模型授权被撤销 | 授权进入 Ending 时先停 Agent，等 `EndSession` 的真实原因再写结束决定；有未结算的取消时最多等到它的受理时刻加 G，之后以 `model_access_revoked` 落账 | 结束决定落账后不能改写（D3），取消又必须按期结算 |
+| D3 模型授权被撤销 | 授权进入 Ending 时，并行请求停止 Agent 并等待 `EndSession` 提供结束原因。等待上限为 30 秒，有未结算的取消时也不得超过最早一条的受理时刻加 G；到期仍无 `EndSession` 时以 `model_access_revoked` 落账 | 结束决定落账后不能改写（D3），取消必须按期结算，停机清理不阻塞落账 |
 | D3 重启收口 | 重启时先写完整的结束决定与取消结论，只有终态等停止证据 | 结论不等停止证据（D4） |
 | D5 未协商的连接 | 未协商 `turn_cancel` 的连接发 `CancelTurn`，或启动任一保留字段为 `true` 的会话，按协议违规关闭连接，不进入持久受理 | 否则它之后会收到不理解的事件，违反不变量 10 |
 
@@ -532,7 +532,7 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
 | --- | --- | --- |
 | 主轮次回应之后仍有无身份的更新到达 | 静默窗口之后到达时会混进下一轮 | 由轮次边界一致性测试判定，现行登记规则见轮次进程栅栏决策 D5；未登记的版本取消与失败一律走兜底（D2） |
 | OpenCode 的子代理、Claude Code 的后台任务可能在回应之后继续运行，并发出轮次之外的更新和权限请求 | 启动过子代理的轮次由静止条件 2 排除；不报告的后台任务 Node 无法观察 | 已实测成立。栅栏范围内的后台进程由 Node 在保留会话前停掉，范围之外的仍由一致性测试排除（轮次进程栅栏决策） |
-| OpenCode 内部异常时，ACP 层返回错误，但 server 端的执行可能仍在进行 | 下一轮混入上一轮未停的工作 | 尚未实测，由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接；成立时把这类错误归入兜底分支。只影响失败后保留，启用前必须有结论（“落地顺序”第 4 步） |
+| OpenCode 内部异常时，ACP 层返回错误，但 server 端的执行可能仍在进行 | 下一轮混入上一轮未停的工作 | 尚未实测，由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接；成立时把这类错误归入兜底分支。取消写出后到达的同类错误按取消判定，所以只选择了 `keep_session_on_cancel` 的会话也受影响；启用失败后保留之前必须有结论（“落地顺序”第 4 步） |
 | Claude Code 内部或传输错误后关闭 provider 会话，Agent 进程仍在 | 下一轮发到已失效的会话 | 按 D2 识别后 `session/load` 恢复；真实 Agent 上的实测由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承接 |
 | G 短于 Agent 正常取消的耗时，或 Q 短于 Agent 回应后残余流量的间隔 | 本可续用的会话被结束，或违约未被静默窗口发现 | G 15 秒、Q 2 秒是暂定值，没有分布实测；OpenCode 的耗时与残余流量分布由 [circus#1415](https://github.com/ora-space/circus/issues/1415) 承接，Claude 的由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承接 |
 | 一轮失败后保留会话，会话存在的时间变长 | 同一 checkout 承载多个会话时，会更久地占用 checkout 的会话名额 | 由 Controller 的空闲超时与 `EndSession` 释放；checkout 名额的规则不在本决策内 |
@@ -591,6 +591,8 @@ checkout 中，取得终态后由 Revision 交付照常保存。停止证据是�
       `TurnEnded`；MCP 收敛继续，下一轮在门禁放行后照常准入。
     - 等候超时先提交：`SessionTurnFailed{mcp_refresh_wait_timeout}` 与 Failed 已落账，之后生效的 `CancelTurn` 得到
       `already_ended`，不改写失败。
+    - 等候已满 300 秒、超时任务还没有提交时生效的取消（目标在队首，或排在队首之后）：先按等候超时落账，取消得到
+      `already_ended`；这时准入也不能提交。
     - 准入先提交：取消按"已准入"或"正在执行"处理。
     - 初始轮次（没有命令）同样覆盖三种顺序，各至多一个结果。
 24. 准入已提交、`session/prompt` 还没有写出时受理 `CancelTurn`：Agent 从未收到这次 prompt，事件为

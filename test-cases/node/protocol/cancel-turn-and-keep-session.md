@@ -713,12 +713,14 @@ D2（轮次流量与会话级通知），不变量 13。
 
 ### 前置状态与触发
 
-目标轮次已到队首、正在等 MCP 门禁或会话接入，分别让取消、等候超时、准入先提交；另对初始轮次（没有命令）覆盖三种顺序。
+目标轮次已到队首、正在等 MCP 门禁或会话接入，分别让取消、等候超时、准入先提交；另对初始轮次（没有命令）覆盖三种顺序；
+再让等候满 300 秒而超时任务还没有提交，目标分别在队首与仍排在队首之后。
 
 ### 必须成立
 
 - 取消先提交：`TurnCancelSettled{not_started}`，目标命令 Discarded，之后到 300 秒也没有 `SessionTurnFailed`，没有 `TurnEnded`；MCP 收敛继续，下一轮在门禁放行后照常准入。
 - 等候超时先提交：`SessionTurnFailed{mcp_refresh_wait_timeout}` 与 Failed 已落账，之后生效的 `CancelTurn` 得到 `already_ended`，不改写失败。
+- 等候已满 300 秒、超时任务还没有提交：取消生效时先落账 `SessionTurnFailed{mcp_refresh_wait_timeout}`，再得到 `already_ended`，不是 `not_started`；准入也不能提交。队首与排在队首之后的轮次相同。
 - 准入先提交：取消按"已准入"或"正在执行"处理。
 - 初始轮次的三种结果互斥，各至多记录一次。
 
@@ -730,7 +732,7 @@ D2（轮次流量与会话级通知），不变量 13。
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
-| 23：准入前三方竞争只有一个结果 | 取消先提交：[a_lifecycle_restore_failure_blocks_without_creating_a_provider](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L56)（MCP 门禁 blocked 中的轮次）、[a_cancel_during_model_authorization_settles_before_the_grant](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L943) 与 [cancels_during_the_restore_settle_without_waiting_for_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/resume.rs#L241)（初始轮次在接入前）得到 `not_started`。超时先提交：[the_first_commit_decides_a_waiting_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L163)、[a_cancel_of_a_timed_out_queued_turn_is_already_ended](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L553)、[an_expired_queued_wait_is_timed_out_before_a_cancel_decides_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/driver/conversation/admission/tests.rs#L82)。准入先提交：[the_first_commit_decides_a_waiting_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L163) 拒绝丢弃，[timeout_and_actor_commit_have_one_winner_at_the_deadline](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/driver/conversation/admission/tests.rs#L5) 固定准入与超时只有一个胜者。缺口：取消之后到 300 秒没有 `SessionTurnFailed`、MCP 收敛继续且下一轮在门禁放行后准入，没有用例；初始轮次只覆盖取消先提交；超时先提交只在账本与判定函数层，没有真实等候超时与取消的会话级用例。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
+| 23：准入前三方竞争只有一个结果 | 取消先提交：[a_lifecycle_restore_failure_blocks_without_creating_a_provider](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L56)（MCP 门禁 blocked 中的轮次）、[a_cancel_during_model_authorization_settles_before_the_grant](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L943) 与 [cancels_during_the_restore_settle_without_waiting_for_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/resume.rs#L241)（初始轮次在接入前）得到 `not_started`。超时先提交：[the_first_commit_decides_a_waiting_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L163)、[a_cancel_of_a_timed_out_queued_turn_is_already_ended](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L553)、[an_expired_queued_wait_is_timed_out_before_a_cancel_decides_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/driver/conversation/admission/tests.rs#L82)。准入先提交：[the_first_commit_decides_a_waiting_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L163) 拒绝丢弃，[timeout_and_actor_commit_have_one_winner_at_the_deadline](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/src/session/driver/conversation/admission/tests.rs#L5) 固定准入与超时只有一个胜者。缺口：取消之后到 300 秒没有 `SessionTurnFailed`、MCP 收敛继续且下一轮在门禁放行后准入，没有用例；初始轮次只覆盖取消先提交；超时先提交与到期未提交只在账本与判定函数层，没有真实等候超时与取消的会话级用例，队首的到期分支没有单独测试。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
 
 ### 决策依据
 
