@@ -73,4 +73,4 @@ status: implemented
 
 [Desktop #803](https://github.com/ora-space/desktop/pull/803) 已合并。[四组核心用例](../../../../test-cases/desktop/core/workflow/prompt-inactivity.md) 按固定产品版本记录验证结果。取消未确认后，同一连接重新挂载原 provider 会话仍可能收到旧回合的迟到更新和权限请求。该路径与既有超时和显式取消恢复共用，由 [#1392](https://github.com/ora-space/circus/issues/1392) 单独承接，对应隔离义务为 `Partial`。
 
-升级 Desktop 会重启服务进程，在途回合随进程结束；本决策只为恢复后的新发送承诺冻结策略，不承担跨进程或跨版本的在途回合延续。Cloud 混合版本支持及无法归属具体委托的 provider 适配另行处理。
+Desktop 升级后启动时按既有规则清理中断的节点，恢复时开启新的节点尝试。跨版本恢复后首次实际发送仍缺冻结策略的直接证据，由 [#1421](https://github.com/ora-space/circus/issues/1421) 验证。Cloud 混合版本支持及无法归属具体委托的 provider 适配另行处理。
