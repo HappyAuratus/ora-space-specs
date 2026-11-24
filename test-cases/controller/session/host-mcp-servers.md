@@ -19,8 +19,8 @@ Node 关闭整条控制连接，重连后重发又被关闭；向未声明能力
 
 ### 前置状态
 
-可派发的 Node 分别声明与不声明 `session_host_mcp_servers`；部署配置为 Node 指定宿主端点地址；Controller
-使用 `node-protocol` 的共用接受与拒绝样例。
+可派发的 Node 分别声明与不声明 `session_host_mcp_servers`；单机部署，Agent 与 Controller 在同一网络
+命名空间；Controller 使用 `node-protocol` 的共用接受与拒绝样例。
 
 ### 触发
 
@@ -33,7 +33,8 @@ Node 关闭整条控制连接，重连后重发又被关闭；向未声明能力
 - 只向同时声明 `session_host_mcp_servers` 与 `agent_session` 的 Node 发送非空列表。
 - 需要宿主能力而没有具备能力的 Node 时，在 WorkflowRun 启动准入时以有名字的原因拒绝（或另选 Node），
   不降级为不需要宿主能力的行为。
-- 每个 Node 使用的 URL 来自部署配置；loopback 明文只用于与 Agent 同网络命名空间的端点。
+- 单机部署的端点只绑定 `127.0.0.1`，发给 Node 的 URL 是回环明文；loopback 明文只用于与 Agent 同网络命名空间的端点。
+- 多机、容器或沙箱部署的 URL 怎样取自部署配置，由另立的决策规定后再登记。
 
 ### 禁止结果
 
@@ -46,11 +47,11 @@ Node 关闭整条控制连接，重连后重发又被关闭；向未声明能力
 |---|---|---|
 | 共用样例判断一致 | Controller 校验测试遍历共用样例文件，逐项断言接受或拒绝与标注相同。证据：[`TestHostMCPServersMatchNodesSharedSamples`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/execution/hostmcp_test.go) 遍历 `url_cases` 与 `list_cases`，逐项比较判断；[`TestAnInvalidHostListIsNotSent`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：非法列表不发送。缺口：`raw_cases` 没有断言（Controller 的类型无法构造）；样例是锁定 Node 提交上的副本，没有测试检查副本与来源一致 | Partial |
 | 按能力派发与启动准入 | Controller 测试：不声明能力的 Node 收不到字段；需要宿主能力而无可用 Node 时，WorkflowRun 在启动准入时以有名字的原因被拒绝，没有任何节点开始运行。证据：[`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)、[`TestARunIsRefusedAtItsStartWithoutTheTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)。缺口：没有改变 `agent_session` 的声明 | Partial |
-| URL 来自部署配置 | Controller 配置测试：每个 Node 的宿主端点取自部署配置，远程沙箱没有 Agent 可达的 https 端点时不提供宿主能力。Cloud v2 只有单机部署，端点固定为本机回环的随机端口（使用方决策 D1），没有部署配置；多机、容器或沙箱部署另立决策时才有可测的对象 | Missing |
+| 单机部署的端点只在本机回环 | Controller 测试：真实端点只绑定 `127.0.0.1`，发给 Node 的 URL 是回环明文。证据：[`TestTheEndpointServesTheOneTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go) 用真实端点签发的 URL 通过 D1 文法校验并可以调用，文法只允许字面回环地址用明文 http；[`TestHostToolsReachTheAgentAndNothingElse`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：给定的 URL 原样随 start 发给 Node。缺口：没有直接断言监听地址与 URL 的 scheme、主机。多机、容器或沙箱部署的部署配置另立决策后再登记 | Partial |
 
 ### 决策依据
 
-D1、D6“按能力派发、启动前准入”与“可达性由部署配置决定”，不变量 1、5。
+D1、D6“按能力派发、启动前准入”，不变量 1、5；“可达性由部署配置决定”在单机部署上由使用方决策 D1 修改。
 
 ## Host Endpoints Stay Valid Or The Execution Ends Before Serving
 

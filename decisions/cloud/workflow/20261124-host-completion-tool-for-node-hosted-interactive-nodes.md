@@ -12,8 +12,9 @@ Cloud 进程在本机回环上提供工作流完成工具，经 Node 的会话�
 （下称宿主 MCP ADR）的第一个使用方，也兑现
 [默认 `end_turn`](20261119-end-turn-default-until-host-completion-tool.md)（下称默认值 ADR）的 D4。
 
-本决策处于 `approved`：D1–D8 已经 owner 评审同意。接入完成工具的首批实现已合入 Cloud v2，还没有实现的是 D2 中停靠会话
-旧 execution 的结算和 D8 的提示；前者完成后本文才转 `implemented`。验证义务与证据见
+本决策处于 `approved`：D1–D8 于 2026-11-24 经 owner 批准（[ora-space/specs#334](https://github.com/ora-space/specs/pull/334)）。
+接入完成工具的首批实现已合入 Cloud v2，还没有实现的是 D2 中停靠会话旧 execution 的结算和 D8 的提示，两者都完成后本文
+才转 `implemented`。验证义务与证据见
 [完成工具用例](../../../test-cases/cloud/workflow/host-completion-tool.md)与
 [Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)。
 
@@ -37,6 +38,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 | 完成信号 ADR D7：不支持工具调用的 Agent 靠 `force` 兜底，不探测能力 | 按宿主 MCP ADR D4 的修改继承 | 不声明 HTTP MCP 的 Agent 以 `host_mcp_http_capability_missing` 失败（D4） |
 | 宿主 MCP ADR D1：文法、上限与共用样例，发送前逐字符校验 | 继承，不变 | D1 |
 | 宿主 MCP ADR D6：按能力派发、启动前准入 | 继承并扩展 | D4：“从失败处继续”与启动同样准入 |
+| 宿主 MCP ADR D6：可达性由部署配置决定，每个 Node 使用哪种 URL 由 Controller 的部署配置决定 | 修改，只限单机部署 | Cloud v2 固定用本机回环的随机端口，不读部署配置；多机、容器或沙箱部署另立决策（D1） |
 | 宿主 MCP ADR D6：先持久化再发送，或重启时结束所有受影响的 execution | 选择后者 | D2 |
 | 宿主 MCP ADR D6：启动时检查可恢复性，不能恢复的走正常结束路径并记录有名字的原因 | 继承，不变 | D2：停靠会话保留，它的旧 execution 同样在提供服务前结算 |
 | 宿主 MCP ADR D6：凭据只在持久 execution 记录处于非终态时有效 | 继承，不变 | D3 |
@@ -214,7 +216,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
    [Controller 交付宿主 MCP 用例](../../../test-cases/controller/session/host-mcp-servers.md)。首批实现已有的直接证据按固定提交
    登记，缺口如实保留。
 2. **后续实现**：D2 的旧 execution 结算、D8 的提示，以及用 Claude Code 再检索一次端点凭据，各自独立承接，以本文为准。
-   D8 不挡本文；D2 的结算在转 `implemented` 之前完成。
+   D2 的结算和 D8 的提示都在转 `implemented` 之前完成；D8 只是不挡 `approved`。
 3. **`implemented`**：按最终实现同步本文与用例证据，缺口如实保留为 `Partial` / `Missing`。
 
 从恢复版本起改变的只有 `agent` 策略的交互节点和新节点的默认值；`end_turn` 节点、非交互节点、插件 MCP、Node 协议

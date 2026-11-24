@@ -25,7 +25,7 @@ ADR 为 `approved`，首批实现已合入 cloud main。证据基线是合并提
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
-| 只有根作用域的 `agent` 交互节点带完成工具 | [`TestOnlyAnAgentPolicySessionGetsTheCompletionTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：`end_turn` 节点的首轮与后续轮次、非交互节点都不带，`agent` 节点带；[`TestUsesAgentCompletionCountsOnlyParkedNodes`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflow/completion_internal_test.go)：非交互、未接入、Loop 成员不算；[`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go) 断言没有宿主工具的会话不带字段。缺口：没有 Iteration 成员、普通对话与任务运行的直接测试 | `Partial` |
+| 只有根作用域的 `agent` 交互节点带完成工具 | [`TestOnlyAnAgentPolicySessionGetsTheCompletionTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：`end_turn` 节点的首轮与后续轮次、非交互节点都不带，`agent` 节点带；[`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go) 断言没有宿主工具的会话不带字段。缺口：没有 Loop 与 Iteration 成员、普通对话与任务运行的会话测试 | `Partial` |
 | 列表只随 start 发送，token 按轮附在 prompt 之后 | [`TestHostToolsReachTheAgentAndNothingElse`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：start 带一项 Server，后续轮次不带，每轮末尾是各自的 token 块 | `Covered` |
 | 端点只有一个工具、只回普通 JSON、限制大小 | [`TestTheEndpointServesTheOneTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go)：`tools/list` 只有一项，其他工具与方法报错，`GET` 为 405，超长请求为 413。缺口：没有测试请求时长上限，也没有直接断言只绑定 `127.0.0.1` | `Partial` |
 | 不进入插件 MCP 的选择 | 会话启动测试：同时有插件 MCP 选择与宿主列表时，插件选择与宿主列表互不影响 | `Missing` |
@@ -61,8 +61,8 @@ ADR 为 `approved`，首批实现已合入 cloud main。证据基线是合并提
   “从失败处继续”绕过启动时的检查。
 - 前置状态：冻结图含根作用域的 `agent` 节点；Node 分别声明与不声明 `session_host_mcp_servers`，Agent 分别支持与不支持
   HTTP MCP；另有一个失败的运行可以从失败处继续。
-- 触发：启动运行；从失败处继续；准入之后换成不具备能力的 Node；启动不声明 HTTP MCP 的 Agent。
-- 必须成立：启动与“从失败处继续”缺能力时以 `workflow_completion_tool_unavailable` 拒绝，没有节点开始运行，运行状态不变；
+- 触发：启动运行（Node 已运行或没有运行）；从失败处继续；准入之后换成不具备能力的 Node；启动不声明 HTTP MCP 的 Agent。
+- 必须成立：Node 没有运行时先启动它再判断；启动与“从失败处继续”缺能力时以 `workflow_completion_tool_unavailable` 拒绝，没有节点开始运行，运行状态不变；
   Node 的临时故障按执行服务不可用报告；派发时缺能力以 `host_mcp_node_capability_missing` 失败，Agent 不声明 HTTP MCP 以
   `host_mcp_http_capability_missing` 失败；不含 `agent` 节点的图不受影响。
 - 禁止结果：`agent` 节点按 `end_turn` 执行；被拒绝的启动或继续留下运行中的节点。
@@ -70,6 +70,8 @@ ADR 为 `approved`，首批实现已合入 cloud main。证据基线是合并提
 
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
+| 准入只看根作用域、已接入的 `agent` 交互节点 | [`TestUsesAgentCompletionCountsOnlyParkedNodes`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflow/completion_internal_test.go)：非交互、未接入与 Loop 成员不触发准入检查。缺口：没有 Iteration 成员 | `Partial` |
+| Node 没有运行时先启动它再判断 | Controller 测试：Node 没有运行时启动含 `agent` 节点的运行，断言先启动 Node 再判断能力，分别覆盖具备与不具备能力 | `Missing` |
 | 启动准入拒绝，临时故障不算缺少能力 | [`TestARunIsRefusedAtItsStartWithoutTheTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：缺能力时运行仍为 pending、没有会话启动；Node 不可用与请求取消返回原错误；`end_turn` 图照常启动 | `Covered` |
 | “从失败处继续”同样准入 | Controller 测试：缺能力时继续被同一原因拒绝，运行与节点状态不变；具备能力后可以继续 | `Missing` |
 | 派发时再查，Agent 不支持 HTTP MCP 时明确失败 | [`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：Node 不声明能力时不发送宿主列表，以 `host_mcp_node_capability_missing` 结束；[`TestAnAgentWithoutHTTPMCPKeepsNodesDetail`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go) 与 [`TestAnAgentWithoutHTTPMCPFailsTheNode`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：Node 给出的原因原样到达节点，节点与运行失败 | `Covered` |
@@ -135,6 +137,7 @@ ADR 为 `approved`，首批实现已合入 cloud main。证据基线是合并提
 | 按凭据记录，首次停住前没有收到时提示 | Controller 运行测试：收到与没有收到两种 execution，比较节点上的提示 | `Missing` |
 | 提示不改变状态与门禁 | Controller 运行测试：带提示的节点仍停在 `agent_signal_pending`，继续对话与强制完成照常可用 | `Missing` |
 | 发起人看得到提示 | 前端测试：节点页面显示提示的中英文 | `Missing` |
+| 提示的存储与显示没有凭据或 token | Controller 与前端测试：检索提示的存储、接口回答与页面文字 | `Missing` |
 
 - 决策依据：D8，不变量 9；宿主 MCP ADR D2。
 
@@ -153,7 +156,7 @@ ADR 为 `approved`，首批实现已合入 cloud main。证据基线是合并提
 | 义务 | 所需直接证据 | 状态 |
 | --- | --- | --- |
 | 事件、回答与诊断文件没有凭据或 token | [`TestHostToolsReachTheAgentAndNothingElse`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：回答与诊断文件里换成占位符，发布的事件里没有 token 块；[`TestTheJournalHasNoCredentialOfAnUnknownExecution`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：未知 execution 的四类会话消息在诊断文件里都没有 token 与凭据 | `Covered` |
-| 节点、轮次与提示的存储没有 token | [`TestTheToolFollowsStoredExecutionState`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_execution_test.go)：真实 PostgreSQL 上节点与轮次都不含 token。缺口：没有断言端点凭据，没有检索整个数据库与进程日志 | `Partial` |
+| 节点、轮次与 prompt 的存储没有 token | [`TestTheToolFollowsStoredExecutionState`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_execution_test.go)：真实 PostgreSQL 上节点与轮次（含 prompt）都不含 token。缺口：没有断言端点凭据，没有检索整个数据库与进程日志 | `Partial` |
 | 宿主列表不会被格式化出来 | [`TestAHostMCPServerNeverFormatsItsCredentials`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/execution/hostmcp_test.go) | `Covered` |
 | 真实 Agent 的留存在允许范围内 | 真实 Node 与 OpenCode、Claude Code 各运行一次，检索 Node、Agent 与 Cloud 的存储、日志和进程参数。OpenCode 在 Node `447a59de` 上人工检索过一次，没有命中端点凭据，没有自动测试固定；Claude Code 没有验证 | `Missing` |
 

@@ -98,7 +98,7 @@ blocked/node_unavailable 无界 retrySeconds 保留为独立后续问题。
 [Cloud 经 Node 宿主 MCP 提供完成工具](../../decisions/cloud/workflow/20261124-host-completion-tool-for-node-hosted-interactive-nodes.md)
 于 2026-11-24 经 owner 批准，兑现上一决策的 D4。首批实现已合入 cloud main
 （[`4ba9dc5a`](https://github.com/ora-space/cloud/commit/4ba9dc5a)），核心用例同批建立并按该提交登记直接证据；停靠会话旧 execution 的结算与
-“没有连上”的提示还没有实现。29 项义务为 15 Covered / 6 Partial / 8 Missing。
+“没有连上”的提示还没有实现。32 项义务为 15 Covered / 7 Partial / 10 Missing。
 
 desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注，并如实记下与它不同的地方：同一 run 内多个 agent 节点首期串行（desktop 在同一次调度 pass 里并行派发 sibling agent，所以"至多一个串行执行者"这一条在它身上是 `Partial`）、图在整个运行生命周期内不可变（desktop 另有 `snapshot_switch` 可替换冻结图）、发布时就拒绝不可执行节点（desktop 只在启动时拒绝）、启动表单用 `snapshotId`（desktop 无此表单）。这些义务没有 desktop 证据可依托，只能由 Cloud 自己的测试证明。
 
