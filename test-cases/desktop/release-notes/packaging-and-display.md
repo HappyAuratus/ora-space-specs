@@ -8,10 +8,10 @@ ADR 为 `approved`，desktop 尚未实现，下列义务目前都是 `Missing`�
 | 不变量 | 用例 | 状态 |
 |---|---|---|
 | 1、2、3 | [Tagged Packaging Refuses Missing Or Invalid Notes](#tagged-packaging-refuses-missing-or-invalid-notes) | Missing |
-| 9 | [Notes Cover The Packaged Commit Range](#notes-cover-the-packaged-commit-range) | Missing（人工核对） |
+| 9（高于 v0.6.0 的版本） | [Notes Cover The Packaged Commit Range](#notes-cover-the-packaged-commit-range) | Missing（人工核对） |
 | 4、5 | [Bundled Notes Need No Network](#bundled-notes-need-no-network) | Missing |
-| — | [The Update Card Lists Each Unseen Version Once](#the-update-card-lists-each-unseen-version-once) | Missing |
-| — | [Fresh Installs And Upgrades Without A Record Are Told Apart](#fresh-installs-and-upgrades-without-a-record-are-told-apart) | Missing |
+| 回填 1、2 | [The Update Card Lists Each Unseen Version Once](#the-update-card-lists-each-unseen-version-once) | Missing |
+| 回填 1 | [Fresh Installs And Upgrades Without A Record Are Told Apart](#fresh-installs-and-upgrades-without-a-record-are-told-apart) | Missing |
 | 6 | [Notes Are Rendered As Plain Text](#notes-are-rendered-as-plain-text) | Missing |
 | 7 | [Broken Notes Never Block The App Or Updates](#broken-notes-never-block-the-app-or-updates) | Missing |
 
@@ -127,7 +127,8 @@ ADR D2、D4，不变量 9；回填 ADR D1。
 | 构建注入检出里的全部日志，运行时不读文件、不联网 | 尚无 | `Missing` |
 | 历史的排序、语言和版本上限 | 尚无 | `Missing` |
 | 没有日志时历史为空、不提示 | 尚无 | `Missing` |
-| 历史包含四个回填版本，仓库里没有 v0.1.0 及更早版本的日志文件 | 尚无 | `Missing` |
+| 历史包含四个回填版本 | 尚无 | `Missing` |
+| 仓库里没有 v0.1.0 及更早版本的日志文件 | 没有自动检查，由评审保证 | `Missing` |
 
 ### 决策依据
 
@@ -191,7 +192,7 @@ ADR D5；回填 ADR D2，不变量 1、2。
 
 ### 必须成立
 
-- 空目录：不提示，记录设为当前正式版本。
+- 空目录：当前正式版本高于 v0.6.0 时不提示，记录设为当前正式版本；不高于 v0.6.0 时不提示也不写记录。
 - 已有迁移记录的数据库：卡片列出高于 v0.6.0、不高于当前正式版本的全部日志；从 v0.3.0 到 v0.5.0 直接升级也不列 0.4.0 到 0.6.0，它们只在历史页。
 - 判断依据是打开数据库时已应用的迁移是否为空，并且在本次启动建库之前取得。
 
