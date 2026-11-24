@@ -163,7 +163,7 @@ _Avoid_: 用“物化”“同步”描述当前的 Skill 交付；用“Skill �
 
 ## Agent Plugin Discovery
 
-规则见[Agent 插件发现契约](../decisions/desktop/plugin/agent/0-discovery-contract.md)（`proposed`，评审通过前不构成系统承诺）。
+规则见[Agent 插件发现契约](../decisions/desktop/plugin/agent/0-discovery-contract.md)（`approved`，尚未实现）。
 
 `Pre-session Discovery`（会话前发现）是在没有 Ora 会话 provider 时，由 Agent 插件回答一个 Workspace 中该 Agent 提供
 哪些模型和命令。它不创建 Ora 会话，不写会话历史。
