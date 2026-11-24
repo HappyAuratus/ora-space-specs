@@ -168,7 +168,7 @@ Node 协议、desktop 或完成信号的门禁语义，没有数据迁移义务�
 | O3 | Agent 到不了 Cloud 端点的部署（多机、容器、沙箱） | A：不提供宿主能力，编辑器仍默认 `agent`，显式 `agent` 在启动准入被拒绝；B：这类部署的编辑器默认写 `end_turn`；C：出现这类部署时另立决策 | 只有单机部署，没有实现 |
 | O4 | “从失败处继续”是否与启动同样准入 | A：同样准入，缺能力即拒绝；B：只在派发时失败 | A |
 | O6 | 插件刷新在当前 prompt 结束后、下一条 prompt 获准进入 Agent 前重启进程。已结束轮次的 token 按 D3 失效。如果下一轮已排队并已签发 token，是否要在它交给新 Agent 前重签？完成信号 ADR D1 要求 Agent 替换时签发新 token，Node 目前不通知 Controller 这次重启 | A：沿用为该轮签发的 token，端点凭据随 execution 有效；B：重签该轮 token，需要 Node 协议通知重启 | A |
-| O7 | 端点凭据（URL 路径）是否会留在 Node 或 Agent 的可读存储里，留存时是否接受 | A：接受，与 D7 同一信任域；B：不接受，另行决定承载方式。先以检索结果为准 | 宿主 MCP ADR D3 规定 Node 不持久化 URL；Agent 的存储尚无证据 |
+| O7 | 端点凭据（URL 路径）是否会留在 Node 或 Agent 的可读存储里，留存时是否接受 | A：接受，与 D7 同一信任域；B：不接受，另行决定承载方式。先以检索结果为准 | 没有留存：一次真实 Node 与 OpenCode 的运行里，凭据不在 Node 的会话文件与数据库、OpenCode 的数据库与日志、Cloud 的数据库里；Claude Code 没有证据 |
 
 ## 风险与落地顺序
 
