@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 一轮以取消或失败结束后，Node 先停掉这一轮新起的进程再判定是否保留会话（轮次进程栅栏，Linux）；轮次边界清单按平台登记
@@ -15,11 +15,15 @@ Node 验证这个组合。首个登记是 Linux 上的 `official/ora-space.openc
 条目不被任何 Node 认可。行为变化是：会话被保留的取消或失败之后，这一轮工具起的后台作业和开发服务器会被杀掉；
 一轮正常完成后仍不发任何信号。
 
-本 ADR 状态为 `approved`：2026-11-23 经 owner 评审批准（[specs#326](https://github.com/ora-space/specs/pull/326)），
-依据 [circus #1339](https://github.com/ora-space/circus/issues/1339) 的 owner 结论（方向 B）与
-[circus #1380](https://github.com/ora-space/circus/issues/1380) 中的后续裁定：F 为 5 秒，F 内按退避再观察；豁免会话在栅栏
+本 ADR 状态为 `implemented`：2026-11-23 经 owner 评审批准（[specs#326](https://github.com/ora-space/specs/pull/326)），
+依据 [circus#1339](https://github.com/ora-space/circus/issues/1339) 的 owner 结论（方向 B）与
+[circus#1380](https://github.com/ora-space/circus/issues/1380) 中的后续裁定：F 为 5 秒，F 内按退避再观察；豁免会话在栅栏
 扫描时取；一致性测试不专门构造懒启动场景；栅栏之后、`stopped` 之前只扫描不杀地复查一次。由
-[desktop#807](https://github.com/ora-space/desktop/pull/807) 实现。“验证义务”各条已转为核心用例。它修改
+[desktop#807](https://github.com/ora-space/desktop/pull/807) 实现，合并提交
+[`447a59de`](https://github.com/ora-space/desktop/commit/447a59de6722500cae0be011860e63e5127a3b23)。正文按最终实现同步；
+实现对批准文本的细化与偏离已写进对应决策，汇总见“实现与批准文本的差异”。偏离有两项：栅栏只重试可能自行消失的不干净
+结论；并入的取消逐条结算，`EndSession` 落在两条之间时结论不同（D4 已知窗口，[circus#1403](https://github.com/ora-space/circus/issues/1403)）。“验证义务”各条已转为核心用例并按该合并提交
+登记证据。它修改
 [取消一轮并在轮次结束后保留会话](20261116-cancel-turn-and-keep-session-after-turn-ends.md)（下称“取消决策”，`approved`）的
 D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边界与保留条件、D3 的情况表、不变量 2 与 7、风险表中关于
 后台任务的一行、验证义务 10 与 13，以及
@@ -28,7 +32,7 @@ D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边�
 提交时记下轮次开始、D2 判定中的栅栏、新 detail、按平台的清单）与 `crates/utils` 的标记扫描（在认领结果上按轮次收窄，
 读出 sid）。Node Protocol 的消息形状不变，只给既有的 `agent_failed` 增加一个 detail 值；账本 schema 不变（D6）；取消结论的
 本地结算期限变为 G + F + Q + R = 23 秒（D4）。本决策不处理 Windows Node、Claude 插件的 A2
-（[circus #1381](https://github.com/ora-space/circus/issues/1381)）、Strong 纳管，也不弥补清空环境后成为孤儿的进程这一已知
+（[circus#1381](https://github.com/ora-space/circus/issues/1381)）、Strong 纳管，也不弥补清空环境后成为孤儿的进程这一已知
 缺口。
 
 放在 `protocol` 叶子目录，因为本决策改变的是取消决策的会话保留条件、协议可见的终态 detail 与结论期限，是取消决策的
@@ -70,7 +74,7 @@ D1 与 D4 的本地结算期限和 Controller 等待上限 T、D2 的轮次边�
 ## 问题与约束
 
 取消决策 D2 只对“回应之后不再有任何本轮工作”的 Agent 保留会话，并把这一点当作上游 Agent 的属性，由一致性测试按
-版本证明。[circus #1340](https://github.com/ora-space/circus/issues/1340) 用部署的两个发布包实测，两者都不具备这一属性：
+版本证明。[circus#1340](https://github.com/ora-space/circus/issues/1340) 用部署的两个发布包实测，两者都不具备这一属性：
 Agent 回应 `cancelled`、工具状态已是 `completed`，工具起的后台 shell 在回应之后仍写工作目录，之后也没有任何本轮的
 消息。Node 的三层检测（回应栅栏、静止条件、跨轮次检测）只看 Agent 发来的流量，看不到这种写入，所以清单只能为空，
 部署版在运行中取消一轮时会话一律结束（`turn_boundary_unverified`）。
@@ -113,7 +117,7 @@ prompt 的 Agent 尝试，以及 `turn_since_ticks`，即此刻的 `CLOCK_BOOTTI
 shell。实测的两个 Agent 都把工具命令放进新会话、把懒启动的常驻进程留在自己的会话里，这一规则恰好把两者分开。两者
 以后若改变这种安排，一致性测试会发现（D5）。
 
-为什么在栅栏扫描时取豁免会话，而不在轮次开始时做快照（owner 裁定，按 desktop#807 的实现）：
+为什么在栅栏扫描时取豁免会话，而不在轮次开始时做快照（owner 裁定）：
 
 - 每一轮开始时不多一次 procfs 扫描，也就没有“开始时扫描失败、超出预算”这类只为快照存在的故障；
 - 豁免会话与被判定的进程在同一遍里读出，都是这一遍存活的会话。内核在会话仍有成员时不会复用它的编号；一遍扫描不是
@@ -151,6 +155,11 @@ D2 一次观察的预算相同。第一次观察拿到全部 5 秒预算，排�
 标记决策 D2 的退避（25 ms 起倍增到 1 秒）等待，再在剩余的预算内观察；之后每次观察同样只拿剩余的预算，剩余时间不够
 一次退避时不再观察。所有观察、终止、排队与等待合计不超过 F。栅栏的结果是最后一次观察的结论。干净则继续取消决策 D2 的静默窗口（D4）；否则会话按 D3 结束。
 
+重复观察只用于可能自行消失的不干净结论（Running，或扫描失败、待定进程、worker 上的观察异常结束造成的 Unknown）；观察
+超时时预算已经用完，不再重来。这一轮没有开始时刻、接收
+prompt 的尝试已被替换时，栅栏不观察、不发信号，直接判为 Unknown；尝试的范围记录缺失或不可读时，这次观察判为 Unknown
+并结束栅栏，不再重试。这三种情况重来也不会变干净，重试只会把结束会话推迟到 F 用完。
+
 栅栏从不向轮次开始前已启动的进程（包括插件运行时与 Agent CLI）、豁免会话中的进程发信号。Agent 在栅栏期间照常运行，
 它的进程组与停止线索不变。
 
@@ -166,8 +175,9 @@ worker 的时间也算在内，不重试。结论干净才写 `stopped`；Runnin
 1 秒（D4）。代价是 worker 被其他会话的停止观察占满时复扫为 Unknown，本可保留的会话被结束。
 
 为什么复用标记决策的手段与上限：冻结轮数、冻结时长、重新确认与单一 worker 都已为“读挂住、fork 风暴、PID 复用、
-fd 耗尽”逐项评审过；栅栏面对的是同一批进程，只是范围更小，desktop#807 也只给扫描加了一种收窄方式，没有另起一条杀
-进程的路径。范围对后代封闭（D1），所以“冻结后它刚 fork 的子进程仍以它为父”的论证不变。为什么不终止进程组、不查锁：
+fd 耗尽”逐项评审过；栅栏面对的是同一批进程，只是范围更小，实现也只给扫描加了一种收窄方式，冻结、杀与判定都走这同一个
+收窄后的范围，没有另起一条杀进程的路径。范围对后代封闭（D1），所以“冻结后它刚 fork 的子进程仍以它为父”的论证不变。
+为什么不终止进程组、不查锁：
 本尝试的进程组和锁属于仍要继续服务的 Agent，栅栏不是停止尝试。为什么 F 等于一次观察的预算：owner 定 F 为 5 秒，让
 最坏的结论期限落在 v2-server 的等待窗口之内（D4）；挂住或排队用满预算的观察之后没有剩余时间，按失败结束。提前返回的
 不干净观察在剩余预算内退避后再观察，用于标记决策 D2 已知的短暂情形（收尾时重新确认失败的冻结进程留到下一次观察才被杀）；持续 fork 的
@@ -237,6 +247,12 @@ Agent 回应之后，Node 按以下顺序处理一轮的取消或失败：
   `CancelTurn` 并入这次停止，与它同时结算：复扫干净时同为 `stopped`（因失败而停时为 `already_ended`），复扫不干净时同为
   `session_ending`。复扫期间受理的 `EndSession` 优先：不写 `stopped`，会话以它的原因结束，尚未结算的取消得到
   `session_ending`。所以 `EndSession` 的生效在复扫上最多再推迟 R。
+- **第 7 步读取之后到达的 `EndSession`**：第 7 步读完队列之后、第 8 步写完之前受理的 `EndSession`，同样不会让 `stopped`
+  写出：账本在已持久受理 `EndSession` 之后拒绝 `session_ending` 以外的取消结论，被拒的取消留给结束决定同一事务写成
+  `session_ending`，会话在下一次处理队列时以 `EndSession` 的原因结束。这一保证来自账本的拒绝，不依赖读取时机。
+- **已知窗口**：第 8 步逐条写并入的取消。`EndSession` 恰好在两条之间受理时，先写的取消已是 `stopped`，后面的得到
+  `session_ending`，同一次停止的并入取消结论不同。窗口只在两次账本写入之间，取消决策的实现原本就有，栅栏没有扩大它；
+  根治需要一次事务写完全部并入的取消，留给后续修复（[circus#1403](https://github.com/ora-space/circus/issues/1403)），在核心用例中登记为缺口。
 - **Controller 的等待上限**：取消决策 D4 的 T 改为必须大于 G + F + Q + R 加上传输余量。cloud v2-server 等结论的窗口是
   30 秒，每收到一条消息重新计时，大于 23 秒，不需要改动。
 
@@ -262,11 +278,12 @@ checkout 不再被上一轮的进程修改。为什么栅栏不因命令中断�
 - **登记键**：（插件 ID，插件精确版本，平台）。插件锁定上游版本，精确版本仍是唯一确定 Agent 实现的方式（取消决策
   D2，不变）。平台是 Node 运行的操作系统，取值 `linux` 与 `windows`，各自需要自己的栅栏。CPU 架构不进入登记键：同一
   插件版本在各架构上来自同一份上游源码，栅栏与进程会话语义只取决于操作系统；一致性测试的运行记录写明所用架构与
-  发布包摘要。清单编译在 Node 中，随 Node 版本发布。
+  发布包摘要。清单编译在 Node 中（`TurnCancelConfig` 的默认值），随 Node 版本发布，部署不能另行配置。
 - **Node 如何使用**：Node 只认自己所在平台的条目。ora-node 目前只有 Linux 版（[Ora Desktop 只支持 Windows 和
   Linux](../../desktop/platform/0-windows-and-linux-only.md)），所以 `windows` 条目不被任何 Node 认可；将来的 Windows
   Node 要先有自己的栅栏（例如 Job Object）并在 Windows 上通过一致性测试，才能有 Windows 条目，在此之前它对任何一轮的
   取消或失败都以 `turn_boundary_unverified` 结束会话。只为其他平台登记的版本，在本平台同样是 `turn_boundary_unverified`。
+  Node 所在的平台由它的构建目标决定；为 Linux 与 Windows 以外的目标构建的 Node 没有可匹配的平台，不认可任何版本。
 - **一致性测试**（取消决策验证义务 13 的修改）：在该平台上，以生产构建的 `ora-node`（栅栏启用）、真实的 Deno 与该版本
   未修改的发布包，由回环模型驱动 Agent 的真实工具。每次运行先执行一个普通轮次（使 Agent 自己的进程在目标轮次之前
   就存在），再执行目标轮次并在运行中取消它（`error` 场景让它自己失败），最后再执行一个普通轮次。场景为：
@@ -280,11 +297,12 @@ checkout 不再被上一轮的进程修改。为什么栅栏不因命令中断�
   都已不在；结算之后作业的延迟写入没有出现；下一轮正常完成。`error` 场景没有取消结论：测试在下一轮的第一个事件到达时
   采样进程，此时 Node 已判定完失败的一轮、运行过栅栏与复扫，所以对这个场景它检查的是会话没有结束、那一刻这一轮在更早
   会话之外新起的进程都已不在、之后没有延迟写入、下一轮正常完成。每个场景重复运行，全部通过的组合才进入清单，测量保存在
-  运行 issue 中，条目旁写明发布包摘要。
-- **首个登记**：Linux 上的 `official/ora-space.opencode 0.6.11`（OpenCode CLI 1.19.3）。#1340 在 x86_64 上经真实 Node
+  运行 issue 中，条目旁写明发布包摘要与所测架构。一致性测试是按需运行的 Node 测试：它需要安装好的发布包，不在 CI 中
+  运行，所以它的结果是登记依据的运行记录，不替代 Node 的进程级测试。
+- **首个登记**：Linux 上的 `official/ora-space.opencode 0.6.11`（OpenCode CLI 1.19.3）。circus#1340 在 x86_64 上经真实 Node
   运行，五个场景各 5/5 通过。`official/ora-space.claude 0.4.5` 不登记：`background` 0/3，栅栏杀掉它的后台任务后它自己发起
   一轮，被 Q 发现，会话以 `turn_not_quiescent` 安全结束；这是栅栏范围之外的轮次流量，它的 A2（关闭后台任务、发新插件
-  版本）由 #1381 承担，发版并通过测试后再登记。
+  版本）由 circus#1381 承担，发版并通过测试后再登记。
 
 为什么边界改为组合：实测两个 Agent 自身都不满足“回应之后没有本轮工作”，原定义下清单只能为空；它们违约的方式恰好
 是 Node 能看到、能杀掉的进程。把栅栏算进边界后，一致性测试验证的是部署中真正起作用的组合，而不是一个已知不成立的
@@ -355,6 +373,24 @@ owner 接受的代价：
   会话 MCP 刷新 D5“证据假定 workload 配合”一致：栅栏与标记对恶意或失控的 workload 都只是 BestEffort，不是对抗性
   隔离。用户配置的 MCP 服务不在一致性测试的覆盖范围内。
 
+## 实现与批准文本的差异
+
+desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每一项都已写进上面对应的决策，此处只汇总，便于对照批准版本。
+偏离有两项：第 1 行收窄了栅栏的重试范围，第 3 行留下并入取消逐条结算的窗口；其余为细化或说明：
+
+| 批准文本 | 实际采用 | 原因 | 性质 |
+| --- | --- | --- | --- |
+| D2：提前返回的不干净观察在 F 剩余时退避再观察 | 只重试 Running，以及扫描失败、待定进程或 worker 上的观察异常结束（例如任务 panic）造成的 Unknown；没有开始时刻、尝试已被替换时不观察，范围记录不可用时这次观察即结束栅栏；观察超时已用完预算，不再重来 | 不重试的三种情况重来也不会变干净，重试只会把结束会话推迟到 F 用完 | 偏离：收窄了重试范围，只会更早结束会话 |
+| D4 第 7 步：复扫干净之后最后一次处理队列，已受理的 `EndSession` 优先 | 不变，并写明第 7 步读取之后、第 8 步写完之前受理的 `EndSession` 由账本拒绝 `session_ending` 以外的取消结论来保证不写 `stopped` | 读取与写入之间仍有间隙；账本的拒绝是唯一不依赖时机的保证 | 细化：保证不变，写明机制 |
+| D4 第 8 步：并入的取消与这次停止同一结论 | 逐条写入；`EndSession` 恰好落在两条之间时，先写的为 `stopped`，其余为 `session_ending` | 取消决策的实现原本就有这个窗口，栅栏没有扩大它；一次事务写完全部并入的取消要改取消结算的路径，留给后续修复（[circus#1403](https://github.com/ora-space/circus/issues/1403)） | 偏离：违背批准文本的 D4 与取消决策“并入的取消与那一次停止同时结算” |
+| D5：平台取值 `linux` 与 `windows` | 平台由 Node 的构建目标决定；为其他目标构建的 Node 没有可匹配的平台，不认可任何版本 | 清单只能命名有栅栏设计的平台，其他目标不能借 Linux 的结果放行 | 细化 |
+| D5：清单编译在 Node 中 | 清单是 `TurnCancelConfig` 的默认值，与 G、Q、F（`process_fence`）、R（`process_recheck`）同在一处，部署不能另行配置；条目旁的注释写明发布包 sha256、所测架构与测量所在的运行 issue | 放宽登记必须随 Node 版本评审发布；测试可以缩短期限而不改生产默认值 | 细化 |
+| D5：一致性测试经真实 Node 运行 | 不变，测试是按需运行的 `#[ignore]` Node 测试，需要安装好的发布包与 Deno，不在 CI 中运行 | 发布包与 Agent CLI 不在仓库中；它的结果是登记依据的运行记录，进程级行为由 echo-agent fixture 的 Node 测试证明 | 说明：不是偏离 |
+
+以下要点按批准文本实现，不是偏离：F 为 5 秒、R 为 1 秒（`TurnCancelConfig::process_recheck`）、结论期限 G + F + Q + R 为
+23 秒；豁免会话在栅栏的每一遍扫描时取；detail 为 `turn_processes_unstopped`；清单按（插件，版本，平台）登记，只登记 Linux
+上的 OpenCode 0.6.11，Claude 0.4.5 不登记，由 [circus#1381](https://github.com/ora-space/circus/issues/1381) 承担它的 A2。
+
 ## 不变量
 
 1. 每个被准入的轮次在准入提交之后、prompt 写出之前只在内存中记下开始；记下开始不扫描 procfs、不写账本。
@@ -380,11 +416,11 @@ owner 接受的代价：
 | 方案 | 优势与取舍 |
 | --- | --- |
 | A1：Claude 桥接走 ACP 的 JetBrains AIR async-task 扩展，取消时先停掉本轮任务（owner 已否决） | 实测可行，由 Agent 自己停后台任务，Node 不必杀进程。但它是私有扩展；桥接要把取消回应压到停止完成之后再转发、吞掉多出来的消息；管不到普通的 `cmd &`；OpenCode 没有对应的钩子 |
-| 只在插件侧解决（A2 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，或各插件在取消回应前自己清理） | 不改 Node，边界仍是 Agent 的属性。但 OpenCode 没有排在取消回应之前的钩子；A2 只去掉 Claude 的后台任务，普通 Bash 里的 `cmd &` 仍会逃逸；每个插件版本各自实现，Node 无法验证，违背“不依赖 Agent 配合”。A2 对 Claude 仍然需要，是栅栏之外的补充（#1381） |
+| 只在插件侧解决（A2 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，或各插件在取消回应前自己清理） | 不改 Node，边界仍是 Agent 的属性。但 OpenCode 没有排在取消回应之前的钩子；A2 只去掉 Claude 的后台任务，普通 Bash 里的 `cmd &` 仍会逃逸；每个插件版本各自实现，Node 无法验证，违背“不依赖 Agent 配合”。A2 对 Claude 仍然需要，是栅栏之外的补充（circus#1381） |
 | 本轮新起的进程一律杀，不按 sid 豁免 | 规则最简单，Agent 懒启动的东西也被清理。但实测会杀掉懒启动的 `deno lsp`，OpenCode 之后一直报告过期诊断，保留下来的会话不可用 |
 | 轮次开始时快照豁免会话集合（本 ADR 初稿） | 一轮里先前成员全部退出的会话仍被豁免，少杀一些进程。但每轮多一次 procfs 扫描，多出“开始时扫描失败”这种只为快照存在的故障；快照里的会话之后可能消失、编号被这一轮新建的会话复用，造成漏杀。owner 裁定在栅栏扫描时取（D1） |
 | 只观察不杀：回应时仍有本轮新起的进程就结束会话 | Node 不在保留会话的路径上发信号。但开发服务器、后台作业很常见，几乎每次取消都结束会话，而结束会话会停止整个尝试，进程照样被杀；用户既失去会话又失去进程，比“杀掉并保留”严格更差 |
-| 每轮一个 cgroup v2 子树，或 Node 做 child subreaper 加启动时刻 | cgroup 是唯一能给出 Strong 的方向，进程无权离开。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都没有（标记决策的否决理由相同）；subreaper 只让孤儿挂到 Node 下，不说明属于哪一轮，Node 崩溃后失效，还要新的回收循环。两者都还要另行区分懒启动的 LSP 与工具作业，豁免规则不可省；#1340 的原型用它们验证了 sid 规则，落地选用已实现的标记扫描 |
+| 每轮一个 cgroup v2 子树，或 Node 做 child subreaper 加启动时刻 | cgroup 是唯一能给出 Strong 的方向，进程无权离开。但它需要委派的 cgroup 子树，当前无 root 部署与 cloud v2 都没有（标记决策的否决理由相同）；subreaper 只让孤儿挂到 Node 下，不说明属于哪一轮，Node 崩溃后失效，还要新的回收循环。两者都还要另行区分懒启动的 LSP 与工具作业，豁免规则不可省；circus#1340 的原型用它们验证了 sid 规则，落地选用已实现的标记扫描 |
 | 先等静默窗口 Q，再运行栅栏；或两者并行 | 取消后少等至多 F。但杀掉进程引起的 Agent 反应（补发输出、自发起一轮）会在下一轮 prompt 之后到达，无法与下一轮区分（D4） |
 | 栅栏时间计入 G | Controller 的 T 不变。但栅栏可用的时间取决于 Agent 回应得多快，回应慢时栅栏来不及，本可保留的会话被结束（D4） |
 | F 取 10 秒，容得下一次用满预算后的第二次观察（本 ADR 初稿） | 排队或挂住一次后仍有机会保留会话。但最坏期限变为 27 秒，逼近 v2-server 30 秒的等待窗口；owner 定为 5 秒（D4） |
@@ -405,13 +441,17 @@ owner 接受的代价：
 | 复扫排在其他会话的停止观察之后，超出 R | 复扫为 Unknown，本可保留的会话以 `turn_processes_unstopped` 结束 | 失败即封闭；R 只多 1 秒的结论期限（D2、D4） |
 | Node 与 workload 不同用户、且 Node 没有 `CAP_SYS_PTRACE` | 豁免会话集合恒为空，这一轮留下的任何存活进程（包括懒启动的 LSP）都让栅栏为 Unknown，保留会话的取消总会结束会话 | 失败即封闭；部署前提见标记决策 D6，Desktop 与 cloud v2 当前满足（D7） |
 | 冻结期间某个进程组成为孤儿进程组，而组内有被冻结的成员 | 内核向整组发 SIGHUP 与 SIGCONT，被冻结的进程被唤醒，在被杀之前可能 fork 出清空环境的子进程 | 继承自标记决策的冻结手段；唤醒的进程仍在冻结集合中，随后被 SIGKILL；漏掉的清空环境子进程属于标记决策 D6 的已知缺口 |
-| 只在 x86_64、回环模型上测量 | aarch64、v2 的隔离部署与 model proxy 路径、真实模型下的行为未验证 | 登记键不含架构（D5）；落地前在 v2 部署上复测 |
+| 只在 x86_64、回环模型上测量 | aarch64、v2 的隔离部署与 model proxy 路径、真实模型下的行为未验证 | 登记键不含架构（D5）；部署时在 v2 上复测（落地顺序第 3 步） |
+| `EndSession` 恰好落在并入取消的两次结算写入之间 | 同一次停止的并入取消一部分为 `stopped`、一部分为 `session_ending` | 窗口只在两次账本写入之间，会话仍以 `EndSession` 的原因结束；一次事务写完全部并入的取消留给后续修复（D4，[circus#1403](https://github.com/ora-space/circus/issues/1403)） |
 
 ## 验证义务
 
 以下各条转为[轮次进程栅栏核心用例](../../../test-cases/node/protocol/turn-process-fence.md)，编号一一对应。取消决策的
 验证义务 10、13 按本决策修改，在[取消一轮用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)中以
-“（轮次进程栅栏）”行登记，不另占编号。
+“（轮次进程栅栏）”行登记，不另占编号。证据按 desktop#807 的合并提交 `447a59de` 登记：栅栏用例的 21 项义务中 11 项
+`Covered`、9 项 `Partial`、1 项 `Missing`；取消一轮用例的 10、19 为 `Covered`，13 为 `Partial`。缺口主要是：几种注入（包括复扫的扫描失败）只在栅栏层断言、没有经会话判定的测试；栅栏干净时命令是否落在栅栏期间、
+栅栏是否不因命令中断都没有断言；记下轮次开始不扫描 procfs 只有间接证据；取消发起时 G + F + Q + R 的总期限没有断言；复扫
+不干净时的并入取消与上文的已知窗口没有测试；账本 schema 不变只有结构性事实；一致性测试不在 CI 中运行。测试缺口由 [circus#1407](https://github.com/ora-space/circus/issues/1407) 承接，一致性测试的可重复证据由 [circus#1408](https://github.com/ora-space/circus/issues/1408) 承接。
 
 1. 会话被保留的取消：这一轮工具起的新会话后台作业在 `TurnCancelSettled{stopped}` 写入之前已不在，之后不再写 checkout；
    下一轮的 prompt 在 `stopped` 之后才写出。栅栏干净之后，豁免进程（例如 Agent）不发轮次流量地新起一个 `setsid` 进程，
@@ -440,7 +480,7 @@ owner 接受的代价：
 
 ## 本决策未解决的问题
 
-- **Claude 插件**：被杀的后台任务之后自发起一轮，栅栏无法消除；A2 与新插件版本的登记由 #1381 承担。
+- **Claude 插件**：被杀的后台任务之后自发起一轮，栅栏无法消除；A2 与新插件版本的登记由 circus#1381 承担。
 - **Windows Node**：ora-node 还没有 Windows 版；Windows 上的栅栏（例如私有 Job Object 加进程创建时间）需要实测后另立决策。
 - **豁免会话中代办的工作**：MCP 服务、LSP 或宿主代这一轮起的后台进程不在范围内，需要能区分“谁请求的”来源，超出进程
   属性能表达的范围。
@@ -451,17 +491,18 @@ owner 接受的代价：
 
 ## 落地顺序
 
-1. **评审本 ADR**（运行 1，[circus #1380](https://github.com/ora-space/circus/issues/1380)）：
+1. **评审本 ADR**（运行 1，[circus#1380](https://github.com/ora-space/circus/issues/1380)）：
    [specs#326](https://github.com/ora-space/specs/pull/326) 按评审意见纠正，2026-11-23 经 owner 批准为 `approved`，同时补齐
    核心用例。
-2. **实现**（运行 2，#1340，[desktop#807](https://github.com/ora-space/desktop/pull/807)）：准入提交时记下轮次开始、扫描的
+2. **实现**（运行 2，circus#1340，[desktop#807](https://github.com/ora-space/desktop/pull/807)）：准入提交时记下轮次开始、扫描的
    按轮次收窄、只作用于轮次范围的冻结与杀、F 与先后、结算前的复扫、新 detail、按平台的清单，并登记 Linux 上的
    OpenCode 0.6.11。
    完成条件：“验证义务”第 1–8 条与取消决策第 10 条有直接测试；一致性测试的测量写入运行 issue。在本 ADR 合并为
-   `approved` 之后合并。
+   `approved` 之后合并。2026-11-23 合并为 `447a59de`。
 3. **部署**：v2-server 锁定的 Node 更新到含 desktop#807 的版本；它等结论的 30 秒窗口大于 G + F + Q + R，不需要改动。
    完成条件：部署版运行中取消一轮后会话保留，可以接着对话。
-4. **落地**（运行 3）：本 ADR 改为 `implemented`，按最终实现同步正文与核心用例证据。
+4. **落地**（运行 3，[circus#1401](https://github.com/ora-space/circus/issues/1401)）：本 ADR 改为 `implemented`，按
+   `447a59de` 同步正文与核心用例证据。
 
 保持不变：一轮正常完成、未选择保留的会话、未登记的组合，以及会话结束与 Node 重启时停止整个尝试的规则。从第 3 步
 开始改变：部署的 Node 对 Linux 上登记的组合，在取消或失败后杀掉这一轮的进程，再保留会话。
