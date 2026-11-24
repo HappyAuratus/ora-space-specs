@@ -21,6 +21,12 @@ desktop main [`447a59de`](https://github.com/ora-space/desktop/commit/447a59de67
 `Covered`，13 为 `Partial`。取消决策自身的义务不在这次登记范围内。栅栏自身的义务见
 [轮次进程栅栏用例](turn-process-fence.md)。
 
+[一轮的失败与取消分开记录决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md)（`proposed`，
+随本次修改一同评审）修改了验证义务 6、18、19、20、30：`TurnEnded` 带 `ended_by` 或 `failure`，选择了失败后保留的会话在
+失败之后有 `TurnFailureSettled`，`keep_session_on_failure` 另要求协商 `turn_failure`，两处 detail 按 D3 表修正。用例 6、18、19、
+20、30 各增加一行带“（失败原因）”的义务，不另占编号。新增的义务尚未实现，状态为 `Missing`。失败原因自身的义务见
+[失败原因用例](turn-failure-reason.md)。
+
 | 验证义务 | 核心用例 |
 | --- | --- |
 | 1 | [Cancelling a running turn keeps the session for the next turn](#cancelling-a-running-turn-keeps-the-session-for-the-next-turn) |
@@ -208,21 +214,24 @@ D1（停止中），不变量 4。
 
 ### 必须成立
 
-判定会话保留时结论为 `already_ended`；判定走兜底时结论为 `session_ending`。
+判定会话保留时结论为 `already_ended`；判定走兜底时结论为 `session_ending`。（失败原因）这一轮的 `TurnEnded` 带
+`failure`、不带 `ended_by`；`TurnFailureSettled` 与取消结论一致（`kept` 对应 `already_ended`，`session_ending` 对应
+`session_ending`），写在取消结论之前。
 
 ### 禁止结果
 
-在判定之前写结论；得到 `stopped`。
+在判定之前写结论；得到 `stopped`；（失败原因）因为并入了取消而把这一轮改记为 `caller_cancel`。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 6：失败后静默窗口内的取消随判定结算 | [a_cancel_during_a_failed_turns_quiet_window_is_already_ended](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L504)：失败的一轮在静默窗口内受理取消，判定保留时得到 `already_ended`，会话接着执行下一轮。缺口：判定走兜底时得到 `session_ending` 没有用例。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
+| 6（失败原因）：并入取消的失败轮次保持 `failure`，`TurnFailureSettled` 与取消结论一致且在它之前 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D1（停止中）、D2，不变量 4。
+D1（停止中）、D2，不变量 4；[失败原因决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md) D1、D6。
 
 ## Turn traffic inside the silent window ends the session
 
@@ -576,20 +585,24 @@ D5（能力协商），不变量 10。
 - 会话保留。
 - provider 会话已失效时，下一轮先恢复再继续。
 - MCP 生命周期模式的会话只 load 原 provider ID，失败时 blocked，不新建。
+- （失败原因）会话协商了 `turn_cancel` 与 `turn_failure`；保留时调用方先收到带 `failure` 的 `TurnEnded`，再收到
+  `TurnFailureSettled{kept}`，之后才是下一轮。
 
 ### 禁止结果
 
-会话结束；下一轮发到已失效的 provider 会话；生命周期模式的会话新建 provider 会话。
+会话结束；下一轮发到已失效的 provider 会话；生命周期模式的会话新建 provider 会话；（失败原因）会话保留了却没有
+`TurnFailureSettled{kept}`，或调用方看不到失败原因。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 18：失败后保留与 provider 会话恢复 | [a_failed_turn_keeps_only_a_session_that_chose_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L362)：ACP prompt 报错后选择了 `keep_session_on_failure` 的会话执行下一轮；[a_failure_the_session_survives_runs_the_fence](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/limits.rs#L101)：同一路径经过轮次进程栅栏；[an_invalidated_provider_session_is_loaded_before_the_next_prompt](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L17)：provider 会话失效后先 `session/load`（普通与生命周期模式各一）；[a_lifecycle_restore_failure_blocks_without_creating_a_provider](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L56)：生命周期模式 load 失败时 blocked、不新建；[failure_restores_cross_the_process_budget_without_ending_the_session](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L105)、[a_cancelled_turn_can_resume_across_agent_replacement](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel/recovery.rs#L183)：达到 load 阈值替换 Agent 不结束会话。缺口：看门狗放弃后保留没有用例；非生命周期会话恢复与重建都失败时结束会话没有用例。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
+| 18（失败原因）：失败后保留的会话收到失败原因与 `TurnFailureSettled{kept}`；保留要求协商 `turn_failure`；保留和不能保留时的义务见[失败原因用例](turn-failure-reason.md) 11、12、13 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D2（续用方式）、D5，不变量 7。
+D2（续用方式）、D5，不变量 7；[失败原因决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md) D6。
 
 ## Every mandatory end still ends the session and settles pending cancels
 
@@ -605,7 +618,9 @@ D2（续用方式）、D5，不变量 7。
 ### 必须成立
 
 每种情况都结束会话，终态与 D3 表一致；结束决定作出时尚未结算的 `CancelTurn` 都得到 `session_ending`。栅栏不干净时
-detail 为 `turn_processes_unstopped`。
+detail 为 `turn_processes_unstopped`。（失败原因）看门狗取消没有得到回应时 detail 为 `turn_cancel_unanswered`；一轮进行中
+Agent 进程退出或 ACP 连接断开时为 `agent_unavailable`；选择了失败后保留的会话，失败的一轮在结束决定同一事务中得到
+`TurnFailureSettled{session_ending}`。
 
 ### 禁止结果
 
@@ -617,10 +632,11 @@ detail 为 `turn_processes_unstopped`。
 |---|---|---|
 | 19：D3 的每种情况结束会话并结算取消 | 账本：[the_end_decision_settles_pending_cancels](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L220)、[only_the_full_decision_settles_cancels](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L527)、[a_terminal_settles_pending_cancels_before_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L273)：结束决定同事务结算全部待结算取消。逐行：`turn_cancel_unanswered`、`turn_boundary_unverified`、`turn_not_quiescent`、`turn_leak_detected` 见用例 11、10、7/9、8；`ledger_unavailable` 见 [a_failed_end_decision_ends_with_ledger_unavailable](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L698) 与 [a_ledger_error_during_preparation_waits_for_the_step](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L1076)；`model_access_revoked` 见 [a_cancel_during_a_model_ending_settles_within_its_deadline](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L995)；`EndSession` 见 [an_end_during_the_restore_settles_cancels_before_the_restore_winds_down](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/resume.rs#L314)；Node 重启见用例 27。缺口：Agent 退出或连接断开、运行时不再受理、Thread 镜像不可用三行，没有选择了保留且有未结算取消的用例。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
 | 19（轮次进程栅栏）：`turn_processes_unstopped` 一行同样结束会话并结算取消；各种注入见[栅栏不干净用例](turn-process-fence.md#an-unclean-fence-ends-the-session-as-turn-processes-unstopped) | [`jobs_that_keep_coming_back_end_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L237)、[`an_unknown_fence_ends_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes.rs#L264) 与 [`a_recheck_past_its_budget_ends_the_session`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/order.rs#L374)：栅栏或复扫不干净时会话以 `agent_failed`、detail `turn_processes_unstopped` 结束，尚未结算的取消得到 `session_ending`；[`a_cancel_accepted_during_an_unclean_fence_shares_its_end`](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/turn_processes/order.rs#L109)：两个并入的取消都得到 `session_ending`。只在栅栏层断言的注入及其缺口见栅栏不干净用例 | Covered |
+| 19（失败原因）：看门狗取消无回应与 Agent 进程退出的 detail 与 D3 表一致；失败的一轮随结束决定得到 `TurnFailureSettled{session_ending}`；义务见[失败原因用例](turn-failure-reason.md) 6、7、12 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D3，不变量 2；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D3。
+D3，不变量 2；[轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md) D3；[失败原因决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md) D6、D7。
 
 ## Sessions without either choice keep the previous behaviour
 
@@ -637,20 +653,22 @@ D3，不变量 2；[轮次进程栅栏决策](../../../decisions/node/protocol/2
 - `CancelTurn` 被拒绝（`turn_cancel_unsupported`）。
 - 一轮失败仍以 `agent_failed` 和既有 detail 结束。
 - 旧 Node 与旧 Controller 的消息、握手与输入编解码不变。
+- （失败原因）没有 `TurnFailureSettled`；`TurnEnded` 带 `failure`；detail 只在失败原因决策 D7 的两处按 D3 表修正。
 
 ### 禁止结果
 
-会话因失败而保留；产生 `TurnCancelSettled` 或新的 detail；旧形状消息无法解码。
+会话因失败而保留；产生 `TurnCancelSettled` 或新的 detail；旧形状消息无法解码；（失败原因）产生 `TurnFailureSettled`。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 20：未选择的会话与旧对端保持原行为 | [a_session_without_the_cancel_choice_refuses_cancel_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L89)：没有选择取消保留的会话拒绝 `CancelTurn`，不落账；[provider_failure_ends_the_session_with_a_safe_code_and_releases_resources](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L66)、[missing_agent_credentials_end_the_session_with_an_actionable_code](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session.rs#L91)：未选择时一轮失败仍以 `agent_failed` 和既有 detail 结束（先于本决策的测试，保持通过）；[unchosen_keep_fields_are_omitted](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-protocol/tests/protocol/turn_cancel.rs#L149)、[cancel_and_settlement_round_trip](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-protocol/tests/protocol/turn_cancel.rs#L20)：未选择时输入编码不变，新消息往返。缺口：拒绝测试的会话选择了 `keep_session_on_failure`，两个字段都未选择的拒绝没有单独用例；没有旧 Node、旧 Controller 的实际解码。后续：[circus#1412](https://github.com/ora-space/circus/issues/1412) | Partial |
+| 20（失败原因）：未选择的会话没有 `TurnFailureSettled`，`TurnEnded` 带 `failure`，detail 除两处修正外不变；义务见[失败原因用例](turn-failure-reason.md) 14 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D5，不变量 11。
+D5，不变量 11；[失败原因决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md) D6、D7。
 
 ## EndSession takes precedence over a queued cancel
 
@@ -933,17 +951,21 @@ D4（账本持续不可写），不变量 2。
 - 只选择 `keep_session_on_failure`：`CancelTurn` 被拒绝（`turn_cancel_unsupported`），一轮失败后满足 D2 时会话保留。
 - 两者都选择：两种结束分别按对应规则。
 - 看门狗取消期间并入了 `CancelTurn` 的一轮，按取消处理。
+- （失败原因）选择 `keep_session_on_failure` 要求当前连接协商了 `turn_cancel` 与 `turn_failure`；只选择取消的会话没有
+  `TurnFailureSettled`；看门狗取消期间并入了 `CancelTurn` 的一轮记为 `ended_by: caller_cancel`，不写 `failure`。
 
 ### 禁止结果
 
-只选择取消的会话因失败而保留；只选择失败的会话受理 `CancelTurn`；并入取消的看门狗轮次按失败处理。
+只选择取消的会话因失败而保留；只选择失败的会话受理 `CancelTurn`；并入取消的看门狗轮次按失败处理；（失败原因）只协商了
+`turn_cancel` 的连接能选择失败后保留。
 
 ### 验证义务与证据
 
 | 义务 | 直接证据与缺口 | 状态 |
 |---|---|---|
 | 30：两个字段的组合 | 只选取消：[a_failed_turn_keeps_only_a_session_that_chose_it](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L362)：一轮失败以 `agent_turn_failed` 结束，取消后保留见用例 1。只选失败：同一测试保留会话，[a_session_without_the_cancel_choice_refuses_cancel_turn](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/node-db/src/tests/session/turn_cancel.rs#L89) 拒绝 `CancelTurn`。两者都选：[a_cancel_during_a_failed_turns_quiet_window_is_already_ended](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/apps/ora-node/tests/agent_session/cancel.rs#L504) 的失败按失败规则。看门狗并入：[a_cancel_merged_into_a_watchdog_stop_owns_its_deadline](https://github.com/ora-space/desktop/blob/447a59de6722500cae0be011860e63e5127a3b23/crates/agent-runtime/src/turn_cancel_tests.rs#L52) 报 `UserStopped`。缺口：只选取消的会话在一轮失败时并入的取消得到 `session_ending` 没有用例；两者都选时的取消、Node 层看门狗并入按取消处理没有用例。后续：[circus#1411](https://github.com/ora-space/circus/issues/1411) | Partial |
+| 30（失败原因）：失败后保留要求协商 `turn_failure`；只选取消的会话没有 `TurnFailureSettled`；看门狗并入取消的一轮记为 `caller_cancel`；义务见[失败原因用例](turn-failure-reason.md) 8、13、14 | 尚未实现，无直接证据 | Missing |
 
 ### 决策依据
 
-D2（结束方式表）、D5（两个字段与启用顺序），不变量 7、11。
+D2（结束方式表）、D5（两个字段与启用顺序），不变量 7、11；[失败原因决策](../../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md) D1、D6。

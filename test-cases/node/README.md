@@ -126,7 +126,8 @@ Partial。只能由 Controller 验证的义务在
 另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
 带来的义务，按 desktop#802 `198cc415` 登记时为 2 项 `Partial`、1 项 `Missing`；其中用例 13 的那一项（保留会话的取消不杀
 任何进程，`Missing`）与下文的轮次进程栅栏决策相反，已被“13（轮次进程栅栏）”一行取代，后者现为 `Partial`。用例 10、13、19 另含轮次进程栅栏决策带来的义务，
-按 desktop#807 `447a59de` 登记为 10、19 `Covered`，13 `Partial`。
+按 desktop#807 `447a59de` 登记为 10、19 `Covered`，13 `Partial`。用例 6、18、19、20、30 另含下文失败原因决策带来的义务，
+均为 `Missing`。
 
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
@@ -142,3 +143,13 @@ Partial。只能由 Controller 验证的义务在
 | 领域 | 核心用例 | 重点风险 |
 | --- | --- | --- |
 | protocol | [轮次进程栅栏](protocol/turn-process-fence.md) | 保留会话时本轮后台作业仍在写 checkout、下一轮早于栅栏派发、杀掉懒启动的 LSP/MCP 或轮次开始前的进程、清空环境的子进程逃出栅栏、判断不清仍保留会话、栅栏位置错误让杀进程后的反应混进下一轮、栅栏之后豁免进程静默新起的进程活过 `stopped`、结论超出 G + F + Q + R、正常完成也杀进程、重启后本轮进程无人清理、伪造标记借栅栏杀别人的进程 |
+
+## 一轮失败的原因
+
+[一轮的失败与取消分开记录决策](../../decisions/node/protocol/20261124-turn-failure-reason-distinct-from-cancel.md)为
+`proposed`，核心用例随它一同评审。决策尚未实现，15 条义务均为 `Missing`。取消一轮用例与轮次进程栅栏用例的证据保持原范围，
+不推导本文的新义务。
+
+| 领域 | 核心用例 | 重点风险 |
+| --- | --- | --- |
+| protocol | [一轮失败的原因与失败后的会话结论](protocol/turn-failure-reason.md) | 失败被记成取消或取消被记成失败、ACP 错误码与 Agent 文字丢失、文字未清洗或超长或进入码与日志、看门狗被回 `end_turn` 时重发或不说明原因、看门狗无回应与 Agent 进程退出的 detail 与 D3 表不符、失败后会话保留却没有结论或结论顺序错乱、不能保留时原失败原因被覆盖、未协商的 Controller 收到新事件或选择失败后保留、新字段让旧读者拒绝历史、重启后补出与事实不符的结论 |
