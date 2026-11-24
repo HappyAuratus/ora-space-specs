@@ -17,10 +17,12 @@ status: implemented
 
 > 历史决策：[一轮的失败与取消分开记录](20261124-turn-failure-reason-distinct-from-cancel.md)（`proposed`）修改本决策的
 > 以下部分：D2 结束方式表的“记录”一列与末段“本决策不区分两者”，改为 `TurnEnded` 带 `ended_by` 或 `failure`，`stop_reason`
-> 仍为 `cancelled`；D4 的事件顺序在失败的一轮之后增加 `TurnFailureSettled`；D5 新增能力 `turn_failure`，`keep_session_on_failure`
-> 另要求协商它，启用顺序的前置条件随之具体化；D6 由该决策承担；不变量 11、风险表最后一行、验证义务 6、18、19、20、30 与
-> “落地顺序”第 4 步相应修改。D3 情况表不变，实现中与它不一致的两处 detail 随该决策修正。该决策评审通过之前本文仍是
-> 当前承诺，通过之后这些部分以它为准。
+> 仍为 `cancelled`；D3 结束决定的事务另写失败一轮的 `TurnFailureSettled{session_ending}`；D4 的事件顺序在失败的一轮之后
+> 增加 `TurnFailureSettled`；D5 新增能力 `turn_failure`，`keep_session_on_failure` 另要求协商它，`Hello.turn_cancel` 的含义与
+> “不会产生新的 detail”一条随 detail 的变化修改，启用顺序的前置条件随之具体化；D6 由该决策承担；不变量 11、风险表最后
+> 一行、验证义务 6、18、19、20、30 与“落地顺序”第 4 步相应修改。D3 情况表不变；终态 detail 有三处变化，对所有会话生效：
+> 实现中与情况表不一致的两处改为一致，ACP 错误码 `-32000` 结束的会话为 `agent_authentication_required`。该决策评审通过之前
+> 本文仍是当前承诺，通过之后这些部分以它为准。
 
 Controller 新增会话命令 `CancelTurn{command_id, turn_id}`。Node 持久受理后，在有界时间内在本地确定这次取消的
 结论，每个被受理的取消恰好得到一条新的非终态事件 `TurnCancelSettled`：目标轮次正在执行时，向 Agent 发 ACP
