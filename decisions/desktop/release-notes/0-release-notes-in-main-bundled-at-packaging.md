@@ -2,7 +2,7 @@
 status: proposed
 ---
 
-# Desktop 更新日志是 main 里的文件，打包时检查并内置到安装包，取代写死的清单说明和不固定的 Release 正文
+# Desktop 更新日志随 main 维护，打包时检查并内置到安装包
 
 Desktop 每个正式版本有一份中英文更新日志，存为 desktop `main` 里的普通文件 `release-notes/<版本>.json`。日志由准备
 发版的人在本地用 AI 生成、人工改好，经普通 PR 合并；`scripts/package-desktop.ts --tag` 打包时检查对应文件存在且格式
