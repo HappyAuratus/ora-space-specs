@@ -123,8 +123,8 @@ Partial。只能由 Controller 验证的义务在
 [Agent 运行的协议消息用例](protocol/agent-run-messages.md)，结束会话时的停止证据见
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)，它们的证据保持原范围。用例 11、12、13
 另含[会话尝试环境标记决策](../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)
-带来的义务，按 desktop#802 `198cc415` 登记为 2 项 `Partial`、1 项 `Missing`；其中用例 13 的那一项（保留会话的取消不杀
-任何进程）与下文的轮次进程栅栏决策相反，已改写为栅栏下的一致性测试。用例 10、13、19 另含轮次进程栅栏决策带来的义务，
+带来的义务，按 desktop#802 `198cc415` 登记时为 2 项 `Partial`、1 项 `Missing`；其中用例 13 的那一项（保留会话的取消不杀
+任何进程，`Missing`）与下文的轮次进程栅栏决策相反，已被“13（轮次进程栅栏）”一行取代，后者现为 `Partial`。用例 10、13、19 另含轮次进程栅栏决策带来的义务，
 按 desktop#807 `447a59de` 登记为 10、19 `Covered`，13 `Partial`。
 
 | 领域 | 核心用例 | 重点风险 |
@@ -135,7 +135,7 @@ Partial。只能由 Controller 验证的义务在
 
 [保留会话前先停掉这一轮新起的进程决策](../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)为
 `implemented`，由 [desktop#807](https://github.com/ora-space/desktop/pull/807) 实现。8 个核心用例的 21 项义务按合并提交 `447a59de`
-登记为 14 项 `Covered`、6 项 `Partial`、1 项 `Missing`。取消一轮用例与
+登记为 11 项 `Covered`、9 项 `Partial`、1 项 `Missing`。取消一轮用例与
 [会话 MCP 刷新与宿主健康用例](agent-runtime/session-mcp-lifecycle.md)的证据保持原范围，不推导本文的新义务。
 
 | 领域 | 核心用例 | 重点风险 |

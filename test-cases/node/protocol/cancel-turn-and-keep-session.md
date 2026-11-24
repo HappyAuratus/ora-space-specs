@@ -7,7 +7,8 @@
 [会话 MCP 刷新与宿主健康用例](../agent-runtime/session-mcp-lifecycle.md)约束，本文不推导它们的证据。
 [尝试环境标记决策](../../../decisions/node/agent-runtime/20261120-attempt-mark-in-session-stop-evidence.md)（`implemented`）修改了 D3 复述的停止证据：用例 11、12、13 各增加一行带“（尝试标记）”的
 义务，不另占验证义务编号，一一对应关系不变。这三行按 [desktop#802](https://github.com/ora-space/desktop/pull/802) 的 head
-`198cc415`（尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`。上文“所有义务都没有直接证据”指取消决策自身的
+`198cc415`（当时尚未合入 main）登记：11、12 为 `Partial`，13 为 `Missing`；13 的这一行后来被下文轮次进程栅栏决策的
+“13（轮次进程栅栏）”一行取代，后者现为 `Partial`。上文“所有义务都没有直接证据”指取消决策自身的
 30 条义务，它们的状态不在这次登记范围内。
 
 [轮次进程栅栏决策](../../../decisions/node/protocol/20261123-turn-process-fence-before-keeping-session.md)（`implemented`）

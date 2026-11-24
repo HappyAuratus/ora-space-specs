@@ -445,10 +445,10 @@ desktop#807 在评审中按以下方式细化或偏离了 approved 文本。每�
 
 以下各条转为[轮次进程栅栏核心用例](../../../test-cases/node/protocol/turn-process-fence.md)，编号一一对应。取消决策的
 验证义务 10、13 按本决策修改，在[取消一轮用例](../../../test-cases/node/protocol/cancel-turn-and-keep-session.md)中以
-“（轮次进程栅栏）”行登记，不另占编号。证据按 desktop#807 的合并提交 `447a59de` 登记：栅栏用例的 21 项义务中 14 项
-`Covered`、6 项 `Partial`、1 项 `Missing`；取消一轮用例的 10、19 为 `Covered`，13 为 `Partial`。缺口主要是几种注入只在
-栅栏层断言、没有经会话判定的测试，取消发起时 G + F + Q + R 的总期限没有断言，复扫不干净时的并入取消与上文的已知窗口
-没有测试，账本 schema 不变只有结构性事实，以及一致性测试不在 CI 中运行；测试缺口由 [circus#1407](https://github.com/ora-space/circus/issues/1407) 承接，一致性测试的可重复证据由 [circus#1408](https://github.com/ora-space/circus/issues/1408) 承接。
+“（轮次进程栅栏）”行登记，不另占编号。证据按 desktop#807 的合并提交 `447a59de` 登记：栅栏用例的 21 项义务中 11 项
+`Covered`、9 项 `Partial`、1 项 `Missing`；取消一轮用例的 10、19 为 `Covered`，13 为 `Partial`。缺口主要是：几种注入（包括复扫的扫描失败）只在栅栏层断言、没有经会话判定的测试；栅栏干净时命令是否落在栅栏期间、
+栅栏是否不因命令中断都没有断言；记下轮次开始不扫描 procfs 只有间接证据；取消发起时 G + F + Q + R 的总期限没有断言；复扫
+不干净时的并入取消与上文的已知窗口没有测试；账本 schema 不变只有结构性事实；一致性测试不在 CI 中运行。
 
 1. 会话被保留的取消：这一轮工具起的新会话后台作业在 `TurnCancelSettled{stopped}` 写入之前已不在，之后不再写 checkout；
    下一轮的 prompt 在 `stopped` 之后才写出。栅栏干净之后，豁免进程（例如 Agent）不发轮次流量地新起一个 `setsid` 进程，
