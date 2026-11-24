@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 ---
 
 # 回填 v0.3.0 到 v0.6.0 的更新日志供历史页查看，更新后卡片只提示高于 v0.6.0 的版本
@@ -7,7 +7,8 @@ status: approved
 给已发布的 v0.3.0、v0.4.0、v0.5.0、v0.6.0 补上更新日志文件，用户在设置页历史里能看到它们；更新后卡片只提示高于 v0.6.0 的
 版本，所以升级的用户不会再被提示他们早已有的内容。v0.1.0 和更早的版本不回填。
 
-本文为 `approved`：2026-11-24 经 owner 批准，尚未实现；核心用例见
+本文为 `implemented`：2026-11-24 经 owner 批准，同日由 desktop 合并提交
+[`0c82855b`](https://github.com/ora-space/desktop/commit/0c82855bc1e5492937bbc5893b505f7de18b9f39) 实现，没有偏离批准的决策。核心用例见
 [更新日志的打包与展示](../../../test-cases/desktop/release-notes/packaging-and-display.md)。
 
 - **涉及**：desktop 的 `release-notes/` 四个文件、更新后卡片的判断、中英文文档。
@@ -55,7 +56,7 @@ status: approved
 包括每版最多 50 条、每条每种语言最多 500 码点；v0.3.0 合并成面向用户的条目，不按 PR 逐条改写。
 
 回填的文件事后整理，不保证覆盖范围内的全部改动，也不按提交逐项核对；仓库里的文件仍是这些版本日志的唯一来源，Release 正文不回改。
-**合并前由熟悉产品的人看过内容，这是合并条件。**
+内容在合并前由熟悉产品的人看过。
 
 v0.0.5、v0.0.6、v0.0.7 不回填：只能从提交拼凑，内容不可靠。v0.1.0 也不回填，仓库里不放 `0.1.0.json`：根决策 D5“按有没有本版本的
 日志文件判断”要独立于 D2 的下限继续生效，版本号 0.1.0 的开发构建的历史页也不应显示 0.1.0。v0.1.0 及更早的版本没有日志文件是本条
@@ -108,14 +109,3 @@ v0.0.5、v0.0.6、v0.0.7 不回填：只能从提交拼凑，内容不可靠。v
 |---|---|
 | 回填内容不准或不全 | 事后整理，没有逐个改动核对；合并前由熟悉产品的人看过，更正按根决策 D4 随下个版本发布 |
 | 更新清单带上回填的版本 | 版本范围和展示区间由[清单 ADR](20261124-manifest-notes-before-update.md) 定。高于 v0.6.0 的正式版看不到回填的版本；版本号仍是 0.1.0 的构建、用新的 `main` 重打的 v0.3.0 到 v0.6.0 可能看到，它们本来就低于这些版本 |
-
-## 落地顺序
-
-1. **specs**：本文改为 `approved`，同一次变更里改根决策的历史决策提示和核心用例：
-   [卡片](../../../test-cases/desktop/release-notes/packaging-and-display.md#the-update-card-lists-each-unseen-version-once)与
-   [没有记录的升级](../../../test-cases/desktop/release-notes/packaging-and-display.md#fresh-installs-and-upgrades-without-a-record-are-told-apart)
-   补版本下限和不写记录；[历史页](../../../test-cases/desktop/release-notes/packaging-and-display.md#bundled-notes-need-no-network)
-   补四个回填版本；[提交范围](../../../test-cases/desktop/release-notes/packaging-and-display.md#notes-cover-the-packaged-commit-range)
-   限定为高于 v0.6.0 的版本。
-2. **desktop**：四份日志、卡片下限和文档一个 PR，一起交付，避免先有旧日志而没有下限。
-3. **specs**：按最终实现同步本文，改为 `implemented`。
