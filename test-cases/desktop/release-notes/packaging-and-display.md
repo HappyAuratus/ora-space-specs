@@ -129,7 +129,7 @@ ADR D2、D4，不变量 9；回填 ADR D1。
 | 构建注入检出里的全部日志，运行时不读文件、不联网 | 尚无 | `Missing` |
 | 历史的排序、语言和版本上限 | 尚无 | `Missing` |
 | 没有日志时历史为空、不提示 | 尚无 | `Missing` |
-| 历史包含四个回填版本 | [`scripts/release-notes.test.ts:39`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/scripts/release-notes.test.ts#L39) `the repository keeps the backfilled notes for the history`：仓库里有四份合格的文件，`date` 是实际发布日期；[`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:134`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L134) `lists them in the history`：历史的筛选列出它们。真实构建注入的内容在历史页里显示，没有测试 | `Partial` |
+| 历史包含四个回填版本 | [`scripts/release-notes.test.ts:39`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/scripts/release-notes.test.ts#L39) `the repository keeps the backfilled notes for the history`：仓库里有四份合格的文件，`date` 与回填 ADR 列出的日期一致；[`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:134`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L134) `lists them in the history`：历史的筛选列出四个回填版本的样例。真实构建注入的内容在历史页里显示，没有测试 | `Partial` |
 | 仓库里没有 v0.1.0 及更早版本的日志文件 | 没有自动检查，由评审保证 | `Missing` |
 
 ### 决策依据
