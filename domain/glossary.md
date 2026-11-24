@@ -71,8 +71,8 @@ _Avoid_: 与 Plugin Manifest、Release Manifest（插件的清单）混用
 
 ### Yellow-Zone Build（黄区包）
 
-同时满足下列三条的 Desktop 安装包：用 `scripts/package-desktop.ts --tag` 打包；源码与所用的 desktop 提交只差本地替换的
-`FIRST_INSTALL_SQL`（首次安装数据，公开包为空）；只在本地交付，不上传 GitHub Release。“黄区”只指这类安装包的交付环境，
+同时满足下列三条的 Desktop 安装包：用 `scripts/package-desktop.ts --tag` 打包；源码与所用的 desktop 提交相比，只替换首次
+安装数据（现为 `FIRST_INSTALL_SQL`，公开包为空）；只在本地交付，不上传 GitHub Release。“黄区”只指这类安装包的交付环境，
 不表示该环境能否访问某个公网地址。
 
 ## Agent Conversation
