@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # 回填 v0.3.0 到 v0.6.0 的更新日志供历史页查看，更新后卡片只提示高于 v0.6.0 的版本
@@ -7,7 +7,8 @@ status: proposed
 给已发布的 v0.3.0、v0.4.0、v0.5.0、v0.6.0 补上更新日志文件，用户在设置页历史里能看到它们；更新后卡片只提示高于 v0.6.0 的
 版本，所以升级的用户不会再被提示他们早已有的内容。v0.1.0 和更早的版本不回填。
 
-本文为 `proposed`，内容按 owner 的结论写，没有待定项。
+本文为 `approved`：2026-11-24 经 owner 批准，尚未实现；核心用例见
+[更新日志的打包与展示](../../../test-cases/desktop/release-notes/packaging-and-display.md)。
 
 - **涉及**：desktop 的 `release-notes/` 四个文件、更新后卡片的判断、中英文文档。
 - **不涉及**：日志的字段和打包检查的规则、安装包内置的方式、设置页历史的排序与语言。
@@ -110,7 +111,7 @@ v0.0.5、v0.0.6、v0.0.7 不回填：只能从提交拼凑，内容不可靠。v
 
 ## 落地顺序
 
-1. **specs**：本文改为 `approved` 时，同一次变更里改根决策的历史决策提示和核心用例：
+1. **specs**：本文改为 `approved`，同一次变更里改根决策的历史决策提示和核心用例：
    [卡片](../../../test-cases/desktop/release-notes/packaging-and-display.md#the-update-card-lists-each-unseen-version-once)与
    [没有记录的升级](../../../test-cases/desktop/release-notes/packaging-and-display.md#fresh-installs-and-upgrades-without-a-record-are-told-apart)
    补版本下限和不写记录；[历史页](../../../test-cases/desktop/release-notes/packaging-and-display.md#bundled-notes-need-no-network)
