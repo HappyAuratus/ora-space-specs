@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Desktop 项目是本机目录，Git 是按目录实时探测的可选能力，而不是项目前提
@@ -11,7 +11,7 @@ Desktop 的项目是一个本机目录：添加项目只要求目录存在，会
 据此降级：变更面板改为说明、worktree 任务入口隐藏、Git 操作在后端返回带类型的 `workspace_not_git_repository`、
 定时任务表单在 `notRepository` 时提前拦截后端必然拒绝的保存。
 
-本 ADR 为 `proposed`，等待 owner 评审。所述行为已由 ora-space/desktop#812 与 ora-space/desktop#818 实现并合并，
+本 ADR 为 `approved`：owner 已批准修正后的正文（specs `086b67f9`），核心用例维护在 `test-cases/desktop/core/workspace/`。所述行为已由 ora-space/desktop#812 与 ora-space/desktop#818 实现并合并，
 本文核对的证据基线是 desktop `c9a76541`；实现先于本决策合并是 owner 在 ora-space/circus#1400 下的安排。涉及的模块是 Desktop 的 workspace/project（契约 `WorkspaceDirectory`、
 `WorkspaceGit`，后端 Workspace 列表与 Git 审阅操作，gitlancer 的工作树探测）以及使用它的变更面板、worktree
 任务入口和定时任务表单。兼容性边界：已有 Git 项目的行为不变；`unknown`、目录缺失、远程 Workspace 和列表失败
