@@ -122,7 +122,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 | 晚到的取回结果不盖掉流中的选项（新增） | 尚无实现 | `Missing` |
 | 取的期间又收到广播会再取（新增） | 尚无实现 | `Missing` |
 | 流结束之前收到的广播在流结束后补取（新增） | 尚无实现 | `Missing` |
-| 流没有送来选项就结束时补取，只送来空集合时不补取（新增） | 尚无实现 | `Missing` |
+| 流没有送来选项就结束时补取；只送来空集合且期间未收到广播时不补取（新增） | 尚无实现 | `Missing` |
 
 ### 决策依据
 
@@ -193,7 +193,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 
 - 空闲时成功后主动取一次，取到才结束「进行中」，不依赖通知；有流时，成功且请求发出后从流收到过选项就结束。
 - 有流且 Agent 仍答复原值时，流照样送来选项，视图结束。
-- `Stop` 提前结算为成功时，视图得知「没有 provider」就结束。
+- `Stop` 提前结算为成功时，视图得知「没有 provider」就结束；成功先于流结束到达、广播又丢失时，流结束后取一次得知。
 - 结束时模型和发起前不同，记一次「已切换模型」标记；没有设置在途时，Agent 自己改的模型不记。
 
 ### 禁止结果
@@ -210,6 +210,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 | 得到选项后才结束「进行中」（回归保护） | [keeps the thumb on the chosen level while the provider answers](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/app-shell/src/features/chat/thought-level-selector.test.tsx#L510) 证明推理强度选择器；模型选择器和由取回结果结束尚无证据 | `Partial` |
 | 有流且 Agent 答复仍是原值时结束（新增） | 尚无实现 | `Missing` |
 | `Stop` 提前结算为成功时，得知「没有 provider」就结束（新增） | 尚无实现 | `Missing` |
+| 成功先于流结束到达、广播丢失时，流结束后补取一次并结束；已在成功之后取的不重复取（新增） | 尚无实现 | `Missing` |
 | 结束时模型和发起前不同才记一次标记，没有设置在途时 Agent 自己改的模型不记（回归保护） | [marks the thread where the answering model changed](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2489)、[keeps one marker per point in the thread while the model is cycled](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2579) 证明经 `setConfigOptions` 写入时标记的位置和合并规则，用户发起的切换和 Agent 自己改的模型都没有直接测试 | `Partial` |
 | 切换 Agent 时在携带切换的消息之前记标记（回归保护） | [marks an agent move before the message that carried it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2515) | `Covered` |
 
