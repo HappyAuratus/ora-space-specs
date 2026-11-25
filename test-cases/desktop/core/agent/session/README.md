@@ -7,6 +7,13 @@
 | --- | --- |
 | [identity-bindings-and-diagnostics.md](identity-bindings-and-diagnostics.md) | 切换与重复绑定、并发读取、历史降级、未创建状态、重试与循环归属、批量隔离、统一入口及暴露边界 |
 
+[会话选项决策](../../../../../decisions/desktop/core/agent/session/20261125-session-options-single-source.md)（`approved`，尚未实现）的验证义务：
+
+| 用例文件 | 风险面 |
+| --- | --- |
+| [options-source-and-order.md](options-source-and-order.md) | 答复与推送的先后、建立和恢复时的旧推送、重建后的旧绑定、设置的返回、在途设置的收尾 |
+| [options-delivery.md](options-delivery.md) | 流开头的选项、广播与查询、取回与流的先后、失去 provider、发起设置的视图 |
+
 子领域 MCP 的验证义务保留在 [mcp](mcp/) 下。
 
 子领域 skill 镜像 [Skill 会话清单决策](../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)

@@ -88,7 +88,11 @@ _Avoid_: 与 Plugin Manifest、Release Manifest（插件的清单）混用
 绑定记录时间不等于插件服务端的创建时间。
 
 身份与诊断读取边界见 [Session 根 ADR](../decisions/desktop/core/agent/session/0-session-identity-bindings-and-diagnostics.md)
-（`approved`，尚无已合并实现证据）。
+（`implemented`）。
+
+`Session Options`（会话选项）是有 provider 的会话由 Agent 报告的全部可配置项和当前值（模型、推理强度等），每次报告都是
+完整集合。它属于当前 `Agent Binding`，不写入会话历史；没有 provider 时用户的选择只是下次附着的意图，不是会话选项。规则见
+[会话选项的唯一来源](../decisions/desktop/core/agent/session/20261125-session-options-single-source.md)（`approved`）。
 
 ## Session MCP
 
