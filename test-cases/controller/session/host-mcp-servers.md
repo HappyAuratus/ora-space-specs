@@ -68,7 +68,7 @@ execution）。
 
 ### 触发
 
-重启 Controller 进程，之后 Agent 调用宿主工具；在发送 start 与持久化之间杀死 Controller 再重启；在采用第一种
+重启 Controller 进程，之后 Agent 调用宿主工具；在发送 start 与持久化之间（不持久化时在发出 start 之后）杀死 Controller 再重启；在采用第一种
 做法时模拟凭据无法恢复（例如推导密钥丢失）；重发 start。
 
 ### 必须成立
@@ -80,8 +80,9 @@ execution）。
 
 无论哪种做法：
 
-- 端点和凭据（或推导它们的输入）在第一次发送 start 之前已经持久化；发送与持久化之间崩溃后，重启后的
-  值与 Node 保留的值相同，或者该 execution 在提供服务前被结束。
+- 端点和凭据（或推导它们的输入）在第一次发送 start 之前已经持久化，发送与持久化之间崩溃后，重启后的值与 Node
+  保留的值相同；重启时结束所有受影响 execution 的 Controller 可以不持久化，发出 start 之后崩溃时，该 execution 在
+  提供服务前被结束。
 - 凭据无法恢复时，启动检查在提供服务前结束该 execution。
 - 每次重发 start 的宿主列表与第一次逐字节相同。
 
@@ -94,7 +95,7 @@ execution）。
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
 | 跨重启有效或在提供服务前结束 | Controller 重启测试：同一 execution 在重启后能成功调用宿主工具，或者在宿主 Server 接受第一个请求之前已经以有名字的原因结束。选择后者。证据：[`TestAReportSurvivesARestartButItsCredentialsDoNot`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go) 断言重启前的 token 被拒绝；[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/interactive_recovery_test.go) 断言没有停靠的会话在恢复时结束；[`TestTheCompletionToolIsServedAfterEarlierNodesStopped`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/completion_tool_order_test.go) 只断言源码里的启动顺序；[`TestARestartSettlesTheExecutionOfAParkedNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_execution_test.go)：按 `main.go` 的步骤重启，提供完成工具之前停靠会话的旧 execution 已以 `server_restarted` 结算；[`TestRecoverySettlesRunningHostExecutions`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/host_executions_test.go)：停靠与正在执行的都结算。缺口：没有在真实启动里核对宿主 Server 接受第一个请求之前的状态，也没有用重启前的端点 URL 再调用 | Partial |
-| 先持久化再发送 | Controller 测试：在发送与持久化之间注入崩溃，重启后的值与第一次发送的逐字节相同，或该 execution 在提供服务前被结束。Cloud v2 不持久化端点、凭据或其推导输入，选择“在提供服务前结束”，与“必须成立”里“已经持久化”的文字有差异，没有这项义务的直接证据，也没有注入崩溃的测试。先写 execution 记录再发 start 的证据见[完成工具用例](../../cloud/workflow/host-completion-tool.md#a-parked-node-survives-a-restart-while-its-old-execution-is-settled)，启动结算的证据见上一项 | Missing |
+| 先持久化再发送，或重启时结束受影响的 execution | Controller 测试：在发送与持久化之间（不持久化时在发出 start 之后）注入崩溃，重启后的值与第一次发送的逐字节相同，或该 execution 在提供服务前被结束。Cloud v2 不持久化端点、凭据或其推导输入，选择“在提供服务前被结束”。先写 execution 记录再发 start 的证据见[完成工具用例](../../cloud/workflow/host-completion-tool.md#a-parked-node-survives-a-restart-while-its-old-execution-is-settled)，启动结算的证据见上一项。缺口：没有在发出 start 之后注入崩溃的测试，上一项的缺口同样适用 | Partial |
 | 无法恢复时启动检查结束 execution | Controller 测试：凭据不可恢复时，启动检查在提供服务前走正常结束路径并记录原因。证据：[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/interactive_recovery_test.go)：没有停靠的会话在恢复时结束；[`TestRecoverySettlesRunningHostExecutions`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/host_executions_test.go)：停靠与正在执行的旧 execution 都以 `server_restarted` 结算；[`TestAStartThatCannotSettleHostExecutionsIsRefused`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/host_execution_startup_test.go)：结算失败时启动返回错误、不监听主 HTTP，不守宿主 Server 的监听。缺口：宿主 Server 提供服务之前的先后只有源码顺序测试 | Partial |
 | 重发相同字节 | Controller 测试：重发 start 时宿主列表与首次发送逐字节相同。没有重发 start 的测试 | Missing |
 
