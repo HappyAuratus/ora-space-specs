@@ -3,15 +3,17 @@
 依据[Desktop 更新日志随 main 维护，打包时检查并内置到安装包](../../../decisions/desktop/release-notes/0-release-notes-in-main-bundled-at-packaging.md)。
 下文的 D 编号和不变量编号都指这篇 ADR；[回填 ADR](../../../decisions/desktop/release-notes/20261124-backfill-recent-versions.md)的编号另外写明。
 
-ADR 为 `approved`，desktop 尚未实现，下列义务目前都是 `Missing`。证据在实现合并后登记，路径相对 desktop 仓库根目录。
+ADR 为 `approved`。本文目前只登记了回填 ADR（`implemented`）的证据，固定在 desktop 合并提交
+[`0c82855b`](https://github.com/ora-space/desktop/commit/0c82855bc1e5492937bbc5893b505f7de18b9f39)，路径相对 desktop 仓库根目录，行号指测试
+`it`、`it.each` 或 `Deno.test` 的起始行；其余义务的证据还没有登记，暂记 `Missing`。
 
 | 不变量 | 用例 | 状态 |
 |---|---|---|
 | 1、2、3 | [Tagged Packaging Refuses Missing Or Invalid Notes](#tagged-packaging-refuses-missing-or-invalid-notes) | Missing |
 | 9（高于 v0.6.0 的版本） | [Notes Cover The Packaged Commit Range](#notes-cover-the-packaged-commit-range) | Missing（人工核对） |
-| 4、5 | [Bundled Notes Need No Network](#bundled-notes-need-no-network) | Missing |
-| 回填 1、2 | [The Update Card Lists Each Unseen Version Once](#the-update-card-lists-each-unseen-version-once) | Missing |
-| 回填 1 | [Fresh Installs And Upgrades Without A Record Are Told Apart](#fresh-installs-and-upgrades-without-a-record-are-told-apart) | Missing |
+| 4、5 | [Bundled Notes Need No Network](#bundled-notes-need-no-network) | Partial |
+| 回填 1、2 | [The Update Card Lists Each Unseen Version Once](#the-update-card-lists-each-unseen-version-once) | Partial |
+| 回填 1 | [Fresh Installs And Upgrades Without A Record Are Told Apart](#fresh-installs-and-upgrades-without-a-record-are-told-apart) | Partial |
 | 6 | [Notes Are Rendered As Plain Text](#notes-are-rendered-as-plain-text) | Missing |
 | 7 | [Broken Notes Never Block The App Or Updates](#broken-notes-never-block-the-app-or-updates) | Missing |
 
@@ -127,7 +129,7 @@ ADR D2、D4，不变量 9；回填 ADR D1。
 | 构建注入检出里的全部日志，运行时不读文件、不联网 | 尚无 | `Missing` |
 | 历史的排序、语言和版本上限 | 尚无 | `Missing` |
 | 没有日志时历史为空、不提示 | 尚无 | `Missing` |
-| 历史包含四个回填版本 | 尚无 | `Missing` |
+| 历史包含四个回填版本 | [`scripts/release-notes.test.ts:39`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/scripts/release-notes.test.ts#L39) `the repository keeps the backfilled notes for the history`：仓库里有四份合格的文件，`date` 与回填 ADR 列出的日期一致；[`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:134`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L134) `lists them in the history`：历史的筛选列出四个回填版本的样例。真实构建注入的内容在历史页里显示，没有测试 | `Partial` |
 | 仓库里没有 v0.1.0 及更早版本的日志文件 | 没有自动检查，由评审保证 | `Missing` |
 
 ### 决策依据
@@ -170,7 +172,7 @@ ADR D4、D5，不变量 4、5；回填 ADR D1、D2。
 | 降级不提示、不降低记录 | 尚无 | `Missing` |
 | 预发布构建之后的正式版不再提示 | 尚无 | `Missing` |
 | 没有当前版本日志文件的构建不提示、不改记录 | 尚无 | `Missing` |
-| 卡片不列 v0.6.0 及更早的版本；不高于 v0.6.0 时不提示、不写记录 | 尚无 | `Missing` |
+| 卡片不列 v0.6.0 及更早的版本；不高于 v0.6.0 时不提示、不写记录 | [`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:109`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L109) `never lists them on the card (record %s)`、[`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:120`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L120) `neither prompts nor remembers a build of %s`、[`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:128`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L128) `prompts the later %s`：判断有测试。卡片组件在这种情形下不打开、不写本机记录，只读代码核实 | `Partial` |
 
 ### 决策依据
 
@@ -206,7 +208,7 @@ ADR D5；回填 ADR D2，不变量 1、2。
 | 验证义务 | 直接证据 | 状态 |
 |---|---|---|
 | 新建数据库判为全新安装，不提示 | 尚无 | `Missing` |
-| 已有迁移记录而没有提示记录时判为升级，列出高于 v0.6.0 的全部适用日志 | 尚无 | `Missing` |
+| 已有迁移记录而没有提示记录时判为升级，列出高于 v0.6.0 的全部适用日志 | [`packages/app-shell/src/features/release-notes/release-notes-model.test.ts:109`](https://github.com/ora-space/desktop/blob/0c82855bc1e5492937bbc5893b505f7de18b9f39/packages/app-shell/src/features/release-notes/release-notes-model.test.ts#L109) `never lists them on the card (record %s)`：没有记录（`null`）时只列高于 v0.6.0 的版本。由迁移记录判为升级的证据还没有登记 | `Partial` |
 | 从 v0.6.0 真实升级能看到提示 | 尚无；信号只读代码核实过，没有实测 | `Missing` |
 
 ### 决策依据
