@@ -4,9 +4,8 @@
 D1 与 D6。这些义务只能由提供宿主 Server 的一方（Controller 侧，在 Cloud v2 中就是 Cloud 进程）验证，Node
 侧义务见[Node 承载的宿主 MCP 用例](../../node/agent-runtime/host-mcp-servers.md)。第一个使用方是
 [Cloud 经 Node 宿主 MCP 提供完成工具](../../../decisions/cloud/workflow/20261124-host-completion-tool-for-node-hosted-interactive-nodes.md)
-（`approved`），工作流侧的义务在[完成工具用例](../../cloud/workflow/host-completion-tool.md)。下表按首批实现合入 cloud main 的提交
-[`4ba9dc5a`](https://github.com/ora-space/cloud/commit/4ba9dc5a) 登记直接测试，缺口如实保留；停靠会话旧 execution 的结算
-还没有实现。
+（`implemented`），工作流侧的义务在[完成工具用例](../../cloud/workflow/host-completion-tool.md)。下表按 cloud main 的合并提交
+[`11e1e683`](https://github.com/ora-space/cloud/commit/11e1e683) 登记直接测试，缺口如实保留；测试用假的 Agent 与 Node。
 
 ## Controller Sends Only Valid Host Servers To Capable Nodes
 
@@ -45,9 +44,9 @@ Node 关闭整条控制连接，重连后重发又被关闭；向未声明能力
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 共用样例判断一致 | Controller 校验测试遍历共用样例文件，逐项断言接受或拒绝与标注相同。证据：[`TestHostMCPServersMatchNodesSharedSamples`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/execution/hostmcp_test.go) 遍历 `url_cases` 与 `list_cases`，逐项比较判断；[`TestAnInvalidHostListIsNotSent`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：非法列表不发送。缺口：`raw_cases` 没有断言（Controller 的类型无法构造）；样例是锁定 Node 提交上的副本，没有测试检查副本与来源一致 | Partial |
-| 按能力派发与启动准入 | Controller 测试：不声明能力的 Node 收不到字段；需要宿主能力而无可用 Node 时，WorkflowRun 在启动准入时以有名字的原因被拒绝，没有任何节点开始运行。证据：[`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)、[`TestARunIsRefusedAtItsStartWithoutTheTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)。缺口：没有改变 `agent_session` 的声明 | Partial |
-| 单机部署的端点只在本机回环 | Controller 测试：真实端点只绑定 `127.0.0.1`，发给 Node 的 URL 是回环明文。证据：[`TestTheEndpointServesTheOneTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go) 用真实端点签发的 URL 通过 D1 文法校验并可以调用，文法只允许字面回环地址用明文 http；[`TestHostToolsReachTheAgentAndNothingElse`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/agentruntime/host_tools_test.go)：给定的 URL 原样随 start 发给 Node。缺口：没有直接断言监听地址与 URL 的 scheme、主机。多机、容器或沙箱部署的部署配置另立决策后再登记 | Partial |
+| 共用样例判断一致 | Controller 校验测试遍历共用样例文件，逐项断言接受或拒绝与标注相同。证据：[`TestHostMCPServersMatchNodesSharedSamples`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/execution/hostmcp_test.go) 遍历 `url_cases` 与 `list_cases`，逐项比较判断；[`TestAnInvalidHostListIsNotSent`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/agentruntime/host_tools_test.go)：非法列表不发送。缺口：`raw_cases` 没有断言（Controller 的类型无法构造）；样例是锁定 Node 提交上的副本，没有测试检查副本与来源一致 | Partial |
+| 按能力派发与启动准入 | Controller 测试：不声明能力的 Node 收不到字段；需要宿主能力而无可用 Node 时，WorkflowRun 在启动准入时以有名字的原因被拒绝，没有任何节点开始运行。证据：[`TestHostToolsNeedANodeThatTakesThem`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/agentruntime/host_tools_test.go)、[`TestARunIsRefusedAtItsStartWithoutTheTool`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)，“从失败处继续”见 [`TestAResumeIsRefusedWithoutTheTool`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)。缺口：没有改变 `agent_session` 的声明 | Partial |
+| 单机部署的端点只在本机回环 | Controller 测试：真实端点只绑定 `127.0.0.1`，发给 Node 的 URL 是回环明文。证据：[`TestTheEndpointServesTheOneTool`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/completiontool/server_test.go) 用真实端点签发的 URL 通过 D1 文法校验并可以调用，文法只允许字面回环地址用明文 http；[`TestHostToolsReachTheAgentAndNothingElse`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/agentruntime/host_tools_test.go)：给定的 URL 原样随 start 发给 Node。缺口：没有直接断言监听地址与 URL 的 scheme、主机。多机、容器或沙箱部署的部署配置另立决策后再登记 | Partial |
 
 ### 决策依据
 
@@ -69,7 +68,7 @@ execution）。
 
 ### 触发
 
-重启 Controller 进程，之后 Agent 调用宿主工具；在发送 start 与持久化之间杀死 Controller 再重启；在采用第一种
+重启 Controller 进程，之后 Agent 调用宿主工具；在发送 start 与持久化之间（不持久化时在发出 start 之后）杀死 Controller 再重启；在采用第一种
 做法时模拟凭据无法恢复（例如推导密钥丢失）；重发 start。
 
 ### 必须成立
@@ -81,8 +80,9 @@ execution）。
 
 无论哪种做法：
 
-- 端点和凭据（或推导它们的输入）在第一次发送 start 之前已经持久化；发送与持久化之间崩溃后，重启后的
-  值与 Node 保留的值相同，或者该 execution 在提供服务前被结束。
+- 端点和凭据（或推导它们的输入）在第一次发送 start 之前已经持久化，发送与持久化之间崩溃后，重启后的值与 Node
+  保留的值相同；重启时结束所有受影响 execution 的 Controller 可以不持久化，发出 start 之后崩溃时，该 execution 在
+  提供服务前被结束。
 - 凭据无法恢复时，启动检查在提供服务前结束该 execution。
 - 每次重发 start 的宿主列表与第一次逐字节相同。
 
@@ -94,9 +94,9 @@ execution）。
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 跨重启有效或在提供服务前结束 | Controller 重启测试：同一 execution 在重启后能成功调用宿主工具，或者在宿主 Server 接受第一个请求之前已经以有名字的原因结束。选择后者。证据：[`TestAReportSurvivesARestartButItsCredentialsDoNot`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go) 断言重启前的 token 被拒绝；[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/store/interactive_recovery_test.go) 断言没有停靠的会话在恢复时结束；[`TestTheCompletionToolIsServedAfterEarlierNodesStopped`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/completion_tool_order_test.go) 只断言源码里的启动顺序。缺口：停靠会话的旧 execution 还没有在提供服务前结算并记录原因 | Partial |
-| 先持久化再发送 | Controller 测试：在发送与持久化之间注入崩溃，重启后的值与第一次发送的逐字节相同，或该 execution 在提供服务前被结束。选择“在提供服务前结束”；没有注入崩溃的测试 | Missing |
-| 无法恢复时启动检查结束 execution | Controller 测试：凭据不可恢复时，启动检查在提供服务前走正常结束路径并记录原因。证据：[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/store/interactive_recovery_test.go)：没有停靠的会话在恢复时结束。缺口：没有断言原因，停靠会话的旧 execution 没有结算 | Partial |
+| 跨重启有效或在提供服务前结束 | Controller 重启测试：同一 execution 在重启后能成功调用宿主工具，或者在宿主 Server 接受第一个请求之前已经以有名字的原因结束。选择后者。证据：[`TestAReportSurvivesARestartButItsCredentialsDoNot`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go) 断言重启前的 token 被拒绝；[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/interactive_recovery_test.go) 断言没有停靠的会话在恢复时结束；[`TestTheCompletionToolIsServedAfterEarlierNodesStopped`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/completion_tool_order_test.go) 只断言源码里的启动顺序；[`TestARestartSettlesTheExecutionOfAParkedNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_execution_test.go)：按 `main.go` 的步骤重启，提供完成工具之前停靠会话的旧 execution 已以 `server_restarted` 结算；[`TestRecoverySettlesRunningHostExecutions`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/host_executions_test.go)：停靠与正在执行的都结算。缺口：没有在真实启动里核对宿主 Server 接受第一个请求之前的状态，也没有用重启前的端点 URL 再调用 | Partial |
+| 先持久化再发送，或重启时结束受影响的 execution | Controller 测试：在发送与持久化之间（不持久化时在发出 start 之后）注入崩溃，重启后的值与第一次发送的逐字节相同，或该 execution 在提供服务前被结束。Cloud v2 不持久化端点、凭据或其推导输入，选择“在提供服务前被结束”。先写 execution 记录再发 start 的证据见[完成工具用例](../../cloud/workflow/host-completion-tool.md#a-parked-node-survives-a-restart-while-its-old-execution-is-settled)，启动结算的证据见上一项。缺口：没有在发出 start 之后注入崩溃的测试，上一项的缺口同样适用 | Partial |
+| 无法恢复时启动检查结束 execution | Controller 测试：凭据不可恢复时，启动检查在提供服务前走正常结束路径并记录原因。证据：[`TestRecoveryKeepsTheSessionOfAParkedInteractiveNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/interactive_recovery_test.go)：没有停靠的会话在恢复时结束；[`TestRecoverySettlesRunningHostExecutions`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/host_executions_test.go)：停靠与正在执行的旧 execution 都以 `server_restarted` 结算；[`TestAStartThatCannotSettleHostExecutionsIsRefused`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/host_execution_startup_test.go)：结算失败时启动返回错误、不监听主 HTTP，不守宿主 Server 的监听。缺口：宿主 Server 提供服务之前的先后只有源码顺序测试 | Partial |
 | 重发相同字节 | Controller 测试：重发 start 时宿主列表与首次发送逐字节相同。没有重发 start 的测试 | Missing |
 
 ### 决策依据
@@ -141,11 +141,11 @@ D3“重发 start 时值被忽略”，D6“先持久化再发送，重发相同
 
 | 义务 | 所需直接证据 | 状态 |
 |---|---|---|
-| 按 execution 隔离凭据 | 宿主 Server 测试：另一个 execution 的凭据被拒绝且状态不变。证据：[`TestAnotherNodesCredentialOrTokenIsRefused`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go)、[`TestCredentialsEndWithTheirAgent`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go)：另一个节点的凭据、换掉的 execution 的凭据与编造的凭据都被拒绝，没有信号 | Covered |
-| attempt 绑定与有效期 | 宿主 Server 测试：早先 attempt 或过期的 token 被拒绝且状态不变。证据：[`TestACallIsAcceptedOnceAndOnlyForItsOwnTurn`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go)、[`TestResendingAPromptReplacesItsToken`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/completiontool/server_test.go)、[`TestAReportDoesNotOutliveItsTurn`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go) | Covered |
-| 以持久状态判定有效期 | Controller 测试：五种离开运行态的事件各自之后，同一凭据被拒绝。证据：[`TestWorkflowNodeTurnLive`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/store/workflow_completion_tool_test.go)：停靠、轮次结束、运行取消后不再有效；[`TestCancellingARunWithdrawsTheTool`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)、[`TestAnAgentWithoutHTTPMCPFailsTheNode`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：取消与 Agent 丢失之后端点拒绝。缺口：五种事件没有逐一测试，没有 `EndSession` 与 `StopUnconfirmed` | Partial |
-| 吊销后重启仍拒绝 | Controller 测试：execution 结束后重启 Controller，同一凭据仍被拒绝。证据：[`TestAReportSurvivesARestartButItsCredentialsDoNot`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：重启后旧 token 被拒绝。缺口：没有用重启前的端点 URL 再调用，也没有先结束 execution 再重启 | Partial |
-| 自动接受不放大跨 execution 或跨 attempt 的调用 | 宿主 Server 测试：开启自动接受的节点收到越权调用时不完成。证据：[`TestAReportComesOnlyFromTheNodesOwnLiveTurn`](https://github.com/ora-space/cloud/blob/4ba9dc5a/v2-server/internal/workflowhost/agent_completion_test.go)：开启自动接受的两个节点互相越权调用都不留信号。缺口：只在首轮，首轮本来不自动接受 | Partial |
+| 按 execution 隔离凭据 | 宿主 Server 测试：另一个 execution 的凭据被拒绝且状态不变。证据：[`TestAnotherNodesCredentialOrTokenIsRefused`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/completiontool/server_test.go)、[`TestCredentialsEndWithTheirAgent`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/completiontool/server_test.go)：另一个节点的凭据、换掉的 execution 的凭据与编造的凭据都被拒绝，没有信号 | Covered |
+| attempt 绑定与有效期 | 宿主 Server 测试：早先 attempt 或过期的 token 被拒绝且状态不变。证据：[`TestACallIsAcceptedOnceAndOnlyForItsOwnTurn`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/completiontool/server_test.go)、[`TestResendingAPromptReplacesItsToken`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/completiontool/server_test.go)、[`TestAReportDoesNotOutliveItsTurn`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go) | Covered |
+| 以持久状态判定有效期 | Controller 测试：五种离开运行态的事件各自之后，同一凭据被拒绝。证据：[`TestWorkflowNodeTurnLive`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/store/workflow_completion_tool_test.go)：停靠、轮次结束、运行取消后不再有效；[`TestCancellingARunWithdrawsTheTool`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)、[`TestAnAgentWithoutHTTPMCPFailsTheNode`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)：取消与 Agent 丢失之后端点拒绝。缺口：五种事件没有逐一测试，没有 `EndSession` 与 `StopUnconfirmed`；持久门禁读运行、节点、会话与轮次，不读 execution 的结算记录，Agent 自己结束或 Node 丢失时两者之间有窗口，没有测试 | Partial |
+| 吊销后重启仍拒绝 | Controller 测试：execution 结束后重启 Controller，同一凭据仍被拒绝。证据：[`TestAReportSurvivesARestartButItsCredentialsDoNot`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)：重启后旧 token 被拒绝。缺口：没有用重启前的端点 URL 再调用，也没有先结束 execution 再重启 | Partial |
+| 自动接受不放大跨 execution 或跨 attempt 的调用 | 宿主 Server 测试：开启自动接受的节点收到越权调用时不完成。证据：[`TestAReportComesOnlyFromTheNodesOwnLiveTurn`](https://github.com/ora-space/cloud/blob/11e1e683/v2-server/internal/workflowhost/agent_completion_test.go)：开启自动接受的两个节点互相越权调用都不留信号。缺口：只在首轮，首轮本来不自动接受 | Partial |
 
 ### 决策依据
 

@@ -4,6 +4,10 @@ status: implemented
 
 # Controller 经 AgentSessionSpec 交付宿主 MCP，Node 在每次 ACP setup 附加
 
+> 历史决策：D6“先持久化再发送”原来要求所有 Controller 在第一次发送 start 之前持久化端点与凭据。第一个使用方
+> [Cloud 经 Node 宿主 MCP 提供完成工具](../../cloud/workflow/20261124-host-completion-tool-for-node-hosted-interactive-nodes.md) D2
+> 选择重启时结束所有受影响的 execution，不持久化；owner 批准后 D6 已改为允许这一种，下文是现行规则。其余决策不变。
+
 Controller 在 `start_agent_session` 的 `AgentSessionSpec.host_mcp_servers` 中交付自己提供的 HTTP MCP
 Server（名称、URL 与请求头），Node 把它们原样附加到该会话的每一次 ACP setup：`session/new`、
 `session/load`、生命周期刷新的 load 以及 Agent 重启。它们是
@@ -247,6 +251,10 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
 - **先持久化再发送，重发相同字节**：端点和凭据（或推导它们的输入）在第一次发送 start 之前就已持久化，
   每次重发都携带逐字节相同的宿主列表。否则 Controller 在“已发送、未持久化”时崩溃，重启后生成新凭据，
   Node 却保留第一次的值（D3），每次调用都被拒绝。因为重发时值被忽略，Controller 也不得借重发轮换。
+  重启时、宿主 Server 提供服务之前结束所有受影响的 execution 的 Controller 可以不持久化端点与凭据（例如 Cloud v2，
+  重启即换掉全部 Node）：本条防的是“已发送、未持久化”时崩溃之后 Controller 用新凭据、Node 保留旧值而 execution 继续
+  运行，这类 Controller 重启后没有 execution 带着旧值继续运行，这种情况不会发生。不持久化时，重发携带相同字节、不借重发
+  轮换仍然适用。
 - **凭据只在持久 execution 记录处于非终态时有效**：宿主 Server 的凭据（URL 或请求头中的秘密）按 execution
   签发，只对这个 execution 有效，并且只在 Controller 持久的 execution 记录处于非终态时有效；判断以持久状态
   为准，不依赖内存中的吊销名单，Controller 重启后已结束 execution 的凭据不会重新可用。记录在以下任一事件
@@ -319,7 +327,7 @@ D2 的“不隔离的后果”正是如此），整个部署是一个信任域�
    HTTP 能力门禁。以真实 ACP 帧证明 `session/new`、`session/load`、刷新与 Agent 重启都附加同一份列表，
    并证明值不出现在持久、日志与诊断表面（包括解码失败）。
 2. 能力广告与实现和测试同批交付；先发布能解码新能力的 Controller，再部署广告新能力的 Node。
-3. Controller 的使用者（工作流完成工具）在声明能力的 Node 上另行接入，按 D6 交付启动准入、先持久化再发送、
+3. Controller 的使用者（工作流完成工具）在声明能力的 Node 上另行接入，按 D6 交付启动准入、先持久化再发送（或重启时结束受影响的 execution）、
    以持久状态判定的凭据有效期与启动时检查、attempt 级授权，并使用同一份文法与样例校验。
 
 从声明 `session_host_mcp_servers` 的 Node 开始，Controller 才能为会话附加宿主 MCP；Desktop Backend 的宿主
