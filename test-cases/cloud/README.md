@@ -97,8 +97,8 @@ blocked/node_unavailable 无界 retrySeconds 保留为独立后续问题。
 
 [Cloud 经 Node 宿主 MCP 提供完成工具](../../decisions/cloud/workflow/20261124-host-completion-tool-for-node-hosted-interactive-nodes.md)
 于 2026-11-24 经 owner 批准，兑现上一决策的 D4，实现后改为 `implemented`，证据按 cloud main
-[`601a560f`](https://github.com/ora-space/cloud/commit/601a560f) 登记。45 项义务为 29 Covered / 13 Partial / 3 Missing：插件 MCP 选择互不影响、
-同一 execution 内重启 Agent 后沿用凭据与 token、真实 Agent 的留存没有直接证据；宿主 Server 的监听地址与启动先后、首轮绑定前的窗口、
+[`eab2e1d1`](https://github.com/ora-space/cloud/commit/eab2e1d1) 登记。45 项义务为 29 Covered / 13 Partial / 3 Missing：插件 MCP 选择互不影响、
+同一 execution 内重启 Agent 后沿用凭据与 token、真实 Agent 的留存没有直接证据；宿主 Server 的请求时长上限与启动先后、首轮绑定前的窗口、
 正常关停时正在执行的一轮、`main.go` 里的接线等只有部分证据。运行测试用假的 Agent 与 Node。
 
 desktop 参考实现（`8909f07`）的直接证据在每个用例里单独标注，并如实记下与它不同的地方：同一 run 内多个 agent 节点首期串行（desktop 在同一次调度 pass 里并行派发 sibling agent，所以"至多一个串行执行者"这一条在它身上是 `Partial`）、图在整个运行生命周期内不可变（desktop 另有 `snapshot_switch` 可替换冻结图）、发布时就拒绝不可执行节点（desktop 只在启动时拒绝）、启动表单用 `snapshotId`（desktop 无此表单）。这些义务没有 desktop 证据可依托，只能由 Cloud 自己的测试证明。
