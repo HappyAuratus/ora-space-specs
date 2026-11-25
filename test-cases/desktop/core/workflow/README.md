@@ -39,6 +39,7 @@ while-Loop 已实现独立轮池、上限两策略与早退清理；普通执行
 | [iteration-node.md](iteration-node.md) | 迭代节点启动边界、轮次事务性、错误策略与恢复；显式区域编辑、容器几何、级联删除与 Desktop 真实执行 |
 | [stateless-recovery-and-hitl.md](stateless-recovery-and-hitl.md) | foreach 启动恢复；区域 HITL 的拒绝边界与证据缺口 |
 | [runtime-forms.md](runtime-forms.md) | 快执行器锁内无 IO；session 归属；回报幂等 |
+| [debug-from-selected-execution.md](debug-from-selected-execution.md) | 成员后缀、切支与未派发目标；终态归约、停稳栅栏、取消与启动清理；普通恢复、整次重启及快照切换的修订基线 |
 | [variable-pool-boundary.md](variable-pool-boundary.md) | 一切节点形态经声明 owner 与类型校验写入 |
 | [variable-aggregator.md](variable-aggregator.md) | 候选声明门禁、按声明顺序透传首个已赋值值、空值与无匹配失败、分支合流 |
 | [invalidation-events.md](invalidation-events.md) | 失效事件不携带工作流状态，重查收敛 |
