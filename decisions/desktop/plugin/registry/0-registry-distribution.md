@@ -4,6 +4,8 @@ status: implemented
 
 # 插件分发：Git Marketplace Source 与派生 Registry 索引
 
+> 历史决策：下文市场源代理规则由 [Desktop 代理根决策](../../network-proxy/0-follow-system-proxy-for-desktop-egress.md) D3 修改。开启代理的源跟随宿主模式，关闭代理的源明确直连；宿主处于 System 模式且系统无代理时，开启代理的源也可以直连。
+
 > 历史决策：`kind` 的封闭集合已由 [Extension Pack 决策](../extension-pack/0-extension-pack.md)（加入 `pack`，只允许 release 形态）与 [Workflow 插件类别根决策](../category/workflow/0-workflow-package-format.md)（加入 `workflow`）扩展为八种。下文的条目模型与 kind 约束只列了前六种，以这两份决策为准；`workflow` 的包内布局与导入语义由该类别根决策拥有。
 
 > 历史决策：“发布资产与 Target”中白名单 triple 的规则已由[Ora Desktop 只支持 Windows 和 Linux](../../platform/0-windows-and-linux-only.md) D4 修改：
