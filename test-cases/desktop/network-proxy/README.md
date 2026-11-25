@@ -1,3 +1,71 @@
 # Desktop 代理核心用例
 
-本目录对应 [Desktop 代理根决策](../../../decisions/desktop/network-proxy/0-follow-system-proxy-for-desktop-egress.md)。核心用例在 ADR 获批后登记。
+决策依据为 [Desktop 代理根决策](../../../decisions/desktop/network-proxy/0-follow-system-proxy-for-desktop-egress.md)。下列义务等待产品实现提供直接证据。
+
+## Saved Proxy Preferences Survive Upgrade And Downgrade
+
+风险是升级覆盖手动设置、降级使用意外配置，或读取错误被写回为默认值。
+
+前置状态包括旧版有手动配置、旧版无配置、新版持有未知模式、配置存储读取失败。触发升级启动、切换模式、重启及可兼容降级。
+
+| 验证义务 | 证据 |
+| --- | --- |
+| 旧版无设置时生效为 System，有手动设置时沿用 Manual；读取失败或未知模式会报错，原值保持。 | Missing |
+| 保存 Manual 时模式和手动配置原子提交；失败不留下部分更改，重启只读取已提交配置。 | Missing |
+| 切到 System 或 Direct 后保留手动值并持久化选择，切回可复用；兼容旧版忽略模式并继续读取原手动配置。 | Missing |
+
+依据 D1。禁止把失败读作缺失，或因切换模式删除已保存的手动配置。
+
+## System Proxy Resolution Distinguishes Direct Unavailable And Failure
+
+风险是系统规定直连时被转到环境代理，或代理配置有误时流量被静默改走直连。
+
+在 Windows 和 Linux 正式包环境分别配置系统静态代理、绕过列表、仅 PAC、失效代理及冲突的环境代理，触发更新检查。Linux 分别验证 AppImage 和 deb。
+
+| 验证义务 | 证据 |
+| --- | --- |
+| Windows System 只使用当前用户 WinHTTP 静态配置，忽略环境代理；系统未配置或目标绕过时直连。 | Missing |
+| Linux 可用 GIO 静态后端的直连结果不会回退；占位后端及缺少静态后端时按协议环境变量、ALL_PROXY 和 NO_PROXY 处理。 | Missing |
+| 仅自动代理配置给出提示，不执行 PAC/WPAD；解析失败或已选代理无法连接时保留失败。回环始终直连。 | Missing |
+
+依据 D2。使用能观察实际请求的代理和直连端点确认路由；只验证配置字符串不足以证明正式包行为。
+
+## Updater Applies The Route To Manifest And Package
+
+风险是更新检查成功但安装包或重定向使用错误路由，或路由改造影响包验证。
+
+测试发布端点返回清单和带签名安装包，包含跨目标跳转且目标命中不同路由；分别用有效与无效签名触发检查和下载。
+
+| 验证义务 | 证据 |
+| --- | --- |
+| 清单、安装包及其允许的重定向按实际目标使用同一策略，观察到的路由分别符合预期。 | Missing |
+| 签名不通过时拒绝安装，即使代理下载成功。 | Missing |
+
+依据 D2–D3。禁止把初始目标的代理固定到所有后续目标。
+
+## Marketplace Source Policy Isolates Direct Traffic
+
+风险是损坏的全局代理设置阻塞显式直连的源，或包下载和 Git 同步采用不同策略。
+
+配置开启代理与关闭代理的两个源，并依次提供手动代理、系统无配置和损坏配置，触发 Git 同步及插件安装，包括 pack 成员与 S3 下载。
+
+| 验证义务 | 证据 |
+| --- | --- |
+| 关闭代理的源不读取或解析宿主代理设置，忽略环境及 Git 代理并直连；同批另一源的代理配置失败不阻塞它。 | Missing |
+| 开启代理的源跟随宿主模式，系统未配置或绕过时直连，出错时报告失败；Git 和下载都符合源策略。 | Missing |
+| 允许的跳转按新目标选路，不能逐跳选路时报告拒绝，跳转也不能扩大源站凭据的转发范围。 | Missing |
+
+依据 D2–D3。使用可观察代理和目标区分直连、代理及未发请求。
+
+## Proxy Check Reports Route And Authentication Failures
+
+风险是把直连响应或 HTTP 407 误报成代理可用，或者在提示中暴露手动凭据。
+
+从设置页测试未保存的有效手动配置、系统和直连模式，再对返回 407 的代理发起更新和市场请求。
+
+| 验证义务 | 证据 |
+| --- | --- |
+| 测试报告实际路由且不保存草稿，分别显示系统、环境、手动和直连。 | Missing |
+| 测试、更新和市场均将代理 407 报告为代理认证失败；不会误报连通、尝试 Windows 集成代理认证、回退直连或显示凭据。 | Missing |
+
+依据 D2、D4。应同时观测请求及可见提示。
