@@ -37,8 +37,8 @@
 | --- | --- | --- |
 | 已附着会话的 prompt 流以当前选项开头（复现） | 尚无实现 | `Missing` |
 | 空集合也带（复现） | 尚无实现 | `Missing` |
-| 加载流以非空的当前选项开头（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) | `Covered` |
-| 跟随流以非空的当前选项开头（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) 的回合中分支 | `Covered` |
+| 加载流以非空的当前选项开头（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L165) | `Covered` |
+| 跟随流以非空的当前选项开头（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L165) 的回合中分支 | `Covered` |
 | 没有 provider 的加载结束后视图得知「没有 provider」（新增） | 尚无实现 | `Missing` |
 
 ### 决策依据
@@ -63,7 +63,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 
 ### 必须成立
 
-- 每次变化都发出应用级广播，只带 Ora 会话 id。
+- 每采用一帧选项都随流送出并发出应用级广播，不比较值，广播只带 Ora 会话 id。
 - 没有流的视图取一次，显示新值；有流的视图以流为准。
 - 重新订阅后，对正在展示的会话重新取一次，得到新值。
 - 广播和查询不访问 Agent，不改变会话状态，不写历史。
@@ -79,6 +79,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 空闲时 Agent 推送，单个视图经广播和查询显示新值（复现） | 尚无实现 | `Missing` |
+| 值没有变的帧也随流送出并广播（新增） | 尚无实现 | `Missing` |
 | 回合中变化也广播，没有跟随的视图取到新值（新增） | 尚无实现 | `Missing` |
 | 有流的视图以流为准（新增） | 尚无实现 | `Missing` |
 | 重新订阅后取到新值（新增） | 尚无实现 | `Missing` |
@@ -107,7 +108,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 
 - 期间从流收到选项或流开始，丢弃这次结果。
 - 期间又收到广播，取完再取一次。
-- 有流时收到的广播，流结束后补取；流没有送来选项就结束时也补取。
+- 有流时收到的广播，流结束后补取；流没有送来选项就结束时也补取，空集合也算送来了选项。
 
 ### 禁止结果
 
@@ -121,7 +122,7 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 | 晚到的取回结果不盖掉流中的选项（新增） | 尚无实现 | `Missing` |
 | 取的期间又收到广播会再取（新增） | 尚无实现 | `Missing` |
 | 流结束之前收到的广播在流结束后补取（新增） | 尚无实现 | `Missing` |
-| 流没有送来选项就结束时补取（新增） | 尚无实现 | `Missing` |
+| 流没有送来选项就结束时补取，只送来空集合时不补取（新增） | 尚无实现 | `Missing` |
 
 ### 决策依据
 
@@ -177,25 +178,29 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 
 ### 风险
 
-返回值不带选项后，选择器过早结束「进行中」会闪回旧值；标记的来源改变后，可能漏记或把 Agent 自己改的模型也记上。
+返回值不带选项后，选择器过早结束「进行中」会闪回旧值，等不到选项则一直转；标记的来源改变后，可能漏记或重复记。
 
 ### 前置状态
 
 - 会话有 provider 且至少有一个回合；分别空闲、有流。
+- Agent 分别答复新值、仍答复原值。
 
 ### 触发
 
-用户切换模型，通知丢失或晚到；另由 Agent 自己改模型。
+用户切换模型，通知丢失或晚到；设置在途时停止会话；另在没有设置在途时由 Agent 自己改模型。
 
 ### 必须成立
 
-- 空闲时设置成功后主动取一次，得到选项才结束「进行中」，不依赖通知；有流时由流得到。
-- 「已切换模型」标记只在用户发起的切换生效时记一次；Agent 自己改的模型不记。
+- 空闲时成功后主动取一次，取到才结束「进行中」，不依赖通知；有流时，成功且请求发出后从流收到过选项就结束。
+- 有流且 Agent 仍答复原值时，流照样送来选项，视图结束。
+- `Stop` 提前结算为成功时，视图得知「没有 provider」就结束。
+- 结束时模型和发起前不同，记一次「已切换模型」标记；没有设置在途时，Agent 自己改的模型不记。
 
 ### 禁止结果
 
-- 先闪回旧值再显示新值。
-- 同一次切换记两次标记，或不记。
+- 空闲时闪回旧值再显示新值。
+- 设置已处理完仍一直「进行中」。
+- 同一次切换记两次标记。
 
 ### 验证义务与证据
 
@@ -203,8 +208,11 @@ Agent 推送选项；另在应用事件断开期间推送，再重新订阅。
 | --- | --- | --- |
 | 空闲时成功后主动取一次，通知丢失也不停在旧值（新增） | 尚无实现 | `Missing` |
 | 得到选项后才结束「进行中」（回归保护） | [keeps the thumb on the chosen level while the provider answers](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/app-shell/src/features/chat/thought-level-selector.test.tsx#L510) 证明推理强度选择器；模型选择器和由取回结果结束尚无证据 | `Partial` |
-| 标记只由用户发起的切换记一次（回归保护） | [marks the thread where the answering model changed](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2489)、[keeps one marker per point in the thread while the model is cycled](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2579) 证明用户切换的标记；Agent 自己改的模型不记尚无直接测试 | `Partial` |
+| 有流且 Agent 答复仍是原值时结束（新增） | 尚无实现 | `Missing` |
+| `Stop` 提前结算为成功时，得知「没有 provider」就结束（新增） | 尚无实现 | `Missing` |
+| 结束时模型和发起前不同才记一次标记，没有设置在途时 Agent 自己改的模型不记（回归保护） | [marks the thread where the answering model changed](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2489)、[keeps one marker per point in the thread while the model is cycled](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2579) 证明经 `setConfigOptions` 写入时标记的位置和合并规则，用户发起的切换和 Agent 自己改的模型都没有直接测试 | `Partial` |
+| 切换 Agent 时在携带切换的消息之前记标记（回归保护） | [marks an agent move before the message that carried it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2515) | `Covered` |
 
 ### 决策依据
 
-- D3 第 7 点。
+- D3 第 1、3、7 点。

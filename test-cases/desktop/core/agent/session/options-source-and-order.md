@@ -30,19 +30,19 @@
 
 - 按到达前端的先后，或按命令先于事件的处理次序决定最终值。
 - 旧推送经命令队列或延后重放，排到更晚的答复之后。
-- 视图按用户点击的值或设置的返回值写入选项。
+- 视图按用户点击的值或设置的返回值写入会话副本。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 同一回合内两种次序，runtime 的流和之后的加载是最后的值（新增） | 尚无实现 | `Missing` |
-| 前端：答复和推送到达的先后交换，单个视图的结果不变（复现） | 尚无实现 | `Missing` |
-| 空闲时旧推送与答复相继到达（复现） | 尚无实现 | `Missing` |
-| 标题轮询进行中推送先到、答复后到（复现） | 尚无实现 | `Missing` |
+| 同一回合内两种次序，runtime 的流和之后的加载是最后的值（复现） | 尚无实现 | `Missing` |
+| 前端：答复和推送到达的先后交换，单个视图的结果不变（复现） | [an option change the agent reports while following a turn wins over an earlier choice](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L403) 只证明答复先到、推送后到；推送先到、答复晚到没有测试 | `Partial` |
+| 空闲时旧推送先到、答复后到，两帧在 actor 下一次取输入之前都已就绪（复现） | 尚无实现 | `Missing` |
+| 标题轮询进行中推送先到、答复后到，两帧在 actor 下一次取输入之前都已就绪（复现） | 尚无实现 | `Missing` |
 | 标题轮询期间的推送不在下一回合重放（复现） | 尚无实现 | `Missing` |
 | MCP 刷新进行中推送与答复相继到达（新增） | 尚无实现 | `Missing` |
-| 答复在标题轮询或 MCP 刷新期间到达也被采用（回归保护） | [a_change_answered_during_a_title_poll_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs)、[a_change_answered_during_an_mcp_refresh_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) | `Covered` |
+| 答复在标题轮询或 MCP 刷新期间到达也被采用（回归保护） | [a_change_answered_during_a_title_poll_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L193)、[a_change_answered_during_an_mcp_refresh_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L217) | `Covered` |
 
 ### 决策依据
 
@@ -81,7 +81,7 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 | 收集窗口之后的旧推送不被采用，之后的加载得到意图答复的值（复现） | 尚无实现 | `Missing` |
 | 收集窗口之后的旧推送不随第一条 prompt 送给视图（回归保护） | 尚无直接测试 | `Missing` |
 | 恢复答复之后、意图答复之前的旧推送不被采用（复现） | 尚无实现 | `Missing` |
-| 收集窗口内的旧推送不撤销意图答复，不随第一条 prompt 送出（回归保护） | [a_snapshot_older_than_the_applied_model_does_not_undo_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/setup_options_tests.rs) | `Covered` |
+| 收集窗口内的旧推送不撤销意图答复，不随第一条 prompt 送出（回归保护） | [a_snapshot_older_than_the_applied_model_does_not_undo_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/setup_options_tests.rs#L171) | `Covered` |
 
 ### 决策依据
 
@@ -115,8 +115,8 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 旧绑定晚到的答复不改变当前选项，之后的加载是替代会话的选项（回归保护） | [a_late_answer_does_not_describe_the_session_that_replaced_its_own](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) | `Covered` |
-| 重建时设置返回成功，视图得到替代会话的选项（回归保护） | [a_late_answer_does_not_describe_the_session_that_replaced_its_own](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) 证明晚到的答复返回成功；重建时立即收尾、视图由流得到选项尚无证据 | `Partial` |
+| 旧绑定晚到的答复不改变当前选项，之后的加载是替代会话的选项（回归保护） | [a_late_answer_does_not_describe_the_session_that_replaced_its_own](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L241) | `Covered` |
+| 重建时设置返回成功，视图得到替代会话的选项（回归保护） | [a_late_answer_does_not_describe_the_session_that_replaced_its_own](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L241) 证明晚到的答复返回成功；重建时立即收尾、视图由流得到选项尚无证据 | `Partial` |
 | 旧绑定晚到的推送不改变当前选项（回归保护） | 尚无直接测试 | `Missing` |
 
 ### 决策依据
@@ -141,7 +141,7 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 
 ### 必须成立
 
-- 契约的返回值不带选项。
+- 契约的返回值不带选项，视图不按所选的值写入会话副本，选择器可以在「进行中」显示所选的值。
 - 成功返回时 actor 已处理完答复，之后打开的视图看到这次改动。
 - Agent 没有照所选的值生效时返回成功，视图显示 Agent 报告的值；返回 ACP 错误时失败，当前选项不变。
 - 超时返回失败；绑定不变时，之后到达的答复仍被采用并送达视图。
@@ -155,11 +155,11 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 成功返回之后打开的视图看到改动（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) | `Covered` |
-| ACP 错误返回失败且当前选项不变（回归保护） | 尚无直接测试 | `Missing` |
+| 成功返回之后打开的视图看到改动（回归保护） | [a_view_opened_after_a_change_is_told_about_it](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L165) | `Covered` |
+| ACP 错误返回失败且当前选项不变（回归保护） | [reports an unreachable model selection instead of silently keeping the old value](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2449)、[returns the thumb to the reported level when the request fails](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/app-shell/src/features/chat/thought-level-selector.test.tsx#L582) 只证明前端在请求失败时保留原选项；宿主未覆盖 | `Partial` |
 | 未照所选值生效时返回成功并显示 Agent 的值（回归保护） | [adopts the agent's answer to a model selection over the requested value](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/chat/tests/store.test.ts#L2414) 只证明前端采用返回的值；宿主未覆盖 | `Partial` |
 | 超时后的答复被采用并送达视图（新增） | 尚无实现 | `Missing` |
-| 多个在途设置不串行（回归保护） | 尚无直接测试 | `Missing` |
+| 多个在途设置不串行（回归保护） | [lets a newer pick overtake one still in flight without snapping back](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/packages/app-shell/src/features/chat/thought-level-selector.test.tsx#L550) 只证明前端在前一个没有答复时发出后一个；宿主和按答复先后取值未覆盖 | `Partial` |
 | 返回值不带选项，前端不用它写入（新增） | 尚无实现 | `Missing` |
 
 ### 决策依据
@@ -198,7 +198,7 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 切换 Agent 时返回成功（新增） | 尚无实现 | `Missing` |
-| 用户停止会话时返回成功（回归保护） | [a_change_answered_after_the_session_stopped_still_succeeds](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) 证明停止后到达的答复返回成功；不等答复就收尾尚无证据 | `Partial` |
+| 用户停止会话时返回成功（回归保护） | [a_change_answered_after_the_session_stopped_still_succeeds](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L277) 证明停止后到达的答复返回成功；不等答复就收尾尚无证据 | `Partial` |
 | 接收方放弃时返回成功（新增） | 尚无实现 | `Missing` |
 | 会话被重建时不等答复返回成功（新增） | 尚无实现 | `Missing` |
 | 队列溢出时返回失败（新增） | 尚无实现 | `Missing` |
@@ -238,7 +238,7 @@ Agent 推送 A，再答复意图为 B，随后发送第一条 prompt 并加载�
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 刷新 MCP 的答复带选项时被采用（新增） | 尚无实现 | `Missing` |
-| 刷新 MCP 的答复不带选项时不改变当前选项（回归保护） | [a_change_answered_during_an_mcp_refresh_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs) | `Covered` |
+| 刷新 MCP 的答复不带选项时不改变当前选项（回归保护） | [a_change_answered_during_an_mcp_refresh_is_kept](https://github.com/ora-space/desktop/blob/59da662c81c973b4b2e81d4b1d2cdb16db6f1c5d/crates/agent-runtime/src/restored_sessions/set_config_tests.rs#L217) | `Covered` |
 | 启动、切换的返回值不盖掉流中的更新（新增） | 尚无实现 | `Missing` |
 
 ### 决策依据
