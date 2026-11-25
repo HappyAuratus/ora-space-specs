@@ -28,6 +28,7 @@
 | 释放旧尝试的迟到回报，重开详情。有效 output 为 [a,b,new-c,new-d,new-e]；entries 按原序共五条、失败数 0，旧尝试仍可回看。 | — | Missing |
 | 全部五项成功后再回选第 3 项，累计调用 [1,1,2,2,2]。第 3–5 项的旧账与旧汇总退出当前投影。用重复项值复测，索引仍能区分两项。 | — | Missing |
 | 先在第 4 项修改提示词，再回到第 2 项改同一字段。以第 2 项的新值执行第 2–5 项，旧第 4 项覆盖仍只在历史中可查。 | — | Missing |
+| 独立修改两个字段：先于第 4 项改模型，再回第 2 项改提示词。检查实际派发的配置：第 1 项保留原值，第 2–3 项用新提示词和原模型，第 4–5 项同时用新提示词和新模型。 | — | Missing |
 
 ### 决策依据
 
@@ -132,7 +133,7 @@ Start.flag=true，A 为原 IF、B 为 ELSE，J 依序读取 A、B。旧 J 已读
 
 ### 前置状态与触发
 
-Running 的 P 中 Start 已提交 hello。在首次认领 X 前打开表单，使用 D1 的 pendingTarget；另准备已登记执行行的退避重试。
+Running 的 P 中 Start 已提交 hello。“已就绪、尚无行”是瞬时状态。测试在 Start 的提交完成后、调度器首次认领 X 前设置可释放的屏障；在屏障处打开表单，使用 D1 的 pendingTarget；另准备已登记执行行的退避重试。
 
 ### 必须成立
 
@@ -146,14 +147,14 @@ Running 的 P 中 Start 已提交 hello。在首次认领 X 前打开表单，�
 
 | 验证义务 | 代表性证据 | 状态 |
 | --- | --- | --- |
-| 表单提交 rootP/rootP/X；预览不创建执行行。确认后由普通就绪门首次派发，恰好一个真实尝试绑定新修订并收到 hello。 | — | Missing |
+| 表单提交 rootP/rootP/X；预览不创建执行行。确认后释放屏障，由普通就绪门首次派发，恰好一个真实尝试绑定新修订并收到 hello。 | — | Missing |
 | 分别缺少 Start 的输入、缺少可唯一识别成员的作用域。前者报告缺少的前置值，后者指出缺少的位置字段。两者均无可确认凭据、无派发。 | — | Missing |
-| 预览后抢先派发 X，再确认返回 stale_preview，原尝试继续，额外修订和调用均为零。未启动的 Pending 运行使用原编辑/启动入口。 | — | Missing |
+| 在抢先派发变体，预览后先释放屏障并等 X 建行，再确认返回 stale_preview，原尝试继续，额外修订和调用均为零。未启动的 Pending 运行使用原编辑/启动入口。 | — | Missing |
 | 退避已登记的重试按有效 nodeRunId 预览，不能再用 pendingTarget 重复认领。逻辑位置首次正常派发后，从历史的原操作和位置可查到同一实际 nodeRunId。 | — | Missing |
 
 ### 决策依据
 
-[按选中的执行继续，D1、D2、D5](../../../../decisions/desktop/core/workflow/20261124-debug-from-selected-execution.md)
+[按选中的执行继续，D1、D2、D5、D6](../../../../decisions/desktop/core/workflow/20261124-debug-from-selected-execution.md)
 
 ## A top level edit must be private to its run and preserve history
 
@@ -182,7 +183,10 @@ Running 的 P 中 Start 已提交 hello。在首次认领 X 前打开表单，�
 | 分别从 Running（含 AwaitingInput）、Failed、Cancelled、Succeeded 选择证据齐备的目标，均可预览确认；已终结 run 在同一 ID 下继续。 | — | Missing |
 | 分别设置范围外 Failed、Cancelled 的终态行；确认及范围内结算后再次查行，其状态和尝试 ID 均保留。 | — | Missing |
 | 范围外放置一个从未派发且依赖已齐的独立节点。终态 run 调试全过程该节点调用数为零，也没有创建执行行。 | — | Missing |
-| 让确认范围全部成功，范围外分别只剩有效失败、只剩有效取消。最终 run 分别为 Failed、Cancelled；在所有必需结果成功的对照图上按原规则成功。 | — | Missing |
+| 从 Failed 和 Cancelled 分别调试，记下原原因。若仍有必需位置无有效成功结果，即使选中范围全部成功，最终状态与原因均等于调试前；所有必需位置均有效成功的对照组才结算为 Succeeded。 | — | Missing |
+| 令根级节点失败后，在途独立兄弟成功，其就绪后继从未建行。修复目标范围后已无有效失败或取消的执行行。核对范围外后继仍为零行、零派发，最终 run 仍为 Failed，原错误可读。 | — | Missing |
+| 先使顶层 X 的新提示词生效，令该 X 的某次尝试失败后走普通失败恢复。恢复沿用当前有效修订及其提示词，仍按原选点和工作区策略派发。 | — | Missing |
+| 同一 run 同时有顶层模型修订和旧容器第 3 项起的成员覆盖。整次运行重启后根 ID 更新，顶层仍用新模型，新容器各项按入口成员配置执行。旧根的覆盖及尝试可从历史查询。 | — | Missing |
 | 快照切换前展示“运行内修改将不再生效”。成功切换产生以新快照为基线的新修订，实际配置取新快照、旧补丁可查历史、旧预览过期。切换不兼容快照时原基线和修订均保持。 | — | Missing |
 
 ### 决策依据
@@ -214,13 +218,18 @@ Running 的 P 中 Start 已提交 hello。在首次认领 X 前打开表单，�
 | 目标输入、未赋值状态或受影响尝试集合变化时，旧预览返回 stale_preview，零停止、零修订。仅独立兄弟推进且读集相同，原预览可确认。 | — | Missing |
 | 同键同凭据双击只受理一次，同键异凭据报冲突；并发确认最多一个生效。客户端断连或漏收通知后读回同一操作与阶段。 | — | Missing |
 | 无法证明在途外部写入已隔离时，记录 stop_failed、具体尝试和实际停止结果，受影响范围零新修订、零新派发。兄弟仍可提交。解除阻塞后新凭据与新键才能再试。 | — | Missing |
-| 在停稳中及生效后尚未派发时分别重启。持久操作最多生效一次；显式释放旧回报、重试或人工确认，记录其到达，新变量和下游调用数均不受影响。 | — | Missing |
+| 在停稳中及生效后尚未派发时分别重启 Desktop 进程。持久操作最多生效一次；显式释放旧回报、重试或人工确认，记录其到达，新变量和下游调用数均不受影响。 | — | Missing |
 | 确认前能看到文件保留和外部动作可能重复的提示；重开后仍可读兄弟已写入的文件。 | — | Missing |
-| 仍有 stopping 或栅栏未释放的 stop_failed 时，以另一请求键确认被拒绝；原键同凭据仍返回原操作。待停稳尝试在预览后自行结束，即使尝试 ID 相同也报 stale_preview，零停止、零新修订。 | — | Missing |
+| 仍有 stopping 或栅栏未释放的 stop_failed 时，以另一请求键确认返回 debug_operation_active；原键同凭据仍返回原操作。待停稳尝试在预览后自行结束，即使尝试 ID 相同也报 stale_preview，零停止、零新修订。 | — | Missing |
+| 对 stopping 和未释放的 stop_failed 分别调用普通失败恢复、整次运行重启和兼容快照切换。均返回 debug_operation_active；零派发，根、绑定快照和有效修订均保持。栅栏释放后回到各入口自身的状态门禁。 | — | Missing |
 | stop_failed 返回原因与未停稳尝试 ID。解除阻塞时已停止工作按真实结果留在旧修订的 Cancelled/Failed，自动重派次数为零；适用的普通失败恢复或新预览仍可用。 | — | Missing |
-| 在栅栏内旧 foreach/while 尝试中断时启动，普通启动清理零次写入当前账本或结算该轮；续办方核验原尝试后再推进。applied 后尚未认领的位置在有效 run 自动续派一次，无需人工恢复。 | — | Missing |
-| 分别在 stopping、未释放的 stop_failed 中取消整 run。持久取消先于晚到的停稳回报；刷新及重启后 run 为 Cancelled，未生效操作可查失败原因，零次新派发。反向顺序下保留已生效修订并取消其在途执行。 | — | Missing |
+| 在栅栏内旧 foreach/while 尝试中断时启动，普通清理零次写当前账本或结算该轮，run 不因该旧尝试转为 interrupted_by_restart。核验失败时操作返回 stop_failed。applied 后尚未认领的位置在可调度的 run 中自动续派一次。 | — | Missing |
+| 另在 applied 后新修订的 while 尝试已认领、刚开始执行时中断进程。普通启动清理按 while D6 结算 interrupted_by_restart；调试协调器零次重复派发。与尚未认领的变体分别核对尝试 ID 和实际调用数。 | — | Missing |
+| 对原来 Running 的 run，分别在 stopping、未释放的 stop_failed 期间取消。先提交取消时 run 为 Cancelled，stopping 回执变为 stop_failed、reason=run_cancelled；原已失败的回执保留首次失败原因。刷新或重启后额外派发数为零。 | — | Missing |
+| 从带原错误 E 的 Failed run 调试，在停稳屏障处读取 run 和操作，重启 Desktop 进程：run 仍为 Failed/E，操作仍可被续办。在生效前取消只放弃本次调试，回执 stop_failed/run_cancelled，run 仍为 Failed/E；放行迟到的停稳结果，零新修订、零派发。从原 Cancelled 或 Succeeded 运行放弃调试时，也保持对应终态和原记录。 | — | Missing |
+| 从相同 Failed/E 初态放行停稳，核对一个事务的提交前后：Failed/stopping/旧修订 → Running/applied/新修订。提交后再取消整 run，结果为 Cancelled，生效修订可查且剩余位置零派发。 | — | Missing |
 | 新交互尝试已停靠后再交旧页面的普通或强制完成。尝试凭据陈旧或旧请求无法证明归属时拒绝，后继零派发。 | — | Missing |
+| 分别在普通运行和调试运行提交人工完成请求。新客户端用页面所见 nodeRunId 匹配当前尝试后再验原有回合门禁；旧客户端省略该字段仅在可唯一证明归属时通过，旧标识、归属有歧义或证据不足时均拒绝。 | — | Missing |
 
 ### 决策依据
 
@@ -251,10 +260,11 @@ Running 的 P 中 Start 已提交 hello。在首次认领 X 前打开表单，�
 | 分别返回具体缺失事实或字段路径，无可确认凭据、无修订、无派发。缺少关联的历史行返回未知修订和未知配置，不能以当前快照倒填。 | — | Missing |
 | 若另有容器入口证据，须选入口、重新预览全部影响并确认后才重算。入口也缺证据时给出原因。 | — | Missing |
 | 普通失败恢复继续按原容器粒度及其原有工作区选项执行，运行内调试保留现场文件。分别从两个入口观察状态与结果。 | — | Missing |
-| 分别选已删除的 run、整次重启前根下的历史尝试、已有停稳操作的 run。三者均拒绝预览，无可提交凭据。 | — | Missing |
+| 分别选已删除的 run、整次重启前根下的历史尝试、已有未释放栅栏的 run。三者均无可提交凭据；最后一种返回 debug_operation_active。 | — | Missing |
 | 按同一规则规范化旧配置。已存在叶子可 replace，规范化后仍缺少的路径返回字段错误；失败后零修订、零派发。 | — | Missing |
 | 运行页只列声明为数组的根变量；直接提交嵌套数组路径也返回 iteratorSelector 字段错误。 | — | Missing |
-| Loop 的新退出条件引用尚未生成的本轮成员输出时，合法作用域与类型可通过预览，实际求值读新轮结果。允许未赋值的 Condition 比较则将该状态纳入读集。 | — | Missing |
+| Loop 的新退出条件引用尚未生成的本轮成员输出时，合法作用域与类型可通过预览，实际求值读新轮结果。 | — | Missing |
+| 用允许未赋值的 Condition 比较预览，记录该选择器未赋值；确认前使其获得有效值。旧凭据返回 stale_preview，无停稳、修订或派发。 | — | Missing |
 
 ### 决策依据
 
