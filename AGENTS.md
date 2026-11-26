@@ -27,7 +27,7 @@
 # 决策记录（ADR）
 
 `decisions` 用于承载 ADR。ADR 必须放在对应领域的叶子节点文件夹下，例如：
-`specs/decisions/desktop/core/effect/`。
+`specs/decisions/desktop/core/agent/session/skill/`。
 
 每个叶子节点文件夹中的 ADR 按连续决策记录维护：
 
@@ -138,9 +138,9 @@ ADR 应让 reviewer 在没有实现代码的情况下，沿着“问题 → 约�
 
 ## 目录镜像
 
-- `decisions` 与 `test-cases` 的领域目录必须完全镜像；移除各自根目录前缀后，相对路径必须一致。
-  例如 `specs/decisions/desktop/core/effect/` 对应
-  `specs/test-cases/desktop/core/effect/`。
+- `decisions` 与 `test-cases` 中仍有核心验证义务的领域目录必须完全镜像；移除各自根目录前缀后，相对路径必须一致。仅保留 `superseded` 历史决策且已无核心验证义务的领域，可以不保留对应的 `test-cases` 目录。
+  例如 `specs/decisions/desktop/core/agent/session/skill/` 对应
+  `specs/test-cases/desktop/core/agent/session/skill/`。
 - 创建或移动 ADR 领域目录时，同步创建或移动对应的 test-case 目录。test-case 文档只放在拥有对应
   decisions 目录的领域路径下。
 
@@ -148,7 +148,7 @@ ADR 应让 reviewer 在没有实现代码的情况下，沿着“问题 → 约�
 
 - 供代码注释引用的核心用例标题必须使用英文，并作为文档中的二级标题。文件路径与该标题生成的
   Markdown anchor 共同构成稳定引用，例如
-  `specs/test-cases/desktop/core/effect/convergence.md#replaying-a-converged-generation-must-have-no-side-effects`。
+  `specs/test-cases/desktop/core/agent/session/skill/catalog-delivery.md#first-prompt-must-carry-the-full-catalog-of-available-skills`。
 - 文档标题、风险、前置状态、验证义务等非引用标题使用中文；仅核心用例标题为稳定代码引用保留
   英文。
 - 重命名或移动已有核心用例前，先更新代码中的全部引用和本目录内的索引链接。

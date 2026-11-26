@@ -4,7 +4,7 @@ status: superseded
 
 # Target 生命周期转换必须推进 Scope 收敛纪元
 
-> 已被取代：本决策由 [Skill 按存储路径以会话清单交给 Agent，取代 Effect 物化](../agent/session/skill/0-skill-catalog-from-storage-paths.md) 取代，原因：Effect 退役后没有 Target 与纪元，发送门禁与 `obligation` 一并删除，发送不再等待 Skill。当前系统承诺以取代者为准；取代者的实现合并之前，desktop 里仍在运行的 Effect 以本文为历史依据。Effect 的核心用例暂时保留，在取代者进入 `implemented` 时随 Effect 代码及其中的引用一并删除。
+> 已被取代：本决策由 [Skill 按存储路径以会话清单交给 Agent，取代 Effect 物化](../agent/session/skill/0-skill-catalog-from-storage-paths.md) 取代，原因：Effect 退役后没有 Target 与纪元，发送门禁与 `obligation` 一并删除，发送不再等待 Skill。当前系统承诺以取代者为准；取代者已进入 `implemented`（Desktop Effect 代码与 `test-cases/desktop/core/effect/` 核心用例已一并删除），本文仅作为历史记录保留。
 
 Scope generation 不仅是 Desired State 的版本，而是该 Scope 内所有不可变 projection 的收敛
 纪元。任何改变“某 Target 在给定 generation 下会投影出什么内容”的事务都必须推进纪元：Desired
@@ -110,6 +110,6 @@ retry 和 Condition 仍不推进 generation。
 
 `retire_consumer`、`declare_consumer`（声明替换）、`publish_skill_revision`（退役 Source 重发）、
 缺失根目录的观察与 `workspace_root_missing` Condition、以及 Workspace+Agent 的 `obligation`
-已按本决策实现。回归证据见
-[Effect 收敛核心用例](../../../../test-cases/desktop/core/effect/convergence.md) 与
-[Plugin Skill 发布用例](../../../../test-cases/desktop/core/effect/skill/plugin-skill-publication.md)。
+曾按本决策实现。历史回归证据曾登记于
+`test-cases/desktop/core/effect/convergence.md` 与
+`test-cases/desktop/core/effect/skill/plugin-skill-publication.md`（历史用例，已随 Effect 退役删除）。

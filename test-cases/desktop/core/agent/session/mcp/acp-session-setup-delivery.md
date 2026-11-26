@@ -174,16 +174,16 @@ MCP refresh 占用该 Agent 的 Agent Session Barrier；同时 Skill Catalog 发
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 同一 Agent 上 barrier 的不同原因互斥占用 | `ora_backend::session_setup::mcp::tests::mcp_and_effect_share_one_agent_session_barrier`（当前以 MCP 与 Effect 两个原因证明互斥；Effect 原因随退役删除后需改写） | `Covered` |
-| 无关 Agent 不共享 barrier | `ora_backend::session_setup::mcp::tests::unrelated_agents_do_not_share_a_barrier` | `Covered` |
+| 同一 Agent 上 barrier 互斥占用与超时不抢锁 | [`ora_agent_runtime::session_setup::barrier::tests::mcp_refresh_holds_one_agent_session_barrier_per_agent`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/session_setup/barrier.rs#L102)、[`timed_out_acquisition_does_not_steal_the_barrier`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/session_setup/barrier.rs#L127) | `Covered` |
+| 无关 Agent 不共享 barrier | [`ora_agent_runtime::session_setup::barrier::tests::unrelated_agents_do_not_share_a_barrier`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/session_setup/barrier.rs#L156) | `Covered` |
 | Agent replacement 后恢复的 Session 现场解析最新 MCP | 现有 replacement 测试未断言恢复请求携带最新 `mcpServers` | `Missing` |
-| Skill 变化不占用 barrier、不 reload Session | 尚无直接证据 | `Missing` |
+| Skill 变化不占用 barrier、不 reload Session | [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
 
 ### 决策依据
 
 - Session MCP 根决策 D4：Session Runtime 提供 Agent Session Barrier，但不共享 readiness；其中与 Effect
   共享的部分已由 [Skill 会话清单决策](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
-  D7（`approved`）修改。
+  D7（`implemented`）修改。
 - 不变量 6、11。
 
 ## MCP Lifecycle Must Not Touch Workspace Files Or Claim Ready
@@ -218,7 +218,7 @@ Workspace 资源，会重新引入 shared-file ownership，并把配置完整误
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | resolver 不改变 Workspace 文件集合 | `ora_backend::session_setup::mcp::tests::resolver_does_not_create_workspace_files` | `Covered` |
-| 插件声明的 MCP format 不进入任何 Workspace 写入路径 | `ora_backend::agent_runtime::plugin_agent::tests::skips_unpublished_mcp_file_materialization_resources`、`treats_mcp_only_materialization_as_no_consumer`（只证明这些 format 不进入 Effect Consumer，Effect 是此前唯一的 Workspace 写入方；Effect 退役后 `effectResources` 整体被忽略，需改写） | `Partial` |
+| 插件声明的 `effectResources`（含 MCP 文件 format）被忽略，不进入任何 Workspace 写入路径 | [`tolerates_legacy_effect_resource_registration`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/plugin-runtime/src/tests.rs#L128)、[`desktop_ignores_legacy_effect_resources_registration_without_failing_or_calling_effects`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L242)（Effect 退役后 `effectResources` 整体被忽略、不写 Workspace） | `Covered` |
 | setup、refresh、失败与卸载的端到端文件不变性 | 尚无 Desktop e2e 覆盖安装到 refresh 全路径的 Workspace 快照 | `Missing` |
 
 ### 决策依据
