@@ -140,7 +140,7 @@ Session 从旧 Active revision 切换到最新 Desired revision。变化提交�
 ## Session Skill
 
 Desktop 不再把 Skill 物化到 Workspace，而是按存储路径以会话清单告诉 Agent。规则见
-[Skill 会话清单决策](../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`approved`）。
+[Skill 会话清单决策](../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`implemented`）。
 此前的 Effect（Workspace 内 Skill 目录的声明式收敛）已整体退役，相关决策保留为 `superseded` 历史记录。
 
 `Skill Storage Location`（Skill 存储位置）是 Skill package 的权威目录：本地导入的 Skill 在应用数据目录的
