@@ -82,7 +82,7 @@ schema `0025` 会永久删除 Effect 账本表，旧版 Desktop 无法直接在�
 
 - 仅当 `effect_*` 表仍存在时执行 `VACUUM INTO` 临时文件并原子替换 `ora.sqlite3.pre-0025.bak`（不依赖 `migrations` 的 `0025` 版本行）；每次处于 pre-0025 状态的启动都刷新备份，替换旧备份或 0 字节文件并清掉残留 `.tmp`。
 - 全新库、缺失/空数据库文件与已完成 `0025` 的库不生成也不修改备份文件。
-- 清除 `.tmp`、`VACUUM INTO` 或最终原子重命名失败时，已有有效备份不被破坏，遗留 `.tmp` 被清理，`Backend::open` 返回 `PreMigrationBackupFailed` 错误且不执行 `0025` 迁移。
+- 清除残留 `.tmp`、`VACUUM INTO` 或最终原子重命名失败时，已有有效备份不被破坏，`Backend::open` 返回 `PreMigrationBackupFailed` 错误且不执行 `0025` 迁移。若 `VACUUM INTO` 或最终重命名失败，宿主尽力删除临时文件，但清除旧 `.tmp` 失败时可能残留该临时文件。
 - `0025` 持久化降级语句通过 `RAISE(ABORT, ...)` 明确拒绝降级并回滚，保留 `0025` 迁移记录，新版仍可正常重开。
 
 ### 禁止结果
@@ -96,7 +96,7 @@ schema `0025` 会永久删除 Effect 账本表，旧版 Desktop 无法直接在�
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
 | 按 `effect_*` 表存在判断触发 `VACUUM INTO` 与原子替换（每次 pre-0025 启动刷新、替换 0 字节、跳过全新/已完成库） | [`refreshes_self_contained_pre_0025_backup_and_skips_fresh_or_post_0025_databases`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L582)、[`keys_pre_0025_backup_on_legacy_effect_tables_instead_of_recorded_version`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L717)、[`clears_stale_temp_file_and_replaces_existing_backup`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L789) | `Covered` |
-| 清理 `.tmp`、`VACUUM INTO` 或原子重命名失败时不破坏已有备份并清理 `.tmp` | [`preserves_existing_backup_when_stale_temp_cleanup_or_vacuum_fails`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L817)、[`removes_temp_file_when_final_backup_rename_fails`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L867) | `Covered` |
+| 清除旧 `.tmp`、`VACUUM INTO` 或原子重命名失败时保留已有备份并中止迁移；`VACUUM INTO` 或重命名失败时尽力清理 `.tmp`（清除旧 `.tmp` 失败时可能残留） | [`preserves_existing_backup_when_stale_temp_cleanup_or_vacuum_fails`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L817)、[`removes_temp_file_when_final_backup_rename_fails`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/legacy_effect_cleanup/tests.rs#L867) | `Covered` |
 | 备份失败时 `Backend::open` 报错且不执行 `0025` 迁移 | [`fails_open_without_migrating_when_pre_0025_backup_fails`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/bootstrap.rs#L637) | `Covered` |
 | `0025` 迁移不可逆，旧版降级被拒绝并回滚，新版仍可正常重开 | [`downgrade_from_0025_is_rejected_and_newer_build_still_reopens_cleanly`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/migration/schema/schema_v0025.rs#L262) | `Covered` |
 

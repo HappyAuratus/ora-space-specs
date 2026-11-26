@@ -18,7 +18,7 @@ desktop host 返回已安装 Skill 和存储根，ora-node host 返回空。`ses
 - 同名 Skill 可以同时出现在清单里，按路径区分，不再因物化目录冲突而阻塞。
 - 运行中的工作流只冻结 skill ID 和调用名，运行中升级 Skill 后，后续节点读到新内容。
 
-本决策为 `implemented`。Desktop 实现、退役与一次性清理已随 [desktop#827](https://github.com/ora-space/desktop/pull/827)（合并提交 [`9f3ed63f`](https://github.com/ora-space/desktop/commit/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf)）落地（对应的决策记录是 ora-space/circus#1458，落地任务是 ora-space/circus#1460）；`packages/plugin-sdk` 已同步去掉 `effectResources`、`effect/*` 与 `SKILL_DIRECTORY_V1`（保留 `CLAUDE_MCP_CONFIG_V1` 与 `OPENCODE_MCP_CONFIG_V1`），版本升至 `0.12.0`（与 `ora-space/circus#1474` 的 `listModels → discover` 合并发版，JSR 发布由其跟进）；`ora-space/claude-code-agent#8` 已通过审查，按发版顺序等待包含 `desktop#827` 的 Desktop 正式发版后再合并发布（见风险与迁移）。核心用例与代表性证据见 [`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/)；原 `test-cases/desktop/core/effect/` 下的 Effect 核心用例已随本次落地一并删除。
+本决策为 `implemented`。Desktop 实现、退役与一次性清理已随 [desktop#827](https://github.com/ora-space/desktop/pull/827)（合并提交 [`9f3ed63f`](https://github.com/ora-space/desktop/commit/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf)）落地（对应的决策记录是 ora-space/circus#1458，落地任务是 ora-space/circus#1460）；`packages/plugin-sdk` 已同步去掉 `effectResources`、`effect/*` 与 `SKILL_DIRECTORY_V1`（保留 `CLAUDE_MCP_CONFIG_V1` 与 `OPENCODE_MCP_CONFIG_V1`），版本升至 `0.12.0`。移除 `effectResources` 的新版 Agent 插件不得早于包含本决策实现的 Desktop 正式版发布；旧 Desktop 配新插件会丢失 Skill（见“风险与迁移”）。核心用例与代表性证据见 [`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/)。
 
 - **涉及**：desktop 的 `crates/agent-runtime`（host 扩展点、清单前缀与增量、ACP setup 字段与压缩重置）、`crates/backend`
   （desktop host、工作流 Skill 解析、升级前清理与备份接入）、`crates/db`（`skills.package_root` 与删除 Effect 表的前向迁移 `0025`、迁移前备份与清理）、`apps/desktop`（删除
@@ -90,7 +90,7 @@ Agent 读取 Skill 并不需要 Skill 位于 Workspace 内，只需要知道 `SK
 - 发送 prompt 不读取任何 Skill 就绪状态，前端没有 Skill 同步门禁、冲突横幅和恢复入口。
 - Host 不调用 `effect/*` 方法。旧版 Agent 插件在注册时仍可能携带 `effectResources`，host 忽略该字段，不使连接失败；
   这样新 desktop 可以继续使用尚未升级的 Agent 插件，代价只是该插件原生发现目录里不再出现 Skill。
-- `packages/plugin-sdk` 去掉 `effectResources`、`effect/*` 处理接口与 `SKILL_DIRECTORY_V1`（保留 `CLAUDE_MCP_CONFIG_V1` 与 `OPENCODE_MCP_CONFIG_V1`），版本升至 `0.12.0`；`ora-space/claude-code-agent#8` 已删除 `src/handlers/effects.ts`、`effect` 声明与 barrier 协调（按发版顺序待含 `desktop#827` 的 Desktop 正式发版后合并发布）。
+- `packages/plugin-sdk` 去掉 `effectResources`、`effect/*` 处理接口与 `SKILL_DIRECTORY_V1`（保留 `CLAUDE_MCP_CONFIG_V1` 与 `OPENCODE_MCP_CONFIG_V1`），版本升至 `0.12.0`；Agent 插件去掉 `effectResources`、`effect/*` 处理与协调器，且移除 `effectResources` 的新版 Agent 插件不得早于包含本决策实现的 Desktop 正式版发布。
 - `AppEvent::AgentModelsInvalidated` 接口保留，当前没有后端发出者，留待 `ora-space/circus#1474` 的 Skill 失效能力使用。
 
 这样选的原因：Effect 的复杂度来自“安全地改写 Workspace 内的共享目录”。D2 之后 Ora 不再写 Workspace，没有需要收敛的
@@ -213,7 +213,7 @@ Session actor；已告知清单必须与 actor 的生命周期一致，放在 ba
 3. **可选的原生 Skill 接入**：同一 setup 请求以 `_meta["ora/skillDirectories"]` 携带当前清单中各 Skill 的包目录；插件可以把它们接到 Agent 的原生 Skill 机制（例如
    Claude Code 的原生 Skill 工具和 `/skill名` 入口），也可以忽略。插件不得写入这些目录。清单为空或读取失败时不带该字段。
 4. 原生接入只反映 setup 时刻的清单；会话中途的变化只通过 D4 的提示词增量告知。原生机制与提示词清单指向同一批路径，
-   不会产生两份内容不同的 Skill。当前尚无 Agent 插件消费 `_meta["ora/skillDirectories"]`；`claude-code-agent#8` 先负责把 `additionalDirectories` 与 `_meta["ora/skillDirectories"]` 透传给 ACP adapter，原生 Skill 接入留待 `ora-space/circus#1511`。
+   不会产生两份内容不同的 Skill。当前尚无 Agent 插件消费 `_meta["ora/skillDirectories"]`；Agent 插件（如 `claude-code-agent`）可将 `additionalDirectories` 与 `_meta["ora/skillDirectories"]` 透传给 ACP adapter，原生 Skill 接入与声明机制留待 `ora-space/circus#1511`。
 
 为什么提示词是基线、原生接入可选：各 Agent 的原生 Skill 机制差异很大，有的没有；提示词对所有能读文件的 Agent 都
 成立。只用提示词会让 Claude Code 失去原生 Skill 工具和斜杠入口，可靠性略低，因此保留可选接入，代价是协议多一个
@@ -228,12 +228,12 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 ### D8：工作流只冻结 skill ID 和调用名
 
 1. 运行创建与切换快照时冻结每个节点启用的 Skill：`{ node_id, skill_id, invocation_name }`（由 `catalog_skill_id` 字段精确记录冻结的 Catalog ID）。不冻结内容、版本或路径，也不按 revision 保留存储目录。
-2. 当工作流节点引用的裸 Skill 名匹配到多个活跃 Catalog ID（保守计入不可用候选）时，创建运行、启动和切换快照均以公共错误 `workflow_skill_ambiguous { nodeId, nodeTitle, skillRef, candidates }` 拒绝，提示用户指定具体 Skill；显式 catalog ID 照常解析。编辑器改存 catalog ID 留待后续决定（`ora-space/circus#1527` / `#1563`）。
+2. 当工作流节点引用的裸 Skill 名匹配到多个活跃 Catalog ID（保守计入不可用候选）时，创建运行、启动和切换快照均以公共错误 `workflow_skill_ambiguous { nodeId, nodeTitle, skillRef, candidates }` 拒绝，提示用户指定具体 Skill；显式 catalog ID 照常解析。该歧义只出现在保存裸名称的图记录上；编辑器改存 catalog ID 留待后续决定（`ora-space/circus#1527` / `ora-space/circus#1563`）。
 3. `start`、`restart` 与 `resume`（保留或切换快照）派发前的 Skill 依赖检查为：已冻结的精确 `catalog_skill_id`（以及历史无该字段的裸引用）能在 Catalog 中解析为 Available Skill，且其存储路径下的 `SKILL.md` 存在并可解析。已冻结的精确 ID（尤其是带 `plugin:` 前缀或对应 Skill 已被删除/卸载时）绝不回退到同名其他 Skill；损坏的冻结 payload 在 `start`、`resume` 与 `snapshot_switch` 时显式失败，不静默回退到未冻结图重解析。不满足依赖时返回现有的 `workflow_skill_not_found` 错误，带节点标题。
-4. 每个节点派发时，按冻结记录用同一解析器重新解析当前存储路径，节点 prompt 的 `<required_skills>` 块呈现调用名和剥离 Windows `\\?\` 前缀后的原生 `SKILL.md` 绝对路径（`<workspace_root>` 同步采用原生路径分隔符）；原工作树相对 `packagePaths` 不再写入也不再持久化。运行中途 Skill 被卸载时，该节点以同一 Skill 依赖错误失败，不回退到其他同名 Skill 或旧路径。运行中途升级时，后续节点读到新内容。
-5. `<required_skills>` 块的说明要求 Agent 在分析任务前读取并遵循每个必需 `SKILL.md`；**仅当 Agent 插件声明已接入原生 Skill 时才在块前附加前导 `/调用名`**。由于当前没有插件消费 `_meta["ora/skillDirectories"]`，实现不附加前导 `/调用名`。
+4. 每个节点派发时，按冻结记录用同一解析器重新解析当前存储路径，节点 prompt 的 `<required_skills>` 块呈现调用名和剥离 Windows `\\?\` 前缀后的原生 `SKILL.md` 绝对路径（`<workspace_root>` 同步采用原生路径分隔符）；原工作树相对 `packagePaths` 不再写入也不再持久化。运行中途 Skill 被卸载时，该节点以 `MissingRequiredSkill` 节点失败结束（持久化为兼容值 `missing_skill_materialization`，不可续跑），不回退到其他同名 Skill 或旧路径，与预检命令返回的 `workflow_skill_not_found` 区分开。运行中途升级时，后续节点读到新内容。
+5. `<required_skills>` 块的说明要求 Agent 在分析任务前读取并遵循每个必需 `SKILL.md`；**仅当 Agent 插件声明已接入原生 Skill 时才在块前附加前导 `/调用名`**（声明机制由 `ora-space/circus#1511` 定义）。由于当前没有插件消费 `_meta["ora/skillDirectories"]`，实现不附加前导 `/调用名`。
 6. Agent 不再声明 Skill 交付能力；任何 Agent 都可以按路径读取 Skill，原先“Agent 不支持工作流 Skill”的启动错误删除。
-7. 同一运行中两个不同 Skill 解析出相同归一化调用名（例如 `qa_review` 与 `qa-review`）时，仍在启动时拒绝；同一 Skill 在多处复用允许通过。
+7. 同一运行中两个不同 Skill 解析出相同归一化调用名（例如 `qa_review` 与 `qa-review`）时，仍在启动时拒绝，因为前导斜杠调用无法区分它们；同一 Skill 在多处复用允许通过。
 8. 升级前创建的运行，其冻结记录里不含 `catalog_skill_id` 且带有工作树相对 `packagePaths` 时，照常读取并忽略 `packagePaths`，按既有 skill ID 解析。
 
 **与 `approved` 决策的偏离及原因**：`approved` 版 D8.4 原先要求固定保留前导 `/调用名`。实现验收时确认当前没有任何 Agent 插件消费 `_meta["ora/skillDirectories"]`，如果无条件前置 `/调用名`，Claude Code 等 CLI 会把不认识的 `/x` 当成未知命令处理（见 `ora-space/circus#1476` owner 结论），因此收紧为“仅在插件声明已接入原生 Skill 时才前置 `/调用名`”，待 `ora-space/circus#1511` 接入原生 Skill 后再按插件能力开启。
@@ -241,9 +241,9 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 为什么不冻结内容：冻结内容要求存储按 revision 分目录保留，等于把物化以另一种形式带回来。工作流冻结的是“这个节点
 必须用哪个 Skill”，Skill 的内容随用户安装的版本演进，与普通会话一致。
 
-### D9：升级时清理与账本完全匹配的旧受管目录、预备份并不可逆退役 Effect 表
+### D9：升级时预备份、清理与账本完全匹配的旧受管目录并不可逆退役 Effect 表
 
-首次启动删除 Effect 的版本时，桌面端 `Backend::open` 与开发期 `cargo xtask reconcile-migrations` 在执行数据库迁移前按固定顺序完成清理、备份与迁移：
+首次启动删除 Effect 的版本时，桌面端 `Backend::open` 与开发期 `cargo xtask reconcile-migrations` 在执行数据库迁移前按固定顺序完成**备份、清理与迁移**（先生成自包含快照再执行任何清理或不可逆迁移，确保清理/迁移异常或用户回退时仍有完整的升级前状态）：
 
 1. **升级前数据库自动备份**：只要数据库已初始化（存在 `migrations` 表）且仍存在 `effect_managed_items` 与 `effect_resources` 表（不依赖 `migrations` 中是否已有 `version='0025'` 行），先以 SQLite `VACUUM INTO` 写入临时文件并用 `rename_with_retry` 原子替换 `<data_dir>/ora.sqlite3.pre-0025.bak`。每次处于 pre-0025 状态的启动都会刷新该备份，不信任已有旧备份或 0 字节文件；若清理残留 `.tmp`、`VACUUM INTO` 或原子替换失败，保留既有备份文件（如存在），并使 `Backend::open` 直接返回 `PreMigrationBackupFailed` 错误、不执行迁移。全新安装与已完成 0025 的库跳过备份。
 2. **一次性清理旧受管 Skill 目录**（仅在 Effect 表仍存在时读取账本）：
@@ -255,7 +255,7 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 3. **前向不可逆迁移 `0025`**：从 `effect_revisions` 回填 `skills.package_root` 后，删除全部 `effect_*` 表、触发器与索引。迁移完成后账本不复存在，清理与备份不再运行。`0025` 的持久化降级语句通过事务内 `RAISE(ABORT, ...)` 明确拒绝降级并回滚，保留 `0025` 迁移状态，确保旧版尝试打开失败后新版仍可正常启动。
 
 只删除完全匹配的目录，延续了 Effect 的 ownership 规则：只有账本与标记共同证明是 Ora 写入且未被修改的内容，Ora
-才有权删除。每次 pre-0025 启动刷新备份是因为“回退旧版 → 在旧版写入数据 → 再次升级”时，沿用旧备份会导致回退时丢失旧版期间的数据。
+才有权删除。清理必须先于 `0025` 迁移，因为迁移会删除 Effect 表，账本是判断受管目录归属的唯一依据；单个目录删除失败不重试，因为重试需要保留账本（即保留 Effect 表），残留的旧副本只是过期内容，用户可手动删除。每次 pre-0025 启动刷新备份是因为“回退旧版 → 在旧版写入数据 → 再次升级”时，沿用旧备份会导致回退时丢失旧版期间的数据。
 
 ## 不变量
 
@@ -290,16 +290,17 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 
 ## 风险与迁移
 
-- **旧 Agent 插件与新版插件发版顺序**：仍声明 `effectResources` 的旧插件继续可用（D1），其原生发现目录不再出现 Skill，靠提示词清单交付。反之，新版 `claude-code-agent#8` 去掉了 `effectResources` 与协调器，旧 Desktop（只靠 Effect 物化）配新版插件时 `verify_agent_contract` 仍会通过但 Skill 会整体消失。当前依靠“新版插件等包含 `desktop#827` 的 Desktop 正式发版后再发布”规避；是否在插件 manifest 或 marketplace 引入“最低宿主版本”门控仍在 `ora-space/circus#1460` 待 owner 拍板。
+- **旧 Agent 插件与新版插件发版约束**：仍声明 `effectResources` 的旧插件继续可用（D1），其原生发现目录不再出现 Skill，靠提示词清单交付。反之，移除 `effectResources` 的新版 Agent 插件**不得早于包含本决策实现的 Desktop 正式版发布**：旧 Desktop 只靠 Effect 物化，配新版插件时 `verify_agent_contract` 仍会通过但 Skill 整体消失。是否在插件 manifest 或 marketplace 引入“最低宿主版本”门控作为未决项挂 `ora-space/circus#1460`。
 - **旧 Workspace 副本**：只按 D9 清理。不能改为按目录名或内容相似度删除，因为 observation 不证明 ownership。
 - **旧工作流运行**：冻结记录照常读取（D8 第 8 条），已物化路径被忽略，不会指向已清理的目录。
-- **Effect 表与 `0025` 不可逆降级**：升级前已在数据目录自动备份 `ora.sqlite3.pre-0025.bak`（Windows `%APPDATA%\space.ora.desktop`，Linux `~/.local/share/space.ora.desktop`，或 `ORA_DATA_DIR`），升级后旧版 Desktop 无法直接打开该库；回退旧版需退出 Desktop、删除 `ora.sqlite3` / `-wal` / `-shm`，并将 `ora.sqlite3.pre-0025.bak` 复制为 `ora.sqlite3`。
+- **Effect 表与 `0025` 不可逆降级**：升级前在数据目录自动备份 `ora.sqlite3.pre-0025.bak`，`0025` 不可逆，旧版 Desktop 无法直接打开升级后的库；该备份只包含升级前的数据库状态，不包含升级后的写入，具体回退恢复步骤由发版说明给出。
+- **预备份失败挡住启动**：`pre-0025` 备份失败会中止启动，且当前启动窗口没有 UI 提示，见 `ora-space/circus#1521`。
 
 ## 本决策未解决的问题
 
 - **跨 Agent 压缩信号**：OpenCode 父会话 `opencode/compaction` 已落地，但 Claude Code 尚无压缩通知信号，压缩后可能失去清单直至下次冷启动。
-- **Claude Code 原生 Skill 接入**：本轮 `claude-code-agent#8` 只转发 `additionalDirectories` 与 `_meta["ora/skillDirectories"]`，尚未接入 Claude Code 原生 Skill 工具与 `/skill名` 入口，由 `ora-space/circus#1511` 跟进。
-- **工作流编辑器存 catalog ID**：当前编辑器仍按裸名称引用，遇同名多候选以 `workflow_skill_ambiguous` 拒绝；编辑器改存 catalog ID 及同名歧义处理由 `ora-space/circus#1527` / `#1563` 决策跟进。
+- **Claude Code 原生 Skill 接入**：当前 Agent 插件仅转发 `additionalDirectories` 与 `_meta["ora/skillDirectories"]`，尚未接入 Claude Code 原生 Skill 工具与 `/skill名` 入口，原生 Skill 接入与声明机制由 `ora-space/circus#1511` 跟进。
+- **工作流编辑器存 catalog ID**：当前编辑器仍按裸名称引用，遇同名多候选以 `workflow_skill_ambiguous` 拒绝；编辑器改存 catalog ID 及同名歧义处理由 `ora-space/circus#1527` / `ora-space/circus#1563` 决策跟进。
 - **插件最低宿主版本门控**：新版插件去掉 `effectResources` 后对旧 Desktop 的版本门控或发版说明策略待 `ora-space/circus#1460` 拍板。
 - **包目录不可读的细粒度区分**：包目录本身不可读时目前仍被 `Path::is_file()` 当作不存在（见 `ora-space/circus#1533`）。
 - **清单预算**：Skill 很多时清单可能很长。截断、分页或按相关性选择会改变“Agent 知道全部已安装 Skill”的承诺，需要单独决策。
@@ -309,9 +310,9 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 
 ## 落地顺序
 
-1. **ADR 评审**（已完成，[specs#337](https://github.com/ora-space/specs/pull/337)）：标记 `approved`，建立 [`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/) 核心用例。
-2. **desktop 交付与退役**（已完成，[desktop#827](https://github.com/ora-space/desktop/pull/827) 合并于 `9f3ed63f`）：runtime 扩展点、清单前缀与增量、ACP setup 字段、工作流按存储路径解析、pre-0025 自动备份与受管目录清理、schema `0025` 删除 Effect 表、删除 Effect 模块与前端门禁、`@ora-space/plugin-sdk` 升至 `0.12.0`。
-3. **Agent 插件同步**（代码已就绪，待 Desktop 发版后发布）：`ora-space/claude-code-agent#8` 已去掉 `effectResources` 与 `effect/*` handler 并获 Approve，待包含 `desktop#827` 的 Desktop 正式发版后合并发布；`@ora-space/plugin-sdk` 0.12.0 的 JSR 发布随 `ora-space/circus#1474` 合并进行。
-4. **specs 落地与删除 Effect 用例**（本次完成）：将本文标为 `implemented` 并按最终实现同步正文，回填核心用例证据，并一并删除 `test-cases/desktop/core/effect/` 及旧引用。
+1. **ADR 评审**：标记 `approved`，在 [`test-cases/desktop/core/agent/session/skill/`](../../../../../../test-cases/desktop/core/agent/session/skill/) 建立核心用例。
+2. **desktop 交付与退役同一版本发布**：runtime 扩展点、清单前缀与增量、ACP setup 字段、工作流按存储路径解析、pre-0025 自动备份与受管目录清理、schema `0025` 删除 Effect 表、删除 Effect 模块与前端门禁、`@ora-space/plugin-sdk` 去掉 `effectResources`（升至 `0.12.0`）。交付与退役必须在同一版本，该步已随 [desktop#827](https://github.com/ora-space/desktop/pull/827) 合并。
+3. **Agent 插件同步**：移除 `effectResources`、`effect/*` handler 与协调器；由于旧 Desktop 只靠 Effect 物化，**移除 `effectResources` 的新版 Agent 插件不得早于包含第 2 步实现的 Desktop 正式版发布**。
+4. **specs 落地与删除 Effect 用例**：将本文标为 `implemented` 并按最终实现同步正文，回填核心用例证据，并一并删除原 `test-cases/desktop/core/effect/` 及其引用。
 
 保持不变的行为：Skill Catalog 的增删改与导入、Skill 插件的包格式与发现、Skill Settings 的启动环境、MCP 的会话交付、Node 会话。已改变的行为：Workspace 不再接收 Skill 目录，发送不再等待 Skill，会话通过清单得知 Skill，工作流节点读取 Skill 的当前内容。

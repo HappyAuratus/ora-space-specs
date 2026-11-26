@@ -138,7 +138,7 @@ ADR 应让 reviewer 在没有实现代码的情况下，沿着“问题 → 约�
 
 ## 目录镜像
 
-- `decisions` 与 `test-cases` 的领域目录必须完全镜像；移除各自根目录前缀后，相对路径必须一致。
+- `decisions` 与 `test-cases` 中仍有核心验证义务的领域目录必须完全镜像；移除各自根目录前缀后，相对路径必须一致。仅保留 `superseded` 历史决策且已无核心验证义务的领域，可以不保留对应的 `test-cases` 目录。
   例如 `specs/decisions/desktop/core/agent/session/skill/` 对应
   `specs/test-cases/desktop/core/agent/session/skill/`。
 - 创建或移动 ADR 领域目录时，同步创建或移动对应的 test-case 目录。test-case 文档只放在拥有对应
