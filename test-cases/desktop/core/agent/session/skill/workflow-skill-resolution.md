@@ -3,6 +3,8 @@
 决策依据：[Skill 按存储路径以会话清单交给 Agent](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
 （`implemented`）D8，代表性证据固定于 [desktop#827](https://github.com/ora-space/desktop/pull/827) 合并提交
 [`9f3ed63f`](https://github.com/ora-space/desktop/commit/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf)。
+解析器新增的插件 ID 引用 `<namespace>/<identifier>` 由[工作流 Skill 绑定改存 Catalog ID](../../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+D4 定下，用例见 [`Plugin ID References Must Resolve To The Plugin's Only Skill Or Be Ambiguous`](../../../../plugin/category/workflow/workflow-skill-binding.md#plugin-id-references-must-resolve-to-the-plugins-only-skill-or-be-ambiguous)。
 
 ## Workflow Nodes Must Resolve Skills By ID At Dispatch
 

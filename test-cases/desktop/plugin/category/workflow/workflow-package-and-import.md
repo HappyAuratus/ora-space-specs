@@ -313,7 +313,8 @@ pack 的 workflow 成员卡片与单包卡片是同一个已安装卡片组件�
 - `agentConfig: null` 与 `undefined` 一致视为无插件绑定，既不使依赖报告弹窗崩溃，也不在卸载检查中
   误计为不可读。
 - 四个卸载入口均同时扫描工作流的草稿与已发布快照，列出引用待卸载插件的工作流与节点并给出警告，但
-  **只警告、不阻止**卸载确认。
+  **只警告、不阻止**卸载确认。Skill 绑定是否受影响按卸载前后的运行时解析判断，依赖报告的 Skill 状态与启动
+  预检一致，规则与证据见[工作流 Skill 绑定的身份、依赖判定与导出](workflow-skill-binding.md)。
 - 目录或工作流列表/草稿正在初次加载或后台 stale 刷新时禁用卸载确认按钮，且刷新失败时不复用旧缓存
   图；单个工作流图不可读时只计入不可读提示而不丢失其余已确认依赖；目录整体读取失败时给出明确提示
   并允许用户继续确认。待卸载插件没有 MCP / Skill 目标时跳过逐工作流 `workflow.get` 扫描。
@@ -350,6 +351,8 @@ Tauri/Rust 后端或真实远程市场。`retries failed workflow document impor
   D3 与不变量 5：冲突打开「未导入」报告弹窗、已知冲突附加展示、升级静默规则及「未导入」不参与依赖判定。
 - [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
   D4（安装、升级与重试的逐文档结果及依赖报告；卸载被工作流引用的 MCP / Skill 插件）与不变量 5、7；「全部冲突跳过不弹窗」的前序规则已由上述后续决策修改。
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D2、D3：依赖报告的 Skill 判定与卸载检查中 Skill 的身份边界、警告措辞已由该文修改。
 
 ## Uninstalling A Workflow Plugin Keeps Its Copies And Marks Their Uninstalled Source
 
