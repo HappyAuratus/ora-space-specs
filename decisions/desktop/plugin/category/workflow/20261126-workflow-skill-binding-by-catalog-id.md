@@ -144,7 +144,9 @@ ID 绑定插件 Skill 的引用一定失败，按名称匹配又可能因大小�
    `<namespace>/<identifier>`：插件只贡献一个 Skill 时解析到它；贡献多个时为歧义，启动以
    `workflow_skill_ambiguous` 拒绝，候选是该插件的全部 Skill；没有记录时为缺失。它不回落到同名 Skill。
 6. cloud v2 的 workflows 契约多认一种写法：`ResolveWorkflowSkills` 识别 `plugin:` 前缀，取出其中的插件 ID，
-   按现有的整个插件下发处理，下发粒度不变；`<namespace>/<identifier>` 和裸名称的含义不变。这一处属于 phase2
+   按现有的整个插件下发处理，下发粒度不变；`<namespace>/<identifier>` 和裸名称的含义不变。同一节点的多条引用
+   解析到同一插件 ID 时（例如同一插件的两个 `plugin:` 引用，或 `plugin:` 引用与插件 ID 引用并存），按插件 ID
+   合并为一个交付项，不重复投射同一插件。这一处属于 phase2
    的 desktop↔cloud 契约，不适用 v2 豁免，由 cloud 侧在 phase2 workflows 契约中按正常 specs 流程承接（cloud ADR、
    实现与核心用例），名称段是否另作校验也由那份决策定。
 
