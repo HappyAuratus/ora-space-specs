@@ -1,6 +1,6 @@
 # 发现结果的缓存与失效
 
-决策依据：[Agent 插件发现契约](../../../../decisions/desktop/plugin/agent/0-discovery-contract.md)（`approved`）。Desktop 一侧的修订号、失效事件和界面缓存已实现，证据取自 desktop `339aa926`；插件侧的缓存和等待尚未实现。
+决策依据：[Agent 插件发现契约](../../../../decisions/desktop/plugin/agent/0-discovery-contract.md)（`approved`）。Desktop 一侧的修订号、失效事件和界面缓存已实现，证据取自 desktop `339aa926`，回滚的证据取自 desktop `346a9916`；插件侧的缓存和等待尚未实现。
 
 ## Skill Catalog Changes Must Invalidate Discovered Commands
 
@@ -42,7 +42,7 @@ Effect 退役后没有进程替换来清缓存。失效漏掉一处，用户会�
 | --- | --- | --- |
 | 每种已提交的变更都推进修订号并在同一时点发布事件 | [`tests.rs`](https://github.com/ora-space/desktop/blob/339aa926/crates/backend/src/skill_revision/tests.rs) 的 `each_committed_change_advances_the_revision`、`an_import_advances_the_revision`、`a_skill_plugin_advances_the_revision`、`a_change_invalidates_what_every_agent_offered` | `Covered` |
 | 读清单时观察到 Available 集合变化，推进修订号 | [`tests.rs`](https://github.com/ora-space/desktop/blob/339aa926/crates/backend/src/skill_revision/tests.rs) 的 `noticing_another_set_of_available_skills_advances_the_revision` | `Covered` |
-| 暴露过中间状态的回滚推进一次，没有暴露的回滚和未生效的变更不推进 | [`tests.rs`](https://github.com/ora-space/desktop/blob/339aa926/crates/backend/src/skill_revision/tests.rs) 的 `a_change_that_does_not_take_effect_leaves_the_revision_alone`、`a_create_is_counted_once_it_is_written` 只证明不推进的部分；暴露过中间状态的回滚尚无主干证据 | `Partial` |
+| 暴露过中间状态的回滚推进一次，没有暴露的回滚和未生效的变更不推进 | [`tests.rs`](https://github.com/ora-space/desktop/blob/346a9916/crates/backend/src/skill_revision/tests.rs) 的 `an_edit_rolled_back_after_its_swap_advances_the_revision`、`a_rename_rolled_back_after_its_swap_advances_the_revision`、`a_delete_rolled_back_after_its_move_advances_the_revision`、`a_create_rolled_back_leaves_the_revision_alone`、`a_change_that_does_not_take_effect_leaves_the_revision_alone`、`a_create_is_counted_once_it_is_written` | `Covered` |
 | 事件流重连后，所有 Agent 需要命令的结果失效一次，只取模型的不失效 | [`use-app-events.test.ts`](https://github.com/ora-space/desktop/blob/339aa926/packages/app-shell/src/state/hooks/use-app-events.test.ts) 的 `refreshes discovered commands when Skills change, or may have while disconnected` | `Covered` |
 | 插件缓存不落盘 | 插件侧尚未实现 | `Missing` |
 | 卸载后装回同名不同内容的 Skill，不返回卸载前的结果 | [`tests.rs`](https://github.com/ora-space/desktop/blob/339aa926/crates/backend/src/skill_revision/tests.rs) 的 `a_skill_plugin_advances_the_revision` 证明卸载和以同一投影装回都推进修订号；插件侧缓存未实现，端到端没有覆盖 | `Partial` |
