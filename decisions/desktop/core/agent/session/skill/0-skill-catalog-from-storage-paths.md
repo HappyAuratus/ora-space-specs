@@ -4,6 +4,8 @@ status: implemented
 
 # Skill 按存储路径以会话清单交给 Agent，取代 Effect 物化
 
+> 历史决策：D8 第 2 条与「本决策未解决的问题」中留待后续决定的「工作流编辑器存 catalog ID」，已由[工作流 Skill 绑定改存 Catalog ID](../../../../plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)定下：编辑器新选择的绑定写 Catalog ID，裸名称继续兼容。D8 的运行时解析与冻结规则不变。
+
 Desktop 退役 Effect 机制，Skill 不再物化到 Workspace。Skill 目录就是它的存储位置：本地导入的 Skill 在应用数据
 目录（数据根）的 `atoms/skills/<name>/`，插件提供的 Skill 在插件安装目录内。新会话的第一条用户 prompt 前附一份
 Skill 清单，每项只有名称、描述和 `SKILL.md` 的绝对路径，Agent 需要时自己读取 `SKILL.md`。会话中途安装或卸载
