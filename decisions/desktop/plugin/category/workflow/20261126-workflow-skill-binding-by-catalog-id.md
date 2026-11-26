@@ -121,6 +121,7 @@ Skill 绑定按启动预检的规则解析，按表中顺序取第一条命中�
 | 卸载前 | 卸载后 | 呈现 |
 | --- | --- | --- |
 | 解析到待卸载插件的 Skill | `missing` | 列为受影响：卸载后启动会被拒绝 |
+| `ambiguous`，候选全部属于待卸载插件 | `missing` | 列为受影响：卸载后启动会因缺少 Skill 被拒绝，无法再靠指定来源解除歧义 |
 | `ambiguous`，候选含待卸载插件的 Skill | 唯一解析到其他 Skill | 不列为会失败；可作为信息提示该节点将改用哪个来源 |
 | `ambiguous` | 仍为 `ambiguous` | 不因本次卸载新增影响，沿用 D2 的歧义状态 |
 | 与待卸载插件无关 | 不变 | 不列出 |
@@ -147,7 +148,7 @@ ID 绑定插件 Skill 的引用一定失败，按名称匹配又可能因大小�
    按现有的整个插件下发处理，下发粒度不变；`<namespace>/<identifier>` 和裸名称的含义不变。同一节点的多条引用
    解析到同一插件 ID 时（例如同一插件的两个 `plugin:` 引用，或 `plugin:` 引用与插件 ID 引用并存），按插件 ID
    合并为一个交付项，不重复投射同一插件。这一处属于 phase2
-   的 desktop↔cloud 契约，不适用 v2 豁免，由 cloud 侧在 phase2 workflows 契约中按正常 specs 流程承接（cloud ADR、
+   的 desktop↔cloud 契约，不适用 v2 豁免，由 [ora-space/circus#1593](https://github.com/ora-space/circus/issues/1593) 在 phase2 workflows 契约中按正常 specs 流程承接（cloud ADR、
    实现与核心用例），名称段是否另作校验也由那份决策定。
 
 为什么是 `plugin:` 形式：它与 desktop 的 Catalog ID 一致，desktop 导出再导入不丢「插件里哪个 Skill」；cloud 写出的
@@ -203,6 +204,6 @@ ID 绑定插件 Skill 的引用一定失败，按名称匹配又可能因大小�
 1. **desktop 实现**：D1–D4 在同一版本交付（不变量 8）。保持不变：图 JSON 结构、运行冻结与预检时机、已有
    裸名称、MCP 与 Agent 插件的卸载规则。开始改变：编辑器写入 Catalog ID，解析器接受插件 ID 引用，报告新增
    歧义状态并只统计启用绑定，卸载检查按前后解析判断，导出转换本机 Skill 引用。
-2. **cloud 适配**：D4 第 6 条由 cloud 侧的 phase2 workflows 契约承接，与 desktop 实现互不阻塞。
+2. **cloud 适配**：D4 第 6 条由 [ora-space/circus#1593](https://github.com/ora-space/circus/issues/1593) 的 phase2 workflows 契约承接，与 desktop 实现互不阻塞。
 3. **落地**：desktop 实现合并后，本文改为 `implemented`，回填核心用例证据；cloud 侧证据记在 cloud 的决策和
    用例里。
