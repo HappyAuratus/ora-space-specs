@@ -290,7 +290,7 @@ MCP 的 Desired/Active 收敛、prompt admission 和全量成败规则不变。
 
 ## 风险与迁移
 
-- **旧 Agent 插件与新版插件发版约束**：仍声明 `effectResources` 的旧插件继续可用（D1），其原生发现目录不再出现 Skill，靠提示词清单交付。反之，移除 `effectResources` 的新版 Agent 插件**不得早于包含本决策实现的 Desktop 正式版发布**：旧 Desktop 只靠 Effect 物化，配新版插件时 `verify_agent_contract` 仍会通过但 Skill 整体消失。按 `ora-space/circus#1582` 的结论，插件 manifest 和 marketplace 都不增加“最低宿主版本”字段或门控，只靠发版顺序和发版说明约束：新版插件的发版说明写明所需 Desktop 版本不低于包含 desktop#827 的版本，旧 Desktop 上没有 Skill，要先升级 Desktop；代价是不升级 Desktop 的用户装上新插件后会静默失去 Skill。
+- **旧 Agent 插件与新版插件发版约束**：仍声明 `effectResources` 的旧插件继续可用（D1），其原生发现目录不再出现 Skill，靠提示词清单交付。反之，移除 `effectResources` 的新版 Agent 插件**不得早于包含本决策实现的 Desktop 正式版发布**：旧 Desktop 只靠 Effect 物化，配新版插件时 `verify_agent_contract` 仍会通过但 Skill 整体消失。按 `ora-space/circus#1582` 的结论，插件 manifest 和 marketplace 都不增加“最低宿主版本”字段或门控，只靠发版顺序和发版说明约束：新版插件的发版说明写明所需 Desktop 版本不低于包含 desktop#827 的版本，并列出首个包含它的 Desktop 正式版版本号供用户核对，旧 Desktop 上没有 Skill，要先升级 Desktop；代价是发版顺序靠人守住，不升级 Desktop 的用户装上新插件后会静默失去 Skill。
 - **旧 Workspace 副本**：只按 D9 清理。不能改为按目录名或内容相似度删除，因为 observation 不证明 ownership。
 - **旧工作流运行**：冻结记录照常读取（D8 第 8 条），已物化路径被忽略，不会指向已清理的目录。
 - **Effect 表与 `0025` 不可逆降级**：升级前在数据目录自动备份 `ora.sqlite3.pre-0025.bak`，`0025` 不可逆，旧版 Desktop 无法直接打开升级后的库；该备份只包含升级前的数据库状态，不包含升级后的写入，具体回退恢复步骤由发版说明给出。
