@@ -72,6 +72,6 @@ journal 意图、prepared_at 和已知 applied_at 继续保留；历史检测证
 ## 落地与验收
 
 迁移 0010、repository 写事务时钟、状态读取 metadata 和 reconciler 阶段采样已落地。历史数据回填、
-交错提交、时钟回拨、恢复和迁移往返已有直接回归证据，见
-[时间语义核心用例](../../../../test-cases/desktop/core/effect/time.md)。端到端测试验证 Skill 导入后收敛
+交错提交、时钟回拨、恢复和迁移往返已有直接回归证据，曾登记于
+`test-cases/desktop/core/effect/time.md`（历史用例，已随 Effect 退役删除）。端到端测试曾验证 Skill 导入后收敛
 到 Workspace，并在删除后移除产物。

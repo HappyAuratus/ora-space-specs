@@ -110,6 +110,6 @@ retry 和 Condition 仍不推进 generation。
 
 `retire_consumer`、`declare_consumer`（声明替换）、`publish_skill_revision`（退役 Source 重发）、
 缺失根目录的观察与 `workspace_root_missing` Condition、以及 Workspace+Agent 的 `obligation`
-已按本决策实现。回归证据见
-[Effect 收敛核心用例](../../../../test-cases/desktop/core/effect/convergence.md) 与
-[Plugin Skill 发布用例](../../../../test-cases/desktop/core/effect/skill/plugin-skill-publication.md)。
+曾按本决策实现。历史回归证据曾登记于
+`test-cases/desktop/core/effect/convergence.md` 与
+`test-cases/desktop/core/effect/skill/plugin-skill-publication.md`（历史用例，已随 Effect 退役删除）。
