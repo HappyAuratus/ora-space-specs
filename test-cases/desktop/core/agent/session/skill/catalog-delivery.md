@@ -1,7 +1,8 @@
 # Skill 会话清单的交付、增量与重置
 
 决策依据：[Skill 按存储路径以会话清单交给 Agent](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
-（`approved`）。实现尚未开始，本文件全部义务的证据状态为 `Missing`。
+（`implemented`），代表性证据固定于 [desktop#827](https://github.com/ora-space/desktop/pull/827) 合并提交
+[`9f3ed63f`](https://github.com/ora-space/desktop/commit/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf)。
 
 ## First Prompt Must Carry The Full Catalog Of Available Skills
 
@@ -9,29 +10,29 @@
 
 如果首条 prompt 漏掉某个已安装 Skill、混入 Unavailable 的 Catalog 行，或给出的不是 `SKILL.md` 的绝对路径，
 Agent 会不知道这个 Skill 存在，或按失效、相对于 `cwd` 的路径读取，Skill 就悄悄不可用。清单顺序不确定还会让相同
-输入产生不同 prompt。
+输入产生不同 prompt。此外，整份清单或单个 Skill 读取失败时如果当成空清单或不存在处理，会误发移除增量或固化空基线。
 
 ### 前置状态
 
 - Skill Catalog 同时有：本地导入的 Available Skill，两个插件分别提供的同名 Available Skill，以及一个 package
   已缺失的 Unavailable Skill。
-- 应用数据目录或 Ora 主目录的路径含空格或非 ASCII 字符。
+- 应用数据目录或 Ora 主目录的路径含空格或非 ASCII 字符（Windows 上可能含 `\\?\` verbatim 前缀）。
 - 新建一个交互式聊天 Live Session，另有一个工作流节点会话。
 
 ### 触发
 
-两个会话各自发送第一条用户 prompt。
+两个会话各自发送第一条用户 prompt；另在清单查询失败或单个 `SKILL.md` 不可读时发送 prompt。
 
 ### 必须成立
 
-- prompt 带一个清单块，列出全部 Available Skill，每项包含名称、描述和存储位置下 `SKILL.md` 的绝对路径，路径保持
-  原样。
+- prompt 带一个 `<available_skills>` 清单块，列出全部 Available Skill，每项包含名称、描述和存储位置下 `SKILL.md` 的原生绝对路径，路径保持原样并剥离 Windows `\\?\` 前缀。
 - 两个同名 Skill 各自是一个条目，按路径区分。
 - 条目按名称的 ASCII 小写排序，名称相同再按路径排序；相同 Catalog 产生相同的清单块。
 - 清单块说明 `SKILL.md` 中的相对路径按其所在目录解析。
 - 清单在发送时刻读取，而不是在 `session/new` 时读取。
 - Catalog 中没有 Available Skill 时，prompt 不带清单块。
 - 工作流节点会话使用同一份清单逻辑。
+- 整份清单读取失败（如 DB 查询错误）时，本轮跳过清单注入，且不初始化或提交已告知清单；单个条目 `SKILL.md` 读取失败时，将其标为未知（已告知不移除、未告知不新增），其余可读条目照常注入。
 
 ### 禁止结果
 
@@ -39,21 +40,23 @@ Agent 会不知道这个 Skill 存在，或按失效、相对于 `cwd` 的路径
 - 合并、改名或丢弃同名 Skill，或因同名而阻塞会话。
 - 呈现 Workspace 相对路径、物化副本路径，或经转义、缩写的路径。
 - 把 Skill 正文放进清单块。
+- 清单或单条目读取失败时把失败项当成不存在并误发移除或固化空基线。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 首条 prompt 列出全部 Available Skill 的名称、描述与 `SKILL.md` 绝对路径，排除 Unavailable 行 | 尚无实现 | `Missing` |
-| 同名 Skill 按路径并列，顺序按名称小写再按路径确定 | 尚无实现 | `Missing` |
-| 含空格或非 ASCII 字符的路径原样呈现 | 尚无实现 | `Missing` |
-| 清单为空时不带块 | 尚无实现 | `Missing` |
-| 交互式聊天与工作流节点会话的首条 prompt 都带清单 | 尚无实现 | `Missing` |
+| 首条 prompt 列出全部 Available Skill 的名称、描述与原生 `SKILL.md` 绝对路径（剥离 `\\?\`），排除 Unavailable 行 | [desktop host 解析与排除破损包](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/skill_catalog/tests.rs#L30)、[剥离 `\\?\` 前缀](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/skill_catalog/tests.rs#L280)、[桌面端 E2E 交付](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
+| 同名 Skill 按路径并列，顺序按名称小写再按路径确定 | [`full_catalog_sorts_deterministically_keeps_duplicate_names_and_preserves_native_paths`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L38) | `Covered` |
+| 含空格或非 ASCII 字符的路径原样呈现 | [`full_catalog_sorts_deterministically_keeps_duplicate_names_and_preserves_native_paths`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L38) | `Covered` |
+| 清单为空时不带块（发送成功后已告知集合初始化为空） | [`empty_catalog_emits_no_block_and_no_meta`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L77)、[`empty_first_turn_emits_delta_on_first_install_and_compaction_resets_to_full_catalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1316) | `Covered` |
+| 交互式聊天与工作流节点会话的首条 prompt 都带清单 | 交互式桌面 E2E 见 [`skill_catalog.rs`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)，工作流节点会话见 runtime [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)（`start_workflow_node_session`）；工作流桌面端 `workflow_scenarios.rs` 只直接断言 `<required_skills>` | `Partial` |
+| 整份清单读取失败跳过本轮且不提交基线；单条目 `SKILL.md` 不可读标为未知且不误发移除 | [DB 读取失败传播](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/skill_catalog/tests.rs#L151)、[单条目不可读标未知](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/skill_catalog/tests.rs#L179)、[未知路径增量保护](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L185)、[runtime 读取失败保持基线](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1326)（包目录本身不可读的缺口由 `ora-space/circus#1533` 跟进） | `Partial` |
 
 ### 决策依据
 
-- Skill 会话清单决策 D2、D3：存储位置即交付位置，首条用户 prompt 携带全量清单。
-- 不变量 2。
+- Skill 会话清单决策 D2、D3、D4：存储位置即交付位置，首条用户 prompt 携带全量清单，以及读取失败保护。
+- 不变量 2、3。
 
 ## Later Prompts Must Carry Only Path Deltas
 
@@ -64,7 +67,7 @@ Agent 会不知道这个 Skill 存在，或按失效、相对于 `cwd` 的路径
 
 ### 前置状态
 
-- 一个 Live Session 已经在首条 prompt 中收到全量清单。
+- 一个 Live Session 已经在首条 prompt 中收到全量清单（或空首轮后初始化为空集合）。
 - 随后依次发生：安装一个本地 Skill；只改某个本地 Skill 的内容和描述，不改名；把一个插件从 1.0.0 升级到 1.1.0；
   卸载另一个插件；本地 Skill 改名。
 
@@ -74,7 +77,7 @@ Agent 会不知道这个 Skill 存在，或按失效、相对于 `cwd` 的路径
 
 ### 必须成立
 
-- 新增路径：增量块列出新增条目的名称、描述和路径。
+- 新增路径：`<available_skills_update>` 增量块列出新增条目的名称、描述和路径。
 - 移除路径：增量块列出移除条目的名称和路径，并说明它们已不可用。
 - 插件升级与本地 Skill 改名：同一个增量块同时列出旧路径的移除和新路径的新增。
 - 路径集合不变（包括只改内容、描述或名称而路径不变）时，prompt 不带任何清单块。
@@ -94,10 +97,10 @@ Agent 会不知道这个 Skill 存在，或按失效、相对于 `cwd` 的路径
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 新增、移除与升级（同时有移除和新增）分别产生对应的增量块 | 尚无实现 | `Missing` |
-| 路径集合不变时不带清单块 | 尚无实现 | `Missing` |
-| 进入 Agent 前失败的 prompt 不更新已告知清单，下一次发送补发增量 | 尚无实现 | `Missing` |
-| 多次变化后累积路径集合与当前清单一致 | 尚无实现 | `Missing` |
+| 新增、移除与升级（同时有移除和新增）分别产生对应的 `<available_skills_update>` 增量块 | [`delta_tracks_path_identity_across_unchanged_add_remove_and_upgrade`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L88)、[`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)、[`empty_first_turn_emits_delta_on_first_install_and_compaction_resets_to_full_catalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1316)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
+| 路径集合不变时不带清单块 | [`delta_tracks_path_identity_across_unchanged_add_remove_and_upgrade`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L88)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
+| 进入 Agent 前失败的 prompt 不更新已告知清单，下一次发送补发增量 | [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)（`commit_admission` 拒绝后下轮补发增量）、[`stale_load_prompt_failure_rebuilds_and_resends_full_catalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1662) | `Covered` |
+| 多次变化后累积路径集合与当前清单一致 | [`delta_tracks_path_identity_across_unchanged_add_remove_and_upgrade`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L88)、[`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309) | `Covered` |
 
 ### 决策依据
 
@@ -115,60 +118,60 @@ prompt cache。
 ### 前置状态
 
 - 一个 Live Session 已收到全量清单和至少一次增量。
-- Agent 支持 `session/load`，并能报告上下文压缩。
+- Agent 支持 `session/load`，OpenCode 父会话通过 `SessionInfoUpdate` 的 `_meta["opencode/compaction"].status == "completed"` 报告上下文压缩（Claude Code 尚无压缩信号，列为已知限制）。
 
 ### 触发
 
 分别发生以下情况，之后发送下一条用户 prompt：
 
 1. 应用重启后冷启动 `session/load`；
-2. 停止的 Ora Session 再次打开；
-3. Agent 插件报告该会话的上下文已压缩；
-4. 同一 Live Session 因 MCP 配置变化完成一次 refresh `session/load`。
+2. 停止的 Ora Session 再次打开或 provider session rebuild；
+3. OpenCode 父会话报告上下文压缩完成（对照 `started`/`failed` 与子会话压缩）；
+4. 同一 Live Session 因 MCP 配置变化完成一次 refresh `session/load`（含回放期间出现的压缩事件）。
 
 ### 必须成立
 
-- 情况 1–3：下一条用户 prompt 携带当前全量清单，已告知清单从这份全量重新开始。
+- 情况 1–3：下一条用户 prompt 携带当前全量清单，已告知清单从这份全量重新开始；非完成态或子会话压缩不重置。
 - 情况 4：已告知清单保留，下一条 prompt 只按 D4 带增量，没有变化时不带块。
 - 已告知清单不写入 Ora Session 或 SQLite。
 
 ### 禁止结果
 
 - actor 重建后从持久化数据恢复已告知清单并继续发增量。
-- 报告压缩后仍只发增量。
-- MCP refresh 的 `session/load` 触发全量重发。
+- OpenCode 父会话报告压缩完成后仍只发增量。
+- MCP refresh 的 `session/load` 或回放期间的事件触发全量重发。
 
 ### 验证义务与证据
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 冷启动 `session/load` 与重新打开会话后，下一条 prompt 带全量 | 尚无实现 | `Missing` |
-| 插件报告压缩后，下一条 prompt 带全量 | 尚无实现；压缩信号的 wire 形状尚未确定 | `Missing` |
-| 同一 actor 内的 MCP refresh `session/load` 不清空已告知清单 | 尚无实现 | `Missing` |
-| 已告知清单不进入 Ora Session 或 SQLite | 尚无实现 | `Missing` |
+| 冷启动 `session/load`、停止重开与 rebuild 后，下一条 prompt 带全量 | [`mark_stopped_and_unload_independently_clear_announced_skills`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/actor.rs#L580)、[`stale_load_prompt_failure_rebuilds_and_resends_full_catalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1662)、[`restore_and_rebuild_provider_session_independently_clear_announced_skills`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1669)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
+| OpenCode 父会话报告压缩完成后下一条 prompt 带全量（`started`/`failed`/子会话不重置；Claude Code 尚无压缩信号） | [`empty_first_turn_emits_delta_on_first_install_and_compaction_resets_to_full_catalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1316) | `Partial` |
+| 同一 actor 内的 MCP refresh `session/load`（含回放期间压缩事件）不清空已告知清单 | [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)、[`mcp_refresh_replay_compaction_does_not_reset_announced_skills`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1652) | `Covered` |
+| 已告知清单不进入 Ora Session 或 SQLite | [`schema_v0025` 迁移验证](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/db/src/migration/schema/schema_v0025.rs#L204) 与 [`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)（停止重开后重发全量且只回放用户原文，未将已告知集合写入数据库或历史） | `Covered` |
 
 ### 决策依据
 
-- Skill 会话清单决策 D4：已告知清单只在内存，以及重置条件。
+- Skill 会话清单决策 D4：已告知清单只在内存，以及重置条件与 OpenCode 压缩信号。
 - 不变量 5。
 
 ## Catalog Blocks Must Follow A Leading Slash Command And Stay Out Of User Input
 
 ### 风险
 
-Agent CLI 只在 prompt 以斜杠命令开头时才把它当作命令。清单块如果插在用户输入的 `/命令` 或工作流节点前导的
+Agent CLI 只在 prompt 以斜杠命令开头时才把它当作命令。清单块如果插在用户输入的 `/命令` 或（当插件声明接入原生 Skill 时）工作流节点前导的
 `/调用名` 前面，命令会被当成普通文本。清单块如果显示成用户消息，用户会看到自己没写过的内容。
 
 ### 前置状态
 
 - Catalog 有 Available Skill。
 - 一个交互式会话的首条用户输入以 `/review` 开头；另一个会话的首条输入是普通文本。
-- 一个工作流节点的 prompt 以必需 Skill 的前导 `/调用名` 开头。
+- 当 Agent 插件声明已接入原生 Skill 时，工作流节点的 prompt 以必需 Skill 的前导 `/调用名` 开头（当前尚无插件消费 `_meta["ora/skillDirectories"]`）。
 - 已开始的会话之后发生一次 Skill 安装，下一条用户输入以斜杠命令开头。
 
 ### 触发
 
-发送上述 prompt，并在界面上查看这些会话的消息。
+发送上述 prompt，并在会话历史/界面上查看这些会话的消息。
 
 ### 必须成立
 
@@ -187,14 +190,14 @@ Agent CLI 只在 prompt 以斜杠命令开头时才把它当作命令。清单�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 前导斜杠命令块保持在最前，清单块紧随其后；否则清单块在用户内容之前 | 尚无实现 | `Missing` |
-| 工作流节点前导 `/调用名` 后的块顺序同样成立 | 尚无实现 | `Missing` |
-| 增量块遵循相同位置规则 | 尚无实现 | `Missing` |
-| 界面不把清单块显示为用户输入 | 尚无实现 | `Missing` |
+| 前导斜杠命令块保持在最前，清单块紧随其后；否则清单块在用户内容之前 | [`catalog_block_follows_leading_slash_command_and_precedes_ordinary_prompt`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L275)、[`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309) | `Covered` |
+| 声明原生 Skill 时工作流节点前导 `/调用名` 后的块顺序同样成立 | runtime 文本块顺序由 [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)（`start_workflow_node_session`）覆盖；尚无声明原生 Skill 的工作流插件端到端用例（待 `ora-space/circus#1511`） | `Partial` |
+| 增量块遵循相同位置规则 | [`catalog_block_follows_leading_slash_command_and_precedes_ordinary_prompt`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L275)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)（Turn 3） | `Covered` |
+| 界面不把清单块显示为用户输入 | [`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) 与 [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309) 已证明 `session/load` 回放的用户消息不含清单块；前端消息列表未单测 `<available_skills>` 过滤 | `Partial` |
 
 ### 决策依据
 
-- Skill 会话清单决策 D3 规则 1、2，D4 位置规则，D8 第 4 条。
+- Skill 会话清单决策 D3 规则 1、2，D4 位置规则，D8 第 5 条。
 - 不变量 6。
 
 ## Skill Delivery Must Not Write Into Workspaces Or Gate Prompts
@@ -228,9 +231,9 @@ Agent CLI 只在 prompt 以斜杠命令开头时才把它当作命令。清单�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| Skill 与插件生命周期全过程中 Workspace 文件集合不变 | 尚无实现 | `Missing` |
-| 发送不等待 Skill 状态，前端不再有 Skill 门禁 | 尚无实现 | `Missing` |
-| Skill 变化不占用 barrier、不重启 Agent、不 reload 会话 | 尚无实现；barrier 侧义务也登记在 [MCP Refresh Must Hold One Agent Session Barrier Per Agent](../mcp/acp-session-setup-delivery.md#mcp-refresh-must-hold-one-agent-session-barrier-per-agent) | `Missing` |
+| Skill 与插件生命周期全过程中 Workspace 文件集合不变 | [`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)、[`freezes_catalog_bindings_for_local_and_plugin_skills_without_writing_workspace`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/backend/src/workflow/run/prerequisites/tests.rs#L74) | `Covered` |
+| 发送不等待 Skill 状态，前端不再有 Skill 门禁 | 后端与桌面端直接发送且无门禁阻塞见 [`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)；前端 composer 未保留专门的 Effect 门禁负向断言 | `Partial` |
+| Skill 变化不占用 barrier、不重启 Agent、不 reload 会话 | [`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)、[`mcp_refresh_holds_one_agent_session_barrier_per_agent`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/session_setup/barrier.rs#L102)；barrier 侧义务也登记在 [MCP Refresh Must Hold One Agent Session Barrier Per Agent](../mcp/acp-session-setup-delivery.md#mcp-refresh-must-hold-one-agent-session-barrier-per-agent) | `Covered` |
 
 ### 决策依据
 

@@ -1,7 +1,8 @@
 # Skill 交付的 session setup、host 边界与旧协议兼容
 
 决策依据：[Skill 按存储路径以会话清单交给 Agent](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
-（`approved`）。实现尚未开始，本文件全部义务的证据状态为 `Missing`。
+（`implemented`），代表性证据固定于 [desktop#827](https://github.com/ora-space/desktop/pull/827) 合并提交
+[`9f3ed63f`](https://github.com/ora-space/desktop/commit/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf)。
 
 ## Readable Roots Must Follow The Declared Capability Without Failing Setup
 
@@ -27,8 +28,7 @@
   `<应用数据目录>/atoms/skills/` 和 `<Ora 主目录>/plugins/installed/`。
 - 会话中途安装的插件 Skill 位于已发送的插件安装根之下，不需要重建会话。
 - Agent B 的请求不带 `additionalDirectories`，setup 照常成功，首条 prompt 照常带清单。
-- 同一 setup 请求用 Ora 命名空间的 `_meta` 字段携带当时清单中各 Skill 的包目录；插件忽略该字段时 setup 不受
-  影响。
+- 同一 setup 请求以 `_meta["ora/skillDirectories"]` 携带当时清单中各 Skill 的包目录（清单为空或读取失败时省略）；插件忽略该字段时 setup 不受影响。
 
 ### 禁止结果
 
@@ -41,10 +41,10 @@
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 声明能力的 Agent 在每次 new 与 load 中收到完整的两个可读根 | 尚无实现 | `Missing` |
-| 未声明能力的 Agent 不收到该字段，setup 成功且清单照常发送 | 尚无实现 | `Missing` |
-| 会话中途安装的插件 Skill 位于已授权根之下 | 尚无实现 | `Missing` |
-| `_meta` 携带 setup 时刻的 Skill 包目录，忽略它不影响 setup | 尚无实现；键名随插件协议改动确定 | `Missing` |
+| 声明能力的 Agent 在每次 new 与 load 中收到完整的两个可读根 | [`setup_requests_follow_capability_negotiation_and_preserve_empty_wire_shape`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L336)、[`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
+| 未声明能力的 Agent 不收到该字段，setup 成功且清单照常发送 | [`setup_requests_follow_capability_negotiation_and_preserve_empty_wire_shape`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L336)、[`skill_catalog_delivery_deltas_resets_capabilities_and_history_across_live_sessions`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1309) | `Covered` |
+| 会话中途安装的插件 Skill 位于已授权根之下 | [`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82)（插件安装根 `<home>/plugins/installed` 在 `session/new` 与 `session/load` 发送，`assets/<skill>` 位于其下） | `Covered` |
+| `_meta["ora/skillDirectories"]` 携带 setup 时刻的 Skill 包目录（为空或读取失败时省略），忽略它不影响 setup | [`setup_requests_follow_capability_negotiation_and_preserve_empty_wire_shape`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L336)、[`empty_catalog_emits_no_block_and_no_meta`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L77)、[`catalog_read_failure_skips_injection_and_preserves_announced_skills`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog_runtime_tests.rs#L1326)、[`desktop_session_delivers_storage_path_catalog_deltas_and_leaves_workspace_untouched`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L82) | `Covered` |
 
 ### 决策依据
 
@@ -83,9 +83,9 @@ Node 会话执行 `session/new`、`session/load`，并发送首条及后续用�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| Node host 两个扩展点返回空 | 尚无实现 | `Missing` |
-| Node 会话的 setup 请求与 prompt 与决策前一致 | 尚无实现 | `Missing` |
-| ora-node 的依赖中没有 `ora-effect` | 尚无实现 | `Missing` |
+| Node host 两个扩展点返回空 | [`NodeRuntimeHost::Skills = NoSkillCatalog`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/apps/ora-node/src/session/host.rs#L56) 与 [`no_skill_catalog_returns_empty_entries_and_roots`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/memory_host.rs#L206) | `Covered` |
+| Node 会话的 setup 请求与 prompt 与决策前一致 | runtime 空快照与空根在 [`empty_catalog_emits_no_block_and_no_meta`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L77) 与 [`setup_requests_follow_capability_negotiation_and_preserve_empty_wire_shape`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/agent-runtime/src/skill_catalog/tests.rs#L336) 证明，且 `NodeRuntimeHost` 固定绑定 `NoSkillCatalog`；`apps/ora-node` 自身无单独针对空 Skill 的 ACP 帧对比测试 | `Partial` |
+| ora-node 的依赖中没有 `ora-effect` | [`apps/ora-node/Cargo.toml`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/apps/ora-node/Cargo.toml) 已移除 `ora-effect` 依赖，且 `crates/effect` 已整体删除 | `Covered` |
 
 ### 决策依据
 
@@ -124,8 +124,8 @@ desktop 连接两个插件，建立会话、发送 prompt，期间安装和卸�
 
 | 验证义务 | 代表性证据测试 | 状态 |
 | --- | --- | --- |
-| 带 `effectResources` 的注册连接成功，字段被忽略 | 尚无实现 | `Missing` |
-| Skill 安装、卸载期间 host 不调用 `effect/*` | 尚无实现 | `Missing` |
+| 带 `effectResources` 的注册连接成功，字段被忽略 | [`tolerates_legacy_effect_resource_registration`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/crates/plugin-runtime/src/tests.rs#L128)、[`desktop_ignores_legacy_effect_resources_registration_without_failing_or_calling_effects`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L242) | `Covered` |
+| Skill 安装、卸载期间 host 不调用 `effect/*` | [`desktop_ignores_legacy_effect_resources_registration_without_failing_or_calling_effects`](https://github.com/ora-space/desktop/blob/9f3ed63fa3f36701d4d2f8ca25414ea018d779cf/e2e/tests/desktop/core/session/tests/skill_catalog.rs#L242) | `Covered` |
 
 ### 决策依据
 

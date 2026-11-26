@@ -70,4 +70,4 @@
 
 ### 决策依据
 
-[派发预检 D3](../../../../../../decisions/desktop/core/agent/session/mcp/20261119-workflow-mcp-preflight.md)及[Skill 会话清单决策 D8](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`approved`；Skill 依赖按 Catalog 解析与存储路径存在判定）。
+[派发预检 D3](../../../../../../decisions/desktop/core/agent/session/mcp/20261119-workflow-mcp-preflight.md)及[Skill 会话清单决策 D8](../../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)（`implemented`；Skill 依赖按 Catalog 解析与存储路径存在判定，裸名歧义报 `workflow_skill_ambiguous`）。
