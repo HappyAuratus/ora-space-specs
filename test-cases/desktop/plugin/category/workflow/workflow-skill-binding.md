@@ -1,0 +1,254 @@
+# 工作流 Skill 绑定的身份、依赖判定与导出
+
+决策依据：[工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+（`approved`）。实现尚未合并，下列证据均为 `Missing`，落地时回填。
+
+## Editor Must Bind New Skill Selections By Catalog ID
+
+### 风险
+
+编辑器如果继续写 Skill 名称，同名的本地 Skill 和插件 Skill 只能写出同一个裸名称，用户无法指定来源，启动被
+`workflow_skill_ambiguous` 拒绝；之后安装一个同名插件，原本能运行的工作流也会突然被拒。反过来，如果编辑器
+顺手改写已有绑定，或把 UUID 当名称展示，用户会看到无法理解的值，或在不知情时换掉了来源。
+
+### 前置状态
+
+- Catalog 中有本地 Skill `review` 和插件 `<namespace>/<identifier>` 提供的同名 Skill `review`，以及只有一个
+  来源的 Skill `lint`。
+- 一张已有工作流图的 Agent 节点绑定裸名称 `lint`，另一个节点绑定 `ns:name` 历史写法。
+
+### 触发
+
+1. 在 Agent 节点的 Skill 选择器中分别选择两个 `review`。
+2. 打开已有工作流图，不改动其绑定后保存；再在同一节点重新选择 `lint`。
+3. 在已绑定裸名称 `lint` 的节点里再添加 `lint` 的精确 Catalog ID。
+4. 在同一张图里绑定两个不同 Skill，它们的调用名归一化后相同。
+
+### 必须成立
+
+- 选择器列出所有 Available Skill，同名条目并列并标出来源（「本地」或插件显示名）；选中后写入的
+  `binding.skillId` 是 Catalog ID：本地写 UUID，插件写 `plugin:<canonical-plugin-id>:<canonical-skill-name>`。
+- 已有的裸名称、`ns:name` 和插件 ID 引用在保存时不被改写；只有用户重新选择后才变成 Catalog ID。
+- 绑定按解析结果显示名称和来源；解析不到时显示原始引用值并标为缺失。
+- 节点内去重按解析后的 Catalog ID：裸名称唯一解析到某个 Skill 时，再添加它的精确 ID 被视为重复。
+- 调用名冲突在节点配置中提示，不阻止保存。
+
+### 禁止结果
+
+- 同名 Skill 只能写出同一个值，或选择器只显示其中一个。
+- 打开或保存图时批量把裸名称迁移为 Catalog ID。
+- 把 UUID 或 `plugin:` ID 当作 Skill 名称直接显示。
+- 因调用名冲突拒绝保存。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 选择器按来源区分同名 Skill，写入对应的 Catalog ID | 尚无 | `Missing` |
+| 已有裸名称、`ns:name` 与插件 ID 引用在保存时原样保留，重新选择后才写入 Catalog ID | 尚无 | `Missing` |
+| 绑定展示按解析结果显示名称和来源，解析不到时显示原值并标缺失 | 尚无 | `Missing` |
+| 节点内按解析后的 Catalog ID 去重 | 尚无 | `Missing` |
+| 调用名冲突只提示、不阻止保存 | 尚无 | `Missing` |
+
+### 决策依据
+
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D1 与不变量 1。
+
+## Workflow Skill Dependency Status Must Match Launch Preflight
+
+### 风险
+
+依赖报告、运行页和启动预检如果用两套规则，报告会把启动必被拒绝的工作流显示为「已安装」，或把能启动的
+工作流报成缺失：同名多候选被当作已安装、大小写不同被当作缺失、精确 ID 失效后被同名 Skill「补上」、
+不可用 Skill 只给提示级警告。禁用的绑定计入横幅，又会让用户去修一个不影响启动的依赖。
+
+### 前置状态
+
+- 一份工作流（本地 `.orax`、市场安装、升级或重试导入）包含以下启用的绑定：存在且可用的 Catalog ID、
+  已软删除记录的 Catalog ID、不对应任何记录的 `plugin:` 引用、大小写与目录不同的唯一裸名称、匹配本地和
+  插件两条记录的裸名称、只匹配一条不可用记录的裸名称、只贡献一个 Skill 的插件的插件 ID 引用、贡献多个
+  Skill 的插件的插件 ID 引用。
+- 另有一个禁用的绑定，其引用值缺失。
+
+### 触发
+
+1. 导入后打开依赖报告。
+2. 打开该工作流的运行页节点配置。
+3. 对同一工作流执行启动预检。
+
+### 必须成立
+
+- 每个绑定按「精确 ID（含软删除）→ `plugin:` 前缀 → 插件 ID 引用 → 裸名称或 `ns:name` 的最后一段」的顺序
+  解析；名称匹配 ASCII 大小写不敏感，匹配范围是全部未删除记录（含不可用）。
+- 状态映射：可用记录为 `installed`；不可用记录为 `unavailable`；无记录为 `missing`；多条候选为 `ambiguous`。
+  后三者都按「启动会被拒绝」呈现并计入阻断。
+- 处理入口：`unavailable` 去查看 Skill；`missing` 去安装，`plugin:` 引用与插件 ID 引用按其中的插件 ID 搜索
+  市场；`ambiguous` 去编辑器指定 Skill，导入预览阶段只给文字说明。
+- 报告横幅只统计启用的绑定，禁用绑定照常列出状态；报告说明检查针对全局 Skill 目录。
+- 对每个启用绑定，报告和运行页给出的「能否启动」与启动预检的结论一致（同一组样例同时约束前端判定与后端
+  预检）。
+- 「未导入」条目不参与依赖判定（继承冲突恢复决策）。
+
+### 禁止结果
+
+- 匹配到多条记录的裸名称或插件 ID 引用被报为 `installed`。
+- 已删除的精确 ID 或 `plugin:` 引用回落到同名 Skill 并报为 `installed`。
+- `unavailable` 只作为不阻断的提示。
+- 禁用绑定计入阻断横幅。
+- 报告与启动预检对同一绑定给出相反结论。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 前端解析顺序、大小写不敏感与「含不可用候选」规则与后端解析器一致（共享样例） | 尚无 | `Missing` |
+| 四种状态的映射、阻断呈现与处理入口（含按插件 ID 搜索市场） | 尚无 | `Missing` |
+| 只有启用绑定计入横幅；报告说明针对全局 Skill 目录 | 尚无 | `Missing` |
+| 本地 `.orax` 与市场安装、升级、重试共用同一判定，运行页展示使用同一结果 | 尚无 | `Missing` |
+
+### 决策依据
+
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D2 与不变量 2–5。
+- [市场工作流冲突恢复](../../../../../decisions/desktop/plugin/category/workflow/20261124-marketplace-workflow-conflict-recovery.md)：
+  「未导入」条目不参与依赖判定。
+
+## Plugin ID References Must Resolve To The Plugin's Only Skill Or Be Ambiguous
+
+### 风险
+
+cloud v2 写出的工作流用 `<namespace>/<identifier>` 引用整个 Skill 插件。desktop 如果把它当裸名称，导入后
+一定解析为缺失；如果在插件贡献多个 Skill 时任选一个，节点会静默用错 Skill；如果插件未安装时回落到同名
+Skill，又会执行错误的说明。
+
+### 前置状态
+
+- 插件 A 只贡献一个 Skill，插件 B 贡献两个 Skill，插件 C 未安装；本地另有一个名称与 `<identifier>` 相同的 Skill。
+- 工作流节点分别绑定 A、B、C 的插件 ID 引用，以及一个 `ns:name` 历史写法（含 `/` 和 `:`）。
+
+### 触发
+
+创建运行、`start`、`restart` 与切换快照的 `resume`；运行冻结；依赖报告判定。
+
+### 必须成立
+
+- 恰好含一个 `/`、不含 `:` 的引用按插件 ID 引用处理：匹配 `namespace` 等于该插件 ID 的全部未删除记录（含不可用）。
+- A 的引用解析到它唯一的 Skill，冻结记录的 `catalog_skill_id` 是该 Skill 的 Catalog ID。
+- B 的引用以 `workflow_skill_ambiguous` 拒绝，候选是 B 的全部 Skill。
+- C 的引用以 `workflow_skill_not_found` 拒绝，不回落到同名本地 Skill。
+- 含 `:` 的历史写法仍按最后一个冒号后的名称解析，不当作插件 ID 引用。
+
+### 禁止结果
+
+- 插件 ID 引用被当作裸名称匹配。
+- 多 Skill 插件的插件 ID 引用静默选中其中一个。
+- 插件缺失时回落到与 `<identifier>` 同名的 Skill。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 单 Skill 插件的插件 ID 引用解析并冻结为该 Skill 的 Catalog ID | 尚无 | `Missing` |
+| 多 Skill 插件的插件 ID 引用在创建、启动与切换快照时以 `workflow_skill_ambiguous` 拒绝 | 尚无 | `Missing` |
+| 未安装插件的插件 ID 引用报缺失且不回落同名 | 尚无 | `Missing` |
+| 含 `:` 的 `ns:name` 写法不被识别为插件 ID 引用 | 尚无 | `Missing` |
+
+### 决策依据
+
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D4 第 5 条与不变量 3、4。
+- [Skill 按存储路径以会话清单交给 Agent](../../../../../decisions/desktop/core/agent/session/skill/0-skill-catalog-from-storage-paths.md)
+  D8：冻结、预检与不回落规则。
+
+## Uninstall Check Must Compare Skill Resolution Before And After Removal
+
+### 风险
+
+按「插件条目名等于引用值」判断卸载影响会同时漏报和误报：按精确 ID 或 `plugin:` 前缀绑定的引用卸载后一定
+失败，却因引用值不是名称而不被列出；同名本地 Skill 仍在时，卸载插件反而解除了歧义，却被列为会失败。
+
+### 前置状态
+
+- 待卸载插件 P 提供 Skill `lint` 和 `review`；本地另有 Skill `lint` 和 `review`；另一插件 Q 也提供 `review`。
+- 工作流草稿或已发布快照中的绑定包括：P 的 `plugin:` 引用、P 的插件 ID 引用、在本地与 P 之间歧义的裸名称
+  `lint`、在本地、P、Q 之间歧义的裸名称 `review`、与 P 无关的绑定。
+
+### 触发
+
+从四个卸载入口之一对 P 触发卸载前影响检查。
+
+### 必须成立
+
+- 每个 Skill 绑定分别以当前目录和「去掉 P 全部 Skill 后的目录」按依赖判定规则解析。
+- 卸载前解析到 P 的 Skill、卸载后缺失的绑定（P 的 `plugin:` 引用和插件 ID 引用）列为受影响，警告为
+  「启动这些工作流时会因缺少 Skill 被拒绝」。
+- 卸载前歧义、卸载后唯一解析到本地 Skill 的绑定（`lint`）不列为会失败，可作为信息提示将改用的来源。
+- 卸载前后都歧义的绑定（`review`）不因本次卸载新增影响；与 P 无关的绑定不列出。
+- 只警告、不阻止，扫描范围与加载期间禁用确认等规则不变；MCP 仍按插件 ID 匹配。
+
+### 禁止结果
+
+- 按精确 ID 或插件 ID 引用绑定 P 的工作流不被列出。
+- 卸载解除歧义的绑定被列为会失败。
+- 警告仍写「运行到引用该插件的节点时会失败」。
+- 因被引用而阻止卸载。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 精确 ID、`plugin:` 与插件 ID 引用在卸载后缺失时列为受影响 | 尚无 | `Missing` |
+| 卸载解除歧义时不列为会失败；前后都歧义时不新增影响 | 尚无 | `Missing` |
+| 警告文案改为启动会被拒绝，仍只警告不阻止 | 尚无 | `Missing` |
+
+### 决策依据
+
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D3 与不变量 6。
+- [市场自动导入后续决策](../../../../../decisions/desktop/plugin/category/workflow/20261109-marketplace-workflow-import.md)
+  D4：卸载入口、扫描范围与只警告不阻止。
+
+## Workflow Export Must Replace Local Skill IDs And Keep Plugin References
+
+### 风险
+
+D1 之后图里存的是本机 UUID 和 `plugin:` ID。导出如果原样写出 UUID，目标机器一定解析不到；如果把插件 Skill
+转回名称，目标机器有同名 Skill 时变成歧义，缺插件时也提示不出要装哪个；如果导出时改写了本机图，用户的绑定
+会被悄悄换掉。
+
+### 前置状态
+
+- 工作流节点绑定：本地 Skill 的 UUID、已软删除本地 Skill 的 UUID、插件 Skill 的 `plugin:` ID、裸名称、
+  `ns:name`、插件 ID 引用、一个本机目录里没有记录的 UUID 形式的值。
+
+### 触发
+
+导出该工作流，再在另一台缺少该插件、另有同名本地 Skill 的机器上导入。
+
+### 必须成立
+
+- 本机本地 Skill 记录（含软删除）的 UUID 导出为该记录的名称；没有对应记录的值原样导出。
+- `plugin:` ID、裸名称、`ns:name` 与插件 ID 引用原样导出。
+- 本机图里的绑定在导出前后不变。
+- 目标机器导入后原样保存引用，`plugin:` 引用报 `missing` 并按插件 ID 提示安装，不回落到同名本地 Skill。
+
+### 禁止结果
+
+- 导出文件含本机 Skill 记录的 UUID。
+- 插件 Skill 被导出为裸名称。
+- 导出改写本机图。
+- 导入时改写引用值。
+
+### 验证义务与证据
+
+| 验证义务 | 代表性证据测试 | 状态 |
+| --- | --- | --- |
+| 本机 Skill 的 UUID（含软删除记录）导出为名称，其他值原样导出 | 尚无 | `Missing` |
+| 导出不改写本机图 | 尚无 | `Missing` |
+| 导出再导入后插件 Skill 来源保留，缺插件时按插件 ID 提示安装 | 尚无 | `Missing` |
+
+### 决策依据
+
+- [工作流 Skill 绑定改存 Catalog ID](../../../../../decisions/desktop/plugin/category/workflow/20261126-workflow-skill-binding-by-catalog-id.md)
+  D4 第 1–4 条与不变量 7、8。
